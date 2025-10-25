@@ -3,6 +3,10 @@ name = "local-deployment"
 version = "0.0.96"
 edition = "2024"
 
+[features]
+default = []
+postgres = ["db/postgres", "sqlx/postgres"]
+
 [dependencies]
 db = { path = "../db" }
 executors = { path="../executors" }

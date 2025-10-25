@@ -119,12 +119,12 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
             <span className="text-sm truncate">{project.name}</span>
           </div>
           <div className="flex items-center gap-1">
-            <button
+            <span
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleFavorite();
               }}
-              className="p-0.5 hover:bg-accent rounded opacity-0 group-hover:opacity-100 transition-opacity"
+              className="p-0.5 hover:bg-accent rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
             >
               <Star
                 className={cn(
@@ -132,7 +132,7 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
                   isFavorite ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"
                 )}
               />
-            </button>
+            </span>
             {isExpanded ? (
               <ChevronDown className="h-3 w-3" />
             ) : (

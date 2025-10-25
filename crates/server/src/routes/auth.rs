@@ -18,15 +18,45 @@ use utils::response::ApiResponse;
 
 use crate::{DeploymentImpl, error::ApiError};
 
+// Import new auth types (will be conditionally compiled when PostgreSQL is available)
+#[cfg(feature = "postgres")]
+use db::{
+    models::user::{LoginRequest, LoginResponse, UserProfile},
+    repositories::{UserRepository, SessionRepository},
+    services::AuthService,
+};
+
+// Import SQLite auth handlers
+mod auth_sqlite;
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
-    Router::new()
+    let mut router = Router::new()
         .route("/auth/github/device/start", post(device_start))
         .route("/auth/github/device/poll", post(device_poll))
-        .route("/auth/github/check", get(github_check_token))
-        .layer(from_fn_with_state(
-            deployment.clone(),
-            sentry_user_context_middleware,
-        ))
+        .route("/auth/github/check", get(github_check_token));
+
+    // Add session-based auth routes when PostgreSQL feature is enabled
+    #[cfg(feature = "postgres")]
+    {
+        router = router
+            .route("/auth/login", post(login))
+            .route("/auth/me", get(get_current_user))
+            .route("/auth/logout", post(logout));
+    }
+
+    // Add SQLite auth routes when PostgreSQL is NOT enabled
+    #[cfg(not(feature = "postgres"))]
+    {
+        router = router
+            .route("/auth/login", post(auth_sqlite::login))
+            .route("/auth/me", get(auth_sqlite::get_current_user))
+            .route("/auth/logout", post(auth_sqlite::logout));
+    }
+
+    router.layer(from_fn_with_state(
+        deployment.clone(),
+        sentry_user_context_middleware,
+    ))
 }
 
 /// POST /auth/github/device/start
@@ -125,4 +155,167 @@ pub async fn sentry_user_context_middleware(
 ) -> Result<Response, StatusCode> {
     let _ = deployment.update_sentry_scope().await;
     Ok(next.run(req).await)
+}
+
+// ============================================================================
+// Session-based Authentication Endpoints (PostgreSQL)
+// ============================================================================
+
+#[cfg(feature = "postgres")]
+/// POST /auth/login
+/// Returns session cookie for authentication
+async fn login(
+    State(deployment): State<DeploymentImpl>,
+    ResponseJson(req): ResponseJson<LoginRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Get PostgreSQL pool from deployment
+    let pool = deployment.pg_pool().ok_or_else(|| {
+        ApiError::InternalError("PostgreSQL not configured".to_string())
+    })?;
+
+    // Find user by username
+    let user = UserRepository::find_by_username(&pool, &req.username)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
+        .ok_or_else(|| ApiError::BadRequest("Invalid credentials".to_string()))?;
+
+    // Verify password
+    if !AuthService::verify_password(&req.password, &user.password_hash)
+        .map_err(|e| ApiError::InternalError(format!("Password verification error: {}", e)))?
+    {
+        return Err(ApiError::BadRequest("Invalid credentials".to_string()));
+    }
+
+    // Check if user is active
+    if !user.is_active {
+        return Err(ApiError::BadRequest("Account is disabled".to_string()));
+    }
+
+    // Update last login time
+    UserRepository::update_last_login(&pool, user.id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+    // Generate session ID
+    let session_id = AuthService::generate_session_id();
+
+    // Create session in database
+    SessionRepository::create(&pool, &session_id, user.id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to create session: {}", e)))?;
+
+    // Get user profile with organizations
+    let profile = UserRepository::get_user_profile(&pool, user.id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
+        .ok_or_else(|| ApiError::InternalError("User profile not found".to_string()))?;
+
+    // Create response with session cookie
+    let cookie = format!(
+        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+        session_id,
+        30 * 24 * 60 * 60 // 30 days
+    );
+
+    let response = LoginResponse {
+        user: profile,
+        session_id: session_id.clone(),
+    };
+
+    Ok((
+        [(header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())],
+        ResponseJson(ApiResponse::<LoginResponse, LoginResponse>::success(response))
+    ))
+}
+
+#[cfg(feature = "postgres")]
+/// GET /auth/me
+/// Returns the current user's profile from session cookie
+async fn get_current_user(
+    State(deployment): State<DeploymentImpl>,
+    req: Request,
+) -> Result<ResponseJson<ApiResponse<UserProfile>>, ApiError> {
+    // Get PostgreSQL pool
+    let pool = deployment.pg_pool().ok_or_else(|| {
+        ApiError::InternalError("PostgreSQL not configured".to_string())
+    })?;
+
+    // Extract session ID from cookie
+    let session_id = req.headers()
+        .get(header::COOKIE)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';')
+                .find_map(|cookie| {
+                    let cookie = cookie.trim();
+                    cookie.strip_prefix("session_id=")
+                })
+        })
+        .ok_or_else(|| ApiError::BadRequest("No session cookie found".to_string()))?;
+
+    // Find session in database
+    let session = SessionRepository::find_by_id(&pool, session_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
+        .ok_or_else(|| ApiError::BadRequest("Invalid or expired session".to_string()))?;
+
+    // Update last accessed time
+    SessionRepository::update_last_accessed(&pool, session_id)
+        .await
+        .ok(); // Ignore errors for last accessed update
+
+    // Get user profile
+    let profile = UserRepository::get_user_profile(&pool, session.user_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
+        .ok_or_else(|| ApiError::BadRequest("User not found".to_string()))?;
+
+    Ok(ResponseJson(ApiResponse::success(profile)))
+}
+
+#[cfg(feature = "postgres")]
+#[derive(Serialize, Deserialize, ts_rs::TS)]
+#[ts(export)]
+pub struct LogoutResponse {
+    pub message: String,
+}
+
+#[cfg(feature = "postgres")]
+/// POST /auth/logout
+/// Deletes the session from database and clears cookie
+async fn logout(
+    State(deployment): State<DeploymentImpl>,
+    req: Request,
+) -> Result<impl IntoResponse, ApiError> {
+    let pool = deployment.pg_pool().ok_or_else(|| {
+        ApiError::InternalError("PostgreSQL not configured".to_string())
+    })?;
+
+    // Extract session ID from cookie
+    if let Some(session_id) = req.headers()
+        .get(header::COOKIE)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';')
+                .find_map(|cookie| {
+                    let cookie = cookie.trim();
+                    cookie.strip_prefix("session_id=")
+                })
+        })
+    {
+        // Delete session from database
+        SessionRepository::delete(&pool, session_id)
+            .await
+            .ok(); // Ignore errors
+    }
+
+    // Clear cookie
+    let cookie = "session_id=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+
+    Ok((
+        [(header::SET_COOKIE, HeaderValue::from_str(cookie).unwrap())],
+        ResponseJson(ApiResponse::<LogoutResponse, LogoutResponse>::success(LogoutResponse {
+            message: "Logged out successfully".to_string(),
+        }))
+    ))
 }

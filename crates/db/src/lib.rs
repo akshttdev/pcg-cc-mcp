@@ -1,16 +1,24 @@
 use std::{str::FromStr, sync::Arc};
 
 use sqlx::{
-    Error, Pool, Sqlite, SqlitePool,
+    Error, Pool, Postgres, Sqlite, SqlitePool,
+    postgres::PgPoolOptions,
     sqlite::{SqliteConnectOptions, SqliteConnection, SqlitePoolOptions},
 };
 use utils::assets::asset_dir;
 
 pub mod models;
+pub mod repositories;
+pub mod services;
 
 #[derive(Clone)]
 pub struct DBService {
     pub pool: Pool<Sqlite>,
+}
+
+#[derive(Clone)]
+pub struct PgDBService {
+    pub pool: Pool<Postgres>,
 }
 
 impl DBService {
@@ -72,5 +80,37 @@ impl DBService {
 
         sqlx::migrate!("./migrations").run(&pool).await?;
         Ok(pool)
+    }
+}
+
+impl PgDBService {
+    /// Create a new PostgreSQL database service
+    /// Requires DATABASE_URL environment variable
+    pub async fn new() -> Result<PgDBService, Error> {
+        let database_url = std::env::var("DATABASE_URL")
+            .expect("DATABASE_URL must be set for PostgreSQL connection");
+        
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&database_url)
+            .await?;
+        
+        // Run migrations
+        sqlx::migrate!("./migrations_pg").run(&pool).await?;
+        
+        Ok(PgDBService { pool })
+    }
+
+    /// Create a new PostgreSQL database service with custom URL
+    pub async fn new_with_url(database_url: &str) -> Result<PgDBService, Error> {
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(database_url)
+            .await?;
+        
+        // Run migrations
+        sqlx::migrate!("./migrations_pg").run(&pool).await?;
+        
+        Ok(PgDBService { pool })
     }
 }

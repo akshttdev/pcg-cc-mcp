@@ -31,6 +31,9 @@ import { ShortcutsHelp } from '@/components/shortcuts-help';
 import { HotkeysProvider } from 'react-hotkeys-hook';
 
 import { ProjectProvider } from '@/contexts/project-context';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { LoginPage } from '@/components/auth/LoginPage';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { ThemeMode } from 'shared/types';
 import * as Sentry from '@sentry/react';
 import { Loader } from '@/components/ui/loader';
@@ -175,31 +178,32 @@ function AppContent() {
                 {/* Content Area */}
                 <div className="flex-1 overflow-y-auto">
                   <SentryRoutes>
-                    <Route path="/" element={<Projects />} />
-                    <Route path="/projects" element={<Projects />} />
-                    <Route path="/projects/:projectId" element={<Projects />} />
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
+                    <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
+                    <Route path="/projects/:projectId" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
                     <Route
                       path="/projects/:projectId/tasks"
-                      element={<ProjectTasks />}
+                      element={<ProtectedRoute><ProjectTasks /></ProtectedRoute>}
                     />
                     <Route
                       path="/projects/:projectId/tasks/:taskId/attempts/:attemptId"
-                      element={<ProjectTasks />}
+                      element={<ProtectedRoute><ProjectTasks /></ProtectedRoute>}
                     />
                     <Route
                       path="/projects/:projectId/tasks/:taskId/attempts/:attemptId/full"
-                      element={<ProjectTasks />}
+                      element={<ProtectedRoute><ProjectTasks /></ProtectedRoute>}
                     />
                     <Route
                       path="/projects/:projectId/tasks/:taskId/full"
-                      element={<ProjectTasks />}
+                      element={<ProtectedRoute><ProjectTasks /></ProtectedRoute>}
                     />
                     <Route
                       path="/projects/:projectId/tasks/:taskId"
-                      element={<ProjectTasks />}
+                      element={<ProtectedRoute><ProjectTasks /></ProtectedRoute>}
                     />
-                    <Route path="/nora" element={<NoraPage />} />
-                    <Route path="/settings/*" element={<SettingsLayout />}>
+                    <Route path="/nora" element={<ProtectedRoute><NoraPage /></ProtectedRoute>} />
+                    <Route path="/settings/*" element={<ProtectedRoute><SettingsLayout /></ProtectedRoute>}>
                       <Route index element={<Navigate to="general" replace />} />
                       <Route path="general" element={<GeneralSettings />} />
                       <Route path="wallet" element={<WalletSettings />} />
@@ -233,17 +237,19 @@ function AppContent() {
 function App() {
   return (
     <BrowserRouter>
-      <UserSystemProvider>
-        <ProjectProvider>
-          <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
-            <KeyboardShortcutsProvider>
-              <NiceModal.Provider>
-                <AppContent />
-              </NiceModal.Provider>
-            </KeyboardShortcutsProvider>
-          </HotkeysProvider>
-        </ProjectProvider>
-      </UserSystemProvider>
+      <AuthProvider>
+        <UserSystemProvider>
+          <ProjectProvider>
+            <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
+              <KeyboardShortcutsProvider>
+                <NiceModal.Provider>
+                  <AppContent />
+                </NiceModal.Provider>
+              </KeyboardShortcutsProvider>
+            </HotkeysProvider>
+          </ProjectProvider>
+        </UserSystemProvider>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

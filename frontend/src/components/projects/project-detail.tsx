@@ -111,7 +111,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     category: 'file',
     scope: 'team',
     podId: 'none',
-    boardId: '',
+    boardId: 'none',
     checksum: '',
     mimeType: '',
     metadata: '',
@@ -250,7 +250,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
       category: 'file',
       scope: 'team',
       podId: 'none',
-      boardId: '',
+      boardId: 'none',
       checksum: '',
       mimeType: '',
       metadata: '',
@@ -315,10 +315,13 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     try {
       const result = await projectsApi.listAssets(projectId);
       setAssets(result);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch project assets:', error);
-      // @ts-expect-error it is type ApiError
-      setAssetsError(error.message || 'Failed to load brand assets');
+      if (error.response?.status === 404) {
+        setAssetsError('No assets found for this project.');
+      } else {
+        setAssetsError(error.message || 'Failed to load brand assets');
+      }
     }
 
     setAssetsLoading(false);
@@ -423,7 +426,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
         category: assetForm.category as (typeof assetCategoryOptions)[number],
         scope: assetForm.scope as (typeof assetScopeOptions)[number],
         pod_id: assetForm.podId !== 'none' ? assetForm.podId : undefined,
-        board_id: assetForm.boardId || undefined,
+        board_id: assetForm.boardId !== 'none' ? assetForm.boardId : undefined,
         checksum: assetForm.checksum.trim() || undefined,
         mime_type: assetForm.mimeType.trim() || undefined,
         metadata: assetForm.metadata.trim() || undefined,
@@ -1551,7 +1554,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No board</SelectItem>
+                  <SelectItem value="none">No board</SelectItem>
                   {boards.map((board) => (
                     <SelectItem key={board.id} value={board.id}>
                       {board.name}

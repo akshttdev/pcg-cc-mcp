@@ -158,6 +158,11 @@ pub async fn list_project_assets(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ProjectAsset>>>, ApiError> {
     let assets = ProjectAsset::find_by_project(&deployment.db().pool, project.id).await?;
+
+    if assets.is_empty() {
+        return Err(ApiError::NotFound("No assets found for the project".to_string()));
+    }
+
     Ok(ResponseJson(ApiResponse::success(assets)))
 }
 
@@ -740,6 +745,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/assets/{asset_id}",
             patch(update_project_asset).delete(delete_project_asset),
         )
+        .merge(crate::routes::project_boards::router(deployment))
         .layer(from_fn_with_state(
             deployment.clone(),
             load_project_middleware,

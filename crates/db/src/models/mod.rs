@@ -17,3 +17,4 @@ pub mod task_attempt;
 pub mod task_dependency;
 pub mod task_template;
 pub mod time_entry;
+pub mod user;

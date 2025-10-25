@@ -21,6 +21,11 @@ use tokio::sync::RwLock;
 use utils::{assets::config_path, msg_store::MsgStore};
 use uuid::Uuid;
 
+#[cfg(feature = "postgres")]
+use db::PgDBService;
+#[cfg(feature = "postgres")]
+use sqlx::{Pool, Postgres};
+
 use crate::container::LocalContainerService;
 
 mod command;
@@ -32,6 +37,8 @@ pub struct LocalDeployment {
     sentry: SentryService,
     user_id: String,
     db: DBService,
+    #[cfg(feature = "postgres")]
+    pg_db: Option<PgDBService>,
     analytics: Option<AnalyticsService>,
     msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
     container: LocalContainerService,
@@ -126,11 +133,37 @@ impl Deployment for LocalDeployment {
         let events = EventService::new(db.clone(), events_msg_store, events_entry_count);
         let file_search_cache = Arc::new(FileSearchCache::new());
 
+        // Try to initialize PostgreSQL connection if DATABASE_URL is set
+        #[cfg(feature = "postgres")]
+        let pg_db = {
+            match std::env::var("DATABASE_URL") {
+                Ok(_) => {
+                    tracing::info!("DATABASE_URL found, initializing PostgreSQL connection");
+                    match PgDBService::new().await {
+                        Ok(pg) => {
+                            tracing::info!("PostgreSQL connection established");
+                            Some(pg)
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to connect to PostgreSQL: {}. Multi-user auth will be disabled.", e);
+                            None
+                        }
+                    }
+                }
+                Err(_) => {
+                    tracing::info!("DATABASE_URL not set, skipping PostgreSQL initialization");
+                    None
+                }
+            }
+        };
+
         Ok(Self {
             config,
             sentry,
             user_id,
             db,
+            #[cfg(feature = "postgres")]
+            pg_db,
             analytics,
             msg_stores,
             container,
@@ -162,6 +195,11 @@ impl Deployment for LocalDeployment {
 
     fn db(&self) -> &DBService {
         &self.db
+    }
+
+    #[cfg(feature = "postgres")]
+    fn pg_pool(&self) -> Option<&Pool<Postgres>> {
+        self.pg_db.as_ref().map(|pg| &pg.pool)
     }
 
     fn analytics(&self) -> &Option<AnalyticsService> {

@@ -23,10 +23,33 @@ A comprehensive project management dashboard with built-in Model Context Protoco
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+
-- pnpm 8+
-- Rust toolchain (specified in rust-toolchain.toml)
-- cargo-watch (`cargo install cargo-watch`) for backend hot reload
+
+Before running this project, you need to install:
+
+1. **Node.js 18+** and **npm** (or **pnpm 8+**)
+   - Check: `node --version` and `npm --version`
+   - Install from: https://nodejs.org/
+
+2. **Rust toolchain** (nightly version specified in rust-toolchain.toml)
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   source $HOME/.cargo/env
+   ```
+
+3. **cargo-watch** (for backend hot reload)
+   ```bash
+   cargo install cargo-watch
+   ```
+
+4. **sqlx-cli** (for database migrations)
+   ```bash
+   cargo install sqlx-cli --no-default-features --features sqlite
+   ```
+
+5. **(Optional) pnpm** for faster package management
+   ```bash
+   npm install -g pnpm
+   ```
 
 ### Development Setup
 
@@ -37,15 +60,20 @@ cd pcg-dashboard-mcp
 
 # Install dependencies
 pnpm install
+# or if you don't have pnpm: npm install
 
 # Start development servers (frontend + backend)
 pnpm run dev
+# or: npm run dev
 ```
 
-This will start:
-- Frontend dev server on port 3000 (or auto-assigned)
-- Backend server on auto-assigned port
-- Hot reload for both frontend and backend
+This will:
+- Auto-copy the development database from `dev_assets_seed/` (first run only)
+- Start frontend dev server on port 3000 (or auto-assigned)
+- Start backend server on auto-assigned port
+- Enable hot reload for both frontend and backend
+
+The frontend will be available at http://localhost:3000
 
 ### Building for Production
 

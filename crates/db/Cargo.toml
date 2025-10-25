@@ -3,6 +3,10 @@ name = "db"
 version = "0.0.96"
 edition = "2024"
 
+[features]
+default = []
+postgres = []
+
 [dependencies]
 utils = { path = "../utils" }
 executors = { path = "../executors" }
@@ -14,7 +18,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "postgres", "chrono", "uuid"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 ts-rs = { workspace = true }
@@ -22,3 +26,4 @@ async-trait = "0.1"
 regex = "1.11.1"
 sentry-tracing = { version = "0.41.0", features = ["backtrace"] }
 futures-util = "0.3"
+bcrypt = "0.15"

@@ -69,6 +69,8 @@ Sentry.init({
   dsn: 'https://1065a1d276a581316999a07d5dffee26@o4509603705192449.ingest.de.sentry.io/4509605576441937',
   tracesSampleRate: 1.0,
   environment: import.meta.env.MODE === 'development' ? 'dev' : 'production',
+  // Disable Sentry in development to avoid ad blocker errors
+  enabled: import.meta.env.MODE !== 'development',
   integrations: [
     Sentry.reactRouterV6BrowserTracingIntegration({
       useEffect: React.useEffect,
@@ -78,6 +80,18 @@ Sentry.init({
       matchRoutes,
     }),
   ],
+  // Suppress network errors from Sentry itself (e.g., blocked by ad blockers)
+  beforeSend(event, hint) {
+    const error = hint.originalException;
+    if (error && typeof error === 'object' && 'message' in error) {
+      const message = String(error.message);
+      // Ignore Sentry's own network errors
+      if (message.includes('ERR_BLOCKED_BY_CLIENT') || message.includes('sentry.io')) {
+        return null;
+      }
+    }
+    return event;
+  },
 });
 Sentry.setTag('source', 'frontend');
 

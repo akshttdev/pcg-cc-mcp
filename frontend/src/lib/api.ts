@@ -404,9 +404,14 @@ export const projectsApi = {
     projectId: string,
     data: ProjectAssetCreateInput
   ): Promise<ProjectAsset> => {
+    // Convert bigint to number for JSON serialization
+    const payload = {
+      ...data,
+      byte_size: data.byte_size !== undefined ? Number(data.byte_size) : undefined,
+    };
     const response = await makeRequest(`/api/projects/${projectId}/assets`, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
     return handleApiResponse<ProjectAsset>(response);
   },
@@ -416,11 +421,16 @@ export const projectsApi = {
     assetId: string,
     data: ProjectAssetUpdateInput
   ): Promise<ProjectAsset> => {
+    // Convert bigint to number for JSON serialization
+    const payload = {
+      ...data,
+      byte_size: data.byte_size !== undefined ? Number(data.byte_size) : undefined,
+    };
     const response = await makeRequest(
       `/api/projects/${projectId}/assets/${assetId}`,
       {
         method: 'PATCH',
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       }
     );
     return handleApiResponse<ProjectAsset>(response);
