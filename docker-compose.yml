@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Main application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pcg-cc-mcp
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - BACKEND_PORT=3001
+      - FRONTEND_PORT=3000
+      - RUST_LOG=info
+      - DATABASE_URL=sqlite:///app/dev_assets/db.sqlite
+    volumes:
+      # Persist database
+      - ./dev_assets:/app/dev_assets
+      # Persist repositories
+      - repos_data:/repos
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/api/auth/me"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - app-network
+
+  # Cloudflare Tunnel for secure port forwarding
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: pcg-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  repos_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge

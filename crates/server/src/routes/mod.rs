@@ -1,9 +1,10 @@
 use axum::{
     Router,
     routing::{IntoMakeService, get},
+    middleware,
 };
 
-use crate::DeploymentImpl;
+use crate::{DeploymentImpl, middleware as app_middleware};
 
 pub mod activity;
 pub mod approvals;
@@ -25,9 +26,19 @@ pub mod projects;
 pub mod task_attempts;
 pub mod task_templates;
 pub mod tasks;
+pub mod users;
+pub mod permissions;
 
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
-    // Create routers with different middleware layers
+    // Admin routes with require_admin middleware applied BEFORE state
+    let admin_routes = Router::new()
+        .merge(users::router(&deployment))
+        .layer(middleware::from_fn_with_state(
+            deployment.clone(),
+            app_middleware::require_admin,
+        ));
+
+    // All routes (public and protected)
     let base_routes = Router::new()
         .route("/health", get(health::health_check))
         .merge(config::router())
@@ -42,10 +53,12 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(events::router(&deployment))
         .merge(approvals::router())
         .merge(agent_wallets::router(&deployment))
+        .nest("/permissions", permissions::router(&deployment))
         .nest("/images", images::routes())
         .merge(nora::nora_routes())
         .merge(comments::router())
         .merge(activity::router())
+        .merge(admin_routes)
         .with_state(deployment);
 
     Router::new()

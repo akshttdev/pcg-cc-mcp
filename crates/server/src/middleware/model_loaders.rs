@@ -11,7 +11,7 @@ use db::models::{
 use deployment::Deployment;
 use uuid::Uuid;
 
-use crate::DeploymentImpl;
+use crate::{DeploymentImpl, middleware::access_control::{AccessContext, ProjectRole}};
 
 pub async fn load_project_middleware(
     State(deployment): State<DeploymentImpl>,
@@ -31,6 +31,31 @@ pub async fn load_project_middleware(
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     };
+
+    // Check if user has access to this project
+    if let Some(access_context) = request.extensions().get::<AccessContext>() {
+        // Check if user has at least viewer access to this project
+        match access_context
+            .check_project_access(&deployment.db().pool, &project.id.to_string(), ProjectRole::Viewer)
+            .await
+        {
+            Ok(_role) => {
+                // User has access, continue
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "User {} denied access to project {}",
+                    access_context.user_id,
+                    project_id
+                );
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    } else {
+        // No auth context means user is not authenticated
+        tracing::warn!("Unauthenticated request to project {}", project_id);
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
     // Insert the project as an extension
     let mut request = request;

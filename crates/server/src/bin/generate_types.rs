@@ -147,6 +147,17 @@ fn generate_types_content() -> String {
         utils::approvals::ToolApprovalStatus::decl(),
         utils::approvals::CreateApprovalRequest::decl(),
         utils::approvals::ApprovalResponse::decl(),
+        server::routes::users::UserListItem::decl(),
+        server::routes::users::UserDetail::decl(),
+        server::routes::users::UpdateUserRequest::decl(),
+        server::routes::users::UpdateRoleRequest::decl(),
+        server::routes::users::CreateUserRequest::decl(),
+        server::routes::users::CreateUserResponse::decl(),
+        server::routes::permissions::ProjectMemberItem::decl(),
+        server::routes::permissions::AddProjectMemberRequest::decl(),
+        server::routes::permissions::UpdateMemberRoleRequest::decl(),
+        server::routes::permissions::ProjectAccessResponse::decl(),
+        server::routes::permissions::MyProjectItem::decl(),
         serde_json::Value::decl(),
     ];
 

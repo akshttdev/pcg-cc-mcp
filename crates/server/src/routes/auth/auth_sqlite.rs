@@ -9,6 +9,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
+use utils::response::ApiResponse;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -155,14 +156,6 @@ pub async fn login(
         session_id: session_id.clone(),
     };
 
-    // Wrap in ApiResponse
-    #[derive(Serialize)]
-    struct ApiResponse {
-        data: LoginResponse,
-    }
-
-    let api_response = ApiResponse { data: response };
-
     // Set session cookie
     let cookie = format!(
         "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
@@ -173,7 +166,7 @@ pub async fn login(
     Ok((
         StatusCode::OK,
         [(header::SET_COOKIE, cookie)],
-        ResponseJson(api_response),
+        ResponseJson(ApiResponse::<LoginResponse, LoginResponse>::success(response)),
     )
         .into_response())
 }

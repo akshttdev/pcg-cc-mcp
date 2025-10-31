@@ -24,12 +24,58 @@ use services::services::{
 use utils::{path::expand_tilde, response::ApiResponse};
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::load_project_middleware};
+use crate::{
+    DeploymentImpl, 
+    error::ApiError, 
+    middleware::{
+        load_project_middleware,
+        access_control::AccessContext,
+    },
+};
 
 pub async fn get_projects(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
-    let projects = Project::find_all(&deployment.db().pool).await?;
+    // If admin, return all projects
+    if access_context.is_admin {
+        let projects = Project::find_all(&deployment.db().pool).await?;
+        return Ok(ResponseJson(ApiResponse::success(projects)));
+    }
+
+    // For regular users, get only projects they have access to
+    let user_id_bytes = access_context.user_id.as_bytes().to_vec();
+    
+    #[derive(sqlx::FromRow)]
+    struct ProjectRow {
+        id: String,
+    }
+    
+    let project_ids: Vec<String> = sqlx::query_as::<_, ProjectRow>(
+        "SELECT DISTINCT project_id as id FROM project_members WHERE user_id = ?"
+    )
+    .bind(&user_id_bytes)
+    .fetch_all(&deployment.db().pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to fetch user projects: {}", e)))?
+    .into_iter()
+    .map(|row| row.id)
+    .collect();
+
+    if project_ids.is_empty() {
+        return Ok(ResponseJson(ApiResponse::success(vec![])));
+    }
+
+    // Fetch all accessible projects
+    let mut projects = Vec::new();
+    for project_id in project_ids {
+        if let Ok(uuid) = Uuid::parse_str(&project_id) {
+            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, uuid).await {
+                projects.push(project);
+            }
+        }
+    }
+
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
 
@@ -753,7 +799,11 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
     let projects_router = Router::new()
         .route("/", get(get_projects).post(create_project))
-        .nest("/{id}", project_id_router);
+        .nest("/{id}", project_id_router)
+        .layer(from_fn_with_state(
+            deployment.clone(),
+            crate::middleware::require_auth,
+        ));
 
     Router::new().nest("/projects", projects_router)
 }

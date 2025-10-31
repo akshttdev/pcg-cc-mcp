@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet } from 'lucide-react';
+import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
@@ -23,6 +23,20 @@ const settingsNavigation = [
     icon: User,
     label: 'Profile',
     description: 'Manage your personal information',
+  },
+  {
+    path: 'users',
+    icon: Users,
+    label: 'Users',
+    description: 'Manage team members and permissions',
+    adminOnly: true,
+  },
+  {
+    path: 'projects',
+    icon: FolderKanban,
+    label: 'Projects',
+    description: 'Manage project access and permissions',
+    adminOnly: true,
   },
   {
     path: 'privacy',

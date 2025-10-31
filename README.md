@@ -51,6 +51,34 @@ Before running this project, you need to install:
    npm install -g pnpm
    ```
 
+### 🐳 Docker Deployment (Recommended for Production)
+
+The easiest way to deploy is using Docker with Cloudflare Tunnel for secure port forwarding:
+
+```bash
+# 1. Copy environment file
+cp .env.example .env
+
+# 2. Get Cloudflare Tunnel token from https://one.dash.cloudflare.com/
+#    and add it to .env
+
+# 3. Run the deployment script
+./deploy.sh
+```
+
+**Or manually:**
+```bash
+docker-compose build
+docker-compose up -d
+```
+
+See **[DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)** for complete deployment guide.
+
+**Pull from Docker Hub (when available):**
+```bash
+docker pull kingbodhi/pcg-cc-mcp:latest
+```
+
 ### Development Setup
 
 ```bash
