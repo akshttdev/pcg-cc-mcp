@@ -36,6 +36,7 @@ import { ProjectProvider } from '@/contexts/project-context';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { AdminRoute } from '@/components/auth/AdminRoute';
 import { ThemeMode } from 'shared/types';
 import * as Sentry from '@sentry/react';
 import { Loader } from '@/components/ui/loader';
@@ -210,8 +211,8 @@ function AppContent() {
                       <Route path="general" element={<GeneralSettings />} />
                       <Route path="wallet" element={<WalletSettings />} />
                       <Route path="profile" element={<ProfileSettings />} />
-                      <Route path="users" element={<UsersSettings />} />
-                      <Route path="projects" element={<ProjectsSettings />} />
+                      <Route path="users" element={<AdminRoute><UsersSettings /></AdminRoute>} />
+                      <Route path="projects" element={<AdminRoute><ProjectsSettings /></AdminRoute>} />
                       <Route path="privacy" element={<PrivacySettings />} />
                       <Route path="activity" element={<ActivitySettings />} />
                       <Route path="agents" element={<AgentSettings />} />

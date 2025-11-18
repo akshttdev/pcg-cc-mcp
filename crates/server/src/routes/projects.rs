@@ -29,7 +29,7 @@ use crate::{
     error::ApiError, 
     middleware::{
         load_project_middleware,
-        access_control::AccessContext,
+        access_control::{AccessContext, ProjectRole},
     },
 };
 
@@ -334,9 +334,13 @@ pub async fn delete_project_asset(
 }
 
 pub async fn create_project(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateProject>,
 ) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
+    // Only admins can create projects
+    access_context.require_admin()?;
+
     let id = Uuid::new_v4();
     let CreateProject {
         name,
@@ -468,10 +472,35 @@ pub async fn create_project(
 }
 
 pub async fn update_project(
+    Extension(access_context): Extension<AccessContext>,
     Extension(existing_project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdateProject>,
 ) -> Result<ResponseJson<ApiResponse<Project>>, StatusCode> {
+    // Only admins or project owners can update projects
+    if !access_context.is_admin {
+        match access_context
+            .check_project_access(
+                &deployment.db().pool,
+                &existing_project.id.to_string(),
+                ProjectRole::Owner,
+            )
+            .await
+        {
+            Ok(_) => {
+                // User has owner access, allow update
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "User {} denied update access to project {}",
+                    access_context.user_id,
+                    existing_project.id
+                );
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     // Destructure payload to handle field updates.
     // This allows us to treat `None` from the payload as an explicit `null` to clear a field,
     // as the frontend currently sends all fields on update.
@@ -530,9 +559,34 @@ pub async fn update_project(
 }
 
 pub async fn delete_project(
+    Extension(access_context): Extension<AccessContext>,
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, StatusCode> {
+    // Only admins or project owners can delete projects
+    if !access_context.is_admin {
+        match access_context
+            .check_project_access(
+                &deployment.db().pool,
+                &project.id.to_string(),
+                ProjectRole::Owner,
+            )
+            .await
+        {
+            Ok(_) => {
+                // User has owner access, allow delete
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "User {} denied delete access to project {}",
+                    access_context.user_id,
+                    project.id
+                );
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     match Project::delete(&deployment.db().pool, project.id).await {
         Ok(rows_affected) => {
             if rows_affected == 0 {

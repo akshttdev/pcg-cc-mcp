@@ -4,6 +4,7 @@ import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
+import { useAuth } from '@/contexts/AuthContext';
 
 const settingsNavigation = [
   {
@@ -67,6 +68,12 @@ const settingsNavigation = [
 export function SettingsLayout() {
   const { t } = useTranslation('settings');
   const goToPreviousPath = usePreviousPath();
+  const { user } = useAuth();
+
+  // Filter navigation items based on admin status
+  const visibleNavigation = settingsNavigation.filter(
+    (item) => !item.adminOnly || user?.is_admin
+  );
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -82,7 +89,7 @@ export function SettingsLayout() {
               {t('settings.layout.nav.title')}
             </h2>
             <nav className="space-y-1">
-              {settingsNavigation.map((item) => {
+              {visibleNavigation.map((item) => {
                 const Icon = item.icon;
                 return (
                   <NavLink

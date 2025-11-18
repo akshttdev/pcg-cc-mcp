@@ -12,6 +12,7 @@ import ProjectCard, {
   ProjectBoardSummary,
 } from '@/components/projects/ProjectCard.tsx';
 import { useKeyCreate, Scope } from '@/keyboard';
+import { useAuth } from '@/contexts/AuthContext';
 
 const createEmptySummary = (
   overrides: Partial<ProjectBoardSummary> = {}
@@ -85,6 +86,7 @@ const summarizeBoards = (
 
 export function ProjectList() {
   const { t } = useTranslation('projects');
+  const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -93,6 +95,9 @@ export function ProjectList() {
     Record<string, ProjectBoardSummary>
   >({});
   const [boardSummariesLoading, setBoardSummariesLoading] = useState(false);
+
+  // Only admins can create projects
+  const isAdmin = user?.is_admin ?? false;
 
   const loadBoardSummaries = useCallback(
     async (projectList: Project[]) => {
@@ -158,6 +163,10 @@ export function ProjectList() {
   }, [loadBoardSummaries, t]);
 
   const handleCreateProject = useCallback(async () => {
+    // Only admins can create projects
+    if (!isAdmin) {
+      return;
+    }
     try {
       const result = await showProjectForm();
       if (result === 'saved') {
@@ -166,10 +175,10 @@ export function ProjectList() {
     } catch (error) {
       // User cancelled - do nothing
     }
-  }, [fetchProjects]);
+  }, [fetchProjects, isAdmin]);
 
-  // Semantic keyboard shortcut for creating new project
-  useKeyCreate(handleCreateProject, { scope: Scope.PROJECTS });
+  // Semantic keyboard shortcut for creating new project (admin only)
+  useKeyCreate(isAdmin ? handleCreateProject : () => {}, { scope: Scope.PROJECTS });
 
   const handleEditProject = useCallback(
     async (project: Project) => {
@@ -203,10 +212,12 @@ export function ProjectList() {
           <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
-        <Button onClick={handleCreateProject}>
-          <Plus className="mr-2 h-4 w-4" />
-          {t('createProject')}
-        </Button>
+        {isAdmin && (
+          <Button onClick={handleCreateProject}>
+            <Plus className="mr-2 h-4 w-4" />
+            {t('createProject')}
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -231,10 +242,12 @@ export function ProjectList() {
             <p className="mt-2 text-sm text-muted-foreground">
               {t('empty.description')}
             </p>
-            <Button className="mt-4" onClick={handleCreateProject}>
-              <Plus className="mr-2 h-4 w-4" />
-              {t('empty.createFirst')}
-            </Button>
+            {isAdmin && (
+              <Button className="mt-4" onClick={handleCreateProject}>
+                <Plus className="mr-2 h-4 w-4" />
+                {t('empty.createFirst')}
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (

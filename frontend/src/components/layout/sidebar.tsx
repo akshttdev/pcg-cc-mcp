@@ -27,6 +27,7 @@ import { showProjectForm } from '@/lib/modals';
 import type { Project, ProjectBoard, TaskWithAttemptStatus } from 'shared/types';
 import { useCommandStore } from '@/stores/useCommandStore';
 import NiceModal from '@ebay/nice-modal-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface SidebarProps {
   className?: string;
@@ -219,6 +220,7 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
 export function Sidebar({ className }: SidebarProps) {
   const location = useLocation();
   const { projectId } = useParams<{ projectId: string }>();
+  const { user } = useAuth();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useCommandStore();
   const {
     data: projects = [],
@@ -232,6 +234,9 @@ export function Sidebar({ className }: SidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set(projectId ? [projectId] : [])
   );
+
+  // Only admins can create projects
+  const isAdmin = user?.is_admin ?? false;
 
   useEffect(() => {
     if (!projectId) return;
@@ -349,14 +354,16 @@ export function Sidebar({ className }: SidebarProps) {
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Projects
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 hover:bg-accent"
-            onClick={handleCreateProject}
-            >
-            <Plus className="h-4 w-4" />
-          </Button>
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 hover:bg-accent"
+              onClick={handleCreateProject}
+              >
+              <Plus className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
         <ScrollArea className="flex-1 px-3">

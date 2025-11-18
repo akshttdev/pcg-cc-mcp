@@ -2,6 +2,8 @@ use axum::{
     Router,
     routing::{IntoMakeService, get},
     middleware,
+    http::StatusCode,
+    response::IntoResponse,
 };
 
 use crate::{DeploymentImpl, middleware as app_middleware};
@@ -29,6 +31,17 @@ pub mod tasks;
 pub mod users;
 pub mod permissions;
 
+/// Handler for the /metrics endpoint that exposes Prometheus metrics
+async fn metrics_handler() -> impl IntoResponse {
+    match crate::nora_metrics::export_metrics() {
+        Ok(metrics) => (StatusCode::OK, metrics),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to export metrics: {}", e),
+        ),
+    }
+}
+
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // Admin routes with require_admin middleware applied BEFORE state
     let admin_routes = Router::new()
@@ -41,6 +54,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // All routes (public and protected)
     let base_routes = Router::new()
         .route("/health", get(health::health_check))
+        .route("/metrics", get(metrics_handler))
         .merge(config::router())
         .merge(containers::router(&deployment))
         .merge(projects::router(&deployment))
