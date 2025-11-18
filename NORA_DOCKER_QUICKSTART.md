@@ -273,20 +273,86 @@ NORA_LLM_MAX_TOKENS=3000
 
 ### Enable Voice Features
 
-Voice is disabled by default due to quota concerns. To enable:
+**Voice is FULLY WORKING but disabled by default.**
 
-1. **Update .env**:
+#### Option 1: Use OpenAI Voice (Included with your API key!)
+
+**Already configured!** Your `OPENAI_API_KEY` enables:
+- ✅ OpenAI TTS (Text-to-Speech)
+- ✅ OpenAI Whisper STT (Speech-to-Text)
+
+**Test TTS endpoint:**
+```bash
+curl -X POST http://localhost:3001/nora/voice/synthesize \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Good morning, this is Nora speaking.",
+    "voice_profile": "BritishExecutiveFemale"
+  }' > response.json
+
+# Extract audio from response
+cat response.json | jq -r '.audio_data' | base64 -d > speech.mp3
+
+# Play audio (macOS)
+afplay speech.mp3
+```
+
+**Test STT endpoint:**
+```bash
+# Record audio or use existing .wav file
+# Convert to base64
+AUDIO_BASE64=$(base64 -i audio.wav)
+
+curl -X POST http://localhost:3001/nora/voice/transcribe \
+  -H "Content-Type: application/json" \
+  -d "{\"audio_data\": \"$AUDIO_BASE64\"}" | jq .
+```
+
+#### Option 2: Premium British Voices (ElevenLabs)
+
+For the **best British executive voices** (Rachel, Brian, Bella, Charlie):
+
+1. **Get ElevenLabs API key**: https://elevenlabs.io/
+2. **Update `.env`**:
    ```bash
-   NORA_TTS_VOICE=nova
-   NORA_STT_LANGUAGE=en
+   ELEVENLABS_API_KEY=your-elevenlabs-key-here
    ```
-
-2. **Restart container**:
+3. **Update `docker-compose.yml`** (already done if you copied from Step 2):
+   ```yaml
+   - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+   ```
+4. **Restart**:
    ```bash
    docker-compose restart app
    ```
 
-3. **Enable in UI**: Go to Voice tab, toggle "Enable Voice"
+Voice will automatically use ElevenLabs (higher quality) if API key is present!
+
+#### Option 3: Enterprise Azure Speech
+
+For **enterprise deployments**:
+
+1. **Get Azure credentials**: https://portal.azure.com/
+2. **Update `.env`**:
+   ```bash
+   AZURE_SPEECH_KEY=your-azure-key-here
+   AZURE_SPEECH_REGION=eastus
+   ```
+3. **Restart**:
+   ```bash
+   docker-compose restart app
+   ```
+
+#### Voice Endpoints
+
+Once configured, these endpoints work:
+
+- **POST `/nora/voice/synthesize`** - Text-to-Speech
+- **POST `/nora/voice/transcribe`** - Speech-to-Text
+- **POST `/nora/voice/interaction`** - Full voice conversation
+- **GET `/nora/voice/config`** - Voice configuration
+
+**See `NORA_VOICE_STATUS_REPORT.md` for complete voice documentation!**
 
 ---
 
