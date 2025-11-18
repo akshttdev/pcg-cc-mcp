@@ -3,6 +3,14 @@ version: '3.8'
 # Local development version without cloudflared
 # Use this for testing locally before deploying with cloudflared
 
+# Tests
+# Online status check
+# Prometheus Metrics
+# Access control for Nora
+# LRU Cache
+# Rate Limiting
+#LLM STreaming
+
 services:
   app:
     build:
