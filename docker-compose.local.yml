@@ -10,6 +10,7 @@ version: '3.8'
 # LRU Cache
 # Rate Limiting
 #LLM STreaming
+#Agentic Tools
 
 services:
   app:
