@@ -8,6 +8,7 @@ pub mod executor_session;
 pub mod follow_up_draft;
 pub mod image;
 pub mod merge;
+pub mod nora_config;
 pub mod project;
 pub mod project_asset;
 pub mod project_board;

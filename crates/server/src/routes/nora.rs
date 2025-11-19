@@ -326,6 +326,21 @@ pub async fn initialize_nora(
     let mut config = request.config.unwrap_or_default();
     apply_llm_overrides(&mut config);
 
+    // Load persisted voice configuration if available
+    if let Ok(Some(persisted_config)) = db::models::nora_config::NoraVoiceConfig::get(&state.db().pool).await {
+        match serde_json::from_str::<VoiceConfig>(&persisted_config.config_json) {
+            Ok(voice_config) => {
+                tracing::info!("Loaded persisted voice configuration from database");
+                config.voice = voice_config;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to parse persisted voice config, using default: {}", e);
+            }
+        }
+    } else {
+        tracing::info!("No persisted voice configuration found, using default");
+    }
+
     let projects = Project::find_all(&state.db().pool).await.map_err(|e| {
         tracing::error!("Failed to load projects for Nora context: {}", e);
         ApiError::InternalError(format!("Failed to load projects: {}", e))
@@ -774,7 +789,7 @@ pub async fn get_voice_config(
 
 /// Update Nora's voice configuration and reinitialize the engine
 pub async fn update_voice_config(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
     Json(request): Json<UpdateVoiceConfigRequest>,
 ) -> Result<Json<VoiceConfigResponse>, ApiError> {
     let nora_instance = NORA_INSTANCE
@@ -791,8 +806,22 @@ pub async fn update_voice_config(
         .await
         .map_err(|err| voice_error_to_api(err))?;
 
+    // Update in-memory configuration
     nora.config.voice = new_config.clone();
     nora.voice_engine = Arc::new(new_engine);
+
+    // Persist configuration to database
+    let config_json = serde_json::to_string(&new_config)
+        .map_err(|e| ApiError::InternalError(format!("Failed to serialize config: {}", e)))?;
+    
+    db::models::nora_config::NoraVoiceConfig::save(&state.db().pool, &config_json)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to persist voice config: {}", e);
+            ApiError::InternalError(format!("Failed to save configuration: {}", e))
+        })?;
+
+    tracing::info!("Voice configuration updated and persisted");
 
     Ok(Json(VoiceConfigResponse { config: new_config }))
 }
