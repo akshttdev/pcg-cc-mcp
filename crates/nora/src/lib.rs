@@ -8,6 +8,7 @@ pub mod brain;
 pub mod cache;
 pub mod coordination;
 pub mod executor;
+pub mod integrations;
 pub mod memory;
 pub mod personality;
 pub mod tools;

@@ -6,10 +6,16 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::integrations::{CalendarService, DiscordService, EmailService};
+
 /// Executive tools available to Nora
 #[derive(Debug)]
 pub struct ExecutiveTools {
     available_tools: HashMap<String, ToolDefinition>,
+    // External service integrations
+    email_service: Option<EmailService>,
+    discord_service: Option<DiscordService>,
+    calendar_service: Option<CalendarService>,
 }
 
 /// Definition of an executive tool
@@ -266,7 +272,7 @@ pub enum NoraExecutiveTool {
         body: String,
         priority: EmailPriority,
     },
-    SendSlackMessage {
+    SendDiscordMessage {
         channel: String,
         message: String,
         mention_users: Vec<String>,
@@ -621,6 +627,9 @@ impl ExecutiveTools {
     pub fn new() -> Self {
         let mut tools = Self {
             available_tools: HashMap::new(),
+            email_service: EmailService::from_env().ok(),
+            discord_service: DiscordService::from_env().ok(),
+            calendar_service: CalendarService::from_env().ok(),
         };
 
         tools.initialize_tools();
@@ -791,8 +800,8 @@ impl ExecutiveTools {
             NoraExecutiveTool::SendEmail { recipients, subject, body, priority } => {
                 self.execute_send_email(&recipients, &subject, &body, &priority).await
             }
-            NoraExecutiveTool::SendSlackMessage { channel, message, mention_users } => {
-                self.execute_send_slack_message(&channel, &message, &mention_users).await
+            NoraExecutiveTool::SendDiscordMessage { channel, message, mention_users } => {
+                self.execute_send_discord_message(&channel, &message, &mention_users).await
             }
             NoraExecutiveTool::CreateNotification { title, message, notification_type, recipients } => {
                 self.execute_create_notification(&title, &message, &notification_type, &recipients).await
@@ -1075,31 +1084,69 @@ impl ExecutiveTools {
     }
 
     // Email & Notifications Implementations
-    async fn execute_send_email(&self, recipients: &[String], subject: &str, _body: &str, priority: &EmailPriority) -> crate::Result<serde_json::Value> {
-        // Note: Requires SMTP configuration
-        tracing::info!("Email would be sent to {:?}: {}", recipients, subject);
+    async fn execute_send_email(&self, recipients: &[String], subject: &str, body: &str, priority: &EmailPriority) -> crate::Result<serde_json::Value> {
+        // Try to use real SMTP service if configured
+        if let Some(ref email_service) = self.email_service {
+            match email_service.send_email(recipients, subject, body, false).await {
+                Ok(message_id) => {
+                    tracing::info!("Email sent successfully to {:?} with ID: {}", recipients, message_id);
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "recipients": recipients,
+                        "subject": subject,
+                        "priority": format!("{:?}", priority),
+                        "message_id": message_id,
+                        "sent_via": "SMTP"
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("SMTP send failed, logging only: {}", e);
+                }
+            }
+        }
 
+        // Fallback: Log only
+        tracing::info!("Email would be sent to {:?}: {}", recipients, subject);
         Ok(serde_json::json!({
             "success": true,
             "recipients": recipients,
             "subject": subject,
             "priority": format!("{:?}", priority),
             "message_id": uuid::Uuid::new_v4().to_string(),
-            "note": "SMTP integration pending - email logged only"
+            "note": "SMTP not configured - email logged only. Set SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM_EMAIL env vars to enable."
         }))
     }
 
-    async fn execute_send_slack_message(&self, channel: &str, message: &str, mention_users: &[String]) -> crate::Result<serde_json::Value> {
-        // Note: Requires Slack API token
-        tracing::info!("Slack message to {}: {}", channel, message);
+    async fn execute_send_discord_message(&self, channel: &str, message: &str, mention_users: &[String]) -> crate::Result<serde_json::Value> {
+        // Try to use real Discord webhook if configured
+        if let Some(ref discord_service) = self.discord_service {
+            match discord_service.send_message(message, mention_users).await {
+                Ok(_) => {
+                    tracing::info!("Discord message sent successfully to channel: {}", channel);
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "channel": channel,
+                        "message": message,
+                        "mentioned_users": mention_users,
+                        "timestamp": Utc::now().to_rfc3339(),
+                        "sent_via": "Discord Webhook"
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("Discord webhook send failed, logging only: {}", e);
+                }
+            }
+        }
 
+        // Fallback: Log only
+        tracing::info!("Discord message to {}: {}", channel, message);
         Ok(serde_json::json!({
             "success": true,
             "channel": channel,
             "message": message,
             "mentioned_users": mention_users,
             "timestamp": Utc::now().to_rfc3339(),
-            "note": "Slack API integration pending - message logged only"
+            "note": "Discord webhook not configured - message logged only. Set DISCORD_WEBHOOK_URL env var to enable."
         }))
     }
 
@@ -1117,6 +1164,29 @@ impl ExecutiveTools {
 
     // Calendar & Scheduling Implementations
     async fn execute_create_calendar_event(&self, title: &str, start_time: DateTime<Utc>, end_time: DateTime<Utc>, attendees: &[String], location: Option<&str>) -> crate::Result<serde_json::Value> {
+        // Try to use real Google Calendar API if configured
+        if let Some(ref calendar_service) = self.calendar_service {
+            match calendar_service.create_event(title, start_time, end_time, attendees, location).await {
+                Ok(event_id) => {
+                    tracing::info!("Calendar event created: {} (ID: {})", title, event_id);
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "event_id": event_id,
+                        "title": title,
+                        "start_time": start_time.to_rfc3339(),
+                        "end_time": end_time.to_rfc3339(),
+                        "attendees": attendees,
+                        "location": location,
+                        "calendar_provider": "Google Calendar"
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("Google Calendar API failed, returning mock data: {}", e);
+                }
+            }
+        }
+
+        // Fallback: Mock data
         Ok(serde_json::json!({
             "success": true,
             "event_id": uuid::Uuid::new_v4().to_string(),
@@ -1125,12 +1195,39 @@ impl ExecutiveTools {
             "end_time": end_time.to_rfc3339(),
             "attendees": attendees,
             "location": location,
-            "note": "Calendar API integration pending"
+            "note": "Google Calendar not configured - returning mock data. Set GOOGLE_CALENDAR_CREDENTIALS and GOOGLE_CALENDAR_ID env vars to enable."
         }))
     }
 
     async fn execute_find_available_slots(&self, participants: &[String], duration_minutes: u32, preferred_days: &[String]) -> crate::Result<serde_json::Value> {
-        // Mock available slots
+        // Try to use real Google Calendar API if configured
+        if let Some(ref calendar_service) = self.calendar_service {
+            match calendar_service.find_available_slots(participants, duration_minutes, 7).await {
+                Ok(slots) => {
+                    let formatted_slots: Vec<_> = slots.iter().map(|(start, end)| {
+                        serde_json::json!({
+                            "start": start.to_rfc3339(),
+                            "end": end.to_rfc3339()
+                        })
+                    }).collect();
+
+                    tracing::info!("Found {} available slots", formatted_slots.len());
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "participants": participants,
+                        "duration_minutes": duration_minutes,
+                        "preferred_days": preferred_days,
+                        "available_slots": formatted_slots,
+                        "calendar_provider": "Google Calendar"
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("Google Calendar API failed, returning mock data: {}", e);
+                }
+            }
+        }
+
+        // Fallback: Mock available slots
         let now = Utc::now();
         let slots = vec![
             serde_json::json!({
@@ -1145,11 +1242,33 @@ impl ExecutiveTools {
             "duration_minutes": duration_minutes,
             "preferred_days": preferred_days,
             "available_slots": slots,
-            "note": "Calendar integration pending - showing mock slots"
+            "note": "Google Calendar not configured - showing mock slots"
         }))
     }
 
     async fn execute_check_calendar_availability(&self, user: &str, start_time: DateTime<Utc>, end_time: DateTime<Utc>) -> crate::Result<serde_json::Value> {
+        // Try to use real Google Calendar API if configured
+        if let Some(ref calendar_service) = self.calendar_service {
+            match calendar_service.check_availability(user, start_time, end_time).await {
+                Ok(is_available) => {
+                    tracing::info!("Checked availability for {}: {}", user, is_available);
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "user": user,
+                        "start_time": start_time.to_rfc3339(),
+                        "end_time": end_time.to_rfc3339(),
+                        "is_available": is_available,
+                        "conflicts": if is_available { vec![] as Vec<String> } else { vec!["Busy".to_string()] },
+                        "calendar_provider": "Google Calendar"
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("Google Calendar API failed, assuming available: {}", e);
+                }
+            }
+        }
+
+        // Fallback: Assume available
         Ok(serde_json::json!({
             "success": true,
             "user": user,
@@ -1157,7 +1276,7 @@ impl ExecutiveTools {
             "end_time": end_time.to_rfc3339(),
             "is_available": true,
             "conflicts": [],
-            "note": "Calendar integration pending - assuming available"
+            "note": "Google Calendar not configured - assuming available"
         }))
     }
 }

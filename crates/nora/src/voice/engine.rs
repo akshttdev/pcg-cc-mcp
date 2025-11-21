@@ -63,9 +63,13 @@ impl VoiceEngine {
             return Err(VoiceError::NotInitialized);
         }
 
+        // Use the configured voice_id to determine the profile
+        // This allows dynamic voice switching based on user preferences
+        let voice_profile = Self::voice_id_to_profile(&self.config.tts.voice_id);
+
         let request = SpeechRequest {
             text: text.to_string(),
-            voice_profile: VoiceProfile::BritishExecutiveFemale,
+            voice_profile,
             speed: self.config.tts.speed,
             volume: self.config.tts.volume,
             format: AudioFormat::Wav,
@@ -157,6 +161,23 @@ impl VoiceEngine {
     }
 
     // Private helper methods
+
+    /// Convert voice_id string to VoiceProfile enum
+    fn voice_id_to_profile(voice_id: &str) -> VoiceProfile {
+        match voice_id {
+            "fable" | "nova" | "shimmer" => VoiceProfile::BritishExecutiveFemale,
+            "echo" | "onyx" => VoiceProfile::BritishExecutiveMale,
+            "alloy" => VoiceProfile::SystemDefault,
+            // ElevenLabs voices
+            "Rachel" | "british_executive_female" => VoiceProfile::BritishExecutiveFemale,
+            "british_executive_male" => VoiceProfile::BritishExecutiveMale,
+            // Azure voices
+            "en-GB-SoniaNeural" | "en-GB-LibbyNeural" => VoiceProfile::BritishProfessionalFemale,
+            "en-GB-RyanNeural" | "en-GB-ThomasNeural" => VoiceProfile::BritishProfessionalMale,
+            // Default to British executive female for unknown voices
+            _ => VoiceProfile::BritishExecutiveFemale,
+        }
+    }
 
     async fn create_tts_provider(
         config: &VoiceConfig,
