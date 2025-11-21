@@ -78,7 +78,18 @@ vibe-kanban-*.tgz
 # Development ports file
 .dev-ports.json
 
+# Database and data persistence (NEVER commit!)
 dev_assets
+dev_assets/db.sqlite
+dev_assets/db.sqlite-shm
+dev_assets/db.sqlite-wal
+dev_assets/*.db
+dev_assets/*.backup
+backups/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
 /frontend/.env.sentry-build-plugin
 .ssh
 

@@ -469,16 +469,17 @@ impl SpeechToText for SystemSTT {
     async fn transcribe_audio(&self, _audio_data: &str) -> VoiceResult<TranscriptionResult> {
         let start_time = Instant::now();
 
-        info!("Using system STT (dummy implementation)");
-
-        // This is a placeholder implementation
-        warn!("System STT returning dummy transcription - implement actual STT integration");
+        warn!("System STT is a placeholder implementation - no real transcription performed");
+        warn!("To enable real speech-to-text, configure one of these:");
+        warn!("  - OpenAI Whisper: Set OPENAI_API_KEY environment variable");
+        warn!("  - Azure Speech: Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION");
+        warn!("  - Google Cloud: Configure Google Cloud credentials");
 
         let processing_time = start_time.elapsed().as_millis() as u64;
 
         Ok(TranscriptionResult {
-            text: "This is a dummy transcription from system STT".to_string(),
-            confidence: 0.5,
+            text: "This is a dummy transcription from system STT. Configure OPENAI_API_KEY to enable real speech-to-text.".to_string(),
+            confidence: 0.0,
             language: self.config.language.clone(),
             processing_time_ms: processing_time,
             word_timestamps: vec![],

@@ -16,10 +16,12 @@ import { projectsApi, tasksApi } from '@/lib/api';
 import { useProject } from '@/contexts/project-context';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { showProjectForm } from '@/lib/modals';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function CommandPalette() {
   const navigate = useNavigate();
   const { projectId } = useProject();
+  const { user } = useAuth();
   const {
     isOpen,
     closeCommandPalette,
@@ -27,6 +29,9 @@ export function CommandPalette() {
     getRecentItems,
     favorites
   } = useCommandStore();
+
+  // Only admins can create projects
+  const isAdmin = user?.is_admin ?? false;
 
   // Fetch projects
   const { data: projects = [] } = useQuery({
@@ -139,20 +144,22 @@ export function CommandPalette() {
             <span>Create Task</span>
             <kbd className="ml-auto text-xs">C</kbd>
           </CommandItem>
-          <CommandItem
-            onSelect={() =>
-              handleSelect(async () => {
-                try {
-                  await showProjectForm();
-                } catch (error) {
-                  // User cancelled
-                }
-              })
-            }
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            <span>Create Project</span>
-          </CommandItem>
+          {isAdmin && (
+            <CommandItem
+              onSelect={() =>
+                handleSelect(async () => {
+                  try {
+                    await showProjectForm();
+                  } catch (error) {
+                    // User cancelled
+                  }
+                })
+              }
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              <span>Create Project</span>
+            </CommandItem>
+          )}
           <CommandItem
             onSelect={() => handleSelect(() => navigate('/settings'))}
           >

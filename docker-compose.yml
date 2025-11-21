@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  # Main application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pcg-cc-mcp
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - BACKEND_PORT=3001
+      - FRONTEND_PORT=3000
+      - RUST_LOG=info
+      - DATABASE_URL=sqlite:///app/dev_assets/db.sqlite
+      # NORA AI Assistant Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NORA_LLM_MODEL=${NORA_LLM_MODEL:-gpt-4-turbo}
+      - NORA_LLM_TEMPERATURE=${NORA_LLM_TEMPERATURE:-0.7}
+      - NORA_LLM_MAX_TOKENS=${NORA_LLM_MAX_TOKENS:-2000}
+      # NORA Voice/TTS/STT Configuration (Optional - enables voice features)
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY:-}
+      - AZURE_SPEECH_REGION=${AZURE_SPEECH_REGION:-eastus}
+    volumes:
+      # Persist database
+      - ./dev_assets:/app/dev_assets
+      # Persist repositories
+      - repos_data:/repos
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - app-network
+
+  # Automated database backup service
+  db-backup:
+    image: alpine:latest
+    container_name: pcg-db-backup
+    restart: unless-stopped
+    environment:
+      - BACKUP_INTERVAL=${BACKUP_INTERVAL:-86400}  # Default: daily (24h in seconds)
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}  # Keep last 7 days
+    volumes:
+      - ./dev_assets:/data:ro  # Read-only access to database
+      - ./backups:/backups     # Backup storage location
+    command: >
+      sh -c '
+        echo "🔄 Backup service started"
+        echo "📅 Backup interval: $$BACKUP_INTERVAL seconds"
+        echo "🗑️  Retention: $$BACKUP_RETENTION_DAYS days"
+        
+        # Create backups directory if it does not exist
+        mkdir -p /backups
+        
+        # Initial backup on startup
+        TIMESTAMP=$$(date +%Y%m%d_%H%M%S)
+        if [ -f /data/db.sqlite ]; then
+          echo "📦 Creating initial backup: backup_$$TIMESTAMP.sqlite"
+          cp /data/db.sqlite /backups/backup_$$TIMESTAMP.sqlite
+          echo "✅ Initial backup complete"
+        else
+          echo "⚠️  No database found at /data/db.sqlite"
+        fi
+        
+        # Periodic backup loop
+        while true; do
+          sleep $$BACKUP_INTERVAL
+          
+          TIMESTAMP=$$(date +%Y%m%d_%H%M%S)
+          
+          if [ -f /data/db.sqlite ]; then
+            echo "📦 Creating backup: backup_$$TIMESTAMP.sqlite"
+            cp /data/db.sqlite /backups/backup_$$TIMESTAMP.sqlite
+            
+            # Also create a "latest" symlink for easy access
+            ln -sf backup_$$TIMESTAMP.sqlite /backups/backup_latest.sqlite
+            
+            # Clean up old backups (keep only last N days)
+            find /backups -name "backup_*.sqlite" -type f -mtime +$$BACKUP_RETENTION_DAYS -delete
+            
+            BACKUP_COUNT=$$(find /backups -name "backup_*.sqlite" -type f | wc -l)
+            echo "✅ Backup complete. Total backups: $$BACKUP_COUNT"
+          else
+            echo "⚠️  Database file not found, skipping backup"
+          fi
+        done
+      '
+    depends_on:
+      - app
+
+  # Cloudflare Tunnel for secure port forwarding
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: pcg-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  repos_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge

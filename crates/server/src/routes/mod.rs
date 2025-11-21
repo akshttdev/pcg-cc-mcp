@@ -1,9 +1,12 @@
 use axum::{
     Router,
     routing::{IntoMakeService, get},
+    middleware,
+    http::StatusCode,
+    response::IntoResponse,
 };
 
-use crate::DeploymentImpl;
+use crate::{DeploymentImpl, middleware as app_middleware};
 
 pub mod activity;
 pub mod approvals;
@@ -25,15 +28,36 @@ pub mod projects;
 pub mod task_attempts;
 pub mod task_templates;
 pub mod tasks;
+pub mod users;
+pub mod permissions;
+
+/// Handler for the /metrics endpoint that exposes Prometheus metrics
+async fn metrics_handler() -> impl IntoResponse {
+    match crate::nora_metrics::export_metrics() {
+        Ok(metrics) => (StatusCode::OK, metrics),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to export metrics: {}", e),
+        ),
+    }
+}
 
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
-    // Create routers with different middleware layers
+    // Admin routes with require_admin middleware applied BEFORE state
+    let admin_routes = Router::new()
+        .merge(users::router(&deployment))
+        .layer(middleware::from_fn_with_state(
+            deployment.clone(),
+            app_middleware::require_admin,
+        ));
+
+    // All routes (public and protected)
     let base_routes = Router::new()
         .route("/health", get(health::health_check))
+        .route("/metrics", get(metrics_handler))
         .merge(config::router())
         .merge(containers::router(&deployment))
         .merge(projects::router(&deployment))
-        .merge(project_boards::router(&deployment))
         .merge(tasks::router(&deployment))
         .merge(task_attempts::router(&deployment))
         .merge(execution_processes::router(&deployment))
@@ -43,10 +67,12 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(events::router(&deployment))
         .merge(approvals::router())
         .merge(agent_wallets::router(&deployment))
+        .nest("/permissions", permissions::router(&deployment))
         .nest("/images", images::routes())
         .merge(nora::nora_routes())
         .merge(comments::router())
         .merge(activity::router())
+        .merge(admin_routes)
         .with_state(deployment);
 
     Router::new()

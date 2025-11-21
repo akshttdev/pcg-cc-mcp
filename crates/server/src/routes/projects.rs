@@ -24,12 +24,58 @@ use services::services::{
 use utils::{path::expand_tilde, response::ApiResponse};
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::load_project_middleware};
+use crate::{
+    DeploymentImpl, 
+    error::ApiError, 
+    middleware::{
+        load_project_middleware,
+        access_control::{AccessContext, ProjectRole},
+    },
+};
 
 pub async fn get_projects(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
-    let projects = Project::find_all(&deployment.db().pool).await?;
+    // If admin, return all projects
+    if access_context.is_admin {
+        let projects = Project::find_all(&deployment.db().pool).await?;
+        return Ok(ResponseJson(ApiResponse::success(projects)));
+    }
+
+    // For regular users, get only projects they have access to
+    let user_id_bytes = access_context.user_id.as_bytes().to_vec();
+    
+    #[derive(sqlx::FromRow)]
+    struct ProjectRow {
+        id: String,
+    }
+    
+    let project_ids: Vec<String> = sqlx::query_as::<_, ProjectRow>(
+        "SELECT DISTINCT project_id as id FROM project_members WHERE user_id = ?"
+    )
+    .bind(&user_id_bytes)
+    .fetch_all(&deployment.db().pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to fetch user projects: {}", e)))?
+    .into_iter()
+    .map(|row| row.id)
+    .collect();
+
+    if project_ids.is_empty() {
+        return Ok(ResponseJson(ApiResponse::success(vec![])));
+    }
+
+    // Fetch all accessible projects
+    let mut projects = Vec::new();
+    for project_id in project_ids {
+        if let Ok(uuid) = Uuid::parse_str(&project_id) {
+            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, uuid).await {
+                projects.push(project);
+            }
+        }
+    }
+
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
 
@@ -158,6 +204,11 @@ pub async fn list_project_assets(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ProjectAsset>>>, ApiError> {
     let assets = ProjectAsset::find_by_project(&deployment.db().pool, project.id).await?;
+
+    if assets.is_empty() {
+        return Err(ApiError::NotFound("No assets found for the project".to_string()));
+    }
+
     Ok(ResponseJson(ApiResponse::success(assets)))
 }
 
@@ -283,9 +334,13 @@ pub async fn delete_project_asset(
 }
 
 pub async fn create_project(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateProject>,
 ) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
+    // Only admins can create projects
+    access_context.require_admin()?;
+
     let id = Uuid::new_v4();
     let CreateProject {
         name,
@@ -417,10 +472,35 @@ pub async fn create_project(
 }
 
 pub async fn update_project(
+    Extension(access_context): Extension<AccessContext>,
     Extension(existing_project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdateProject>,
 ) -> Result<ResponseJson<ApiResponse<Project>>, StatusCode> {
+    // Only admins or project owners can update projects
+    if !access_context.is_admin {
+        match access_context
+            .check_project_access(
+                &deployment.db().pool,
+                &existing_project.id.to_string(),
+                ProjectRole::Owner,
+            )
+            .await
+        {
+            Ok(_) => {
+                // User has owner access, allow update
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "User {} denied update access to project {}",
+                    access_context.user_id,
+                    existing_project.id
+                );
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     // Destructure payload to handle field updates.
     // This allows us to treat `None` from the payload as an explicit `null` to clear a field,
     // as the frontend currently sends all fields on update.
@@ -479,9 +559,34 @@ pub async fn update_project(
 }
 
 pub async fn delete_project(
+    Extension(access_context): Extension<AccessContext>,
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, StatusCode> {
+    // Only admins or project owners can delete projects
+    if !access_context.is_admin {
+        match access_context
+            .check_project_access(
+                &deployment.db().pool,
+                &project.id.to_string(),
+                ProjectRole::Owner,
+            )
+            .await
+        {
+            Ok(_) => {
+                // User has owner access, allow delete
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "User {} denied delete access to project {}",
+                    access_context.user_id,
+                    project.id
+                );
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
     match Project::delete(&deployment.db().pool, project.id).await {
         Ok(rows_affected) => {
             if rows_affected == 0 {
@@ -740,6 +845,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/assets/{asset_id}",
             patch(update_project_asset).delete(delete_project_asset),
         )
+        .merge(crate::routes::project_boards::router(deployment))
         .layer(from_fn_with_state(
             deployment.clone(),
             load_project_middleware,
@@ -747,7 +853,11 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
     let projects_router = Router::new()
         .route("/", get(get_projects).post(create_project))
-        .nest("/{id}", project_id_router);
+        .nest("/{id}", project_id_router)
+        .layer(from_fn_with_state(
+            deployment.clone(),
+            crate::middleware::require_auth,
+        ));
 
     Router::new().nest("/projects", projects_router)
 }

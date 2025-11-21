@@ -27,7 +27,7 @@ COPY . .
 
 # Build application
 RUN npm run generate-types
-RUN cd frontend && npm install && npm run build
+RUN cd frontend && npm install --ignore-scripts && npm run build
 RUN cargo build --release --bin server
 
 # Runtime stage
@@ -44,27 +44,31 @@ RUN apk add --no-cache \
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
 
-# Copy binary from builder
+# Copy binary and frontend assets from builder
 COPY --from=builder /app/target/release/server /usr/local/bin/server
+COPY --from=builder /app/frontend/dist /app/frontend/dist
+COPY --from=builder /app/dev_assets /app/dev_assets
 
-# Create repos directory and set permissions
-RUN mkdir -p /repos && \
-    chown -R appuser:appgroup /repos
+# Create necessary directories and set permissions
+RUN mkdir -p /repos /app/dev_assets && \
+    chown -R appuser:appgroup /repos /app
 
 # Switch to non-root user
 USER appuser
 
 # Set runtime environment
 ENV HOST=0.0.0.0
-ENV PORT=3000
-EXPOSE 3000
+ENV PORT=3001
+ENV FRONTEND_PORT=3000
+ENV BACKEND_PORT=3001
+EXPOSE 3001
 
 # Set working directory
-WORKDIR /repos
+WORKDIR /app
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}" || exit 1
+    CMD wget --quiet --tries=1 --spider "http://127.0.0.1:3001/api/health" || exit 1
 
 # Run the application
 ENTRYPOINT ["/sbin/tini", "--"]

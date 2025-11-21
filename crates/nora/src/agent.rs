@@ -325,6 +325,11 @@ impl NoraAgent {
         Ok(())
     }
 
+    /// Get LLM cache statistics
+    pub fn get_cache_stats(&self) -> Option<crate::cache::CacheStats> {
+        self.llm.as_ref().map(|llm| llm.get_cache_stats())
+    }
+
     // Private helper methods
 
     async fn update_context_from_request(&self, request: &NoraRequest) -> Result<()> {
@@ -1095,7 +1100,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         user_input: &str,
         llm_response: &str,
     ) -> Result<()> {
-        use crate::memory::{PendingAction, PendingActionType, PendingTask};
+        use crate::memory::{PendingAction, PendingActionType};
 
         // Check if executor is available
         if self.executor.is_none() {

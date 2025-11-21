@@ -47,11 +47,18 @@ Dockerfile*
 logs/
 *.log
 
-# Runtime data
+# Runtime data (NEVER include in image!)
 pids/
 *.pid
 *.seed
 *.pid.lock
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+dev_assets/db.sqlite*
+dev_assets/*.db
+backups/
+*.backup
 
 # Coverage directory used by tools like istanbul
 coverage/

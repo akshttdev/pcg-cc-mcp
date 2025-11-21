@@ -56,6 +56,12 @@ pub enum ApiError {
     BadRequest(String),
     #[error("Not Found: {0}")]
     NotFound(String),
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+    #[error("Too Many Requests: {0}")]
+    TooManyRequests(String),
     #[error("Internal Server Error: {0}")]
     InternalError(String),
 }
@@ -106,6 +112,9 @@ impl IntoResponse for ApiError {
             ApiError::Conflict(_) => (StatusCode::CONFLICT, "ConflictError"),
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BadRequest"),
             ApiError::NotFound(_) => (StatusCode::NOT_FOUND, "NotFound"),
+            ApiError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "Unauthorized"),
+            ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "Forbidden"),
+            ApiError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "TooManyRequests"),
             ApiError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "InternalError"),
         };
 
@@ -133,6 +142,9 @@ impl IntoResponse for ApiError {
             ApiError::Conflict(msg) => msg.clone(),
             ApiError::BadRequest(msg) => msg.clone(),
             ApiError::NotFound(msg) => msg.clone(),
+            ApiError::Unauthorized(msg) => msg.clone(),
+            ApiError::Forbidden(msg) => msg.clone(),
+            ApiError::TooManyRequests(msg) => msg.clone(),
             ApiError::InternalError(msg) => msg.clone(),
             _ => format!("{}: {}", error_type, self),
         };

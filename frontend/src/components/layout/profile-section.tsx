@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,27 +16,25 @@ import {
   LogOut,
   Shield,
   Activity,
-  Clock,
   Users,
   Wallet,
+  Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NiceModal from '@ebay/nice-modal-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ProfileSectionProps {
   className?: string;
 }
 
-// Mock user data - replace with actual user context/API
-const mockUser = {
-  id: '1',
-  name: 'John Doe',
-  email: 'john.doe@example.com',
-  avatar: null,
-  role: 'Developer',
-  status: 'online', // online, away, busy, offline
-  lastActive: '2 minutes ago',
-  initials: 'JD',
+const getInitials = (name: string): string => {
+  return name
+    .split(' ')
+    .map(part => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 };
 
 const getStatusColor = (status: string) => {
@@ -71,13 +68,19 @@ const getStatusText = (status: string) => {
 };
 
 export function ProfileSection({ className }: ProfileSectionProps) {
-  const [user] = useState(mockUser);
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    // Implement logout logic
-    console.log('Logout clicked');
-    // TODO: Add actual logout API call and token clearing
+  if (!user) {
+    return null;
+  }
+
+  const userInitials = getInitials(user.full_name);
+  const status = 'online'; // Default to online for now
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
   };
 
   const handleProfile = () => {
@@ -113,8 +116,8 @@ export function ProfileSection({ className }: ProfileSectionProps) {
       {/* Status indicator */}
       <div className="hidden lg:flex items-center gap-2 text-sm text-muted-foreground">
         <div className="flex items-center gap-1.5">
-          <div className={cn("h-2 w-2 rounded-full", getStatusColor(user.status))} />
-          <span className="text-sm">{getStatusText(user.status)}</span>
+          <div className={cn("h-2 w-2 rounded-full", getStatusColor(status))} />
+          <span className="text-sm">{getStatusText(status)}</span>
         </div>
       </div>
 
@@ -127,22 +130,22 @@ export function ProfileSection({ className }: ProfileSectionProps) {
           >
             <div className="relative">
               <Avatar className="h-9 w-9">
-                <AvatarImage src={user.avatar || undefined} alt={user.name} />
+                <AvatarImage src={undefined} alt={user.full_name} />
                 <AvatarFallback className="text-sm font-medium">
-                  {user.initials}
+                  {userInitials}
                 </AvatarFallback>
               </Avatar>
               {/* Status dot overlay */}
               <div
                 className={cn(
                   "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background",
-                  getStatusColor(user.status)
+                  getStatusColor(status)
                 )}
               />
             </div>
             <div className="hidden lg:block text-left min-w-0">
-              <div className="text-sm font-medium truncate">{user.name}</div>
-              <div className="text-xs text-muted-foreground truncate">{user.role}</div>
+              <div className="text-sm font-medium truncate">{user.full_name}</div>
+              <div className="text-xs text-muted-foreground truncate">{user.username}</div>
             </div>
           </Button>
         </DropdownMenuTrigger>
@@ -151,19 +154,21 @@ export function ProfileSection({ className }: ProfileSectionProps) {
           <DropdownMenuLabel className="pb-2">
             <div className="flex items-center gap-3">
               <Avatar className="h-10 w-10">
-                <AvatarImage src={user.avatar || undefined} alt={user.name} />
-                <AvatarFallback>{user.initials}</AvatarFallback>
+                <AvatarImage src={undefined} alt={user.full_name} />
+                <AvatarFallback>{userInitials}</AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                <div className="font-medium">{user.name}</div>
+                <div className="font-medium">{user.full_name}</div>
                 <div className="text-sm text-muted-foreground">{user.email}</div>
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="secondary" className="text-xs">
-                    {user.role}
-                  </Badge>
+                  {user.is_admin && (
+                    <Badge variant="secondary" className="text-xs">
+                      Admin
+                    </Badge>
+                  )}
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <div className={cn("h-1.5 w-1.5 rounded-full", getStatusColor(user.status))} />
-                    {getStatusText(user.status)}
+                    <div className={cn("h-1.5 w-1.5 rounded-full", getStatusColor(status))} />
+                    {getStatusText(status)}
                   </div>
                 </div>
               </div>
@@ -199,17 +204,39 @@ export function ProfileSection({ className }: ProfileSectionProps) {
 
           <DropdownMenuSeparator />
 
+          {/* Organizations */}
+          {user.organizations && user.organizations.length > 0 && (
+            <>
+              <DropdownMenuLabel className="text-xs text-muted-foreground">
+                Organizations
+              </DropdownMenuLabel>
+              {user.organizations.map((org) => (
+                <DropdownMenuItem key={org.id} className="cursor-pointer">
+                  <Building2 className="mr-2 h-4 w-4" />
+                  <div className="flex-1">
+                    <div className="text-sm">{org.name}</div>
+                    <div className="text-xs text-muted-foreground capitalize">{org.role}</div>
+                  </div>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+            </>
+          )}
+
           <DropdownMenuItem onClick={handleTeamManagement} className="cursor-pointer">
             <Users className="mr-2 h-4 w-4" />
             <span>Team Management</span>
           </DropdownMenuItem>
 
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem className="text-muted-foreground cursor-default">
-            <Clock className="mr-2 h-4 w-4" />
-            <span>Last active: {user.lastActive}</span>
-          </DropdownMenuItem>
+          {user.is_admin && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => navigate('/admin')} className="cursor-pointer">
+                <Shield className="mr-2 h-4 w-4" />
+                <span>Admin Panel</span>
+              </DropdownMenuItem>
+            </>
+          )}
 
           <DropdownMenuSeparator />
 

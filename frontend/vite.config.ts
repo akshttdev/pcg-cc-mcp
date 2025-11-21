@@ -73,7 +73,9 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0', // Listen on all network interfaces
     port: parseInt(process.env.FRONTEND_PORT || "3000"),
+    allowedHosts: true, // Allow requests from any host
     proxy: {
       "/api": {
         target: `http://localhost:${process.env.BACKEND_PORT || "58297"}`,

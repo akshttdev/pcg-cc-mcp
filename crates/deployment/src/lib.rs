@@ -12,6 +12,12 @@ use db::{
         task_attempt::{TaskAttempt, TaskAttemptError},
     },
 };
+
+#[cfg(feature = "postgres")]
+use db::PgDBService;
+#[cfg(feature = "postgres")]
+use sqlx::{Pool, Postgres};
+
 use executors::executors::ExecutorError;
 use futures::{StreamExt, TryStreamExt};
 use git2::Error as Git2Error;
@@ -84,6 +90,11 @@ pub trait Deployment: Clone + Send + Sync + 'static {
     fn sentry(&self) -> &SentryService;
 
     fn db(&self) -> &DBService;
+
+    #[cfg(feature = "postgres")]
+    fn pg_pool(&self) -> Option<&Pool<Postgres>> {
+        None // Default implementation returns None
+    }
 
     fn analytics(&self) -> &Option<AnalyticsService>;
 

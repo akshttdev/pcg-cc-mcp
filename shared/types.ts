@@ -376,4 +376,26 @@ export type CreateApprovalRequest = { tool_name: string, tool_input: JsonValue, 
 
 export type ApprovalResponse = { execution_process_id: string, status: ToolApprovalStatus, };
 
+export type UserListItem = { id: string, username: string, email: string, full_name: string, avatar_url: string | null, is_active: number, is_admin: number, last_login_at: string | null, created_at: string, };
+
+export type UserDetail = { id: string, username: string, email: string, full_name: string, avatar_url: string | null, is_active: number, is_admin: number, last_login_at: string | null, created_at: string, updated_at: string, };
+
+export type UpdateUserRequest = { full_name: string | null, email: string | null, avatar_url: string | null, };
+
+export type UpdateRoleRequest = { is_admin: boolean, };
+
+export type CreateUserRequest = { username: string, password: string, email: string | null, full_name: string, is_admin: boolean, };
+
+export type CreateUserResponse = { message: string, user_id: string, username: string, };
+
+export type ProjectMemberItem = { id: string, project_id: string, user_id: string, username: string, full_name: string, email: string, avatar_url: string | null, role: string, granted_at: string, granted_by_username: string | null, };
+
+export type AddProjectMemberRequest = { user_id: string, role: string, };
+
+export type UpdateMemberRoleRequest = { role: string, };
+
+export type ProjectAccessResponse = { has_access: boolean, role: string | null, can_read: boolean, can_write: boolean, can_manage_members: boolean, can_delete: boolean, };
+
+export type MyProjectItem = { project_id: string, project_name: string, role: string, granted_at: string, };
+
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]?: JsonValue } | null;

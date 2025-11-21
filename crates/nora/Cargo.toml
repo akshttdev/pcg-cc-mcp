@@ -28,6 +28,7 @@ schemars = { workspace = true }
 
 # HTTP client for external APIs
 reqwest = { version = "0.11", features = ["json", "multipart", "stream"] }
+bytes = "1.5"
 
 # Audio processing (for voice capabilities)
 tokio-tungstenite = "0.20"
@@ -53,6 +54,9 @@ regex = "1.9"
 
 # Additional dependencies for voice processing
 async-trait = "0.1"
+
+# LRU cache for LLM response caching
+moka = { version = "0.12", features = ["future"] }
 
 # Audio processing (these will be used by the voice engine)
 # Note: In a real implementation, you'd add actual audio processing libraries

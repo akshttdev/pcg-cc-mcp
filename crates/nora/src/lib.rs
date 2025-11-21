@@ -5,6 +5,7 @@
 
 pub mod agent;
 pub mod brain;
+pub mod cache;
 pub mod coordination;
 pub mod executor;
 pub mod memory;
@@ -12,8 +13,18 @@ pub mod personality;
 pub mod tools;
 pub mod voice;
 
+#[cfg(test)]
+mod agent_tests;
+#[cfg(test)]
+mod brain_tests;
+#[cfg(test)]
+mod executor_tests;
+#[cfg(test)]
+mod personality_tests;
+
 pub use agent::NoraAgent;
 pub use brain::{LLMConfig, LLMProvider};
+pub use cache::{CacheKey, CachedResponse, LlmCache, ResponseMetadata};
 pub use coordination::{CoordinationEvent, CoordinationManager};
 pub use executor::{
     BoardInfo, PodInfo, ProjectDetails, ProjectInfo, ProjectStats, TaskDefinition, TaskExecutor,
@@ -68,6 +79,9 @@ pub enum NoraError {
 
     #[error("Tools error: {0}")]
     ToolsError(String),
+
+    #[error("Tool execution error: {0}")]
+    ToolExecutionError(String),
 
     #[error("Configuration error: {0}")]
     ConfigError(String),

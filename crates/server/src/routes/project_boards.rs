@@ -1,53 +1,46 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, patch},
 };
-use db::models::project_board::{CreateProjectBoard, ProjectBoard, UpdateProjectBoard};
+use db::models::{
+    project::Project,
+    project_board::{CreateProjectBoard, ProjectBoard, ProjectBoardType, UpdateProjectBoard},
+};
 use deployment::Deployment;
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
-#[derive(Debug, Deserialize)]
-struct ProjectBoardsPath {
-    project_id: Uuid,
-}
-
-#[derive(Debug, Deserialize)]
-struct ProjectBoardPath {
-    project_id: Uuid,
-    board_id: Uuid,
-}
-
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
-pub struct ProjectBoardsPayload {
-    pub items: Vec<ProjectBoard>,
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateBoardPayload {
+    pub name: String,
+    pub slug: String,
+    pub board_type: ProjectBoardType,
+    pub description: Option<String>,
+    pub metadata: Option<String>,
 }
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route(
-            "/projects/{project_id}/boards",
+            "/boards",
             get(list_boards).post(create_board),
         )
         .route(
-            "/projects/{project_id}/boards/{board_id}",
+            "/boards/{board_id}",
             patch(update_board).delete(delete_board),
         )
         .with_state(deployment.clone())
 }
 
 async fn list_boards(
+    Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
-    Path(ProjectBoardsPath { project_id }): Path<ProjectBoardsPath>,
 ) -> Result<Json<ApiResponse<Vec<ProjectBoard>>>, ApiError> {
-    let boards = ProjectBoard::list_by_project(&deployment.db().pool, project_id).await?;
+    let boards = ProjectBoard::list_by_project(&deployment.db().pool, project.id).await?;
     Ok(Json(ApiResponse::success(boards)))
 }
 
@@ -60,26 +53,31 @@ fn normalize_slug(source: &str) -> String {
 }
 
 async fn create_board(
+    Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
-    Path(ProjectBoardsPath { project_id }): Path<ProjectBoardsPath>,
-    Json(mut payload): Json<CreateProjectBoard>,
+    Json(payload): Json<CreateBoardPayload>,
 ) -> Result<(StatusCode, Json<ApiResponse<ProjectBoard>>), ApiError> {
-    payload.project_id = project_id;
-    if payload.slug.trim().is_empty() {
-        payload.slug = normalize_slug(&payload.name);
+    let slug = if payload.slug.trim().is_empty() {
+        normalize_slug(&payload.name)
     } else {
-        payload.slug = normalize_slug(&payload.slug);
-    }
-    let board = ProjectBoard::create(&deployment.db().pool, &payload).await?;
+        normalize_slug(&payload.slug)
+    };
+
+    let board = ProjectBoard::create(&deployment.db().pool, &CreateProjectBoard {
+        project_id: project.id,
+        name: payload.name,
+        slug,
+        board_type: payload.board_type,
+        description: payload.description,
+        metadata: payload.metadata,
+    }).await?;
     Ok((StatusCode::CREATED, Json(ApiResponse::success(board))))
 }
 
 async fn update_board(
+    Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
-    Path(ProjectBoardPath {
-        project_id,
-        board_id,
-    }): Path<ProjectBoardPath>,
+    Path(board_id): Path<Uuid>,
     Json(mut payload): Json<UpdateProjectBoard>,
 ) -> Result<Json<ApiResponse<ProjectBoard>>, ApiError> {
     if let Some(slug) = payload.slug.as_mut() {
@@ -92,7 +90,7 @@ async fn update_board(
     let board = ProjectBoard::update(&deployment.db().pool, board_id, &payload)
         .await?
         .ok_or_else(|| ApiError::NotFound("Board not found".into()))?;
-    if board.project_id != project_id {
+    if board.project_id != project.id {
         return Err(ApiError::BadRequest(
             "Board does not belong to project".into(),
         ));
@@ -101,16 +99,14 @@ async fn update_board(
 }
 
 async fn delete_board(
+    Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
-    Path(ProjectBoardPath {
-        project_id,
-        board_id,
-    }): Path<ProjectBoardPath>,
+    Path(board_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let board = ProjectBoard::find_by_id(&deployment.db().pool, board_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Board not found".into()))?;
-    if board.project_id != project_id {
+    if board.project_id != project.id {
         return Err(ApiError::BadRequest(
             "Board does not belong to project".into(),
         ));

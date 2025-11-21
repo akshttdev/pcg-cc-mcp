@@ -190,19 +190,35 @@ impl VoiceEngine {
     ) -> VoiceResult<Arc<dyn SpeechToText + Send + Sync>> {
         match config.stt.provider {
             STTProvider::Whisper => {
-                info!("Creating Whisper STT provider");
-                Ok(Arc::new(super::stt::WhisperSTT::new(&config.stt).await?))
+                // Check if OpenAI API key is available
+                if std::env::var("OPENAI_API_KEY").is_ok() {
+                    info!("Creating Whisper STT provider with OpenAI API key");
+                    Ok(Arc::new(super::stt::WhisperSTT::new(&config.stt).await?))
+                } else {
+                    warn!("OpenAI API key not found, falling back to System STT");
+                    warn!("Set OPENAI_API_KEY environment variable to enable Whisper STT");
+                    Ok(Arc::new(super::stt::SystemSTT::new(&config.stt).await?))
+                }
             }
             STTProvider::Azure => {
-                info!("Creating Azure STT provider");
-                Ok(Arc::new(super::stt::AzureSTT::new(&config.stt).await?))
+                // Check if Azure credentials are available
+                if std::env::var("AZURE_SPEECH_KEY").is_ok() {
+                    info!("Creating Azure STT provider");
+                    Ok(Arc::new(super::stt::AzureSTT::new(&config.stt).await?))
+                } else {
+                    warn!("Azure Speech credentials not found, falling back to System STT");
+                    warn!("Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION to enable Azure STT");
+                    Ok(Arc::new(super::stt::SystemSTT::new(&config.stt).await?))
+                }
             }
             STTProvider::Google => {
                 info!("Creating Google STT provider");
-                Ok(Arc::new(super::stt::GoogleSTT::new(&config.stt).await?))
+                warn!("Google STT not fully implemented, falling back to System STT");
+                Ok(Arc::new(super::stt::SystemSTT::new(&config.stt).await?))
             }
             STTProvider::System => {
-                info!("Creating System STT provider");
+                info!("Creating System STT provider (placeholder)");
+                warn!("System STT returns dummy transcriptions - configure a real STT provider");
                 Ok(Arc::new(super::stt::SystemSTT::new(&config.stt).await?))
             }
         }
