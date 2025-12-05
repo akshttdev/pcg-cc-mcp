@@ -7,6 +7,11 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::integrations::{CalendarService, DiscordService, EmailService};
+use crate::executor::TaskExecutor;
+use std::sync::Arc;
+use uuid::Uuid;
+use db::models::project_board::ProjectBoardType;
+use db::models::task::Priority;
 
 /// Executive tools available to Nora
 #[derive(Debug)]
@@ -16,6 +21,8 @@ pub struct ExecutiveTools {
     email_service: Option<EmailService>,
     discord_service: Option<DiscordService>,
     calendar_service: Option<CalendarService>,
+    // Task execution
+    task_executor: Option<Arc<TaskExecutor>>,
 }
 
 /// Definition of an executive tool
@@ -84,6 +91,39 @@ pub enum Permission {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub enum NoraExecutiveTool {
+    /// Project Management
+    CreateProject {
+        name: String,
+        git_repo_path: String,
+        setup_script: Option<String>,
+        dev_script: Option<String>,
+    },
+    CreateBoard {
+        project_id: String,
+        name: String,
+        description: Option<String>,
+        board_type: Option<String>,
+    },
+    /// Create a task in a project by project name (simpler API for LLM)
+    CreateTaskInProject {
+        project_name: String,
+        title: String,
+        description: Option<String>,
+        priority: Option<String>,
+    },
+    CreateTaskOnBoard {
+        project_id: String,
+        board_id: String,
+        title: String,
+        description: Option<String>,
+        priority: Option<String>,
+        tags: Option<Vec<String>>,
+    },
+    AddTaskToBoard {
+        task_id: String,
+        board_id: String,
+    },
+
     /// Team Coordination
     CoordinateTeamMeeting {
         participants: Vec<String>,
@@ -630,10 +670,285 @@ impl ExecutiveTools {
             email_service: EmailService::from_env().ok(),
             discord_service: DiscordService::from_env().ok(),
             calendar_service: CalendarService::from_env().ok(),
+            task_executor: None,
         };
 
         tools.initialize_tools();
         tools
+    }
+
+    /// Set the task executor for project management operations
+    pub fn set_task_executor(&mut self, executor: Arc<TaskExecutor>) {
+        self.task_executor = Some(executor);
+    }
+
+    /// Generate OpenAI-compatible function schemas for available tools
+    /// These are used for function calling / tool use
+    pub fn get_openai_tool_schemas() -> Vec<serde_json::Value> {
+        vec![
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "create_project",
+                    "description": "Create a new project in the system. Use this when the user wants to create, start, or set up a new project.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "The name of the project to create"
+                            },
+                            "git_repo_path": {
+                                "type": "string",
+                                "description": "Optional path to a git repository for this project"
+                            }
+                        },
+                        "required": ["name"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "create_board",
+                    "description": "Create a new board (kanban, scrum, etc.) within a project. Use this when the user wants to add a board to organize tasks.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_id": {
+                                "type": "string",
+                                "description": "The UUID of the project to add the board to"
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "The name of the board"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Optional description of the board's purpose"
+                            },
+                            "board_type": {
+                                "type": "string",
+                                "enum": ["kanban", "scrum", "custom"],
+                                "description": "The type of board to create"
+                            }
+                        },
+                        "required": ["project_id", "name"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "create_task",
+                    "description": "Create a new task in a project. Use this when the user wants to add a task, todo, or work item to an EXISTING project. The task will be added to the project's default board.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_name": {
+                                "type": "string",
+                                "description": "The name of the existing project to add the task to (e.g., 'Test Project 3')"
+                            },
+                            "title": {
+                                "type": "string",
+                                "description": "The title of the task to create"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Optional detailed description of the task"
+                            },
+                            "priority": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "critical"],
+                                "description": "Priority level of the task (default: medium)"
+                            }
+                        },
+                        "required": ["project_name", "title"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "send_email",
+                    "description": "Send an email to one or more recipients. Use this when the user wants to send, compose, or draft an email.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "to": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "List of email addresses to send to"
+                            },
+                            "subject": {
+                                "type": "string",
+                                "description": "Email subject line"
+                            },
+                            "body": {
+                                "type": "string",
+                                "description": "Email body content"
+                            }
+                        },
+                        "required": ["to", "subject", "body"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "send_discord_message",
+                    "description": "Send a message to Discord via webhook. Use this when the user wants to post or send something to Discord.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "message": {
+                                "type": "string",
+                                "description": "The message content to send"
+                            },
+                            "mentions": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Optional user IDs to mention"
+                            }
+                        },
+                        "required": ["message"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "create_calendar_event",
+                    "description": "Create a calendar event or meeting. Use this when the user wants to schedule, book, or create a meeting or event.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "title": {
+                                "type": "string",
+                                "description": "Title of the event"
+                            },
+                            "start_time": {
+                                "type": "string",
+                                "description": "Start time in ISO 8601 format (e.g., 2024-12-05T14:00:00Z)"
+                            },
+                            "end_time": {
+                                "type": "string",
+                                "description": "End time in ISO 8601 format"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Optional event description"
+                            },
+                            "attendees": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Optional list of attendee email addresses"
+                            }
+                        },
+                        "required": ["title", "start_time", "end_time"]
+                    }
+                }
+            }),
+        ]
+    }
+
+    /// Parse a tool call from the LLM and convert it to NoraExecutiveTool
+    pub fn parse_tool_call(name: &str, arguments: &serde_json::Value) -> Option<NoraExecutiveTool> {
+        match name {
+            "create_project" => {
+                let name = arguments.get("name")?.as_str()?.to_string();
+                let git_repo_path = arguments.get("git_repo_path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Some(NoraExecutiveTool::CreateProject {
+                    name,
+                    git_repo_path,
+                    setup_script: None,
+                    dev_script: None,
+                })
+            }
+            "create_board" => {
+                let project_id = arguments.get("project_id")?.as_str()?.to_string();
+                let name = arguments.get("name")?.as_str()?.to_string();
+                let description = arguments.get("description").and_then(|v| v.as_str()).map(String::from);
+                let board_type = arguments.get("board_type").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::CreateBoard {
+                    project_id,
+                    name,
+                    description,
+                    board_type,
+                })
+            }
+            "create_task" => {
+                // New simplified API - takes project name instead of IDs
+                let project_name = arguments.get("project_name")?.as_str()?.to_string();
+                let title = arguments.get("title")?.as_str()?.to_string();
+                let description = arguments.get("description").and_then(|v| v.as_str()).map(String::from);
+                let priority = arguments.get("priority").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::CreateTaskInProject {
+                    project_name,
+                    title,
+                    description,
+                    priority,
+                })
+            }
+            "send_email" => {
+                let recipients: Vec<String> = arguments.get("to")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+                let subject = arguments.get("subject")?.as_str()?.to_string();
+                let body = arguments.get("body")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::SendEmail {
+                    recipients,
+                    subject,
+                    body,
+                    priority: EmailPriority::Normal,
+                })
+            }
+            "send_discord_message" => {
+                let message = arguments.get("message")?.as_str()?.to_string();
+                let mention_users = arguments.get("mentions")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                Some(NoraExecutiveTool::SendDiscordMessage {
+                    channel: String::new(), // Use default channel
+                    message,
+                    mention_users,
+                })
+            }
+            "create_calendar_event" => {
+                let title = arguments.get("title")?.as_str()?.to_string();
+                let start_time_str = arguments.get("start_time")?.as_str()?;
+                let end_time_str = arguments.get("end_time")?.as_str()?;
+                
+                // Parse ISO 8601 datetime strings
+                let start_time = chrono::DateTime::parse_from_rfc3339(start_time_str)
+                    .ok()?
+                    .with_timezone(&chrono::Utc);
+                let end_time = chrono::DateTime::parse_from_rfc3339(end_time_str)
+                    .ok()?
+                    .with_timezone(&chrono::Utc);
+                
+                let attendees = arguments.get("attendees")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                let location = arguments.get("location").and_then(|v| v.as_str()).map(String::from);
+                
+                Some(NoraExecutiveTool::CreateCalendarEvent {
+                    title,
+                    start_time,
+                    end_time,
+                    attendees,
+                    location,
+                })
+            }
+            _ => None,
+        }
     }
 
     pub fn get_available_tools(&self) -> Vec<&ToolDefinition> {
@@ -691,6 +1006,104 @@ impl ExecutiveTools {
     }
 
     fn initialize_tools(&mut self) {
+        // Project Management tools
+        self.add_tool_definition(ToolDefinition {
+            name: "create_project".to_string(),
+            description: "Create a new project with git repository".to_string(),
+            category: ToolCategory::Planning,
+            parameters: vec![
+                ToolParameter {
+                    name: "name".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Project name".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "git_repo_path".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Path to git repository".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+            ],
+            required_permissions: vec![Permission::Executive, Permission::Write],
+            estimated_duration: Some("1-2 minutes".to_string()),
+        });
+
+        self.add_tool_definition(ToolDefinition {
+            name: "create_board".to_string(),
+            description: "Create a new kanban board for a project".to_string(),
+            category: ToolCategory::Coordination,
+            parameters: vec![
+                ToolParameter {
+                    name: "project_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Project UUID".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "name".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Board name".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+            ],
+            required_permissions: vec![Permission::Write, Permission::Execute],
+            estimated_duration: Some("30 seconds".to_string()),
+        });
+
+        self.add_tool_definition(ToolDefinition {
+            name: "create_task_on_board".to_string(),
+            description: "Create a new task on a specific kanban board".to_string(),
+            category: ToolCategory::Coordination,
+            parameters: vec![
+                ToolParameter {
+                    name: "project_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Project UUID".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "board_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Board UUID".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "title".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Task title".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "description".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Task description".to_string(),
+                    required: false,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "priority".to_string(),
+                    parameter_type: ParameterType::Enum(vec![
+                        "low".to_string(),
+                        "medium".to_string(),
+                        "high".to_string(),
+                    ]),
+                    description: "Task priority level".to_string(),
+                    required: false,
+                    default_value: Some(serde_json::json!("medium")),
+                },
+            ],
+            required_permissions: vec![Permission::Write],
+            estimated_duration: Some("10-30 seconds".to_string()),
+        });
+
         // Coordination tools
         self.add_tool_definition(ToolDefinition {
             name: "coordinate_team_meeting".to_string(),
@@ -741,15 +1154,26 @@ impl ExecutiveTools {
 
     fn get_tool_name(&self, tool: &NoraExecutiveTool) -> String {
         match tool {
+            // Project Management
+            NoraExecutiveTool::CreateProject { .. } => "create_project".to_string(),
+            NoraExecutiveTool::CreateBoard { .. } => "create_board".to_string(),
+            NoraExecutiveTool::CreateTaskInProject { .. } => "create_task".to_string(),
+            NoraExecutiveTool::CreateTaskOnBoard { .. } => "create_task_on_board".to_string(),
+            NoraExecutiveTool::AddTaskToBoard { .. } => "add_task_to_board".to_string(),
+            
+            // Coordination
             NoraExecutiveTool::CoordinateTeamMeeting { .. } => {
                 "coordinate_team_meeting".to_string()
             }
             NoraExecutiveTool::DelegateTask { .. } => "delegate_task".to_string(),
             NoraExecutiveTool::EscalateIssue { .. } => "escalate_issue".to_string(),
+            
+            // Planning
             NoraExecutiveTool::GenerateProjectRoadmap { .. } => {
                 "generate_project_roadmap".to_string()
             }
             NoraExecutiveTool::GenerateKPIDashboard { .. } => "generate_kpi_dashboard".to_string(),
+            
             // Add more mappings...
             _ => "unknown_tool".to_string(),
         }
@@ -760,6 +1184,253 @@ impl ExecutiveTools {
         tool: NoraExecutiveTool,
     ) -> crate::Result<serde_json::Value> {
         match tool {
+            // Project Management
+            NoraExecutiveTool::CreateProject { name, git_repo_path, setup_script, dev_script } => {
+                if let Some(executor) = &self.task_executor {
+                    match executor.create_project(
+                        name.clone(),
+                        git_repo_path.clone(),
+                        setup_script,
+                        dev_script,
+                    ).await {
+                        Ok(project) => {
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": format!("Project '{}' created successfully", name),
+                                "project_id": project.id.to_string(),
+                                "project_name": project.name,
+                                "git_repo_path": project.git_repo_path.to_string_lossy().to_string(),
+                                "created_at": project.created_at.to_string(),
+                            }))
+                        }
+                        Err(e) => {
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to create project: {}", e),
+                            }))
+                        }
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Task executor not available. Please ensure Nora is properly initialized."
+                    }))
+                }
+            }
+            NoraExecutiveTool::CreateBoard { project_id, name, description, board_type } => {
+                if let Some(executor) = &self.task_executor {
+                    // Parse project_id UUID
+                    let project_uuid = match Uuid::parse_str(&project_id) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": "Invalid project_id format. Must be a valid UUID."
+                            }));
+                        }
+                    };
+
+                    // Map board type string to enum
+                    let board_type_enum = board_type.as_ref().and_then(|bt| match bt.to_lowercase().as_str() {
+                        "custom" => Some(ProjectBoardType::Custom),
+                        "executive_assets" => Some(ProjectBoardType::ExecutiveAssets),
+                        "brand_assets" => Some(ProjectBoardType::BrandAssets),
+                        "dev_assets" => Some(ProjectBoardType::DevAssets),
+                        "social_assets" => Some(ProjectBoardType::SocialAssets),
+                        _ => None,
+                    });
+
+                    match executor.create_board(
+                        project_uuid,
+                        name.clone(),
+                        description,
+                        board_type_enum,
+                    ).await {
+                        Ok(board) => {
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": format!("Board '{}' created successfully", name),
+                                "board_id": board.id.to_string(),
+                                "project_id": board.project_id.to_string(),
+                                "board_name": board.name,
+                                "board_type": format!("{:?}", board.board_type),
+                                "created_at": board.created_at.to_string(),
+                            }))
+                        }
+                        Err(e) => {
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to create board: {}", e),
+                            }))
+                        }
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Task executor not available"
+                    }))
+                }
+            }
+            NoraExecutiveTool::CreateTaskInProject { project_name, title, description, priority } => {
+                if let Some(executor) = &self.task_executor {
+                    // Map priority string to enum
+                    let priority_enum = priority.as_ref().and_then(|p| match p.to_lowercase().as_str() {
+                        "critical" => Some(Priority::Critical),
+                        "high" => Some(Priority::High),
+                        "medium" => Some(Priority::Medium),
+                        "low" => Some(Priority::Low),
+                        _ => None,
+                    });
+
+                    match executor.create_task_in_project(
+                        &project_name,
+                        title.clone(),
+                        description,
+                        priority_enum,
+                    ).await {
+                        Ok(task) => {
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": format!("Task '{}' created successfully in project '{}'", title, project_name),
+                                "task_id": task.id.to_string(),
+                                "project_id": task.project_id.to_string(),
+                                "board_id": task.board_id.map(|id| id.to_string()),
+                                "title": task.title,
+                                "status": format!("{:?}", task.status),
+                                "priority": format!("{:?}", task.priority),
+                                "created_at": task.created_at.to_string(),
+                            }))
+                        }
+                        Err(e) => {
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to create task: {}", e),
+                            }))
+                        }
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Task executor not available"
+                    }))
+                }
+            }
+            NoraExecutiveTool::CreateTaskOnBoard { project_id, board_id, title, description, priority, tags } => {
+                if let Some(executor) = &self.task_executor {
+                    // Parse project_id UUID
+                    let project_uuid = match Uuid::parse_str(&project_id) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": "Invalid project_id format. Must be a valid UUID."
+                            }));
+                        }
+                    };
+
+                    // Parse board_id UUID
+                    let board_uuid = match Uuid::parse_str(&board_id) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": "Invalid board_id format. Must be a valid UUID."
+                            }));
+                        }
+                    };
+
+                    // Map priority string to enum
+                    let priority_enum = priority.as_ref().and_then(|p| match p.to_lowercase().as_str() {
+                        "critical" => Some(Priority::Critical),
+                        "high" => Some(Priority::High),
+                        "medium" => Some(Priority::Medium),
+                        "low" => Some(Priority::Low),
+                        _ => None,
+                    });
+
+                    match executor.create_task_on_board(
+                        project_uuid,
+                        board_uuid,
+                        title.clone(),
+                        description,
+                        priority_enum,
+                        tags,
+                    ).await {
+                        Ok(task) => {
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": format!("Task '{}' created successfully", title),
+                                "task_id": task.id.to_string(),
+                                "project_id": task.project_id.to_string(),
+                                "board_id": task.board_id.map(|id| id.to_string()),
+                                "title": task.title,
+                                "status": format!("{:?}", task.status),
+                                "priority": format!("{:?}", task.priority),
+                                "created_at": task.created_at.to_string(),
+                            }))
+                        }
+                        Err(e) => {
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to create task: {}", e),
+                            }))
+                        }
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Task executor not available"
+                    }))
+                }
+            }
+            NoraExecutiveTool::AddTaskToBoard { task_id, board_id } => {
+                if let Some(executor) = &self.task_executor {
+                    // Parse task_id UUID
+                    let task_uuid = match Uuid::parse_str(&task_id) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": "Invalid task_id format. Must be a valid UUID."
+                            }));
+                        }
+                    };
+
+                    // Parse board_id UUID
+                    let board_uuid = match Uuid::parse_str(&board_id) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": "Invalid board_id format. Must be a valid UUID."
+                            }));
+                        }
+                    };
+
+                    match executor.add_task_to_board(task_uuid, board_uuid).await {
+                        Ok(()) => {
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": "Task assigned to board successfully",
+                                "task_id": task_id,
+                                "board_id": board_id,
+                            }))
+                        }
+                        Err(e) => {
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to assign task to board: {}", e),
+                            }))
+                        }
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Task executor not available"
+                    }))
+                }
+            }
+
             // File Operations
             NoraExecutiveTool::ReadFile { file_path, encoding } => {
                 self.execute_read_file(&file_path, encoding.as_deref()).await

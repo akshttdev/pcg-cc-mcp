@@ -1,13 +1,18 @@
 //! Task execution engine for Nora
 //! Handles autonomous task creation and management across projects
 
-use db::models::task::{CreateTask, Priority, Task};
+use db::models::{
+    project::{CreateProject, Project},
+    project_board::{CreateProjectBoard, ProjectBoard, ProjectBoardType},
+    task::{CreateTask, Priority, Task},
+};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::{NoraError, Result};
 
 /// Task executor for creating and managing tasks
+#[derive(Debug)]
 pub struct TaskExecutor {
     pool: SqlitePool,
 }
@@ -99,21 +104,22 @@ impl TaskExecutor {
 
     /// Find project by name or return error with suggestions
     pub async fn find_project_by_name(&self, name: &str) -> Result<Uuid> {
-        // Query the database for project by name
+        // Query the database for project by name using LIKE for fuzzy matching
         let pattern = format!("%{}%", name);
-        let result: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM projects WHERE LOWER(name) LIKE LOWER(?) LIMIT 1"
+        
+        // Use the Project model to query properly
+        let projects: Vec<(Uuid, String)> = sqlx::query_as(
+            r#"SELECT id as "id!: Uuid", name FROM projects WHERE LOWER(name) LIKE LOWER($1) LIMIT 1"#
         )
         .bind(&pattern)
-        .fetch_optional(&self.pool)
+        .fetch_all(&self.pool)
         .await
         .map_err(|e| NoraError::DatabaseError(e))?;
 
-        match result {
-            Some((uuid_str,)) => {
-                Uuid::parse_str(&uuid_str).map_err(|e| {
-                    NoraError::ConfigError(format!("Invalid project ID format: {}", e))
-                })
+        match projects.first() {
+            Some((id, _name)) => {
+                tracing::info!("[TOOL_FLOW] Found project '{}' with ID: {}", _name, id);
+                Ok(*id)
             }
             None => Err(NoraError::ConfigError(format!(
                 "Project '{}' not found. Please check the project name.",
@@ -157,7 +163,7 @@ impl TaskExecutor {
 
         // Get boards for this project
         let boards: Vec<BoardInfo> = sqlx::query_as(
-            "SELECT id, name, description FROM boards WHERE project_id = ? ORDER BY name"
+            "SELECT id, name, description FROM project_boards WHERE project_id = ? ORDER BY name"
         )
         .bind(project_id.to_string())
         .fetch_all(&self.pool)
@@ -166,7 +172,7 @@ impl TaskExecutor {
 
         // Get pods for this project
         let pods: Vec<PodInfo> = sqlx::query_as(
-            "SELECT id, name, description FROM pods WHERE project_id = ? ORDER BY name"
+            "SELECT id, name, description FROM project_pods WHERE project_id = ? ORDER BY name"
         )
         .bind(project_id.to_string())
         .fetch_all(&self.pool)
@@ -259,6 +265,218 @@ impl TaskExecutor {
 
         tracing::info!("Updated task {} status to {}", task_id, status);
         Ok(())
+    }
+
+    /// Create a new project
+    pub async fn create_project(
+        &self,
+        name: String,
+        git_repo_path: String,
+        setup_script: Option<String>,
+        dev_script: Option<String>,
+    ) -> Result<Project> {
+        tracing::info!("Nora creating project '{}'", name);
+
+        let project_id = Uuid::new_v4();
+        
+        // Generate a unique repo path if none provided (to avoid UNIQUE constraint violation)
+        let repo_path = if git_repo_path.is_empty() {
+            format!("nora-project-{}", project_id)
+        } else {
+            git_repo_path
+        };
+        tracing::debug!("Using git_repo_path: {}", repo_path);
+
+        let create_project = CreateProject {
+            name: name.clone(),
+            git_repo_path: repo_path,
+            setup_script,
+            dev_script,
+            cleanup_script: None,
+            copy_files: None,
+            use_existing_repo: false,
+        };
+
+        let project = Project::create(&self.pool, &create_project, project_id)
+            .await
+            .map_err(|e| NoraError::DatabaseError(e))?;
+
+        // Create default boards
+        if let Err(e) = ProjectBoard::ensure_default_boards(&self.pool, project.id).await {
+            tracing::warn!("Failed to create default boards for project {}: {}", project.id, e);
+        }
+
+        tracing::info!("Project created successfully: {} ({})", project.name, project.id);
+
+        Ok(project)
+    }
+
+    /// Create a new kanban board for a project
+    pub async fn create_board(
+        &self,
+        project_id: Uuid,
+        name: String,
+        description: Option<String>,
+        board_type: Option<ProjectBoardType>,
+    ) -> Result<ProjectBoard> {
+        tracing::info!("Nora creating board '{}' in project {}", name, project_id);
+
+        let create_board = CreateProjectBoard {
+            project_id,
+            name: name.clone(),
+            slug: name.to_lowercase().replace(" ", "-"),
+            description,
+            board_type: board_type.unwrap_or(db::models::project_board::ProjectBoardType::Custom),
+            metadata: None,
+        };
+
+        let board = ProjectBoard::create(&self.pool, &create_board)
+            .await
+            .map_err(|e| NoraError::DatabaseError(e))?;
+
+        tracing::info!("Board created successfully: {} ({})", board.name, board.id);
+
+        Ok(board)
+    }
+
+    /// Add a task to a specific board
+    pub async fn add_task_to_board(
+        &self,
+        task_id: Uuid,
+        board_id: Uuid,
+    ) -> Result<()> {
+        tracing::info!("Nora adding task {} to board {}", task_id, board_id);
+
+        sqlx::query(
+            "UPDATE tasks SET board_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+        .bind(board_id.to_string())
+        .bind(task_id.to_string())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| NoraError::DatabaseError(e))?;
+
+        tracing::info!("Task {} added to board {} successfully", task_id, board_id);
+        Ok(())
+    }
+
+    /// Create a task directly on a specific board
+    pub async fn create_task_on_board(
+        &self,
+        project_id: Uuid,
+        board_id: Uuid,
+        title: String,
+        description: Option<String>,
+        priority: Option<Priority>,
+        tags: Option<Vec<String>>,
+    ) -> Result<Task> {
+        tracing::info!(
+            "Nora creating task '{}' on board {} in project {}",
+            title,
+            board_id,
+            project_id
+        );
+
+        let task_id = Uuid::new_v4();
+
+        let create_task = CreateTask {
+            project_id,
+            pod_id: None,
+            board_id: Some(board_id),
+            title,
+            description,
+            parent_task_attempt: None,
+            image_ids: None,
+            priority,
+            assignee_id: None,
+            assigned_agent: Some("nora".to_string()),
+            assigned_mcps: None,
+            created_by: "nora".to_string(),
+            requires_approval: Some(false),
+            parent_task_id: None,
+            tags,
+            due_date: None,
+            custom_properties: None,
+            scheduled_start: None,
+            scheduled_end: None,
+        };
+
+        let task = Task::create(&self.pool, &create_task, task_id)
+            .await
+            .map_err(|e| NoraError::DatabaseError(e))?;
+
+        tracing::info!("Task created on board successfully: {} ({})", task.title, task.id);
+
+        Ok(task)
+    }
+
+    /// Create a task in a project by project name (looks up project and default board)
+    pub async fn create_task_in_project(
+        &self,
+        project_name: &str,
+        title: String,
+        description: Option<String>,
+        priority: Option<Priority>,
+    ) -> Result<Task> {
+        tracing::info!(
+            "[TOOL_FLOW] Creating task '{}' in project '{}'",
+            title,
+            project_name
+        );
+
+        // Find the project by name
+        let project_id = self.find_project_by_name(project_name).await?;
+        tracing::info!("[TOOL_FLOW] Found project ID: {}", project_id);
+
+        // Try to find a default board for this project (table is project_boards)
+        let board_result: Option<(Uuid,)> = sqlx::query_as(
+            r#"SELECT id as "id!: Uuid" FROM project_boards WHERE project_id = $1 LIMIT 1"#
+        )
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| NoraError::DatabaseError(e))?;
+        
+        let board_id = board_result.map(|(id,)| id);
+
+        tracing::info!("[TOOL_FLOW] Board ID: {:?}", board_id);
+
+        let task_id = Uuid::new_v4();
+
+        let create_task = CreateTask {
+            project_id,
+            pod_id: None,
+            board_id,
+            title: title.clone(),
+            description,
+            parent_task_attempt: None,
+            image_ids: None,
+            priority,
+            assignee_id: None,
+            assigned_agent: Some("nora".to_string()),
+            assigned_mcps: None,
+            created_by: "nora".to_string(),
+            requires_approval: Some(false),
+            parent_task_id: None,
+            tags: None,
+            due_date: None,
+            custom_properties: None,
+            scheduled_start: None,
+            scheduled_end: None,
+        };
+
+        let task = Task::create(&self.pool, &create_task, task_id)
+            .await
+            .map_err(|e| NoraError::DatabaseError(e))?;
+
+        tracing::info!(
+            "[TOOL_FLOW] Task created successfully: '{}' (ID: {}) in project '{}'",
+            task.title,
+            task.id,
+            project_name
+        );
+
+        Ok(task)
     }
 
     /// Get project statistics

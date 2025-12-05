@@ -209,9 +209,13 @@ impl NoraAgent {
 
     /// Set the database pool and initialize the task executor
     pub fn with_database(mut self, pool: SqlitePool) -> Self {
-        let executor = TaskExecutor::new(pool.clone());
+        let executor = Arc::new(TaskExecutor::new(pool.clone()));
         self.pool = Some(pool);
-        self.executor = Some(Arc::new(executor));
+        self.executor = Some(executor.clone());
+        
+        // Set executor in executive tools so they can create projects/boards/tasks
+        self.executive_tools.set_task_executor(executor);
+        
         self
     }
 
@@ -238,7 +242,8 @@ impl NoraAgent {
                 response_content = self.process_voice_interaction(&request).await?;
             }
             NoraRequestType::TextInteraction => {
-                response_content = self.process_text_interaction(&request).await?;
+                // Use function calling flow - LLM decides if tools are needed
+                response_content = self.process_text_with_tools(&request).await?;
             }
             NoraRequestType::TaskCoordination => {
                 (response_content, actions) = self.process_task_coordination(&request).await?;
@@ -353,6 +358,177 @@ impl NoraAgent {
         };
 
         Ok(response)
+    }
+
+    /// Process text interaction with function calling support
+    /// The LLM decides if tools are needed and we execute them
+    async fn process_text_with_tools(&self, request: &NoraRequest) -> Result<String> {
+        let original = request.content.trim();
+        let lowered = original.to_lowercase();
+        
+        tracing::debug!("[TOOL_FLOW] Starting process_text_with_tools");
+        tracing::debug!("[TOOL_FLOW] User input: {}", original);
+
+        // Check if user is confirming a pending action
+        if self.is_confirmation(&lowered).await {
+            tracing::debug!("[TOOL_FLOW] Detected confirmation - handling pending action");
+            if let Some(response) = self.handle_confirmation().await? {
+                return Ok(response);
+            }
+        }
+
+        // Handle simple greetings without LLM
+        let is_short_message = original.split_whitespace().count() <= 5;
+        if is_short_message && (lowered.starts_with("hello")
+            || lowered.starts_with("hi ")
+            || lowered.starts_with("hi,")
+            || lowered == "hi"
+            || lowered.starts_with("good morning")
+            || lowered.starts_with("good afternoon")
+            || lowered.starts_with("good evening"))
+        {
+            tracing::debug!("[TOOL_FLOW] Detected greeting - returning canned response");
+            return Ok("Hello there! Lovely to meet you. How can I help today?".to_string());
+        } else if is_short_message && lowered.contains("thank") {
+            tracing::debug!("[TOOL_FLOW] Detected thanks - returning canned response");
+            return Ok("You're very welcome! Always happy to help. Just give me a shout when you need anything.".to_string());
+        }
+
+        // Use LLM with function calling for all other requests
+        if let Some(llm) = &self.llm {
+            tracing::debug!("[TOOL_FLOW] LLM is configured - proceeding with function calling");
+            let context_snapshot = self.build_context_snapshot(request).await;
+            tracing::debug!("[TOOL_FLOW] Built context snapshot ({} chars)", context_snapshot.len());
+            let system_prompt = self.system_prompt();
+            tracing::debug!("[TOOL_FLOW] System prompt length: {} chars", system_prompt.len());
+            let tools = crate::tools::ExecutiveTools::get_openai_tool_schemas();
+            tracing::debug!("[TOOL_FLOW] Loaded {} tool schemas", tools.len());
+            tracing::info!("[TOOL_FLOW] Sending request to LLM with function calling enabled");
+
+            // First call - LLM may request tool calls
+            match llm.generate_with_tools(&system_prompt, original, &context_snapshot, &tools).await {
+                Ok(crate::brain::LLMResponse::Text(response)) => {
+                    // LLM responded directly without needing tools
+                    tracing::info!("[TOOL_FLOW] LLM returned text response (no tools needed)");
+                    tracing::debug!("[TOOL_FLOW] Response: {}", &response[..response.len().min(200)]);
+                    return Ok(response);
+                }
+                Ok(crate::brain::LLMResponse::ToolCalls(tool_calls)) => {
+                    // LLM wants to call tools - execute them
+                    tracing::info!("[TOOL_FLOW] ========== TOOL CALLS REQUESTED ==========");
+                    tracing::info!("[TOOL_FLOW] LLM requested {} tool call(s)", tool_calls.len());
+                    for (i, tc) in tool_calls.iter().enumerate() {
+                        tracing::info!("[TOOL_FLOW] Tool {}: {} (id: {})", i + 1, tc.name, tc.id);
+                        tracing::debug!("[TOOL_FLOW] Tool {} arguments: {}", i + 1, tc.arguments);
+                    }
+                    
+                    let mut tool_results = Vec::new();
+                    let permissions = vec![
+                        crate::tools::Permission::Executive,
+                        crate::tools::Permission::Write,
+                        crate::tools::Permission::ReadOnly,
+                    ];
+
+                    for tc in &tool_calls {
+                        tracing::info!("[TOOL_FLOW] ---------- Executing Tool ----------");
+                        tracing::info!("[TOOL_FLOW] Tool name: {}", tc.name);
+                        tracing::info!("[TOOL_FLOW] Tool ID: {}", tc.id);
+                        tracing::debug!("[TOOL_FLOW] Arguments: {}", tc.arguments);
+                        
+                        tracing::debug!("[TOOL_FLOW] Parsing tool call to NoraExecutiveTool...");
+                        if let Some(nora_tool) = crate::tools::ExecutiveTools::parse_tool_call(&tc.name, &tc.arguments) {
+                            tracing::debug!("[TOOL_FLOW] Successfully parsed tool: {:?}", nora_tool);
+                            tracing::info!("[TOOL_FLOW] Executing tool with permissions: {:?}", permissions);
+                            match self.executive_tools.execute_tool(nora_tool, permissions.clone()).await {
+                                Ok(result) => {
+                                    let success = matches!(result.status, crate::tools::ExecutionStatus::Success);
+                                    tracing::info!("[TOOL_FLOW] Tool execution completed - success: {}", success);
+                                    tracing::debug!("[TOOL_FLOW] Execution status: {:?}", result.status);
+                                    tracing::debug!("[TOOL_FLOW] Execution time: {}ms", result.execution_time_ms);
+                                    let result_text = if success {
+                                        let data = result.result_data
+                                            .map(|d| serde_json::to_string(&d).unwrap_or_else(|_| "Success".to_string()))
+                                            .unwrap_or_else(|| "Success".to_string());
+                                        tracing::info!("[TOOL_FLOW] Tool SUCCESS - result: {}", &data[..data.len().min(200)]);
+                                        data
+                                    } else {
+                                        let err = result.error_message.unwrap_or_else(|| "Unknown error".to_string());
+                                        tracing::error!("[TOOL_FLOW] Tool FAILED - error: {}", err);
+                                        err
+                                    };
+                                    
+                                    tool_results.push(crate::brain::ToolResult {
+                                        tool_call_id: tc.id.clone(),
+                                        success,
+                                        result: result_text,
+                                    });
+                                }
+                                Err(e) => {
+                                    tracing::error!("[TOOL_FLOW] Tool execution ERROR: {}", e);
+                                    tool_results.push(crate::brain::ToolResult {
+                                        tool_call_id: tc.id.clone(),
+                                        success: false,
+                                        result: format!("Error: {}", e),
+                                    });
+                                }
+                            }
+                        } else {
+                            tracing::warn!("[TOOL_FLOW] Failed to parse tool call - unknown tool: {}", tc.name);
+                            tracing::debug!("[TOOL_FLOW] Arguments that failed to parse: {}", tc.arguments);
+                            tool_results.push(crate::brain::ToolResult {
+                                tool_call_id: tc.id.clone(),
+                                success: false,
+                                result: format!("Unknown tool: {}", tc.name),
+                            });
+                        }
+                    }
+
+                    // Second call - pass tool results back to LLM for final response
+                    tracing::info!("[TOOL_FLOW] ========== CONTINUING WITH TOOL RESULTS ==========");
+                    tracing::info!("[TOOL_FLOW] Passing {} tool result(s) back to LLM", tool_results.len());
+                    for (i, tr) in tool_results.iter().enumerate() {
+                        tracing::debug!("[TOOL_FLOW] Result {}: success={}, data={}", i + 1, tr.success, &tr.result[..tr.result.len().min(100)]);
+                    }
+                    
+                    match llm.continue_with_tool_results(
+                        &system_prompt,
+                        original,
+                        &context_snapshot,
+                        &tool_calls,
+                        &tool_results,
+                    ).await {
+                        Ok(final_response) => {
+                            tracing::info!("[TOOL_FLOW] ========== FINAL RESPONSE RECEIVED ==========");
+                            tracing::debug!("[TOOL_FLOW] Final response: {}", &final_response[..final_response.len().min(300)]);
+                            return Ok(final_response);
+                        }
+                        Err(e) => {
+                            tracing::error!("[TOOL_FLOW] LLM continuation FAILED: {}", e);
+                            // Fall back to summarizing what we did
+                            tracing::info!("[TOOL_FLOW] Falling back to manual summary of tool results");
+                            let summary: Vec<String> = tool_results.iter()
+                                .map(|r| if r.success { 
+                                    format!("✅ {}", r.result) 
+                                } else { 
+                                    format!("❌ {}", r.result) 
+                                })
+                                .collect();
+                            return Ok(format!("I've completed the requested actions:\n\n{}", summary.join("\n")));
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[TOOL_FLOW] LLM with tools FAILED: {} - falling back to regular generation", e);
+                    // Fall back to regular generation
+                    return Ok(self.generate_llm_response(request, original).await);
+                }
+            }
+        } else {
+            tracing::warn!("[TOOL_FLOW] No LLM configured - returning default response");
+        }
+
+        // Fallback if no LLM configured
+        Ok(Self::default_follow_up())
     }
 
     async fn process_text_interaction(&self, request: &NoraRequest) -> Result<String> {
@@ -1192,26 +1368,62 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     fn extract_project_name(&self, input: &str) -> Option<String> {
         let lowered = input.to_lowercase();
 
-        // Common patterns: "for X project", "in X", "X project"
-        if let Some(pos) = lowered.find(" for ") {
-            let after = &input[pos + 5..];
-            let words: Vec<&str> = after.split_whitespace().take(3).collect();
-            if !words.is_empty() {
-                let project = words.join(" ").trim_end_matches(" project").to_string();
-                return Some(project);
+        // Pattern: "named X" or "called X" - highest priority
+        for keyword in &["named ", "called "] {
+            if let Some(pos) = lowered.find(keyword) {
+                let after = &input[pos + keyword.len()..];
+                // Get everything after "named/called" as the project name
+                // Stop at common sentence endings or just take up to 5 words
+                let name = after
+                    .split(|c: char| c == '.' || c == ',' || c == '!' || c == '?')
+                    .next()
+                    .unwrap_or(after)
+                    .trim();
+                
+                // Remove surrounding quotes if present
+                let name = name.trim_matches('"').trim_matches('\'').trim();
+                
+                if !name.is_empty() {
+                    return Some(name.to_string());
+                }
             }
         }
 
-        if let Some(pos) = lowered.find(" in ") {
-            let after = &input[pos + 4..];
-            let words: Vec<&str> = after.split_whitespace().take(3).collect();
-            if !words.is_empty() {
-                let project = words.join(" ").trim_end_matches(" project").to_string();
-                return Some(project);
+        // Pattern: "create project X" or "new project X" (project followed by name)
+        if let Some(pos) = lowered.find("project ") {
+            // Check if this is "create project X" pattern (not "X project")
+            let before = &lowered[..pos];
+            if before.ends_with("create ") || before.ends_with("new ") || before.ends_with("a ") {
+                let after = &input[pos + 8..]; // "project " is 8 chars
+                let name = after
+                    .split(|c: char| c == '.' || c == ',' || c == '!' || c == '?')
+                    .next()
+                    .unwrap_or(after)
+                    .trim();
+                
+                let name = name.trim_matches('"').trim_matches('\'').trim();
+                
+                if !name.is_empty() {
+                    return Some(name.to_string());
+                }
             }
         }
 
-        // Look for project names at the start
+        // Pattern: "for X project", "in X project"
+        for keyword in &[" for ", " in "] {
+            if let Some(pos) = lowered.find(keyword) {
+                let after = &input[pos + keyword.len()..];
+                let words: Vec<&str> = after.split_whitespace().take(3).collect();
+                if !words.is_empty() {
+                    let project = words.join(" ").trim_end_matches(" project").to_string();
+                    if !project.is_empty() {
+                        return Some(project);
+                    }
+                }
+            }
+        }
+
+        // Pattern: "X project" at end
         let words: Vec<&str> = input.split_whitespace().collect();
         for (i, word) in words.iter().enumerate() {
             if word.to_lowercase() == "project" && i > 0 {
@@ -1265,5 +1477,67 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         }
 
         tasks
+    }
+
+    /// Try to detect and execute tools based on user request
+    async fn try_execute_tools_from_request(&self, request: &NoraRequest) -> Result<Option<String>> {
+        let content_lower = request.content.to_lowercase();
+        
+        // Detect "create project" intent
+        if content_lower.contains("create") && content_lower.contains("project") {
+            // Extract project name using existing method
+            if let Some(project_name) = self.extract_project_name(&request.content) {
+                tracing::info!("Detected project creation intent: {}", project_name);
+                
+                // Execute CreateProject tool
+                let tool = crate::tools::NoraExecutiveTool::CreateProject {
+                    name: project_name.clone(),
+                    git_repo_path: String::new(), // Empty for now
+                    setup_script: None,
+                    dev_script: None,
+                };
+                
+                // Execute with full permissions (Nora has executive access)
+                let permissions = vec![
+                    crate::tools::Permission::Executive,
+                    crate::tools::Permission::Write,
+                    crate::tools::Permission::ReadOnly,
+                ];
+                
+                match self.executive_tools.execute_tool(tool, permissions).await {
+                    Ok(result) => {
+                        use crate::tools::ExecutionStatus;
+                        match result.status {
+                            ExecutionStatus::Success => {
+                                if let Some(data) = result.result_data {
+                                    let message = data.get("message")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Project created");
+                                    let project_id = data.get("project_id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("unknown");
+                                    
+                                    return Ok(Some(format!(
+                                        "✅ {}\n📋 Project ID: {}\n",
+                                        message, project_id
+                                    )));
+                                }
+                            }
+                            ExecutionStatus::Failed => {
+                                let error = result.error_message.unwrap_or_else(|| "Unknown error".to_string());
+                                return Ok(Some(format!("❌ Failed to create project: {}", error)));
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Tool execution failed: {}", e);
+                        return Ok(Some(format!("❌ Error executing tool: {}", e)));
+                    }
+                }
+            }
+        }
+        
+        Ok(None)
     }
 }
