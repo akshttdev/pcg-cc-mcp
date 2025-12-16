@@ -51,6 +51,20 @@ export default schemas;
 
 const plugins: Plugin[] = [react(), executorSchemasPlugin()];
 
+function getToposProjectDirectories() {
+  const toposRoot = path.resolve(__dirname, "..", "..");
+  if (!fs.existsSync(toposRoot)) {
+    return [] as string[];
+  }
+  const entries = fs.readdirSync(toposRoot, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+const toposDirectories = getToposProjectDirectories();
+
 const sentryIsExplicitlyDisabled = process.env.DISABLE_SENTRY?.toLowerCase() === "true";
 const sentryHasCredentials = Boolean(
   process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
@@ -66,6 +80,9 @@ if (!sentryIsExplicitlyDisabled && sentryHasCredentials) {
 
 export default defineConfig({
   plugins,
+  define: {
+    __TOPOS_PROJECTS__: JSON.stringify(toposDirectories),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

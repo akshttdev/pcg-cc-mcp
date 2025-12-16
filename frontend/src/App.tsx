@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Projects } from '@/pages/projects';
 import { ProjectTasks } from '@/pages/project-tasks';
 import { NoraPage } from '@/pages/nora';
+import { VirtualEnvironmentPage } from '@/pages/virtual-environment';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
 
@@ -206,6 +207,10 @@ function AppContent() {
                       element={<ProtectedRoute><ProjectTasks /></ProtectedRoute>}
                     />
                     <Route path="/nora" element={<ProtectedRoute><NoraPage /></ProtectedRoute>} />
+                    <Route
+                      path="/virtual-environment"
+                      element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}
+                    />
                     <Route path="/settings/*" element={<ProtectedRoute><SettingsLayout /></ProtectedRoute>}>
                       <Route index element={<Navigate to="general" replace />} />
                       <Route path="general" element={<GeneralSettings />} />

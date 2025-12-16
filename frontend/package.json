@@ -34,6 +34,8 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.12",
     "@radix-ui/react-tooltip": "^1.2.7",
+    "@react-three/drei": "^9.101.3",
+    "@react-three/fiber": "^8.15.18",
     "@rjsf/shadcn": "6.0.0-beta.10",
     "@sentry/react": "^9.34.0",
     "@sentry/vite-plugin": "^3.5.0",
@@ -69,6 +71,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.2.0",
     "tailwindcss-animate": "^1.0.7",
+    "three": "^0.165.0",
     "zustand": "^4.5.4"
   },
   "devDependencies": {
@@ -79,6 +82,7 @@
     "@types/lodash": "^4.17.20",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
+    "@types/three": "^0.182.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "@vitejs/plugin-react": "^4.2.1",
