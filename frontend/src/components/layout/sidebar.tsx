@@ -19,6 +19,7 @@ import {
   Loader2,
   Crown,
   Star,
+  Box,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -35,6 +36,7 @@ interface SidebarProps {
 
 const NAVIGATION_ITEMS = [
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
+  { label: 'Virtual Environment', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'Nora Assistant', icon: Crown, to: '/nora', id: 'nora' },
   { label: 'Settings', icon: Settings, to: '/settings', id: 'settings' },
 ];
