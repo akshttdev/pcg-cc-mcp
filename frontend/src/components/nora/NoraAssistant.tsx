@@ -141,7 +141,8 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(false); // Disabled due to quota limits
+  const [isSpeaking, setIsSpeaking] = useState(false); // Track when Nora is speaking
+  const [voiceEnabled, setVoiceEnabled] = useState(true); // Enable voice responses
   const [currentInput, setCurrentInput] = useState('');
   const [conversationHistory, setConversationHistory] = useState<ConversationEntry[]>([]);
   const [continuousMode, setContinuousMode] = useState(false);
@@ -301,6 +302,12 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
     };
 
     try {
+      // Stop listening while we process (prevents feedback)
+      if (continuousMode && isListening) {
+        console.log('[Voice Conversation] Pausing listening while processing...');
+        stopVoiceRecording();
+      }
+
       const response = await fetch('/api/nora/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -314,22 +321,68 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
         // Play voice response if available
         if (noraResponse.voiceResponse && voiceEnabled && audioRef.current) {
           const audioElement = audioRef.current;
+          setIsSpeaking(true);
+          
+          // Set up handler to resume listening after Nora finishes speaking
+          audioElement.onended = () => {
+            console.log('[Voice Conversation] Nora finished speaking');
+            setIsSpeaking(false);
+            
+            // In continuous mode, automatically resume listening
+            if (continuousMode && shouldContinueListeningRef.current) {
+              console.log('[Voice Conversation] Auto-resuming listening after Nora spoke');
+              setTimeout(() => {
+                void startSpeechRecognition();
+              }, 300); // Small delay to prevent picking up tail end of audio
+            }
+          };
+          
+          audioElement.onerror = () => {
+            console.error('[Voice Conversation] Audio playback error');
+            setIsSpeaking(false);
+            // Resume listening even on error in continuous mode
+            if (continuousMode && shouldContinueListeningRef.current) {
+              setTimeout(() => void startSpeechRecognition(), 300);
+            }
+          };
+          
           audioElement.src = `data:audio/mpeg;base64,${noraResponse.voiceResponse}`;
           audioElement.load();
           audioElement.play().catch(err => {
             console.error('Failed to play Nora voice response:', err);
+            setIsSpeaking(false);
+            // Resume listening even on play error in continuous mode
+            if (continuousMode && shouldContinueListeningRef.current) {
+              setTimeout(() => void startSpeechRecognition(), 300);
+            }
           });
+        } else {
+          // No voice response - resume listening immediately in continuous mode
+          if (continuousMode && shouldContinueListeningRef.current) {
+            console.log('[Voice Conversation] No voice response, resuming listening');
+            setTimeout(() => void startSpeechRecognition(), 100);
+          }
         }
       }
     } catch (error) {
       console.error('Failed to send message:', error);
       addMessage('nora', 'I apologise, but I encountered an issue processing your request. Please try again.');
+      // Resume listening even on error in continuous mode
+      if (continuousMode && shouldContinueListeningRef.current) {
+        setTimeout(() => void startSpeechRecognition(), 300);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const startSpeechRecognition = async () => {
+    // Don't start if Nora is currently speaking (prevents feedback)
+    if (isSpeaking) {
+      console.log('[Voice Conversation] Skipping start - Nora is speaking');
+      return;
+    }
+    
     if (!speechRecognitionSupported) {
       await startMediaRecorder();
       return;
@@ -626,6 +679,12 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
   };
 
   const startVoiceRecording = async () => {
+    // Barge-in: Stop Nora's speech if user starts talking
+    if (isSpeaking && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setIsSpeaking(false);
+    }
     await startSpeechRecognition();
   };
 
@@ -901,6 +960,34 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                     <span className="text-sm text-green-700">
                       Recording... Speak to Nora now. Click "End Call" when finished.
                     </span>
+                  </div>
+                </div>
+              )}
+
+              {isSpeaking && (
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="flex space-x-1 mr-2">
+                        <div className="w-1 h-3 bg-blue-500 animate-pulse" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-1 h-4 bg-blue-500 animate-pulse" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-1 h-3 bg-blue-500 animate-pulse" style={{ animationDelay: '300ms' }}></div>
+                      </div>
+                      <span className="text-sm text-blue-700">
+                        Nora is speaking... {continuousMode && "(Tap mic to interrupt)"}
+                      </span>
+                    </div>
+                    {continuousMode && (
+                      <Button
+                        onClick={startVoiceRecording}
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 border-blue-300 hover:bg-blue-100"
+                      >
+                        <Mic className="w-3 h-3 mr-1" />
+                        Interrupt
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}

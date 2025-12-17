@@ -219,6 +219,12 @@ docker-compose up -d
 | `NORA_LLM_MODEL` | LLM model for NORA | `gpt-4-turbo` | No |
 | `NORA_LLM_TEMPERATURE` | NORA response creativity (0.0-1.0) | `0.7` | No |
 | `NORA_LLM_MAX_TOKENS` | Max tokens per NORA response | `1500` | No |
+| `TWILIO_ACCOUNT_SID` | Twilio Account SID | - | No (for phone) |
+| `TWILIO_AUTH_TOKEN` | Twilio Auth Token | - | No (for phone) |
+| `TWILIO_PHONE_NUMBER` | Twilio virtual phone number | - | No (for phone) |
+| `TWILIO_WEBHOOK_BASE_URL` | Your server's public URL | - | No (for phone) |
+| `TWILIO_SPEECH_LANGUAGE` | Speech recognition language | `en-GB` | No |
+| `TWILIO_TTS_VOICE` | TTS voice for responses | `Polly.Amy` | No |
 
 ### Getting API Keys
 
@@ -235,6 +241,93 @@ docker-compose up -d
 3. Create a tunnel
 4. Copy the token
 5. Add to `.env` as `CLOUDFLARE_TUNNEL_TOKEN`
+
+## Twilio Phone Integration (Optional)
+
+Enable users to call NORA on a real phone number using Twilio.
+
+### Setting Up Twilio
+
+1. **Create a Twilio Account**
+   - Go to [console.twilio.com](https://console.twilio.com/)
+   - Sign up for a free trial or paid account
+   - Note your **Account SID** and **Auth Token** from the dashboard
+
+2. **Get a Phone Number**
+   - In Twilio Console, go to **Phone Numbers** > **Manage** > **Buy a Number**
+   - Choose a number with Voice capability
+   - Note the phone number (e.g., `+15551234567`)
+
+3. **Configure Webhooks**
+   
+   In the Twilio Console, configure your phone number's Voice settings:
+   
+   | Setting | Value |
+   |---------|-------|
+   | **A CALL COMES IN** | Webhook: `https://your-domain.com/api/twilio/voice` (POST) |
+   | **PRIMARY HANDLER FAILS** | Webhook: `https://your-domain.com/api/twilio/fallback` (POST) |
+   | **CALL STATUS CHANGES** | Webhook: `https://your-domain.com/api/twilio/status` (POST) |
+
+4. **Update Environment Variables**
+   
+   Add to your `.env` file:
+   ```env
+   TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   TWILIO_AUTH_TOKEN=your_auth_token_here
+   TWILIO_PHONE_NUMBER=+15551234567
+   TWILIO_WEBHOOK_BASE_URL=https://your-domain.com
+   ```
+
+5. **Restart the Application**
+   ```bash
+   docker-compose down
+   docker-compose up -d
+   ```
+
+### Testing Phone Calls
+
+1. Call your Twilio phone number
+2. NORA will greet you: "Hello, this is Nora, your Executive AI Assistant. How may I assist you today?"
+3. Speak your question or request
+4. NORA will respond using Twilio's text-to-speech (British Amy voice)
+5. Say "goodbye" or "thank you" to end the call
+
+### Twilio Configuration Options
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TWILIO_SPEECH_LANGUAGE` | Speech recognition language | `en-GB` (British English) |
+| `TWILIO_TTS_VOICE` | Text-to-speech voice | `Polly.Amy` (British female) |
+| `TWILIO_MAX_CALL_DURATION` | Maximum call length (seconds) | `3600` (1 hour) |
+| `TWILIO_RECORDING_ENABLED` | Enable call recording | `false` |
+| `TWILIO_GREETING_MESSAGE` | Custom greeting message | Default NORA greeting |
+
+### Available Voices
+
+Twilio supports Amazon Polly voices. Recommended British voices:
+- `Polly.Amy` - British female (default)
+- `Polly.Emma` - British female
+- `Polly.Brian` - British male
+
+### Troubleshooting Phone Calls
+
+**Calls go to voicemail or fail:**
+- Verify your Cloudflare tunnel is running and accessible
+- Check webhook URLs are correctly configured in Twilio
+- Ensure `TWILIO_WEBHOOK_BASE_URL` matches your public URL
+
+**NORA doesn't respond:**
+- Check that NORA is initialized: `curl https://your-domain.com/api/nora/status`
+- Verify OpenAI API key is configured
+
+**Check Twilio health:**
+```bash
+curl https://your-domain.com/api/twilio/health
+```
+
+**View call logs:**
+- Twilio Console > Monitor > Logs > Calls
+- Application logs: `docker-compose logs app | grep -i twilio`
 
 ## Docker Hub Publishing (Optional)
 

@@ -7,6 +7,38 @@ use std::pin::Pin;
 
 use crate::{cache::{CacheKey, CachedResponse, LlmCache, ResponseMetadata}, NoraError, Result};
 
+/// A message in the conversation history
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub role: MessageRole,
+    pub content: String,
+}
+
+/// Role of a message in conversation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageRole {
+    User,
+    Assistant,
+    System,
+}
+
+impl ConversationMessage {
+    pub fn user(content: impl Into<String>) -> Self {
+        Self {
+            role: MessageRole::User,
+            content: content.into(),
+        }
+    }
+
+    pub fn assistant(content: impl Into<String>) -> Self {
+        Self {
+            role: MessageRole::Assistant,
+            content: content.into(),
+        }
+    }
+}
+
 /// Tool call request from the LLM
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
@@ -179,10 +211,31 @@ impl LLMClient {
         context: &str,
         tools: &[serde_json::Value],
     ) -> Result<LLMResponse> {
+        // Call the conversation-aware version with empty history for backwards compatibility
+        self.generate_with_tools_and_history(system_prompt, user_query, context, tools, &[])
+            .await
+    }
+
+    /// Generate a response with function calling support AND conversation history
+    /// This enables true conversational mode where the LLM remembers previous messages
+    pub async fn generate_with_tools_and_history(
+        &self,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+        tools: &[serde_json::Value],
+        conversation_history: &[ConversationMessage],
+    ) -> Result<LLMResponse> {
         match self.config.provider {
             LLMProvider::OpenAI => {
-                self.generate_openai_with_tools(system_prompt, user_query, context, tools)
-                    .await
+                self.generate_openai_with_tools_and_history(
+                    system_prompt,
+                    user_query,
+                    context,
+                    tools,
+                    conversation_history,
+                )
+                .await
             }
         }
     }
@@ -196,18 +249,340 @@ impl LLMClient {
         tool_calls: &[ToolCall],
         tool_results: &[ToolResult],
     ) -> Result<String> {
+        // Call the conversation-aware version with empty history for backwards compatibility
+        self.continue_with_tool_results_and_history(
+            system_prompt,
+            user_query,
+            context,
+            tool_calls,
+            tool_results,
+            &[],
+        )
+        .await
+    }
+
+    /// Continue conversation after tool execution with conversation history
+    pub async fn continue_with_tool_results_and_history(
+        &self,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+        tool_calls: &[ToolCall],
+        tool_results: &[ToolResult],
+        conversation_history: &[ConversationMessage],
+    ) -> Result<String> {
         match self.config.provider {
             LLMProvider::OpenAI => {
-                self.continue_openai_with_tool_results(
+                self.continue_openai_with_tool_results_and_history(
                     system_prompt,
                     user_query,
                     context,
                     tool_calls,
                     tool_results,
+                    conversation_history,
                 )
                 .await
             }
         }
+    }
+
+    async fn generate_openai_with_tools_and_history(
+        &self,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+        tools: &[serde_json::Value],
+        conversation_history: &[ConversationMessage],
+    ) -> Result<LLMResponse> {
+        tracing::debug!("[LLM_API] generate_openai_with_tools_and_history called");
+        tracing::debug!("[LLM_API] Model: {}, Tools: {}, History: {} messages", 
+            self.config.model, tools.len(), conversation_history.len());
+        
+        let endpoint = self
+            .config
+            .endpoint
+            .clone()
+            .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+        
+        tracing::debug!("[LLM_API] Endpoint: {}", endpoint);
+
+        let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
+
+        if auth_header.is_none() && self.config.endpoint.is_none() {
+            tracing::error!("[LLM_API] No API key or endpoint configured");
+            return Err(NoraError::ConfigError(
+                "LLM configured without OPENAI_API_KEY or custom endpoint".to_string(),
+            ));
+        }
+
+        let system = if system_prompt.is_empty() {
+            self.config.system_prompt.as_str()
+        } else {
+            system_prompt
+        };
+
+        // Build messages array with conversation history
+        let mut messages: Vec<serde_json::Value> = vec![
+            serde_json::json!({ "role": "system", "content": system }),
+        ];
+
+        // Add conversation history (limit to last 10 messages to control tokens)
+        let history_limit = 10;
+        let history_start = conversation_history.len().saturating_sub(history_limit);
+        for msg in &conversation_history[history_start..] {
+            let role = match msg.role {
+                MessageRole::User => "user",
+                MessageRole::Assistant => "assistant",
+                MessageRole::System => continue, // Skip system messages in history
+            };
+            messages.push(serde_json::json!({
+                "role": role,
+                "content": msg.content
+            }));
+        }
+
+        // Add current request with context
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": format!(
+                "Context:\n{context}\n\nRequest:\n{user_query}",
+                context = context,
+                user_query = user_query
+            )
+        }));
+
+        let mut payload = serde_json::json!({
+            "model": self.config.model,
+            "temperature": self.config.temperature,
+            "max_tokens": self.config.max_tokens,
+            "messages": messages
+        });
+
+        // Add tools if provided
+        if !tools.is_empty() {
+            payload["tools"] = serde_json::json!(tools);
+            payload["tool_choice"] = serde_json::json!("auto");
+            tracing::debug!("[LLM_API] Added {} tools to payload with tool_choice=auto", tools.len());
+        }
+
+        tracing::info!("[LLM_API] Sending request to OpenAI API with {} total messages...", messages.len());
+        
+        let client = self
+            .client
+            .post(&endpoint)
+            .header("Content-Type", "application/json");
+
+        let client = if let Some(auth) = auth_header {
+            client.header("Authorization", auth)
+        } else {
+            client
+        };
+
+        let response = client.json(&payload).send().await.map_err(|e| {
+            tracing::error!("[LLM_API] Request failed: {}", e);
+            NoraError::LLMError(format!("Failed to send request: {}", e))
+        })?;
+
+        tracing::debug!("[LLM_API] Response status: {}", response.status());
+        
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::error!("[LLM_API] API error ({}): {}", status, body);
+            return Err(NoraError::LLMError(format!(
+                "OpenAI API error ({}): {}",
+                status, body
+            )));
+        }
+
+        let json: serde_json::Value = response.json().await.map_err(|e| {
+            tracing::error!("[LLM_API] Failed to parse response: {}", e);
+            NoraError::LLMError(format!("Failed to parse response: {}", e))
+        })?;
+        
+        tracing::debug!("[LLM_API] Response parsed successfully");
+
+        // Check if LLM wants to call tools
+        if let Some(tool_calls) = json["choices"][0]["message"]["tool_calls"].as_array() {
+            tracing::info!("[LLM_API] LLM returned tool_calls array with {} items", tool_calls.len());
+            let calls: Vec<ToolCall> = tool_calls
+                .iter()
+                .filter_map(|tc| {
+                    let id = tc["id"].as_str()?.to_string();
+                    let name = tc["function"]["name"].as_str()?.to_string();
+                    tracing::debug!("[LLM_API] Parsing tool call: id={}, name={}", id, name);
+                    let arguments: serde_json::Value = serde_json::from_str(
+                        tc["function"]["arguments"].as_str().unwrap_or("{}")
+                    ).unwrap_or(serde_json::json!({}));
+                    tracing::debug!("[LLM_API] Tool arguments: {}", arguments);
+                    Some(ToolCall { id, name, arguments })
+                })
+                .collect();
+
+            if !calls.is_empty() {
+                tracing::info!("[LLM_API] Returning {} tool calls to caller", calls.len());
+                return Ok(LLMResponse::ToolCalls(calls));
+            }
+        } else {
+            tracing::debug!("[LLM_API] No tool_calls in response");
+        }
+
+        // No tool calls, return text content
+        let content = json["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+
+        tracing::info!("[LLM_API] Returning text response ({} chars)", content.len());
+        Ok(LLMResponse::Text(content))
+    }
+
+    async fn continue_openai_with_tool_results_and_history(
+        &self,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+        tool_calls: &[ToolCall],
+        tool_results: &[ToolResult],
+        conversation_history: &[ConversationMessage],
+    ) -> Result<String> {
+        tracing::debug!("[LLM_API] continue_openai_with_tool_results_and_history called");
+        tracing::debug!("[LLM_API] Tool calls: {}, Tool results: {}, History: {} messages", 
+            tool_calls.len(), tool_results.len(), conversation_history.len());
+        
+        let endpoint = self
+            .config
+            .endpoint
+            .clone()
+            .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+
+        let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
+
+        if auth_header.is_none() && self.config.endpoint.is_none() {
+            return Err(NoraError::ConfigError(
+                "LLM configured without OPENAI_API_KEY or custom endpoint".to_string(),
+            ));
+        }
+
+        let system = if system_prompt.is_empty() {
+            self.config.system_prompt.as_str()
+        } else {
+            system_prompt
+        };
+
+        // Build the conversation with history, tool call, and results
+        let mut messages: Vec<serde_json::Value> = vec![
+            serde_json::json!({ "role": "system", "content": system }),
+        ];
+
+        // Add conversation history (limit to last 10 messages)
+        let history_limit = 10;
+        let history_start = conversation_history.len().saturating_sub(history_limit);
+        for msg in &conversation_history[history_start..] {
+            let role = match msg.role {
+                MessageRole::User => "user",
+                MessageRole::Assistant => "assistant",
+                MessageRole::System => continue,
+            };
+            messages.push(serde_json::json!({
+                "role": role,
+                "content": msg.content
+            }));
+        }
+
+        // Add the current user request
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": format!(
+                "Context:\n{context}\n\nRequest:\n{user_query}",
+                context = context,
+                user_query = user_query
+            )
+        }));
+
+        // Add assistant message with tool calls
+        let assistant_tool_calls: Vec<serde_json::Value> = tool_calls
+            .iter()
+            .map(|tc| {
+                serde_json::json!({
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.name,
+                        "arguments": tc.arguments.to_string()
+                    }
+                })
+            })
+            .collect();
+
+        messages.push(serde_json::json!({
+            "role": "assistant",
+            "tool_calls": assistant_tool_calls
+        }));
+
+        // Add tool results
+        for result in tool_results {
+            messages.push(serde_json::json!({
+                "role": "tool",
+                "tool_call_id": result.tool_call_id,
+                "content": result.result
+            }));
+        }
+
+        let payload = serde_json::json!({
+            "model": self.config.model,
+            "temperature": self.config.temperature,
+            "max_tokens": self.config.max_tokens,
+            "messages": messages
+        });
+
+        tracing::debug!("[LLM_API] Constructed continuation payload with {} messages", messages.len());
+        tracing::info!("[LLM_API] Sending continuation request to OpenAI API...");
+
+        let client = self
+            .client
+            .post(&endpoint)
+            .header("Content-Type", "application/json");
+
+        let client = if let Some(auth) = auth_header {
+            client.header("Authorization", auth)
+        } else {
+            client
+        };
+
+        let response = client.json(&payload).send().await.map_err(|e| {
+            tracing::error!("[LLM_API] Continuation request failed: {}", e);
+            NoraError::LLMError(format!("Failed to send request: {}", e))
+        })?;
+
+        tracing::debug!("[LLM_API] Continuation response status: {}", response.status());
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::error!("[LLM_API] Continuation API error ({}): {}", status, body);
+            return Err(NoraError::LLMError(format!(
+                "OpenAI API error ({}): {}",
+                status, body
+            )));
+        }
+
+        let json: serde_json::Value = response.json().await.map_err(|e| {
+            tracing::error!("[LLM_API] Failed to parse continuation response: {}", e);
+            NoraError::LLMError(format!("Failed to parse response: {}", e))
+        })?;
+
+        let content = json["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+
+        tracing::info!("[LLM_API] Continuation response received ({} chars)", content.len());
+        tracing::debug!("[LLM_API] Final content: {}", &content[..content.len().min(200)]);
+
+        Ok(content)
     }
 
     async fn generate_openai_with_tools(

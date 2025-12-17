@@ -12,6 +12,7 @@ pub mod integrations;
 pub mod memory;
 pub mod personality;
 pub mod tools;
+pub mod twilio;
 pub mod voice;
 
 #[cfg(test)]

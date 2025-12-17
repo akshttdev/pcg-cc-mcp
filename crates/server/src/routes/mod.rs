@@ -28,6 +28,7 @@ pub mod projects;
 pub mod task_attempts;
 pub mod task_templates;
 pub mod tasks;
+pub mod twilio;
 pub mod users;
 pub mod permissions;
 
@@ -70,6 +71,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .nest("/permissions", permissions::router(&deployment))
         .nest("/images", images::routes())
         .merge(nora::nora_routes())
+        .merge(twilio::twilio_routes())
         .merge(comments::router())
         .merge(activity::router())
         .merge(admin_routes)

@@ -1161,7 +1161,8 @@ pub async fn nora_create_task(
 
 // Helper functions
 
-async fn get_nora_instance() -> Result<Arc<RwLock<Option<NoraAgent>>>, ApiError> {
+/// Get the global NORA instance
+pub async fn get_nora_instance() -> Result<Arc<RwLock<Option<NoraAgent>>>, ApiError> {
     NORA_INSTANCE
         .get()
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))

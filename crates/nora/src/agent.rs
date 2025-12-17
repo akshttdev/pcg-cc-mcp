@@ -23,6 +23,7 @@ use crate::{
     NoraConfig, NoraError, Result,
 };
 use sqlx::SqlitePool;
+use std::collections::HashMap;
 
 /// Main Nora agent structure
 pub struct NoraAgent {
@@ -38,6 +39,8 @@ pub struct NoraAgent {
     pub is_active: Arc<RwLock<bool>>,
     pub pool: Option<SqlitePool>,
     pub executor: Option<Arc<TaskExecutor>>,
+    /// Conversation history per session for true conversational mode
+    pub conversation_histories: Arc<RwLock<HashMap<String, Vec<crate::brain::ConversationMessage>>>>,
 }
 
 /// Request to Nora for processing
@@ -204,6 +207,7 @@ impl NoraAgent {
             llm,
             pool: None,
             executor: None,
+            conversation_histories: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -365,9 +369,10 @@ impl NoraAgent {
     async fn process_text_with_tools(&self, request: &NoraRequest) -> Result<String> {
         let original = request.content.trim();
         let lowered = original.to_lowercase();
+        let session_id = &request.session_id;
         
         tracing::debug!("[TOOL_FLOW] Starting process_text_with_tools");
-        tracing::debug!("[TOOL_FLOW] User input: {}", original);
+        tracing::debug!("[TOOL_FLOW] Session: {}, User input: {}", session_id, original);
 
         // Check if user is confirming a pending action
         if self.is_confirmation(&lowered).await {
@@ -388,11 +393,20 @@ impl NoraAgent {
             || lowered.starts_with("good evening"))
         {
             tracing::debug!("[TOOL_FLOW] Detected greeting - returning canned response");
-            return Ok("Hello there! Lovely to meet you. How can I help today?".to_string());
+            let greeting_response = "Hello there! Lovely to meet you. How can I help today?".to_string();
+            // Still add to history for context
+            self.add_to_conversation_history(session_id, original, &greeting_response).await;
+            return Ok(greeting_response);
         } else if is_short_message && lowered.contains("thank") {
             tracing::debug!("[TOOL_FLOW] Detected thanks - returning canned response");
-            return Ok("You're very welcome! Always happy to help. Just give me a shout when you need anything.".to_string());
+            let thanks_response = "You're very welcome! Always happy to help. Just give me a shout when you need anything.".to_string();
+            self.add_to_conversation_history(session_id, original, &thanks_response).await;
+            return Ok(thanks_response);
         }
+
+        // Get conversation history for this session
+        let conversation_history = self.get_conversation_history(session_id).await;
+        tracing::debug!("[TOOL_FLOW] Loaded {} messages from conversation history", conversation_history.len());
 
         // Use LLM with function calling for all other requests
         if let Some(llm) = &self.llm {
@@ -403,14 +417,16 @@ impl NoraAgent {
             tracing::debug!("[TOOL_FLOW] System prompt length: {} chars", system_prompt.len());
             let tools = crate::tools::ExecutiveTools::get_openai_tool_schemas();
             tracing::debug!("[TOOL_FLOW] Loaded {} tool schemas", tools.len());
-            tracing::info!("[TOOL_FLOW] Sending request to LLM with function calling enabled");
+            tracing::info!("[TOOL_FLOW] Sending request to LLM with function calling enabled (history: {} msgs)", conversation_history.len());
 
-            // First call - LLM may request tool calls
-            match llm.generate_with_tools(&system_prompt, original, &context_snapshot, &tools).await {
+            // First call - LLM may request tool calls (with conversation history)
+            match llm.generate_with_tools_and_history(&system_prompt, original, &context_snapshot, &tools, &conversation_history).await {
                 Ok(crate::brain::LLMResponse::Text(response)) => {
                     // LLM responded directly without needing tools
                     tracing::info!("[TOOL_FLOW] LLM returned text response (no tools needed)");
                     tracing::debug!("[TOOL_FLOW] Response: {}", &response[..response.len().min(200)]);
+                    // Add to conversation history
+                    self.add_to_conversation_history(session_id, original, &response).await;
                     return Ok(response);
                 }
                 Ok(crate::brain::LLMResponse::ToolCalls(tool_calls)) => {
@@ -483,23 +499,26 @@ impl NoraAgent {
                         }
                     }
 
-                    // Second call - pass tool results back to LLM for final response
+                    // Second call - pass tool results back to LLM for final response (with history)
                     tracing::info!("[TOOL_FLOW] ========== CONTINUING WITH TOOL RESULTS ==========");
                     tracing::info!("[TOOL_FLOW] Passing {} tool result(s) back to LLM", tool_results.len());
                     for (i, tr) in tool_results.iter().enumerate() {
                         tracing::debug!("[TOOL_FLOW] Result {}: success={}, data={}", i + 1, tr.success, &tr.result[..tr.result.len().min(100)]);
                     }
                     
-                    match llm.continue_with_tool_results(
+                    match llm.continue_with_tool_results_and_history(
                         &system_prompt,
                         original,
                         &context_snapshot,
                         &tool_calls,
                         &tool_results,
+                        &conversation_history,
                     ).await {
                         Ok(final_response) => {
                             tracing::info!("[TOOL_FLOW] ========== FINAL RESPONSE RECEIVED ==========");
                             tracing::debug!("[TOOL_FLOW] Final response: {}", &final_response[..final_response.len().min(300)]);
+                            // Add to conversation history
+                            self.add_to_conversation_history(session_id, original, &final_response).await;
                             return Ok(final_response);
                         }
                         Err(e) => {
@@ -513,14 +532,18 @@ impl NoraAgent {
                                     format!("❌ {}", r.result) 
                                 })
                                 .collect();
-                            return Ok(format!("I've completed the requested actions:\n\n{}", summary.join("\n")));
+                            let fallback_response = format!("I've completed the requested actions:\n\n{}", summary.join("\n"));
+                            self.add_to_conversation_history(session_id, original, &fallback_response).await;
+                            return Ok(fallback_response);
                         }
                     }
                 }
                 Err(e) => {
                     tracing::warn!("[TOOL_FLOW] LLM with tools FAILED: {} - falling back to regular generation", e);
                     // Fall back to regular generation
-                    return Ok(self.generate_llm_response(request, original).await);
+                    let fallback = self.generate_llm_response(request, original).await;
+                    self.add_to_conversation_history(session_id, original, &fallback).await;
+                    return Ok(fallback);
                 }
             }
         } else {
@@ -529,6 +552,41 @@ impl NoraAgent {
 
         // Fallback if no LLM configured
         Ok(Self::default_follow_up())
+    }
+
+    /// Get conversation history for a session
+    async fn get_conversation_history(&self, session_id: &str) -> Vec<crate::brain::ConversationMessage> {
+        let histories = self.conversation_histories.read().await;
+        histories.get(session_id).cloned().unwrap_or_default()
+    }
+
+    /// Add a user message and assistant response to conversation history
+    async fn add_to_conversation_history(&self, session_id: &str, user_message: &str, assistant_response: &str) {
+        let mut histories = self.conversation_histories.write().await;
+        let history = histories.entry(session_id.to_string()).or_insert_with(Vec::new);
+        
+        // Add user message
+        history.push(crate::brain::ConversationMessage::user(user_message));
+        // Add assistant response
+        history.push(crate::brain::ConversationMessage::assistant(assistant_response));
+        
+        // Limit history size to prevent unbounded growth (keep last 20 messages = 10 exchanges)
+        const MAX_HISTORY_SIZE: usize = 20;
+        if history.len() > MAX_HISTORY_SIZE {
+            let drain_count = history.len() - MAX_HISTORY_SIZE;
+            history.drain(0..drain_count);
+        }
+        
+        tracing::debug!("[CONVERSATION] Added exchange to session {}, history now has {} messages", 
+            session_id, history.len());
+    }
+
+    /// Clear conversation history for a session (useful for "start fresh" commands)
+    #[allow(dead_code)]
+    pub async fn clear_conversation_history(&self, session_id: &str) {
+        let mut histories = self.conversation_histories.write().await;
+        histories.remove(session_id);
+        tracing::info!("[CONVERSATION] Cleared history for session {}", session_id);
     }
 
     async fn process_text_interaction(&self, request: &NoraRequest) -> Result<String> {
