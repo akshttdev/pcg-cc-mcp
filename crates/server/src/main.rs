@@ -51,6 +51,12 @@ async fn main() -> Result<(), VibeKanbanError> {
         .track_if_analytics_allowed("session_start", serde_json::json!({}))
         .await;
 
+    // Auto-initialize Nora executive assistant on server startup
+    if let Err(e) = routes::nora::initialize_nora_on_startup(&deployment).await {
+        tracing::warn!("Failed to auto-initialize NORA on startup: {}", e);
+        tracing::warn!("NORA can still be initialized later via POST /api/nora/initialize");
+    }
+
     // Pre-warm file search cache for most active projects
     let deployment_for_cache = deployment.clone();
     tokio::spawn(async move {

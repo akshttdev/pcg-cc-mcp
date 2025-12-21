@@ -460,6 +460,84 @@ pub async fn initialize_nora(
     }))
 }
 
+/// Initialize Nora on server startup (called automatically)
+/// This is a non-HTTP helper for auto-initialization
+pub async fn initialize_nora_on_startup(state: &DeploymentImpl) -> Result<String, String> {
+    tracing::info!("Auto-initializing Nora executive assistant on server startup");
+
+    let nora_instance = NORA_INSTANCE
+        .get_or_init(|| async { Arc::new(RwLock::new(None)) })
+        .await;
+
+    // Check if already initialized
+    {
+        let instance = nora_instance.read().await;
+        if instance.is_some() {
+            tracing::info!("Nora already initialized, skipping auto-initialization");
+            return Ok("Already initialized".to_string());
+        }
+    }
+
+    // Create default config with environment overrides
+    let mut config = NoraConfig::default();
+    apply_llm_overrides(&mut config);
+
+    // Load persisted voice configuration if available
+    if let Ok(Some(persisted_config)) = db::models::nora_config::NoraVoiceConfig::get(&state.db().pool).await {
+        match serde_json::from_str::<VoiceConfig>(&persisted_config.config_json) {
+            Ok(voice_config) => {
+                tracing::info!("Loaded persisted voice configuration from database");
+                config.voice = voice_config;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to parse persisted voice config, using default: {}", e);
+            }
+        }
+    }
+
+    // Load projects for context
+    let projects = Project::find_all(&state.db().pool)
+        .await
+        .map_err(|e| format!("Failed to load projects: {}", e))?;
+
+    let project_context = map_projects_to_context(projects);
+
+    // Initialize Nora agent
+    let nora_agent = nora::initialize_nora(config)
+        .await
+        .map_err(|e| format!("Nora initialization failed: {}", e))?;
+
+    // Wire up database pool for task execution
+    let nora_agent = nora_agent.with_database(state.db().pool.clone());
+
+    // Seed project context
+    nora_agent
+        .seed_projects(project_context)
+        .await
+        .map_err(|e| format!("Failed to seed Nora context: {}", e))?;
+
+    let nora_id = nora_agent.id.to_string();
+
+    // Activate Nora by default on startup
+    nora_agent
+        .set_active(true)
+        .await
+        .map_err(|e| format!("Failed to activate Nora: {}", e))?;
+    crate::nora_metrics::set_nora_active(true);
+
+    // Store in global instance
+    {
+        let mut instance = nora_instance.write().await;
+        *instance = Some(nora_agent);
+    }
+
+    // Record initialization time
+    let _ = NORA_INIT_TIME.set(Utc::now());
+
+    tracing::info!("Nora auto-initialized successfully with ID: {}", nora_id);
+    Ok(nora_id)
+}
+
 /// Get Nora status
 pub async fn get_nora_status(
     State(_state): State<DeploymentImpl>,
