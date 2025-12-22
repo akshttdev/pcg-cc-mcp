@@ -1,6 +1,12 @@
 //! Core Nora agent implementation
 
-use std::sync::Arc;
+use std::{
+    fs,
+    io,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::Arc,
+};
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
@@ -11,7 +17,7 @@ use uuid::Uuid;
 use crate::{
     brain::LLMClient,
     coordination::CoordinationManager,
-    executor::TaskExecutor,
+    executor::{TaskDefinition, TaskExecutor},
     memory::{
         BudgetStatus, ConversationMemory, ExecutiveContext, ExecutivePriority, Milestone,
         MilestoneStatus, PriorityImpact, PriorityStatus, PriorityUrgency, ProjectContext,
@@ -22,6 +28,9 @@ use crate::{
     voice::VoiceEngine,
     NoraConfig, NoraError, Result,
 };
+use db::models::{project::{CreateProject, Project}, task::Priority};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 
@@ -237,43 +246,46 @@ impl NoraAgent {
         self.update_context_from_request(&request).await?;
 
         // Process based on request type
-        let mut response_content = String::new();
-        let mut actions = Vec::new();
-        let mut response_type = NoraResponseType::DirectResponse;
-
-        match request.request_type {
-            NoraRequestType::VoiceInteraction => {
-                response_content = self.process_voice_interaction(&request).await?;
-            }
-            NoraRequestType::TextInteraction => {
-                // Use function calling flow - LLM decides if tools are needed
-                response_content = self.process_text_with_tools(&request).await?;
-            }
+        let (response_content, actions, response_type) = match request.request_type {
+            NoraRequestType::VoiceInteraction => (
+                self.process_voice_interaction(&request).await?,
+                Vec::new(),
+                NoraResponseType::DirectResponse,
+            ),
+            NoraRequestType::TextInteraction => (
+                self.process_text_with_tools(&request).await?,
+                Vec::new(),
+                NoraResponseType::DirectResponse,
+            ),
             NoraRequestType::TaskCoordination => {
-                (response_content, actions) = self.process_task_coordination(&request).await?;
-                response_type = NoraResponseType::CoordinationAction;
+                let (content, actions) = self.process_task_coordination(&request).await?;
+                (content, actions, NoraResponseType::CoordinationAction)
             }
             NoraRequestType::StrategyPlanning => {
-                (response_content, actions) = self.process_strategy_planning(&request).await?;
-                response_type = NoraResponseType::StrategyRecommendation;
+                let (content, actions) = self.process_strategy_planning(&request).await?;
+                (content, actions, NoraResponseType::StrategyRecommendation)
             }
-            NoraRequestType::PerformanceAnalysis => {
-                response_content = self.process_performance_analysis(&request).await?;
-                response_type = NoraResponseType::PerformanceInsight;
-            }
+            NoraRequestType::PerformanceAnalysis => (
+                self.process_performance_analysis(&request).await?,
+                Vec::new(),
+                NoraResponseType::PerformanceInsight,
+            ),
             NoraRequestType::CommunicationManagement => {
-                (response_content, actions) =
+                let (content, actions) =
                     self.process_communication_management(&request).await?;
+                (content, actions, NoraResponseType::DirectResponse)
             }
-            NoraRequestType::DecisionSupport => {
-                response_content = self.process_decision_support(&request).await?;
-                response_type = NoraResponseType::DecisionSupport;
-            }
-            NoraRequestType::ProactiveNotification => {
-                response_content = self.process_proactive_notification(&request).await?;
-                response_type = NoraResponseType::ProactiveAlert;
-            }
-        }
+            NoraRequestType::DecisionSupport => (
+                self.process_decision_support(&request).await?,
+                Vec::new(),
+                NoraResponseType::DecisionSupport,
+            ),
+            NoraRequestType::ProactiveNotification => (
+                self.process_proactive_notification(&request).await?,
+                Vec::new(),
+                NoraResponseType::ProactiveAlert,
+            ),
+        };
 
         // Personality layer disabled - causes repetitive broken phrases
         // response_content = self.personality.apply_personality_to_response(&response_content, &request);
@@ -1014,14 +1026,21 @@ impl NoraAgent {
                 .await
             {
                 Ok(answer) if !answer.trim().is_empty() => answer.trim().to_string(),
-                Ok(_) => Self::default_follow_up(),
+                Ok(_) => self
+                    .generate_rule_based_response(user_text)
+                    .await
+                    .unwrap_or_else(Self::default_follow_up),
                 Err(err) => {
                     tracing::warn!("LLM generation failed: {}", err);
-                    Self::default_follow_up()
+                    self.generate_rule_based_response(user_text)
+                        .await
+                        .unwrap_or_else(Self::default_follow_up)
                 }
             }
         } else {
-            Self::default_follow_up()
+            self.generate_rule_based_response(user_text)
+                .await
+                .unwrap_or_else(Self::default_follow_up)
         }
     }
 
@@ -1055,6 +1074,484 @@ Provide concise, insight-driven British executive responses. Surface actionable 
 
     fn default_follow_up() -> String {
         "Right, I understand what you're getting at. Let me analyse this properly and get you some actionable recommendations. Would you like me to dig deeper into this for you?".to_string()
+    }
+
+    async fn stage_virtual_project(&self, project_name: &str) -> String {
+        let mut context = self.context.write().await;
+        if context
+            .active_projects
+            .iter()
+            .any(|p| p.name.eq_ignore_ascii_case(project_name))
+        {
+            return format!(
+                "{} is already staged. Point me at the pods or deliverables you want me to move next.",
+                project_name
+            );
+        }
+
+        let project_id = Uuid::new_v4().to_string();
+        let kickoff = Milestone {
+            id: format!("{}-kickoff", project_id),
+            name: "Kickoff packet".to_string(),
+            due_date: Utc::now() + Duration::days(7),
+            status: MilestoneStatus::NotStarted,
+            completion_percentage: 0.0,
+        };
+
+        context.active_projects.push(ProjectContext {
+            project_id: project_id.clone(),
+            name: project_name.to_string(),
+            description: format!(
+                "Autogenerated by Nora on {}",
+                Utc::now().format("%d %b %Y %H:%M UTC")
+            ),
+            status: ProjectStatus::Planning,
+            progress_percentage: 0.0,
+            team_members: vec!["NORA Automation".to_string()],
+            budget_status: BudgetStatus {
+                allocated: 0.0,
+                spent: 0.0,
+                remaining: 0.0,
+                burn_rate: 0.0,
+                forecast_completion: 0.0,
+            },
+            key_milestones: vec![kickoff],
+            risks: Vec::new(),
+        });
+
+        format!(
+            "Project {} is staged in my working memory. Hand me repos or specs and I'll sync the real boards when they're ready.",
+            project_name
+        )
+    }
+
+    async fn bootstrap_project(&self, project_name: &str) -> Result<String> {
+        let executor = self
+            .executor
+            .as_ref()
+            .ok_or_else(|| NoraError::ExecutionError("Task executor not initialised".to_string()))?;
+
+        if let Some(existing) = executor
+            .find_project_record_by_name(project_name)
+            .await?
+        {
+            self.add_project_to_context(&existing).await;
+            return Ok(format!(
+                "{} already exists in the command centre. I can dive straight into its boards, pods, or tasks whenever you’re ready.",
+                existing.name
+            ));
+        }
+
+        let slug = Self::slugify_name(project_name);
+        let workspace_root = Self::detect_workspace_root();
+        let repo_path = workspace_root.join(&slug);
+        let repo_existed = repo_path.exists();
+        fs::create_dir_all(&repo_path)?;
+
+        if !repo_path.join(".git").exists() {
+            if let Err(err) = Self::initialise_git_repo(&repo_path) {
+                tracing::warn!(
+                    "Failed to initialise git repo at {}: {}",
+                    repo_path.display(),
+                    err
+                );
+            }
+        }
+
+        let payload = CreateProject {
+            name: project_name.to_string(),
+            git_repo_path: repo_path.to_string_lossy().to_string(),
+            use_existing_repo: repo_existed,
+            setup_script: None,
+            dev_script: None,
+            cleanup_script: None,
+            copy_files: None,
+        };
+
+        let project = executor.create_project_entry(payload).await?;
+        let boards = executor.ensure_default_boards(project.id).await?;
+        let pods = executor.seed_default_pods(project.id).await?;
+        let default_board = executor.get_default_board_for_tasks(project.id).await?;
+        let board_name = default_board
+            .as_ref()
+            .map(|b| b.name.clone())
+            .unwrap_or_else(|| "the intake board".to_string());
+        let board_id = default_board.as_ref().map(|b| b.id);
+
+        let kickoff_tasks = if let Some(board_id) = board_id {
+            executor
+                .create_tasks_batch(
+                    project.id,
+                    Self::spinup_task_templates(project_name, board_id),
+                )
+                .await?
+        } else {
+            Vec::new()
+        };
+
+        self.add_project_to_context(&project).await;
+
+        Ok(format!(
+            "{} is now live at {}. I stood up {} boards, {} pods, and {} starter tasks on {}. Point me at specs or repos and I’ll keep the pipeline moving.",
+            project.name,
+            repo_path.display(),
+            boards.len(),
+            pods.len(),
+            kickoff_tasks.len(),
+            board_name
+        ))
+    }
+
+    async fn add_project_to_context(&self, project: &Project) {
+        let mut context = self.context.write().await;
+        let entry = Self::map_project_to_context(project);
+        context
+            .active_projects
+            .retain(|existing| existing.project_id != entry.project_id);
+        context.active_projects.push(entry);
+        context.last_updated = Utc::now();
+    }
+
+    async fn resolve_project_for_task(
+        &self,
+        project_hint: Option<&str>,
+    ) -> Option<(Uuid, String)> {
+        if let Some(executor) = &self.executor {
+            if let Some(hint) = project_hint {
+                if let Ok(Some(project)) = executor.find_project_record_by_name(hint).await {
+                    return Some((project.id, project.name));
+                }
+            }
+        }
+
+        let context_hint = {
+            let context = self.context.read().await;
+            context.active_projects.first().cloned()
+        };
+
+        if let Some(project_ctx) = context_hint {
+            if let Ok(uuid) = Uuid::parse_str(&project_ctx.project_id) {
+                return Some((uuid, project_ctx.name));
+            }
+
+            if let Some(executor) = &self.executor {
+                if let Ok(project_id) = executor.find_project_by_name(&project_ctx.name).await {
+                    return Some((project_id, project_ctx.name));
+                }
+            }
+        }
+
+        None
+    }
+
+    async fn try_create_task_record(
+        &self,
+        task_name: &str,
+        project_hint: Option<&str>,
+        utterance: &str,
+    ) -> Option<String> {
+        let executor = self.executor.as_ref()?;
+        let (project_id, project_label) =
+            self.resolve_project_for_task(project_hint).await?;
+        let board = match executor.get_default_board_for_tasks(project_id).await {
+            Ok(board) => board,
+            Err(err) => {
+                tracing::error!("Failed to look up default board: {}", err);
+                None
+            }
+        };
+
+        let board_name = board
+            .as_ref()
+            .map(|b| b.name.clone())
+            .unwrap_or_else(|| "the intake board".to_string());
+        let definition = TaskDefinition {
+            title: task_name.to_string(),
+            description: Some("Captured via Nora directive".to_string()),
+            priority: Some(Self::infer_priority_from_text(utterance)),
+            tags: Some(vec!["nora".to_string(), "direct".to_string()]),
+            assignee_id: None,
+            board_id: board.as_ref().map(|b| b.id),
+            pod_id: None,
+        };
+
+        match executor.create_task(project_id, definition).await {
+            Ok(task) => Some(format!(
+                "Task '{}' is live on {} for {} ({}). Let me know when to assign owners or flesh out scope.",
+                task.title,
+                board_name,
+                project_label,
+                task.id
+            )),
+            Err(err) => {
+                tracing::error!("Failed to create task from directive: {}", err);
+                None
+            }
+        }
+    }
+
+    fn infer_priority_from_text(text: &str) -> Priority {
+        let lowered = text.to_lowercase();
+        if lowered.contains("critical") || lowered.contains("urgent") || lowered.contains("asap") {
+            Priority::Critical
+        } else if lowered.contains("eventually") || lowered.contains("whenever") {
+            Priority::Low
+        } else if lowered.contains("plan") || lowered.contains("research") {
+            Priority::Medium
+        } else {
+            Priority::High
+        }
+    }
+
+    fn detect_workspace_root() -> PathBuf {
+        for key in ["NORA_PROJECTS_ROOT", "PCG_PROJECTS_ROOT", "WORKSPACE_DIR"] {
+            if let Ok(path) = std::env::var(key) {
+                if !path.trim().is_empty() {
+                    let buf = PathBuf::from(path);
+                    if buf.exists() {
+                        return buf;
+                    }
+                }
+            }
+        }
+
+        match std::env::current_dir() {
+            Ok(dir) => {
+                if dir
+                    .file_name()
+                    .map(|n| n == "pcg-cc-mcp")
+                    .unwrap_or(false)
+                {
+                    dir.parent().map(Path::to_path_buf).unwrap_or(dir)
+                } else {
+                    dir
+                }
+            }
+            Err(_) => PathBuf::from("."),
+        }
+    }
+
+    fn slugify_name(input: &str) -> String {
+        let mut slug = String::with_capacity(input.len());
+        let mut prev_dash = false;
+        for ch in input.chars() {
+            if ch.is_ascii_alphanumeric() {
+                slug.push(ch.to_ascii_lowercase());
+                prev_dash = false;
+            } else if !prev_dash {
+                slug.push('-');
+                prev_dash = true;
+            }
+        }
+        let cleaned = slug.trim_matches('-').to_string();
+        if cleaned.is_empty() {
+            "new-project".to_string()
+        } else {
+            cleaned
+        }
+    }
+
+    fn initialise_git_repo(path: &Path) -> io::Result<()> {
+        let status = Command::new("git").arg("init").current_dir(path).status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "git init exited with an error",
+            ))
+        }
+    }
+
+    fn spinup_task_templates(name: &str, board_id: Uuid) -> Vec<TaskDefinition> {
+        vec![
+            TaskDefinition {
+                title: format!("Author {} briefing + success criteria", name),
+                description: Some("Summarise objectives, KPIs, and counterparties".to_string()),
+                priority: Some(Priority::High),
+                tags: Some(vec!["nora".to_string(), "spinup".to_string()]),
+                assignee_id: None,
+                board_id: Some(board_id),
+                pod_id: None,
+            },
+            TaskDefinition {
+                title: format!("Stand up repo + automation for {}", name),
+                description: Some("Scaffold README, tooling, and CI hooks".to_string()),
+                priority: Some(Priority::Medium),
+                tags: Some(vec!["nora".to_string(), "infra".to_string()]),
+                assignee_id: None,
+                board_id: Some(board_id),
+                pod_id: None,
+            },
+            TaskDefinition {
+                title: format!("Collect research + asset tracker for {}", name),
+                description: Some("Ingest docs, references, and blockers into the board".to_string()),
+                priority: Some(Priority::Medium),
+                tags: Some(vec!["nora".to_string(), "research".to_string()]),
+                assignee_id: None,
+                board_id: Some(board_id),
+                pod_id: None,
+            },
+        ]
+    }
+
+    fn map_project_to_context(project: &Project) -> ProjectContext {
+        ProjectContext {
+            project_id: project.id.to_string(),
+            name: project.name.clone(),
+            description: format!("Repository: {}", project.git_repo_path.to_string_lossy()),
+            status: ProjectStatus::InProgress,
+            progress_percentage: 0.0,
+            team_members: Vec::new(),
+            budget_status: BudgetStatus {
+                allocated: 0.0,
+                spent: 0.0,
+                remaining: 0.0,
+                burn_rate: 0.0,
+                forecast_completion: 0.0,
+            },
+            key_milestones: Vec::new(),
+            risks: Vec::new(),
+        }
+    }
+
+    async fn generate_rule_based_response(&self, user_text: &str) -> Option<String> {
+        static PROJECT_CREATE_REGEX: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(
+                r#"(?ix)(?:start|create|spin\s+up|launch|open)\s+(?:a\s+)?(?:new\s+)?project(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?)"#
+            )
+            .expect("valid project regex")
+        });
+        static TASK_CREATE_REGEX: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(
+                r#"(?ix)(?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"#
+            )
+            .expect("valid task regex")
+        });
+        let utterance = user_text.to_lowercase();
+
+        if let Some(caps) = PROJECT_CREATE_REGEX.captures(&utterance) {
+            let name_raw = caps
+                .get(1)
+                .map(|m| m.as_str().trim())
+                .filter(|s| !s.is_empty())?;
+            let project_name = title_case(name_raw);
+            if self.executor.is_some() {
+                match self.bootstrap_project(&project_name).await {
+                    Ok(message) => return Some(message),
+                    Err(err) => {
+                        tracing::error!(
+                            "Failed to create project {} via directive: {}",
+                            project_name,
+                            err
+                        );
+                        let fallback = self.stage_virtual_project(&project_name).await;
+                        return Some(format!(
+                            "I couldn’t bring {} online in the live system ({}). I’ve staged it virtually instead so we don’t lose the intent.\n{}",
+                            project_name,
+                            err,
+                            fallback
+                        ));
+                    }
+                }
+            }
+
+            return Some(self.stage_virtual_project(&project_name).await);
+        }
+
+        if let Some(caps) = TASK_CREATE_REGEX.captures(&utterance) {
+            let task_name = caps
+                .get(1)
+                .map(|m| m.as_str().trim())
+                .filter(|s| !s.is_empty())
+                .map(title_case)?;
+            let project_hint = caps
+                .get(2)
+                .map(|m| m.as_str().trim().to_string());
+
+            if let Some(message) = self
+                .try_create_task_record(&task_name, project_hint.as_deref(), user_text)
+                .await
+            {
+                return Some(message);
+            }
+
+            let context = self.context.read().await;
+            let target_project = project_hint
+                .as_ref()
+                .and_then(|hint| {
+                    context
+                        .active_projects
+                        .iter()
+                        .find(|p| p.name.eq_ignore_ascii_case(hint))
+                })
+                .or_else(|| context.active_projects.first());
+
+            if let Some(project) = target_project {
+                return Some(format!(
+                    "Queued task '{}' under {}. I can flesh out acceptance criteria or drop it straight into MCP when you're ready.",
+                    task_name, project.name
+                ));
+            }
+
+            return Some(format!(
+                "I can schedule '{}' as soon as you tell me which project or board should own it.",
+                task_name
+            ));
+        }
+
+        let context = self.context.read().await;
+
+        if utterance.contains("project") || utterance.contains("pipeline") || utterance.contains("roadmap") {
+            let projects = &context.active_projects;
+            if projects.is_empty() {
+                return Some(
+                    "I’m not currently tracking any active initiatives. Ask me to sync a project and I’ll keep it on radar for you.".to_string(),
+                );
+            }
+
+            let mut lines = Vec::new();
+            lines.push(format!("I’m monitoring {} active initiatives:", projects.len()));
+            for project in projects.iter().take(5) {
+                let milestone_summary = project
+                    .key_milestones
+                    .iter()
+                    .find(|m| matches!(m.status, MilestoneStatus::InProgress | MilestoneStatus::NotStarted))
+                    .map(|m| format!("next milestone '{}' due {}", m.name, m.due_date.format("%b %d")))
+                    .unwrap_or_else(|| "no upcoming milestones logged".to_string());
+
+                lines.push(format!(
+                    "- {} ({:?}) · {:.0}% complete · {} specialists assigned · {}.",
+                    project.name,
+                    project.status,
+                    project.progress_percentage,
+                    project.team_members.len(),
+                    milestone_summary
+                ));
+            }
+
+            if projects.len() > 5 {
+                lines.push(format!(
+                    "…plus {} additional initiatives ready for deeper review.",
+                    projects.len() - 5
+                ));
+            }
+
+            lines.push("Tell me which thread you’d like to dive into and I can pull boards, pods, or task stats on demand.".to_string());
+            return Some(lines.join("\n"));
+        }
+
+        if utterance.contains("capab") || utterance.contains("ability") || utterance.contains("what can you do") {
+            return Some(
+                "Here’s what I’m cleared to do for you right now:\n- Summarise active projects and surface risks ahead of reviews\n- Coordinate human + AI agents via the MCP tools (create/update tasks, monitor pods, run diffs)\n- Assemble exec-ready briefs, retros, or go/no-go packets from repository data\n- Watch budget burn, milestones, and release health so you get early warning\nJust give me a directive and I’ll move the pieces.".to_string(),
+            );
+        }
+
+        if utterance.starts_with("hello") || utterance.starts_with("hi") || utterance.contains("good morning") {
+            return Some("Hello there. I’m synced with the coordination feeds and ready whenever you are.".to_string());
+        }
+
+        None
     }
 
     fn default_projects() -> Vec<ProjectContext> {
@@ -1272,9 +1769,6 @@ Provide concise, insight-driven British executive responses. Surface actionable 
 
     /// Handle a confirmation from the user
     async fn handle_confirmation(&self) -> Result<Option<String>> {
-        use crate::executor::TaskDefinition;
-        use db::models::task::Priority;
-
         let mut memory = self.memory.write().await;
         let pending_action = match memory.clear_pending_action() {
             Some(action) => action,
@@ -1301,6 +1795,8 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                             }),
                             tags: t.tags.clone(),
                             assignee_id: None,
+                            board_id: None,
+                            pod_id: None,
                         })
                         .collect();
 
@@ -1374,9 +1870,6 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                     if !tasks.is_empty() {
                         if is_direct_order {
                             // Direct order - execute immediately
-                            use crate::executor::TaskDefinition;
-                            use db::models::task::Priority;
-
                             let task_defs: Vec<TaskDefinition> = tasks
                                 .iter()
                                 .map(|t| TaskDefinition {
@@ -1390,6 +1883,8 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                                     }),
                                     tags: t.tags.clone(),
                                     assignee_id: None,
+                                    board_id: None,
+                                    pod_id: None,
                                 })
                                 .collect();
 
@@ -1566,7 +2061,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                     Ok(result) => {
                         use crate::tools::ExecutionStatus;
                         match result.status {
-                            ExecutionStatus::Success => {
+                                                       ExecutionStatus::Success => {
                                 if let Some(data) = result.result_data {
                                     let message = data.get("message")
                                         .and_then(|v| v.as_str())
@@ -1597,5 +2092,13 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         }
         
         Ok(None)
+    }
+}
+
+fn title_case(value: &str) -> String {
+    let mut chars = value.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
     }
 }

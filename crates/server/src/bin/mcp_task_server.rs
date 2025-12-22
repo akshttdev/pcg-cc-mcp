@@ -1,5 +1,9 @@
 use db::DBService;
-use rmcp::{ServiceExt, transport::stdio};
+use rmcp::{
+    ServiceExt,
+    service::ServerInitializeError,
+    transport::stdio,
+};
 use server::mcp::task_server::TaskServer;
 use tracing_subscriber::{EnvFilter, prelude::*};
 use utils::sentry::sentry_layer;
@@ -42,15 +46,23 @@ fn main() -> anyhow::Result<()> {
             let db_service = DBService::new().await?;
             let pool = db_service.pool.clone();
 
-            let service = TaskServer::new(pool)
-                .serve(stdio())
-                .await
-                .inspect_err(|e| {
+            match TaskServer::new(pool).serve(stdio()).await {
+                Ok(service) => {
+                    service.waiting().await?;
+                    Ok(())
+                }
+                Err(ServerInitializeError::ConnectionClosed(context)) => {
+                    tracing::warn!(
+                        "[MCP] Transport closed before initialization ({context}). \
+                         This usually means the server was launched without an MCP host attached to STDIN."
+                    );
+                    Ok(())
+                }
+                Err(e) => {
                     tracing::error!("serving error: {:?}", e);
-                    sentry::capture_error(e);
-                })?;
-
-            service.waiting().await?;
-            Ok(())
+                    sentry::capture_error(&e);
+                    Err(e.into())
+                }
+            }
         })
 }

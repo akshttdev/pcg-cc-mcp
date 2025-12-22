@@ -8,6 +8,8 @@ use tokio::sync::{broadcast, RwLock};
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::NoraError;
+
 /// Coordination events for multi-agent systems
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +60,14 @@ pub enum CoordinationEvent {
         message: String,
         severity: AlertSeverity,
         requires_action: bool,
+        timestamp: DateTime<Utc>,
+    },
+    /// Directive issued to a specific agent from the global console
+    AgentDirectiveIssued {
+        agent_id: String,
+        issued_by: String,
+        content: String,
+        priority: Option<String>,
         timestamp: DateTime<Utc>,
     },
 }
@@ -271,6 +281,46 @@ impl CoordinationManager {
             .filter(|agent| agent.capabilities.contains(&capability.to_string()))
             .cloned()
             .collect())
+    }
+
+    /// Fetch a single agent snapshot by identifier
+    pub async fn get_agent(&self, agent_id: &str) -> crate::Result<Option<AgentCoordinationState>> {
+        let agents = self.agents.read().await;
+        Ok(agents.get(agent_id).cloned())
+    }
+
+    /// Record a directive issued to an agent and broadcast it as an event
+    pub async fn record_directive(
+        &self,
+        agent_id: &str,
+        issued_by: &str,
+        content: &str,
+        priority: Option<String>,
+    ) -> crate::Result<AgentCoordinationState> {
+        let mut agents = self.agents.write().await;
+
+        let agent = agents.get_mut(agent_id).ok_or_else(|| {
+            NoraError::CoordinationError(format!("Agent {} not registered", agent_id))
+        })?;
+
+        agent.last_seen = Utc::now();
+        agent.current_tasks.insert(0, content.to_string());
+        if agent.current_tasks.len() > 8 {
+            agent.current_tasks.pop();
+        }
+
+        let updated_agent = agent.clone();
+
+        let event = CoordinationEvent::AgentDirectiveIssued {
+            agent_id: agent_id.to_string(),
+            issued_by: issued_by.to_string(),
+            content: content.to_string(),
+            priority,
+            timestamp: Utc::now(),
+        };
+        let _ = self.event_sender.send(event);
+
+        Ok(updated_agent)
     }
 
     /// Request task handoff between agents

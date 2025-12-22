@@ -3,170 +3,166 @@ import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 
+const BASE_RADIUS = 40;
+const FLOOR_ELEVATION = 8;
+const WALL_HEIGHT = 24;
+const GLASS_SEGMENTS = 12;
+const DOORWAYS = [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2];
+
 export function CommandCenter() {
   const spireRef = useRef<THREE.Mesh>(null);
   const ringRef = useRef<THREE.Mesh>(null);
 
   useFrame((state) => {
     if (spireRef.current) {
-      // Pulsing spire
       const pulse = Math.sin(state.clock.elapsedTime * 2) * 0.1 + 0.9;
       const material = spireRef.current.material as THREE.MeshStandardMaterial;
-      if (material.emissiveIntensity !== undefined) {
-        material.emissiveIntensity = pulse * 1.5;
-      }
+      material.emissiveIntensity = pulse * 1.6;
     }
     if (ringRef.current) {
-      // Rotating base ring
       ringRef.current.rotation.z += 0.001;
     }
   });
 
   return (
-    <group position={[0, 0, 0]}>
-      {/* Elevated platform */}
-      <mesh position={[0, 2.5, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[15, 16, 5, 8]} />
+    <group>
+      <mesh position={[0, FLOOR_ELEVATION / 2, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[BASE_RADIUS, BASE_RADIUS + 2, FLOOR_ELEVATION, 24]} />
         <meshStandardMaterial
-          color="#0a1929"
-          metalness={0.9}
-          roughness={0.2}
+          color="#08121f"
+          metalness={0.85}
+          roughness={0.25}
           emissive="#003d5c"
-          emissiveIntensity={0.3}
+          emissiveIntensity={0.35}
         />
       </mesh>
 
-      {/* Moat/channel around platform */}
-      <mesh ref={ringRef} position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[16, 18, 64]} />
-        <meshBasicMaterial color="#00ffff" transparent opacity={0.6} side={THREE.DoubleSide} />
+      <mesh ref={ringRef} position={[0, FLOOR_ELEVATION + 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[BASE_RADIUS + 1, BASE_RADIUS + 3, 48]} />
+        <meshBasicMaterial color="#00ffff" transparent opacity={0.5} side={THREE.DoubleSide} />
       </mesh>
 
-      {/* Ground floor - octagonal pavilion */}
-      <group position={[0, 5, 0]}>
-        {/* Octagonal walls (glass) */}
-        {Array.from({ length: 8 }).map((_, i) => {
-          const angle = (i / 8) * Math.PI * 2;
-          const x = Math.cos(angle) * 14;
-          const z = Math.sin(angle) * 14;
-          return (
-            <mesh key={i} position={[x, 5, z]} rotation={[0, angle, 0]}>
-              <boxGeometry args={[12, 10, 0.5]} />
-              <meshPhysicalMaterial
-                color="#0a4a6e"
-                transmission={0.9}
-                thickness={0.5}
-                roughness={0.05}
-                metalness={0.1}
-                transparent
-                opacity={0.3}
-              />
-            </mesh>
-          );
-        })}
-
-        {/* Floor */}
-        <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <circleGeometry args={[15, 64]} />
-          <meshStandardMaterial
-            color="#0a1f35"
-            metalness={0.8}
-            roughness={0.3}
-            emissive="#004080"
-            emissiveIntensity={0.2}
-          />
-        </mesh>
-
-        {/* Ceiling */}
-        <mesh position={[0, 10, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[15, 64]} />
-          <meshPhysicalMaterial
-            color="#0a4a6e"
-            transmission={0.95}
-            thickness={0.3}
-            roughness={0.05}
-            metalness={0.1}
-            transparent
-            opacity={0.2}
-          />
-        </mesh>
-      </group>
-
-      {/* Central spire */}
-      <mesh ref={spireRef} position={[0, 30, 0]} castShadow>
-        <cylinderGeometry args={[5, 6, 50, 8]} />
+      {/* Interior floor */}
+      <mesh position={[0, FLOOR_ELEVATION, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <circleGeometry args={[BASE_RADIUS - 4, 48]} />
         <meshStandardMaterial
-          color="#0b2035"
-          emissive="#00c1ff"
-          emissiveIntensity={1.2}
-          transparent
-          opacity={0.85}
-          metalness={0.9}
-          roughness={0.1}
+          color="#0a1f35"
+          metalness={0.8}
+          roughness={0.35}
+          emissive="#004080"
+          emissiveIntensity={0.2}
         />
       </mesh>
 
-      {/* Spire top beacon */}
-      <pointLight position={[0, 55, 0]} intensity={3} color="#00ffff" distance={100} decay={2} />
-      <mesh position={[0, 55, 0]}>
-        <sphereGeometry args={[2, 16, 16]} />
-        <meshBasicMaterial color="#00ffff" />
-      </mesh>
-
-      {/* Observation ring */}
-      <group position={[0, 30, 0]}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[10, 0.5, 16, 64]} />
-          <meshStandardMaterial
-            color="#0a4a6e"
-            emissive="#00c1ff"
-            emissiveIntensity={0.8}
-            metalness={0.9}
-            roughness={0.1}
-            transparent
-            opacity={0.9}
-          />
-        </mesh>
-      </group>
-
-      {/* NORA's platform (holographic projection base) */}
-      <mesh position={[0, 5.5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[3, 64]} />
-        <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
-      </mesh>
-
-      {/* Bridge access points */}
-      {[0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2].map((angle, i) => {
-        const x = Math.cos(angle) * 15;
-        const z = Math.sin(angle) * 15;
+      {/* Glass curtain walls */}
+      {Array.from({ length: GLASS_SEGMENTS }).map((_, idx) => {
+        const angle = (idx / GLASS_SEGMENTS) * Math.PI * 2;
+        const doorway = DOORWAYS.some((door) => {
+          const diff = Math.atan2(Math.sin(angle - door), Math.cos(angle - door));
+          return Math.abs(diff) < 0.25;
+        });
+        if (doorway) return null;
+        const x = Math.cos(angle) * (BASE_RADIUS - 2);
+        const z = Math.sin(angle) * (BASE_RADIUS - 2);
         return (
-          <mesh key={i} position={[x, 2.5, z]} rotation={[0, angle, 0]}>
-            <boxGeometry args={[10, 0.5, 4]} />
-            <meshStandardMaterial
-              color="#0a2f4a"
-              metalness={0.8}
-              roughness={0.3}
-              emissive="#004080"
-              emissiveIntensity={0.3}
+          <mesh key={idx} position={[x, FLOOR_ELEVATION + WALL_HEIGHT / 2, z]} rotation={[0, angle, 0]}>
+            <boxGeometry args={[12, WALL_HEIGHT, 0.8]} />
+            <meshPhysicalMaterial
+              color="#0a4a6e"
+              transmission={0.95}
+              thickness={0.6}
+              roughness={0.05}
+              metalness={0.1}
+              transparent
+              opacity={0.3}
             />
           </mesh>
         );
       })}
 
-      {/* Label */}
-      <Text position={[0, 60, 0]} fontSize={3} color="#baf4ff" anchorX="center" anchorY="middle">
+      {/* Ceiling glass */}
+      <mesh position={[0, FLOOR_ELEVATION + WALL_HEIGHT, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[BASE_RADIUS - 2, 48]} />
+        <meshPhysicalMaterial
+          color="#0a4a6e"
+          transmission={0.95}
+          thickness={0.4}
+          roughness={0.04}
+          metalness={0.15}
+          transparent
+          opacity={0.25}
+        />
+      </mesh>
+
+      {/* Interior skybridge ring */}
+      <mesh position={[0, FLOOR_ELEVATION + 2, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <ringGeometry args={[BASE_RADIUS - 10, BASE_RADIUS - 6, 40]} />
+        <meshStandardMaterial color="#052c38" metalness={0.6} roughness={0.4} />
+      </mesh>
+
+      {/* NORA dais */}
+      <mesh position={[0, FLOOR_ELEVATION + 1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[6, 32]} />
+        <meshBasicMaterial color="#00ffff" transparent opacity={0.35} />
+      </mesh>
+
+      {/* Command-center bridges */}
+      {DOORWAYS.map((angle, idx) => {
+        const x = Math.cos(angle) * (BASE_RADIUS - 2);
+        const z = Math.sin(angle) * (BASE_RADIUS - 2);
+        return (
+          <mesh key={idx} position={[x, FLOOR_ELEVATION, z]} rotation={[0, angle, 0]}>
+            <boxGeometry args={[20, 0.6, 6]} />
+            <meshStandardMaterial
+              color="#0a2f4a"
+              metalness={0.8}
+              roughness={0.3}
+              emissive="#004080"
+              emissiveIntensity={0.4}
+            />
+          </mesh>
+        );
+      })}
+
+      {/* Central spire */}
+      <mesh ref={spireRef} position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 10, 0]} castShadow>
+        <cylinderGeometry args={[6, 8, 50, 16]} />
+        <meshStandardMaterial
+          color="#0b2035"
+          emissive="#00c1ff"
+          emissiveIntensity={1.2}
+          transparent
+          opacity={0.8}
+          metalness={0.95}
+          roughness={0.08}
+        />
+      </mesh>
+
+      <pointLight
+        position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 35, 0]}
+        intensity={3}
+        color="#00ffff"
+        distance={160}
+        decay={2}
+      />
+
+      <mesh position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 35, 0]}>
+        <sphereGeometry args={[3, 24, 24]} />
+        <meshBasicMaterial color="#00ffff" />
+      </mesh>
+
+      <Text position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 45, 0]} fontSize={3.5} color="#baf4ff" anchorX="center" anchorY="middle">
         PCG COMMAND CENTER
       </Text>
 
-      {/* Area lighting */}
       <spotLight
-        position={[0, 60, 0]}
+        position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 40, 0]}
         angle={Math.PI / 4}
         penumbra={0.5}
         intensity={2}
         color="#00ffff"
         castShadow
-        target-position={[0, 0, 0]}
+        target-position={[0, FLOOR_ELEVATION, 0]}
       />
     </group>
   );

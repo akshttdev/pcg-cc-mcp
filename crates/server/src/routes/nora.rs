@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{State, WebSocketUpgrade},
+    extract::{Path, State, WebSocketUpgrade},
     response::{Response, sse::{Event, Sse}},
     routing::{get, post},
 };
@@ -179,6 +179,10 @@ pub fn nora_routes() -> Router<DeploymentImpl> {
         .route("/nora/coordination/stats", get(get_coordination_stats))
         .route("/nora/coordination/agents", get(get_coordination_agents))
         .route("/nora/coordination/events", get(get_coordination_events_ws))
+        .route(
+            "/nora/coordination/agents/{agent_id}/directives",
+            post(send_agent_directive),
+        )
         .route("/nora/personality/config", get(get_personality_config))
         .route("/nora/personality/config", post(update_personality_config))
         .route("/nora/project/create", post(nora_create_project))
@@ -289,6 +293,29 @@ pub struct UpdateVoiceConfigRequest {
 pub struct AvailableToolsResponse {
     pub tools: Vec<ToolInfo>,
     pub categories: Vec<String>,
+}
+
+/// Directives sent to specific agents from the global console
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentDirectiveRequest {
+    pub session_id: String,
+    pub content: String,
+    pub command: Option<String>,
+    pub priority: Option<RequestPriority>,
+    pub context: Option<serde_json::Value>,
+}
+
+/// Acknowledgement payload returned when an agent accepts a directive
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentDirectiveResponse {
+    pub agent_id: String,
+    pub agent_label: String,
+    pub acknowledgement: String,
+    pub echoed_command: String,
+    pub priority: Option<String>,
+    pub timestamp: DateTime<Utc>,
 }
 
 /// Tool information
@@ -1077,6 +1104,67 @@ pub async fn get_coordination_agents(
     Ok(Json(agents))
 }
 
+/// Send directives to specific agents (non-Nora) via the global console
+pub async fn send_agent_directive(
+    Path(agent_id): Path<String>,
+    State(_state): State<DeploymentImpl>,
+    Json(request): Json<AgentDirectiveRequest>,
+) -> Result<Json<AgentDirectiveResponse>, ApiError> {
+    let nora_instance = get_nora_instance().await?;
+    let instance = nora_instance.read().await;
+    let nora = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
+
+    let priority_label = request.priority.as_ref().map(|priority| match priority {
+        RequestPriority::Low => "low".to_string(),
+        RequestPriority::Normal => "normal".to_string(),
+        RequestPriority::High => "high".to_string(),
+        RequestPriority::Urgent => "urgent".to_string(),
+        RequestPriority::Executive => "executive".to_string(),
+    });
+
+    let coordination_manager = nora.coordination_manager.clone();
+    let agent_state = coordination_manager
+        .get_agent(&agent_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to lookup agent: {}", e)))?
+        .ok_or_else(|| ApiError::NotFound(format!("Agent {} not found", agent_id)))?;
+
+    coordination_manager
+        .record_directive(
+            &agent_id,
+            &request.session_id,
+            &request.content,
+            priority_label.clone(),
+        )
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to record directive: {}", e)))?;
+
+    let acknowledgement = format!(
+        "{} acknowledges directive and is prioritizing: {}",
+        agent_state.agent_type,
+        request.content
+    );
+
+    let echoed_command = request
+        .command
+        .clone()
+        .filter(|cmd| !cmd.is_empty())
+        .unwrap_or_else(|| request.content.clone());
+
+    let response = AgentDirectiveResponse {
+        agent_id,
+        agent_label: agent_state.agent_type,
+        acknowledgement,
+        echoed_command,
+        priority: priority_label,
+        timestamp: Utc::now(),
+    };
+
+    Ok(Json(response))
+}
+
 /// WebSocket endpoint for coordination events
 pub async fn get_coordination_events_ws(
     ws: WebSocketUpgrade,
@@ -1377,6 +1465,20 @@ async fn handle_coordination_events_websocket(mut socket: axum::extract::ws::Web
                                 "message": message,
                                 "severity": severity,
                                 "requiresAction": requires_action,
+                                "timestamp": timestamp,
+                            }),
+                            CoordinationEvent::AgentDirectiveIssued {
+                                agent_id,
+                                issued_by,
+                                content,
+                                priority,
+                                timestamp,
+                            } => json!({
+                                "type": "AgentDirective",
+                                "agentId": agent_id,
+                                "issuedBy": issued_by,
+                                "content": content,
+                                "priority": priority,
                                 "timestamp": timestamp,
                             }),
                         };

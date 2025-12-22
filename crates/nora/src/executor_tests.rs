@@ -16,6 +16,8 @@ mod tests {
             priority: Some(Priority::High),
             tags: Some(vec!["test".to_string()]),
             assignee_id: None,
+            board_id: None,
+            pod_id: None,
         };
         
         // Verify the struct can be instantiated
@@ -30,6 +32,8 @@ mod tests {
             priority: Some(Priority::Medium),
             tags: Some(vec!["integration".to_string(), "test".to_string()]),
             assignee_id: Some("user-123".to_string()),
+            board_id: None,
+            pod_id: None,
         };
 
         assert_eq!(task_def.title, "Integration Test");
@@ -46,6 +50,8 @@ mod tests {
             priority: None,
             tags: None,
             assignee_id: None,
+            board_id: None,
+            pod_id: None,
         };
 
         assert_eq!(task_def.title, "Minimal Task");

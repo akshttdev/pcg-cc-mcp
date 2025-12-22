@@ -4,6 +4,7 @@
 use db::models::{
     project::{CreateProject, Project},
     project_board::{CreateProjectBoard, ProjectBoard, ProjectBoardType},
+    project_pod::{CreateProjectPod, ProjectPod},
     task::{CreateTask, Priority, Task},
 };
 use sqlx::SqlitePool;
@@ -17,6 +18,21 @@ pub struct TaskExecutor {
     pool: SqlitePool,
 }
 
+const DEFAULT_POD_TEMPLATES: &[(&str, &str)] = &[
+    (
+        "Research Pod",
+        "Capture requirements, scope, and primary research threads",
+    ),
+    (
+        "Build Pod",
+        "Own rapid prototyping, code drops, and automation",
+    ),
+    (
+        "Launch Pod",
+        "Package updates, briefs, and delivery assets",
+    ),
+];
+
 impl TaskExecutor {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -26,15 +42,11 @@ impl TaskExecutor {
     pub async fn create_task(
         &self,
         project_id: Uuid,
-        title: String,
-        description: Option<String>,
-        priority: Option<Priority>,
-        tags: Option<Vec<String>>,
-        assignee_id: Option<String>,
+        definition: TaskDefinition,
     ) -> Result<Task> {
         tracing::info!(
             "Nora creating task '{}' in project {}",
-            title,
+            definition.title,
             project_id
         );
 
@@ -42,20 +54,20 @@ impl TaskExecutor {
 
         let create_task = CreateTask {
             project_id,
-            pod_id: None,
-            board_id: None,
-            title,
-            description,
+            pod_id: definition.pod_id,
+            board_id: definition.board_id,
+            title: definition.title,
+            description: definition.description,
             parent_task_attempt: None,
             image_ids: None,
-            priority,
-            assignee_id,
+            priority: definition.priority,
+            assignee_id: definition.assignee_id,
             assigned_agent: Some("nora".to_string()),
             assigned_mcps: None,
             created_by: "nora".to_string(),
             requires_approval: Some(false),
             parent_task_id: None,
-            tags,
+            tags: definition.tags,
             due_date: None,
             custom_properties: None,
             scheduled_start: None,
@@ -64,7 +76,7 @@ impl TaskExecutor {
 
         let task = Task::create(&self.pool, &create_task, task_id)
             .await
-            .map_err(|e| NoraError::DatabaseError(e))?;
+            .map_err(NoraError::DatabaseError)?;
 
         tracing::info!("Task created successfully: {} ({})", task.title, task.id);
 
@@ -80,16 +92,7 @@ impl TaskExecutor {
         let mut created_tasks = Vec::new();
 
         for task_def in tasks {
-            let task = self
-                .create_task(
-                    project_id,
-                    task_def.title,
-                    task_def.description,
-                    task_def.priority,
-                    task_def.tags,
-                    task_def.assignee_id,
-                )
-                .await?;
+            let task = self.create_task(project_id, task_def).await?;
             created_tasks.push(task);
         }
 
@@ -138,6 +141,75 @@ impl TaskExecutor {
         .map_err(|e| NoraError::DatabaseError(e))?;
 
         Ok(projects)
+    }
+
+    pub async fn find_project_record_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Option<Project>> {
+        Project::find_by_name_case_insensitive(&self.pool, name)
+            .await
+            .map_err(NoraError::DatabaseError)
+    }
+
+    pub async fn create_project_entry(&self, payload: CreateProject) -> Result<Project> {
+        let project_id = Uuid::new_v4();
+        Project::create(&self.pool, &payload, project_id)
+            .await
+            .map_err(NoraError::DatabaseError)
+    }
+
+    pub async fn ensure_default_boards(&self, project_id: Uuid) -> Result<Vec<ProjectBoard>> {
+        ProjectBoard::ensure_default_boards(&self.pool, project_id)
+            .await
+            .map_err(NoraError::DatabaseError)
+    }
+
+    pub async fn find_board_by_slug(
+        &self,
+        project_id: Uuid,
+        slug: &str,
+    ) -> Result<Option<ProjectBoard>> {
+        ProjectBoard::find_by_slug(&self.pool, project_id, slug)
+            .await
+            .map_err(NoraError::DatabaseError)
+    }
+
+    pub async fn get_default_board_for_tasks(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Option<ProjectBoard>> {
+        if let Some(board) = self.find_board_by_slug(project_id, "dev-assets").await? {
+            return Ok(Some(board));
+        }
+
+        let mut boards = ProjectBoard::list_by_project(&self.pool, project_id)
+            .await
+            .map_err(NoraError::DatabaseError)?;
+
+        Ok(boards.pop())
+    }
+
+    pub async fn seed_default_pods(&self, project_id: Uuid) -> Result<Vec<ProjectPod>> {
+        let mut pods = Vec::new();
+        for (title, description) in DEFAULT_POD_TEMPLATES {
+            let pod = ProjectPod::create(
+                &self.pool,
+                Uuid::new_v4(),
+                &CreateProjectPod {
+                    project_id,
+                    title: title.to_string(),
+                    description: Some(description.to_string()),
+                    status: Some("active".to_string()),
+                    lead: None,
+                },
+            )
+            .await
+            .map_err(NoraError::DatabaseError)?;
+            pods.push(pod);
+        }
+
+        Ok(pods)
     }
 
     /// Get detailed project information including tasks, boards, and pods
@@ -539,6 +611,8 @@ pub struct TaskDefinition {
     pub priority: Option<Priority>,
     pub tags: Option<Vec<String>>,
     pub assignee_id: Option<String>,
+    pub board_id: Option<Uuid>,
+    pub pod_id: Option<Uuid>,
 }
 
 /// Project information

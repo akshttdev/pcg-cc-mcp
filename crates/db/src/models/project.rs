@@ -148,6 +148,28 @@ impl Project {
         .await
     }
 
+    pub async fn find_by_name_case_insensitive(
+        pool: &SqlitePool,
+        name: &str,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        let row: Option<(Vec<u8>,)> = sqlx::query_as(
+            "SELECT id FROM projects WHERE LOWER(name) = LOWER(?) LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some((bytes,)) = row {
+            if let Ok(uuid) = Uuid::from_slice(&bytes) {
+                Project::find_by_id(pool, uuid).await
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
     pub async fn create(
         pool: &SqlitePool,
         data: &CreateProject,
