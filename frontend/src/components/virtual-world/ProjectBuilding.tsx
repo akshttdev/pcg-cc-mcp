@@ -1,7 +1,17 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
+import { BUILDING_THEMES, getBuildingType } from '@/lib/virtual-world/buildingTypes';
+import { ENTRY_PROMPT_HEIGHT } from '@/lib/virtual-world/constants';
+
+const CONTAINER_WIDTH = 50;
+const CONTAINER_LENGTH = 100;
+const CONTAINER_HEIGHT = 20;
+const HALF_HEIGHT = CONTAINER_HEIGHT / 2;
+const HALF_WIDTH = CONTAINER_WIDTH / 2;
+const HALF_LENGTH = CONTAINER_LENGTH / 2;
+const FOOTPRINT_RADIUS = Math.sqrt(HALF_WIDTH ** 2 + HALF_LENGTH ** 2);
 
 interface ProjectBuildingProps {
   name: string;
@@ -9,133 +19,71 @@ interface ProjectBuildingProps {
   energy: number;
   isSelected: boolean;
   onSelect: () => void;
-}
-
-type BuildingType = 'dev-tower' | 'creative-studio' | 'infrastructure' | 'research' | 'command';
-
-function getBuildingType(name: string): BuildingType {
-  const lowerName = name.toLowerCase();
-
-  // Development towers
-  if (
-    lowerName.includes('mcp') ||
-    lowerName.includes('rs') ||
-    lowerName.includes('code') ||
-    lowerName.includes('api') ||
-    lowerName.includes('frontend') ||
-    lowerName.includes('backend')
-  ) {
-    return 'dev-tower';
-  }
-
-  // Creative studios
-  if (
-    lowerName.includes('jungle') ||
-    lowerName.includes('brand') ||
-    lowerName.includes('design') ||
-    lowerName.includes('studio')
-  ) {
-    return 'creative-studio';
-  }
-
-  // Infrastructure
-  if (
-    lowerName.includes('ducknet') ||
-    lowerName.includes('comfy') ||
-    lowerName.includes('distribution') ||
-    lowerName.includes('linux') ||
-    lowerName.includes('infra')
-  ) {
-    return 'infrastructure';
-  }
-
-  // Research
-  if (
-    lowerName.includes('extract') ||
-    lowerName.includes('lab') ||
-    lowerName.includes('research') ||
-    lowerName.includes('ai')
-  ) {
-    return 'research';
-  }
-
-  // Default to dev tower
-  return 'dev-tower';
+  isEnterTarget?: boolean;
+  entryHotkey?: string;
 }
 
 function DevTower({ position, energy, isSelected, hovered }: any) {
   const groupRef = useRef<THREE.Group>(null);
+  const emissiveBoost = energy * (hovered || isSelected ? 1.5 : 1);
 
   useFrame(() => {
-    if (groupRef.current && (isSelected || hovered)) {
-      // Subtle rotation when selected/hovered
+    if (groupRef.current && (hovered || isSelected)) {
+      groupRef.current.rotation.y += 0.0005;
     }
   });
 
   return (
     <group ref={groupRef} position={position}>
-      {/* Main tower */}
       <mesh castShadow receiveShadow>
-        <boxGeometry args={[20, 40, 20]} />
+        <boxGeometry args={[CONTAINER_WIDTH, CONTAINER_HEIGHT, CONTAINER_LENGTH]} />
         <meshPhysicalMaterial
           color="#0a2f4a"
-          transmission={0.3}
-          thickness={0.5}
-          roughness={0.1}
+          transmission={0.25}
+          thickness={1.2}
+          roughness={0.08}
           metalness={0.9}
           emissive="#0080ff"
-          emissiveIntensity={energy * (hovered || isSelected ? 1.5 : 1)}
+          emissiveIntensity={emissiveBoost}
           clearcoat={1}
-          clearcoatRoughness={0.1}
+          clearcoatRoughness={0.08}
         />
       </mesh>
 
-      {/* Floor divisions (visible levels) */}
-      {Array.from({ length: 10 }).map((_, i) => (
-        <mesh key={i} position={[0, -15 + i * 4, 10.1]}>
-          <boxGeometry args={[19, 0.2, 0.1]} />
-          <meshBasicMaterial color="#00ffff" />
+      {Array.from({ length: 5 }).map((_, i) => (
+        <mesh key={i} position={[0, -HALF_HEIGHT + (i + 1) * (CONTAINER_HEIGHT / 6), HALF_LENGTH + 0.2]}>
+          <boxGeometry args={[CONTAINER_WIDTH - 4, 0.3, 0.6]} />
+          <meshBasicMaterial color="#00ffff" transparent opacity={0.6} />
         </mesh>
       ))}
 
-      {/* Windows */}
-      {Array.from({ length: 4 }).map((_, side) => {
-        const angle = (side / 4) * Math.PI * 2;
-        const x = Math.sin(angle) * 10.1;
-        const z = Math.cos(angle) * 10.1;
-        return (
-          <group key={side}>
-            {Array.from({ length: 8 }).map((_, i) => (
-              <mesh key={i} position={[x, -12 + i * 5, z]} rotation={[0, angle, 0]}>
-                <boxGeometry args={[3, 2, 0.1]} />
-                <meshBasicMaterial
-                  color="#00d9ff"
-                  transparent
-                  opacity={0.6 + Math.random() * 0.2}
-                />
-              </mesh>
-            ))}
-          </group>
-        );
-      })}
+      {[
+        [-HALF_WIDTH, 0, -HALF_LENGTH],
+        [-HALF_WIDTH, 0, HALF_LENGTH],
+        [HALF_WIDTH, 0, -HALF_LENGTH],
+        [HALF_WIDTH, 0, HALF_LENGTH],
+      ].map(([x, y, z], idx) => (
+        <mesh key={idx} position={[x, y, z]}>
+          <boxGeometry args={[2, CONTAINER_HEIGHT + 6, 2]} />
+          <meshStandardMaterial
+            color="#003a5a"
+            emissive="#00c9ff"
+            emissiveIntensity={emissiveBoost * 0.6}
+            metalness={0.9}
+            roughness={0.2}
+          />
+        </mesh>
+      ))}
 
-      {/* Roof landing pad */}
-      <mesh position={[0, 21, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[6, 8, 8]} />
-        <meshBasicMaterial color="#00ffff" transparent opacity={0.6} />
+      <mesh position={[0, HALF_HEIGHT + 1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[HALF_WIDTH * 0.6, HALF_WIDTH * 0.8, 16]} />
+        <meshBasicMaterial color="#00ffff" transparent opacity={0.5} />
       </mesh>
 
-      {/* Data streams (particle effect placeholder) */}
-      <mesh position={[0, 0, 0]}>
-        <cylinderGeometry args={[0.1, 0.1, 40, 8]} />
-        <meshBasicMaterial color="#00ffff" transparent opacity={0.3} />
-      </mesh>
-
-      {/* Area light */}
       <rectAreaLight
-        position={[0, 20, 0]}
-        width={20}
-        height={40}
+        position={[0, HALF_HEIGHT, 0]}
+        width={CONTAINER_WIDTH}
+        height={CONTAINER_LENGTH}
         intensity={1 + energy * 2}
         color="#0080ff"
       />
@@ -144,43 +92,48 @@ function DevTower({ position, energy, isSelected, hovered }: any) {
 }
 
 function CreativeStudio({ position, energy, isSelected, hovered }: any) {
+  const emissiveBoost = energy * (hovered || isSelected ? 1.4 : 1);
+
   return (
     <group position={position}>
-      {/* Horizontal spread structure */}
       <mesh castShadow receiveShadow>
-        <boxGeometry args={[30, 20, 25]} />
+        <boxGeometry args={[CONTAINER_WIDTH, CONTAINER_HEIGHT, CONTAINER_LENGTH]} />
         <meshPhysicalMaterial
           color="#4a2f0a"
-          transmission={0.2}
-          thickness={0.5}
-          roughness={0.2}
+          transmission={0.15}
+          thickness={0.8}
+          roughness={0.25}
           metalness={0.7}
           emissive="#ff8000"
-          emissiveIntensity={energy * (hovered || isSelected ? 1.5 : 1)}
+          emissiveIntensity={emissiveBoost}
           clearcoat={1}
         />
       </mesh>
 
-      {/* Holographic displays on exterior */}
-      {[-12, 0, 12].map((x, i) => (
-        <mesh key={i} position={[x, 5, 12.6]}>
-          <planeGeometry args={[6, 8]} />
-          <meshBasicMaterial color="#ffaa00" transparent opacity={0.4} />
+      {[-HALF_WIDTH + 6, 0, HALF_WIDTH - 6].map((x, i) => (
+        <mesh key={i} position={[x, 3, HALF_LENGTH + 0.3]}>
+          <planeGeometry args={[12, 10]} />
+          <meshBasicMaterial color="#ffaa00" transparent opacity={0.35} />
         </mesh>
       ))}
 
-      {/* Terrace */}
-      <mesh position={[0, 11, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <boxGeometry args={[28, 23, 0.5]} />
-        <meshStandardMaterial color="#2a1f0a" metalness={0.5} roughness={0.5} />
+      <mesh position={[0, HALF_HEIGHT + 0.5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[CONTAINER_WIDTH - 6, CONTAINER_LENGTH - 10]} />
+        <meshStandardMaterial color="#2a1f0a" metalness={0.4} roughness={0.6} />
       </mesh>
 
-      {/* Warm lighting */}
+      {[-HALF_WIDTH + 4, HALF_WIDTH - 4].map((x, idx) => (
+        <mesh key={idx} position={[x, HALF_HEIGHT + 0.6, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[6, CONTAINER_LENGTH - 12]} />
+          <meshStandardMaterial color="#1c4d32" emissive="#1b8f41" emissiveIntensity={0.2} />
+        </mesh>
+      ))}
+
       <rectAreaLight
-        position={[0, 10, 0]}
-        width={30}
-        height={20}
-        intensity={1 + energy * 2}
+        position={[0, HALF_HEIGHT - 2, 0]}
+        width={CONTAINER_WIDTH}
+        height={CONTAINER_LENGTH}
+        intensity={1 + energy * 1.5}
         color="#ff8000"
       />
     </group>
@@ -188,41 +141,34 @@ function CreativeStudio({ position, energy, isSelected, hovered }: any) {
 }
 
 function InfrastructureHub({ position, energy, isSelected, hovered }: any) {
+  const emissiveBoost = energy * 0.4 * (hovered || isSelected ? 1.5 : 1);
+
   return (
     <group position={position}>
-      {/* Fortress-like modules */}
-      {[-8, 0, 8].map((y, i) => (
-        <mesh key={i} position={[0, -5 + y, 0]} castShadow receiveShadow>
-          <boxGeometry args={[18, 8, 18]} />
+      {[-HALF_HEIGHT + 3, 0, HALF_HEIGHT - 3].map((y, i) => (
+        <mesh key={i} position={[0, y, 0]} castShadow receiveShadow>
+          <boxGeometry args={[CONTAINER_WIDTH - 10, CONTAINER_HEIGHT / 3, CONTAINER_LENGTH - 20]} />
           <meshStandardMaterial
-            color="#1a1a1a"
-            roughness={0.9}
-            metalness={0.9}
+            color="#181818"
+            roughness={0.8}
+            metalness={0.95}
             emissive="#ff0000"
-            emissiveIntensity={energy * 0.3 * (hovered || isSelected ? 1.5 : 1)}
+            emissiveIntensity={emissiveBoost}
           />
         </mesh>
       ))}
 
-      {/* Server rack vents */}
       {Array.from({ length: 6 }).map((_, i) => (
-        <mesh key={i} position={[0, -10 + i * 4, 9.1]}>
-          <planeGeometry args={[16, 2]} />
-          <meshStandardMaterial color="#ff4444" emissive="#ff0000" emissiveIntensity={0.5} />
+        <mesh key={i} position={[0, -HALF_HEIGHT + 2 + i * 3, HALF_LENGTH + 0.4]}>
+          <planeGeometry args={[CONTAINER_WIDTH - 12, 1.5]} />
+          <meshStandardMaterial color="#ff4d4d" emissive="#ff0000" emissiveIntensity={0.6} />
         </mesh>
       ))}
 
-      {/* Energy core (visible through vents) */}
       <mesh position={[0, 0, 0]}>
-        <sphereGeometry args={[3, 16, 16]} />
-        <meshBasicMaterial color="#ff0000" transparent opacity={0.6} />
-        <pointLight intensity={2 * energy} color="#ff0000" distance={30} />
-      </mesh>
-
-      {/* Underground access indicators */}
-      <mesh position={[0, -15, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[4, 5, 4]} />
-        <meshBasicMaterial color="#ff0000" transparent opacity={0.5} />
+        <cylinderGeometry args={[4, 4, CONTAINER_HEIGHT, 16]} />
+        <meshBasicMaterial color="#ff0000" transparent opacity={0.4} />
+        <pointLight intensity={1.5 * energy} color="#ff0000" distance={60} />
       </mesh>
     </group>
   );
@@ -230,45 +176,55 @@ function InfrastructureHub({ position, energy, isSelected, hovered }: any) {
 
 function ResearchFacility({ position, energy, isSelected, hovered }: any) {
   const groupRef = useRef<THREE.Group>(null);
+  const emissiveBoost = energy * (hovered || isSelected ? 1.4 : 1);
 
   useFrame(() => {
     if (groupRef.current) {
-      groupRef.current.rotation.y += 0.001;
+      groupRef.current.rotation.y += 0.0008;
     }
   });
 
   return (
     <group ref={groupRef} position={position}>
-      {/* Organic curved structure */}
       <mesh castShadow receiveShadow>
-        <sphereGeometry args={[12, 32, 32, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <boxGeometry args={[CONTAINER_WIDTH, CONTAINER_HEIGHT * 0.6, CONTAINER_LENGTH]} />
         <meshPhysicalMaterial
           color="#2a0a4a"
-          transmission={0.7}
-          thickness={0.8}
-          roughness={0.05}
-          metalness={0.3}
+          transmission={0.5}
+          thickness={0.9}
+          roughness={0.08}
+          metalness={0.4}
           emissive="#aa00ff"
-          emissiveIntensity={energy * (hovered || isSelected ? 1.5 : 1)}
+          emissiveIntensity={emissiveBoost}
           transparent
-          opacity={0.8}
+          opacity={0.7}
         />
       </mesh>
 
-      {/* Floating components */}
+      <mesh position={[0, HALF_HEIGHT, 0]}>
+        <sphereGeometry args={[Math.min(HALF_WIDTH, HALF_LENGTH) * 0.9, 48, 32, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <meshPhysicalMaterial
+          color="#3a0f5c"
+          transmission={0.85}
+          thickness={0.6}
+          roughness={0.03}
+          emissive="#d400ff"
+          emissiveIntensity={emissiveBoost}
+          transparent
+          opacity={0.6}
+        />
+      </mesh>
+
       {[0, 120, 240].map((angle, i) => {
         const rad = (angle * Math.PI) / 180;
+        const radius = HALF_WIDTH * 0.7;
         return (
-          <mesh
-            key={i}
-            position={[Math.cos(rad) * 8, 10 + i * 3, Math.sin(rad) * 8]}
-            castShadow
-          >
-            <octahedronGeometry args={[2, 0]} />
+          <mesh key={i} position={[Math.cos(rad) * radius, HALF_HEIGHT - 2 + i, Math.sin(rad) * radius]}>
+            <octahedronGeometry args={[3, 0]} />
             <meshStandardMaterial
               color="#6a0a9a"
-              emissive="#aa00ff"
-              emissiveIntensity={energy * 0.8}
+              emissive="#ff00ff"
+              emissiveIntensity={energy}
               metalness={0.9}
               roughness={0.1}
             />
@@ -276,37 +232,7 @@ function ResearchFacility({ position, energy, isSelected, hovered }: any) {
         );
       })}
 
-      {/* Observatory dome */}
-      <mesh position={[0, 20, 0]}>
-        <sphereGeometry args={[6, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshPhysicalMaterial
-          color="#2a0a4a"
-          transmission={0.9}
-          thickness={0.3}
-          roughness={0.02}
-          transparent
-          opacity={0.5}
-        />
-      </mesh>
-
-      {/* Bioluminescent accents */}
-      {Array.from({ length: 20 }).map((_, i) => {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.random() * Math.PI / 2;
-        const r = 12;
-        return (
-          <mesh
-            key={i}
-            position={[r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta)]}
-          >
-            <sphereGeometry args={[0.3, 8, 8]} />
-            <meshBasicMaterial color="#ff00ff" />
-          </mesh>
-        );
-      })}
-
-      {/* Purple lighting */}
-      <pointLight position={[0, 15, 0]} intensity={2 * energy} color="#aa00ff" distance={40} />
+      <pointLight position={[0, HALF_HEIGHT + 4, 0]} intensity={2 * energy} color="#aa00ff" distance={80} />
     </group>
   );
 }
@@ -317,12 +243,48 @@ export function ProjectBuilding({
   energy,
   isSelected,
   onSelect,
+  isEnterTarget = false,
+  entryHotkey = 'E',
 }: ProjectBuildingProps) {
   const [hovered, setHovered] = useState(false);
   const buildingType = getBuildingType(name);
+  const theme = BUILDING_THEMES[buildingType];
+
+  const elevatedPosition = useMemo(
+    () => [position[0], position[1] + HALF_HEIGHT, position[2]] as [number, number, number],
+    [position],
+  );
+
+  const entranceDirection = useMemo(() => {
+    const dir = new THREE.Vector3(-position[0], 0, -position[2]);
+    if (dir.lengthSq() === 0) {
+      dir.set(0, 0, 1);
+    }
+    return dir.normalize();
+  }, [position]);
+
+  const doorPosition = useMemo(() => {
+    const offset = entranceDirection.clone().multiplyScalar(HALF_LENGTH + 0.5);
+    return [position[0] + offset.x, position[1] + 5, position[2] + offset.z] as [
+      number,
+      number,
+      number,
+    ];
+  }, [entranceDirection, position]);
+
+  const doorRotation = useMemo(() => Math.atan2(entranceDirection.x, entranceDirection.z), [entranceDirection]);
+
+  const walkwayPosition = useMemo(() => {
+    const offset = entranceDirection.clone().multiplyScalar(HALF_LENGTH + 22);
+    return [position[0] + offset.x, position[1] + 0.11, position[2] + offset.z] as [number, number, number];
+  }, [entranceDirection, position]);
+
+  const labelColor = hovered || isSelected ? '#ffffff' : theme.labelColor;
+
+  const showEnterPrompt = isEnterTarget && Boolean(entryHotkey);
 
   const props = {
-    position: [position[0], position[1] + 20, position[2]] as [number, number, number], // Elevated 20 units
+    position: elevatedPosition,
     energy,
     isSelected,
     hovered,
@@ -353,9 +315,9 @@ export function ProjectBuilding({
 
       {/* Project name label (large, above building) */}
       <Text
-        position={[position[0], position[1] + 45, position[2]]}
+        position={[position[0], position[1] + CONTAINER_HEIGHT + 30, position[2]]}
         fontSize={5}
-        color={hovered || isSelected ? '#ffffff' : '#9de5ff'}
+        color={labelColor}
         anchorX="center"
         anchorY="bottom"
         outlineWidth={0.2}
@@ -366,7 +328,7 @@ export function ProjectBuilding({
 
       {/* Ground plate */}
       <mesh position={[position[0], position[1] + 0.1, position[2]]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <circleGeometry args={[15, 32]} />
+        <circleGeometry args={[FOOTPRINT_RADIUS + 10, 64]} />
         <meshStandardMaterial
           color="#0a1f35"
           metalness={0.8}
@@ -376,12 +338,50 @@ export function ProjectBuilding({
         />
       </mesh>
 
+      {/* Entry walkway */}
+      <mesh position={walkwayPosition} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[12, 40]} />
+        <meshBasicMaterial
+          color={theme.accentColor}
+          transparent
+          opacity={isEnterTarget ? 0.45 : 0.15}
+        />
+      </mesh>
+
       {/* Selection indicator ring */}
       {(isSelected || hovered) && (
         <mesh position={[position[0], position[1] + 0.2, position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[14, 16, 64]} />
+          <ringGeometry args={[FOOTPRINT_RADIUS + 4, FOOTPRINT_RADIUS + 7, 64]} />
           <meshBasicMaterial color="#00ffff" transparent opacity={isSelected ? 0.8 : 0.5} />
         </mesh>
+      )}
+
+      {/* Entry portal */}
+      <mesh position={doorPosition} rotation={[0, doorRotation, 0]}>
+        <planeGeometry args={[4, 8]} />
+        <meshStandardMaterial
+          color={theme.doorColor}
+          emissive={isEnterTarget ? theme.hologramColor : '#00121d'}
+          emissiveIntensity={isEnterTarget ? 1.2 : 0.2}
+          transparent
+          opacity={0.85}
+          metalness={0.2}
+          roughness={0.3}
+        />
+      </mesh>
+
+      {showEnterPrompt && (
+        <Text
+          position={[doorPosition[0], doorPosition[1] + ENTRY_PROMPT_HEIGHT, doorPosition[2]]}
+          fontSize={1.2}
+          color={theme.hologramColor}
+          anchorX="center"
+          anchorY="bottom"
+          outlineWidth={0.05}
+          outlineColor="#000a10"
+        >
+          Press {entryHotkey} to enter
+        </Text>
       )}
     </group>
   );

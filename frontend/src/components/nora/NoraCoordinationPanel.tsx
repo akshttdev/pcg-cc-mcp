@@ -12,103 +12,15 @@ import {
   Activity,
   AlertCircle,
   TrendingUp,
-  Calendar
+  Calendar,
+  Bot,
 } from 'lucide-react';
-
-// Type definitions based on Rust backend coordination system
-type AgentStatus = 'active' | 'busy' | 'idle' | 'offline' | 'error' | 'maintenance';
-type AvailabilityStatus =
-  | 'available'
-  | 'busy'
-  | 'inMeeting'
-  | 'doNotDisturb'
-  | 'away'
-  | 'offline';
-
-interface CoordinationStats {
-  totalAgents: number;
-  activeAgents: number;
-  pendingApprovals: number;
-  activeConflicts: number;
-  averageResponseTime: number;
-}
-
-interface PerformanceMetrics {
-  tasksCompleted: number;
-  averageResponseTimeMs: number;
-  successRate: number;
-  uptimePercentage: number;
-}
-
-interface AgentCoordinationState {
-  agentId: string;
-  agentType: string;
-  status: AgentStatus;
-  capabilities: string[];
-  currentTasks: string[];
-  lastSeen: string;
-  performanceMetrics: PerformanceMetrics;
-}
-
-type CoordinationEvent =
-  | {
-      type: 'AgentStatusUpdate';
-      agentId: string;
-      status: AgentStatus;
-      capabilities: string[];
-      timestamp: string;
-    }
-  | {
-      type: 'TaskHandoff';
-      fromAgent: string;
-      toAgent: string;
-      taskId: string;
-      context: unknown;
-      timestamp: string;
-    }
-  | {
-      type: 'ConflictResolution';
-      conflictId: string;
-      involvedAgents: string[];
-      description: string;
-      priority: 'Low' | 'Medium' | 'High' | 'Critical' | 'low' | 'medium' | 'high' | 'critical';
-      timestamp: string;
-    }
-  | {
-      type: 'ApprovalRequest';
-      requestId: string;
-      requestingAgent: string;
-      actionDescription: string;
-      requiredApprover: string;
-      urgency:
-        | 'Low'
-        | 'Normal'
-        | 'High'
-        | 'Urgent'
-        | 'Emergency'
-        | 'low'
-        | 'normal'
-        | 'high'
-        | 'urgent'
-        | 'emergency';
-      timestamp: string;
-    }
-  | {
-      type: 'ExecutiveAlert';
-      alertId: string;
-      source: string;
-      message: string;
-      severity: 'Info' | 'Warning' | 'Error' | 'Critical' | 'info' | 'warning' | 'error' | 'critical';
-      requiresAction: boolean;
-      timestamp: string;
-    }
-  | {
-      type: 'HumanAvailabilityUpdate';
-      userId: string;
-      availability: AvailabilityStatus;
-      availableUntil: string | null;
-      timestamp: string;
-    };
+import {
+  AgentCoordinationState,
+  AgentStatus,
+  CoordinationEvent,
+  CoordinationStats,
+} from '@/types/nora';
 
 interface NoraCoordinationPanelProps {
   className?: string;
@@ -269,6 +181,7 @@ export function NoraCoordinationPanel({ className }: NoraCoordinationPanelProps)
       case 'ApprovalRequest': return <CheckCircle className="w-4 h-4 text-green-500" />;
       case 'ExecutiveAlert': return <AlertCircle className="w-4 h-4 text-red-500" />;
       case 'HumanAvailabilityUpdate': return <Users className="w-4 h-4 text-emerald-500" />;
+      case 'AgentDirective': return <Bot className="w-4 h-4 text-purple-500" />;
       default: return <Clock className="w-4 h-4 text-gray-500" />;
     }
   };
@@ -287,6 +200,8 @@ export function NoraCoordinationPanel({ className }: NoraCoordinationPanelProps)
         return `${event.severity} alert from ${event.source}: ${event.message}`;
       case 'HumanAvailabilityUpdate':
         return `${event.userId} is now ${toTitleCase(event.availability)}${event.availableUntil ? ` until ${new Date(event.availableUntil).toLocaleTimeString()}` : ''}.`;
+      case 'AgentDirective':
+        return `${event.issuedBy} directed ${event.agentId}: ${event.content}`;
       default:
         return 'Coordination update received.';
     }

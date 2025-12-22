@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Grid, Environment, Stars } from '@react-three/drei';
 import * as THREE from 'three';
@@ -6,10 +6,21 @@ import { CommandCenter } from '@/components/virtual-world/CommandCenter';
 import { NoraAvatar } from '@/components/virtual-world/NoraAvatar';
 import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
 import { UserAvatar } from '@/components/virtual-world/UserAvatar';
+import { BuildingInterior } from '@/components/virtual-world/BuildingInterior';
+import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
+import { getBuildingType } from '@/lib/virtual-world/buildingTypes';
+import { ENTRY_TRIGGER_DISTANCE } from '@/lib/virtual-world/constants';
 
 const safeProjectList = (typeof __TOPOS_PROJECTS__ !== 'undefined'
   ? __TOPOS_PROJECTS__
   : []) as string[];
+
+const PROJECT_HALF_WIDTH = 25;
+const PROJECT_HALF_LENGTH = 50;
+const PROJECT_FOOTPRINT_RADIUS = Math.sqrt(PROJECT_HALF_WIDTH ** 2 + PROJECT_HALF_LENGTH ** 2);
+const COMMAND_CENTER_SPAWN_Y = 8;
+const BASE_PROJECT_RADIUS = 220;
+const TARGET_ARC_SPACING = PROJECT_FOOTPRINT_RADIUS * 2.2;
 
 interface ProjectData {
   name: string;
@@ -28,6 +39,8 @@ const noraAcknowledgements = [
   'Amplifying signal for',
 ];
 
+const INITIAL_PLAYER_POSITION: [number, number, number] = [0, COMMAND_CENTER_SPAWN_Y, 0];
+
 function stringEnergy(input: string) {
   let hash = 0;
   for (let i = 0; i < input.length; i += 1) {
@@ -40,8 +53,9 @@ function generateProjects(names: string[]): ProjectData[] {
   const filtered = names.filter((name) => !name.startsWith('.'));
   if (!filtered.length) return [];
 
-  // Much larger radius for monumental scale
-  const radius = Math.max(120, filtered.length * 15);
+  const radiusForSpacing = (filtered.length * TARGET_ARC_SPACING) / (Math.PI * 2);
+  const minVisualRadius = PROJECT_FOOTPRINT_RADIUS * 2.8;
+  const radius = Math.max(BASE_PROJECT_RADIUS, minVisualRadius, radiusForSpacing);
   const y = 0; // Buildings rest on ground
 
   return filtered.map((name, index) => {
@@ -88,7 +102,7 @@ function AtmosphericLighting() {
 }
 
 function AmbientParticles() {
-  const particleCount = 500;
+  const particleCount = 300;
   const positions = useMemo(() => {
     const pos = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
@@ -126,14 +140,118 @@ export function VirtualEnvironmentPage() {
   const projects = useMemo(() => generateProjects(safeProjectList), []);
   const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
   const [noraLine, setNoraLine] = useState('Command Center online. Awaiting directive...');
+  const [noraStatusVersion, setNoraStatusVersion] = useState(1);
+  const [userPosition, setUserPosition] = useState<[number, number, number]>(INITIAL_PLAYER_POSITION);
+  const [activeInterior, setActiveInterior] = useState<ProjectData | null>(null);
+  const [isConsoleInputActive, setIsConsoleInputActive] = useState(false);
+  const [consoleFocusVersion, setConsoleFocusVersion] = useState(0);
 
-  const handleSelect = (project: ProjectData) => {
+  const updateNoraLine = useCallback((line: string) => {
+    setNoraLine(line);
+    setNoraStatusVersion((prev) => prev + 1);
+  }, []);
+
+  const bumpConsoleFocus = useCallback(() => {
+    setConsoleFocusVersion((prev) => prev + 1);
+  }, []);
+
+  const activateConsoleInput = useCallback(() => {
+    if (activeInterior) return;
+    setIsConsoleInputActive(true);
+    bumpConsoleFocus();
+  }, [activeInterior, bumpConsoleFocus]);
+
+  const releaseConsoleInput = useCallback(() => {
+    setIsConsoleInputActive(false);
+  }, []);
+
+  const handleSelect = useCallback((project: ProjectData) => {
     setSelectedProject(project);
     const line = noraAcknowledgements[
       Math.floor(Math.random() * noraAcknowledgements.length)
     ];
-    setNoraLine(`${line} ${project.name}.`);
-  };
+    updateNoraLine(`${line} ${project.name}.`);
+  }, [updateNoraLine]);
+
+  const handleUserPositionChange = useCallback((vector: THREE.Vector3) => {
+    setUserPosition([vector.x, vector.y, vector.z]);
+  }, []);
+
+  const enterTarget = useMemo(() => {
+    if (activeInterior) return null;
+
+    let closest: { project: ProjectData; distance: number } | null = null;
+    for (const project of projects) {
+      const dx = project.position[0] - userPosition[0];
+      const dz = project.position[2] - userPosition[2];
+      const distance = Math.hypot(dx, dz);
+      if (distance > ENTRY_TRIGGER_DISTANCE) continue;
+      if (!closest || distance < closest.distance) {
+        closest = { project, distance };
+      }
+    }
+    return closest?.project ?? null;
+  }, [activeInterior, projects, userPosition]);
+
+  const handleAttemptEnter = useCallback(() => {
+    if (activeInterior || !enterTarget) return;
+    handleSelect(enterTarget);
+    setActiveInterior(enterTarget);
+    updateNoraLine(`Opening interior for ${enterTarget.name}. Agents syncing.`);
+  }, [activeInterior, enterTarget, handleSelect, updateNoraLine]);
+
+  const exitInterior = useCallback(() => {
+    if (activeInterior) {
+      updateNoraLine(`Grid perspective restored. ${activeInterior.name} interior sealed.`);
+    }
+    setActiveInterior(null);
+  }, [activeInterior, updateNoraLine]);
+
+  useEffect(() => {
+    if (!activeInterior) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' || event.key.toLowerCase() === 'q') {
+        exitInterior();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeInterior, exitInterior]);
+
+  useEffect(() => {
+    const handleConsoleToggle = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName.toLowerCase();
+      const isTypingTarget =
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        target?.isContentEditable;
+
+      if (isTypingTarget) {
+        return;
+      }
+
+      if (event.key === 'Enter' && !event.repeat) {
+        event.preventDefault();
+        activateConsoleInput();
+      }
+
+      if (event.key === 'Escape' && isConsoleInputActive) {
+        event.preventDefault();
+        releaseConsoleInput();
+      }
+    };
+
+    window.addEventListener('keydown', handleConsoleToggle);
+    return () => window.removeEventListener('keydown', handleConsoleToggle);
+  }, [activateConsoleInput, isConsoleInputActive, releaseConsoleInput]);
+
+  useEffect(() => {
+    if (activeInterior && isConsoleInputActive) {
+      setIsConsoleInputActive(false);
+    }
+  }, [activeInterior, isConsoleInputActive]);
 
   return (
     <div className="relative h-full min-h-[calc(100vh-6rem)] bg-black text-white">
@@ -156,11 +274,11 @@ export function VirtualEnvironmentPage() {
           <Environment preset="night" />
 
           {/* Stars */}
-          <Stars radius={300} depth={50} count={5000} factor={4} saturation={0} fade speed={0.5} />
+          <Stars radius={280} depth={40} count={2500} factor={4} saturation={0} fade speed={0.5} />
 
           {/* Infinite grid */}
           <Grid
-            args={[500, 500]}
+            args={[400, 400]}
             position={[0, 0, 0]}
             cellSize={2}
             sectionSize={10}
@@ -178,7 +296,7 @@ export function VirtualEnvironmentPage() {
           <CommandCenter />
 
           {/* NORA avatar */}
-          <NoraAvatar position={[0, 5, 0]} />
+          <NoraAvatar position={[0, COMMAND_CENTER_SPAWN_Y + 2, 0]} />
 
           {/* Project buildings */}
           {projects.map((project) => (
@@ -189,96 +307,113 @@ export function VirtualEnvironmentPage() {
               energy={project.energy}
               isSelected={selectedProject?.name === project.name}
               onSelect={() => handleSelect(project)}
+              isEnterTarget={!activeInterior && enterTarget?.name === project.name}
+              entryHotkey="E"
             />
           ))}
 
           {/* User avatar */}
-          <UserAvatar initialPosition={[0, 0, 80]} color="#ff8000" />
+        <UserAvatar
+          initialPosition={INITIAL_PLAYER_POSITION}
+          color="#ff8000"
+          onPositionChange={handleUserPositionChange}
+          onInteract={handleAttemptEnter}
+          isSuspended={Boolean(activeInterior || isConsoleInputActive)}
+          canFly
+        />
         </Suspense>
       </Canvas>
 
       {/* UI Overlays */}
-      <div className="pointer-events-none absolute top-6 left-6 bg-black/70 border border-cyan-400/40 rounded-lg p-5 max-w-lg backdrop-blur-sm">
-        <p className="text-cyan-200 text-xs uppercase tracking-[0.3em] mb-2 font-semibold">
-          PCG Virtual Environment V2
-        </p>
-        <h1 className="text-2xl font-bold text-white mb-3">Monumental Grid</h1>
-        <p className="text-sm text-cyan-100/90 leading-relaxed mb-3">
-          Explore the spatial command center. Each structure represents a project at monumental scale.
-        </p>
-        <div className="text-xs text-cyan-200/70 space-y-1">
-          <p><span className="font-semibold">WASD</span> - Move</p>
-          <p><span className="font-semibold">Shift</span> - Sprint</p>
-          <p><span className="font-semibold">Space/Ctrl</span> - Up/Down</p>
-          <p><span className="font-semibold">Mouse</span> - Look around</p>
-          <p><span className="font-semibold">Click Building</span> - Select</p>
-        </div>
-      </div>
-
-      {/* NORA communication panel */}
-      <div className="pointer-events-auto absolute bottom-6 left-6 w-[28rem] bg-[#02070d]/90 border border-cyan-500/40 rounded-xl p-6 shadow-[0_0_50px_rgba(0,255,255,0.2)]">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-          <p className="text-xs text-cyan-200 uppercase tracking-[0.25em] font-semibold">
-            NORA | Executive AI Liaison
+      {!activeInterior && (
+        <div className="pointer-events-none absolute top-6 left-6 bg-black/70 border border-cyan-400/40 rounded-lg p-5 max-w-lg backdrop-blur-sm">
+          <p className="text-cyan-200 text-xs uppercase tracking-[0.3em] mb-2 font-semibold">
+            PCG Virtual Environment V2
           </p>
+          <h1 className="text-2xl font-bold text-white mb-3">Monumental Grid</h1>
+          <p className="text-sm text-cyan-100/90 leading-relaxed mb-3">
+            Explore the spatial command center. Each structure represents a project at monumental scale.
+          </p>
+          <div className="text-xs text-cyan-200/70 space-y-1">
+            <p><span className="font-semibold">WASD</span> - Move</p>
+            <p><span className="font-semibold">Shift</span> - Sprint</p>
+            <p><span className="font-semibold">Space/Ctrl</span> - Up/Down</p>
+            <p><span className="font-semibold">Mouse</span> - Look around</p>
+            <p><span className="font-semibold">Click Building</span> - Select</p>
+            <p><span className="font-semibold">E</span> - Enter nearby structure</p>
+            <p><span className="font-semibold">Enter</span> - Engage command net</p>
+            <p><span className="font-semibold">Esc</span> - Return to flight controls</p>
+          </div>
         </div>
-        <p className="text-lg text-white leading-relaxed mb-4">{noraLine}</p>
-        {selectedProject && (
-          <div className="pt-4 border-t border-cyan-500/20 text-sm text-cyan-100 space-y-2">
+      )}
+
+      {!activeInterior && (
+        <AgentChatConsole
+          className="pointer-events-auto absolute bottom-6 left-6 w-[28rem]"
+          statusLine={noraLine}
+          statusVersion={noraStatusVersion}
+          selectedProject={selectedProject}
+          isInputActive={isConsoleInputActive}
+          onRequestCloseInput={releaseConsoleInput}
+          focusToken={consoleFocusVersion}
+        />
+      )}
+
+      {!activeInterior && (
+        <div className="pointer-events-auto absolute bottom-6 right-6 w-80 bg-black/70 border border-cyan-400/30 rounded-lg p-4 backdrop-blur-sm">
+          <h2 className="text-cyan-200 text-sm uppercase tracking-[0.2em] mb-3 font-semibold">
+            System Status
+          </h2>
+          <div className="space-y-2 text-xs text-cyan-100/80">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-cyan-200">{selectedProject.name}</span>
-              <span className="text-xs text-cyan-400/70">SELECTED</span>
+              <span>Structures Deployed</span>
+              <span className="font-mono text-cyan-300">{projects.length}</span>
             </div>
-            <div className="flex items-center justify-between text-xs">
-              <span>Energy Output</span>
-              <span className="font-mono text-cyan-300">{(selectedProject.energy * 100).toFixed(1)}%</span>
+            <div className="flex items-center justify-between">
+              <span>Command Center</span>
+              <span className="text-green-400">● OPERATIONAL</span>
             </div>
-            <div className="flex items-center justify-between text-xs">
-              <span>Status Relay</span>
-              <span className="text-green-400">● LINKED</span>
+            <div className="flex items-center justify-between">
+              <span>NORA Status</span>
+              <span className="text-green-400">● ONLINE</span>
             </div>
-            <p className="text-xs text-cyan-100/60 mt-3">
-              Synchronized with MCP timeline feed. Sub-agents standing by.
+            <div className="flex items-center justify-between">
+              <span>Grid Integrity</span>
+              <span className="font-mono text-cyan-300">100%</span>
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-cyan-400/20">
+            <p className="text-[10px] text-cyan-200/60 leading-relaxed">
+              Monumental architecture prototype. Each building represents a project workspace where agents and humans collaborate.
             </p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* System status */}
-      <div className="pointer-events-auto absolute bottom-6 right-6 w-80 bg-black/70 border border-cyan-400/30 rounded-lg p-4 backdrop-blur-sm">
-        <h2 className="text-cyan-200 text-sm uppercase tracking-[0.2em] mb-3 font-semibold">
-          System Status
-        </h2>
-        <div className="space-y-2 text-xs text-cyan-100/80">
-          <div className="flex items-center justify-between">
-            <span>Structures Deployed</span>
-            <span className="font-mono text-cyan-300">{projects.length}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Command Center</span>
-            <span className="text-green-400">● OPERATIONAL</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>NORA Status</span>
-            <span className="text-green-400">● ONLINE</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Grid Integrity</span>
-            <span className="font-mono text-cyan-300">100%</span>
+      {!activeInterior && (
+        <div className="pointer-events-none absolute top-6 right-6 bg-yellow-900/20 border border-yellow-500/30 rounded px-3 py-2 text-xs text-yellow-200/80">
+          <span className="font-semibold">V2 AESTHETIC UPGRADE</span> - Scale 10x increased
+        </div>
+      )}
+
+      {!activeInterior && enterTarget && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center">
+          <div className="rounded-full border border-cyan-400/40 bg-black/70 px-6 py-2 text-[11px] uppercase tracking-[0.4em] text-cyan-100">
+            Press <span className="mx-1 font-semibold text-white">E</span> to enter {enterTarget.name}
           </div>
         </div>
-        <div className="mt-4 pt-3 border-t border-cyan-400/20">
-          <p className="text-[10px] text-cyan-200/60 leading-relaxed">
-            Monumental architecture prototype. Each building represents a project workspace where agents and humans collaborate.
-          </p>
-        </div>
-      </div>
+      )}
 
-      {/* Performance note */}
-      <div className="pointer-events-none absolute top-6 right-6 bg-yellow-900/20 border border-yellow-500/30 rounded px-3 py-2 text-xs text-yellow-200/80">
-        <span className="font-semibold">V2 AESTHETIC UPGRADE</span> - Scale 10x increased
-      </div>
+      {activeInterior && (
+        <BuildingInterior
+          project={{
+            name: activeInterior.name,
+            energy: activeInterior.energy,
+            type: getBuildingType(activeInterior.name),
+          }}
+          onExit={exitInterior}
+        />
+      )}
     </div>
   );
 }
