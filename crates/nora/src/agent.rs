@@ -16,22 +16,29 @@ use uuid::Uuid;
 
 use crate::{
     brain::LLMClient,
-    coordination::CoordinationManager,
-    executor::{TaskDefinition, TaskExecutor},
+    coordination::{AgentCoordinationState, AgentStatus, CoordinationManager, PerformanceMetrics},
+    executor::{ProjectStats, TaskDefinition, TaskExecutor},
+    graph::{GraphNodeStatus, GraphOrchestrator, GraphPlan, GraphPlanSummary},
     memory::{
         BudgetStatus, ConversationMemory, ExecutiveContext, ExecutivePriority, Milestone,
         MilestoneStatus, PriorityImpact, PriorityStatus, PriorityUrgency, ProjectContext,
-        ProjectStatus,
+        ProjectStatus, Risk,
     },
     personality::BritishPersonality,
     tools::ExecutiveTools,
     voice::VoiceEngine,
     NoraConfig, NoraError, Result,
 };
-use db::models::{project::{CreateProject, Project}, task::Priority};
+use cinematics::{CinematicsConfig, CinematicsService, Cinematographer};
+use db::models::{
+    cinematic_brief::CreateCinematicBrief,
+    project::{CreateProject, Project},
+    task::Priority,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use sqlx::SqlitePool;
+use serde_json::{json, Value};
 
 /// Main Nora agent structure
 pub struct NoraAgent {
@@ -47,6 +54,7 @@ pub struct NoraAgent {
     pub is_active: Arc<RwLock<bool>>,
     pub pool: Option<SqlitePool>,
     pub executor: Option<Arc<TaskExecutor>>,
+    pub graph_orchestrator: Arc<GraphOrchestrator>,
 }
 
 /// Request to Nora for processing
@@ -83,6 +91,8 @@ pub enum NoraRequestType {
     DecisionSupport,
     /// Proactive notification/alert
     ProactiveNotification,
+    /// Create cinematic brief for Stable Diffusion pipeline
+    CinematicBrief,
 }
 
 /// Request priority levels
@@ -109,8 +119,55 @@ pub struct NoraResponse {
     pub voice_response: Option<String>, // Base64 encoded audio
     pub follow_up_suggestions: Vec<String>,
     pub context_updates: Vec<ContextUpdate>,
+    pub plan_id: Option<String>,
     pub timestamp: DateTime<Utc>,
     pub processing_time_ms: u64,
+}
+
+/// Request payload for the rapid prototyping playbook
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct RapidPlaybookRequest {
+    pub project_name: String,
+    #[serde(default)]
+    pub objectives: Vec<String>,
+    #[serde(default)]
+    pub repo_hint: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+/// Result returned by the rapid prototyping playbook
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct RapidPlaybookResult {
+    pub summary: String,
+    pub created_project: bool,
+    pub created_message: Option<String>,
+    pub projects_synced: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct CinematicBriefContext {
+    project_id: Uuid,
+    title: String,
+    summary: String,
+    #[serde(default)]
+    script: Option<String>,
+    #[serde(default)]
+    requester_id: Option<String>,
+    #[serde(default)]
+    asset_ids: Vec<Uuid>,
+    #[serde(default)]
+    style_tags: Vec<String>,
+    #[serde(default)]
+    duration_seconds: Option<i64>,
+    #[serde(default)]
+    fps: Option<i64>,
+    #[serde(default)]
+    metadata: Option<Value>,
+    #[serde(default)]
+    auto_render: Option<bool>,
 }
 
 /// Types of responses from Nora
@@ -162,6 +219,26 @@ impl NoraAgent {
 
         // Initialize coordination manager
         let coordination_manager = Arc::new(CoordinationManager::new().await?);
+        coordination_manager
+            .register_agent(AgentCoordinationState {
+                agent_id: "master_cinematographer".into(),
+                agent_type: "Master Cinematographer".into(),
+                status: AgentStatus::Idle,
+                capabilities: vec![
+                    "cinematic_planning".into(),
+                    "stable_diffusion_workflow".into(),
+                    "video_delivery".into(),
+                ],
+                current_tasks: vec![],
+                last_seen: Utc::now(),
+                performance_metrics: PerformanceMetrics {
+                    tasks_completed: 0,
+                    average_response_time_ms: 0.0,
+                    success_rate: 1.0,
+                    uptime_percentage: 1.0,
+                },
+            })
+            .await?;
 
         // Initialize memory
         let memory = Arc::new(RwLock::new(ConversationMemory::new()));
@@ -200,6 +277,8 @@ impl NoraAgent {
         // Start as active
         let is_active = Arc::new(RwLock::new(true));
 
+        let graph_orchestrator = Arc::new(GraphOrchestrator::new());
+
         Ok(Self {
             id,
             config,
@@ -213,6 +292,7 @@ impl NoraAgent {
             llm,
             pool: None,
             executor: None,
+            graph_orchestrator,
         })
     }
 
@@ -277,6 +357,10 @@ impl NoraAgent {
                 Vec::new(),
                 NoraResponseType::ProactiveAlert,
             ),
+            NoraRequestType::CinematicBrief => {
+                let (content, actions) = self.process_cinematic_brief(&request).await?;
+                (content, actions, NoraResponseType::TaskDelegation)
+            }
         };
 
         // Personality layer disabled - causes repetitive broken phrases
@@ -293,6 +377,11 @@ impl NoraAgent {
         let follow_up_suggestions = self
             .generate_follow_up_suggestions(&request, &response_content)
             .await?;
+
+        let plan_id = self
+            .graph_orchestrator
+            .record_plan(&request, &actions)
+            .await;
 
         // Update conversation memory
         self.update_conversation_memory(&request, &response_content)
@@ -315,6 +404,7 @@ impl NoraAgent {
             voice_response,
             follow_up_suggestions,
             context_updates,
+            plan_id,
             timestamp: Utc::now(),
             processing_time_ms: processing_time,
         })
@@ -323,6 +413,19 @@ impl NoraAgent {
     /// Check if Nora is currently active
     pub async fn is_active(&self) -> bool {
         *self.is_active.read().await
+    }
+
+    fn cinematics_service(&self) -> Result<CinematicsService> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| {
+                NoraError::ConfigError(
+                    "Cinematics features require Nora to be connected to the project database".into(),
+                )
+            })?
+            .clone();
+        Ok(CinematicsService::new(pool, CinematicsConfig::default()))
     }
 
     /// Activate or deactivate Nora
@@ -336,6 +439,102 @@ impl NoraAgent {
         }
 
         Ok(())
+    }
+
+    /// Sync Nora's executive context with live project/task data from the database
+    pub async fn sync_live_context(&self) -> Result<usize> {
+        let executor = self
+            .executor
+            .clone()
+            .ok_or_else(|| NoraError::ConfigError("Task executor not initialised".to_string()))?;
+        let pool = self
+            .pool
+            .clone()
+            .ok_or_else(|| NoraError::ConfigError("Database pool unavailable".to_string()))?;
+
+        let mut refreshed = Vec::new();
+        let projects = executor.get_all_projects().await?;
+        for info in projects {
+            let Ok(project_uuid) = Uuid::parse_str(&info.id) else {
+                continue;
+            };
+
+            let Some(project) = Project::find_by_id(&pool, project_uuid)
+                .await
+                .map_err(NoraError::DatabaseError)?
+            else {
+                continue;
+            };
+
+            let stats = executor
+                .get_project_stats(project_uuid)
+                .await
+                .unwrap_or(ProjectStats {
+                    total_tasks: 0,
+                    completed_tasks: 0,
+                    in_progress_tasks: 0,
+                    blocked_tasks: 0,
+                });
+
+            let progress = if stats.total_tasks > 0 {
+                (stats.completed_tasks as f32 / stats.total_tasks as f32) * 100.0
+            } else {
+                0.0
+            };
+
+            let status = if stats.blocked_tasks > 0 {
+                ProjectStatus::AtRisk
+            } else if stats.total_tasks > 0 && stats.completed_tasks == stats.total_tasks {
+                ProjectStatus::Completed
+            } else {
+                ProjectStatus::InProgress
+            };
+
+            let allocated = stats.total_tasks as f64 * 8.0;
+            let spent = stats.completed_tasks as f64 * 8.0;
+            let budget = BudgetStatus {
+                allocated,
+                spent,
+                remaining: (allocated - spent).max(0.0),
+                burn_rate: if allocated > 0.0 { spent / allocated } else { 0.0 },
+                forecast_completion: progress as f64,
+            };
+
+            let mut risks = Vec::new();
+            if stats.blocked_tasks > 0 {
+                risks.push(Risk {
+                    id: format!("risk-{}", project_uuid),
+                    description: format!(
+                        "{} blocked tasks need intervention",
+                        stats.blocked_tasks
+                    ),
+                    probability: crate::memory::RiskProbability::High,
+                    impact: crate::memory::RiskImpact::High,
+                    mitigation_plan: "Review blockers with assigned agents".to_string(),
+                    owner: "Nora".to_string(),
+                });
+            }
+
+            refreshed.push(ProjectContext {
+                project_id: project.id.to_string(),
+                name: project.name.clone(),
+                description: format!("Repository: {}", project.git_repo_path.to_string_lossy()),
+                status,
+                progress_percentage: progress,
+                team_members: Vec::new(),
+                budget_status: budget,
+                key_milestones: Vec::new(),
+                risks,
+            });
+        }
+
+        {
+            let mut context = self.context.write().await;
+            context.active_projects = refreshed;
+            context.last_updated = Utc::now();
+        }
+
+        Ok(self.context.read().await.active_projects.len())
     }
 
     /// Get LLM cache statistics
@@ -453,11 +652,109 @@ impl NoraAgent {
         Ok((response, actions))
     }
 
+    async fn process_cinematic_brief(
+        &self,
+        request: &NoraRequest,
+    ) -> Result<(String, Vec<ExecutiveAction>)> {
+        let context_value = request.context.clone().ok_or_else(|| {
+            NoraError::ConfigError(
+                "Cinematic brief requests require a context payload with project metadata".into(),
+            )
+        })?;
+
+        let ctx: CinematicBriefContext = serde_json::from_value(context_value).map_err(|err| {
+            NoraError::ConfigError(format!("Invalid cinematic brief context: {err}"))
+        })?;
+
+        let service = self.cinematics_service()?;
+        let create_payload = CreateCinematicBrief {
+            project_id: ctx.project_id,
+            requester_id: ctx
+                .requester_id
+                .clone()
+                .unwrap_or_else(|| "executive-team".to_string()),
+            nora_session_id: Some(request.session_id.clone()),
+            title: ctx.title.clone(),
+            summary: ctx.summary.clone(),
+            script: ctx.script.clone(),
+            asset_ids: ctx.asset_ids.clone(),
+            duration_seconds: ctx.duration_seconds,
+            fps: ctx.fps,
+            style_tags: ctx.style_tags.clone(),
+            metadata: ctx.metadata.clone(),
+        };
+
+        let mut brief = service
+            .create_brief(create_payload)
+            .await
+            .map_err(|err| NoraError::ExecutionError(format!("Failed to log cinematic brief: {err}")))?;
+
+        if ctx.auto_render.unwrap_or(service.auto_render_enabled()) {
+            brief = service
+                .trigger_render(brief.id)
+                .await
+                .map_err(|err| NoraError::ExecutionError(format!("Render failed: {err}")))?;
+        }
+
+        let _ = self
+            .coordination_manager
+            .request_task_handoff(
+                self.id.to_string(),
+                "master_cinematographer".into(),
+                brief.id.to_string(),
+                json!({
+                    "briefId": brief.id,
+                    "projectId": brief.project_id,
+                    "status": format!("{:?}", brief.status),
+                }),
+            )
+            .await;
+
+        let message = format!(
+            "I've prepared cinematic brief '{}' for project {}. Current status: {:?}.",
+            brief.title, brief.project_id, brief.status
+        );
+
+        let action = ExecutiveAction {
+            action_id: brief.id.to_string(),
+            action_type: "CinematicBrief".into(),
+            description: format!(
+                "Review cinematic brief '{}' and coordinate with the Master Cinematographer",
+                brief.title
+            ),
+            parameters: json!({
+                "briefId": brief.id,
+                "projectId": brief.project_id,
+                "status": format!("{:?}", brief.status),
+            }),
+            requires_approval: false,
+            estimated_duration: Some("review in 10 min".into()),
+            assigned_to: Some("master_cinematographer".into()),
+        };
+
+        Ok((message, vec![action]))
+    }
+
     async fn process_strategy_planning(
         &self,
         request: &NoraRequest,
     ) -> Result<(String, Vec<ExecutiveAction>)> {
-        // Use LLM for strategic planning if available
+        let actions = vec![ExecutiveAction {
+            action_id: Uuid::new_v4().to_string(),
+            action_type: "StrategicReview".to_string(),
+            description: "Schedule strategic review session with key stakeholders".to_string(),
+            parameters: serde_json::json!({
+                "duration": "2 hours",
+                "participants": ["Executive Team", "Project Leads"]
+            }),
+            requires_approval: true,
+            estimated_duration: Some("2 hours".to_string()),
+            assigned_to: Some("Strategy Team".to_string()),
+        }];
+
+        // Use LLM for strategic planning if available. Otherwise fall back to
+        // deterministic guidance but still emit the strategic actions so the
+        // orchestration graph has material to render.
         if self.llm.is_some() {
             let strategic_prompt = format!(
                 "Provide strategic planning analysis and recommendations for: {}",
@@ -466,25 +763,11 @@ impl NoraAgent {
 
             let response = self.generate_llm_response(request, &strategic_prompt).await;
 
-            // Generate strategic actions
-            let actions = vec![ExecutiveAction {
-                action_id: Uuid::new_v4().to_string(),
-                action_type: "StrategicReview".to_string(),
-                description: "Schedule strategic review session with key stakeholders".to_string(),
-                parameters: serde_json::json!({
-                    "duration": "2 hours",
-                    "participants": ["Executive Team", "Project Leads"]
-                }),
-                requires_approval: true,
-                estimated_duration: Some("2 hours".to_string()),
-                assigned_to: Some("Strategy Team".to_string()),
-            }];
-
-            Ok((response, actions))
-        } else {
-            let response = "Strategic analysis in progress. I recommend scheduling a comprehensive review session to align on priorities and resource allocation.".to_string();
-            Ok((response, vec![]))
+            return Ok((response, actions));
         }
+
+        let response = "Strategic analysis in progress. I recommend scheduling a comprehensive review session to align on priorities and resource allocation.".to_string();
+        Ok((response, actions))
     }
 
     async fn process_performance_analysis(&self, request: &NoraRequest) -> Result<String> {
@@ -967,6 +1250,89 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             kickoff_tasks.len(),
             board_name
         ))
+    }
+
+    /// Run rapid prototyping playbook (context sync + project bootstrap + LLM summary)
+    pub async fn run_rapid_playbook(
+        &self,
+        playbook: RapidPlaybookRequest,
+    ) -> Result<RapidPlaybookResult> {
+        let projects_synced = self.sync_live_context().await.unwrap_or(0);
+
+        let mut created_project = false;
+        let mut created_message = None;
+        if let Some(executor) = &self.executor {
+            if executor
+                .find_project_record_by_name(&playbook.project_name)
+                .await?
+                .is_none()
+            {
+                let message = self.bootstrap_project(&playbook.project_name).await?;
+                created_project = true;
+                created_message = Some(message);
+            }
+        }
+
+        let objectives = if playbook.objectives.is_empty() {
+            "accelerate prototyping throughput".to_string()
+        } else {
+            playbook.objectives.join(", ")
+        };
+
+        let mut narrative = format!(
+            "Prepare a rapid prototyping action plan for '{}'. Objectives: {}.",
+            playbook.project_name, objectives
+        );
+        if let Some(notes) = &playbook.notes {
+            narrative.push_str(" Additional context: ");
+            narrative.push_str(notes);
+        }
+        if let Some(repo) = &playbook.repo_hint {
+            narrative.push_str(&format!(" Repository focus: {}.", repo));
+        }
+
+        let synthetic_request = NoraRequest {
+            request_id: format!("playbook-{}", Uuid::new_v4()),
+            session_id: "rapid-playbook".to_string(),
+            request_type: NoraRequestType::StrategyPlanning,
+            content: narrative.clone(),
+            context: Some(json!({
+                "project": playbook.project_name,
+                "objectives": playbook.objectives,
+                "repo_hint": playbook.repo_hint,
+            })),
+            voice_enabled: false,
+            priority: RequestPriority::Executive,
+            timestamp: Utc::now(),
+        };
+
+        let summary = self.generate_llm_response(&synthetic_request, &narrative).await;
+
+        Ok(RapidPlaybookResult {
+            summary,
+            created_project,
+            created_message,
+            projects_synced,
+        })
+    }
+
+    pub async fn graph_plan_summaries(&self) -> Vec<GraphPlanSummary> {
+        self.graph_orchestrator.list_plans().await
+    }
+
+    pub async fn graph_plan_detail(&self, plan_id: &str) -> Option<GraphPlan> {
+        self.graph_orchestrator.get_plan(plan_id).await
+    }
+
+    pub async fn update_graph_node_status(
+        &self,
+        plan_id: &str,
+        node_id: &str,
+        status: GraphNodeStatus,
+    ) -> Result<GraphPlan> {
+        self.graph_orchestrator
+            .update_node_status(plan_id, node_id, status)
+            .await
     }
 
     async fn add_project_to_context(&self, project: &Project) {

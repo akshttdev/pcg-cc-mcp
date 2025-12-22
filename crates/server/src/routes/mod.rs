@@ -30,6 +30,7 @@ pub mod task_templates;
 pub mod tasks;
 pub mod users;
 pub mod permissions;
+pub mod cinematics;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -70,6 +71,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .nest("/permissions", permissions::router(&deployment))
         .nest("/images", images::routes())
         .merge(nora::nora_routes())
+        .merge(cinematics::router(&deployment))
         .merge(comments::router())
         .merge(activity::router())
         .merge(admin_routes)

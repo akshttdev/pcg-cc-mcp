@@ -12,6 +12,7 @@ pub mod memory;
 pub mod personality;
 pub mod tools;
 pub mod voice;
+pub mod graph;
 
 #[cfg(test)]
 mod agent_tests;
@@ -29,6 +30,10 @@ pub use coordination::{CoordinationEvent, CoordinationManager};
 pub use executor::{
     BoardInfo, PodInfo, ProjectDetails, ProjectInfo, ProjectStats, TaskDefinition, TaskExecutor,
     TaskInfo,
+};
+pub use graph::{
+    GraphEdge, GraphNode, GraphNodeStatus, GraphPlan, GraphPlanStatus, GraphPlanSummary,
+    GraphOrchestrator,
 };
 pub use memory::{ConversationMemory, ExecutiveContext};
 pub use personality::{BritishPersonality, PersonalityConfig};

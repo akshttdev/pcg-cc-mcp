@@ -30,11 +30,14 @@ use executors::{
         coding_agent_follow_up::CodingAgentFollowUpRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
+    executors::BaseCodingAgent,
     profile::ExecutorProfileId,
 };
 use futures_util::TryStreamExt;
 use git2::BranchType;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use services::services::{
     container::ContainerService,
     git::ConflictOp,
@@ -45,6 +48,8 @@ use sqlx::Error as SqlxError;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use nora::coordination::{AgentStatus, CoordinationEvent};
+use crate::routes::nora::emit_coordination_event;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_task_attempt_middleware};
 
@@ -170,6 +175,8 @@ pub async fn create_task_attempt(
 
     tracing::info!("Started execution process {}", execution_process.id);
 
+    publish_execution_events(&executor_profile_id, &task_attempt).await;
+
     Ok(ResponseJson(ApiResponse::success(task_attempt)))
 }
 
@@ -277,7 +284,7 @@ pub async fn follow_up(
     let follow_up_request = CodingAgentFollowUpRequest {
         prompt,
         session_id,
-        executor_profile_id,
+        executor_profile_id: executor_profile_id.clone(),
     };
 
     let follow_up_action = ExecutorAction::new(
@@ -293,6 +300,8 @@ pub async fn follow_up(
             &ExecutionProcessRunReason::CodingAgent,
         )
         .await?;
+
+    publish_execution_events(&executor_profile_id, &task_attempt).await;
 
     // Clear any persisted follow-up draft for this attempt to avoid stale UI after manual send
     let _ = FollowUpDraft::clear_after_send(&deployment.db().pool, task_attempt.id).await;
@@ -1750,4 +1759,45 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .nest("/{id}", task_attempt_id_router);
 
     Router::new().nest("/task-attempts", task_attempts_router)
+}
+
+async fn publish_execution_events(
+    executor_profile_id: &ExecutorProfileId,
+    task_attempt: &TaskAttempt,
+) {
+    let agent_id = executor_profile_id.executor.to_string();
+    let capabilities = capabilities_for_agent(&executor_profile_id.executor);
+
+    emit_coordination_event(CoordinationEvent::AgentStatusUpdate {
+        agent_id: agent_id.clone(),
+        status: AgentStatus::Busy,
+        capabilities: capabilities.clone(),
+        timestamp: Utc::now(),
+    })
+    .await;
+
+    emit_coordination_event(CoordinationEvent::TaskHandoff {
+        from_agent: "NORA".to_string(),
+        to_agent: agent_id,
+        task_id: task_attempt.task_id.to_string(),
+        context: json!({
+            "taskAttemptId": task_attempt.id,
+            "executor": executor_profile_id.executor,
+            "projectId": task_attempt.task_id,
+        }),
+        timestamp: Utc::now(),
+    })
+    .await;
+}
+
+fn capabilities_for_agent(agent: &BaseCodingAgent) -> Vec<String> {
+    match agent {
+        BaseCodingAgent::ClaudeCode
+        | BaseCodingAgent::Codex
+        | BaseCodingAgent::Cursor
+        | BaseCodingAgent::Opencode
+        | BaseCodingAgent::QwenCode => vec!["coding".into(), "git".into()],
+        BaseCodingAgent::Amp | BaseCodingAgent::Duck => vec!["automation".into(), "ops".into()],
+        BaseCodingAgent::Gemini => vec!["analysis".into(), "multimodal".into()],
+    }
 }

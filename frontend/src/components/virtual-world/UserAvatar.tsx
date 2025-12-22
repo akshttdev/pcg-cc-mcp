@@ -263,7 +263,11 @@ export function UserAvatar({
 
   return (
     <group ref={groupRef} position={position}>
-      <HumanoidAvatar color={color} animationRef={animationStateRef} />
+      <HumanoidAvatar
+        color={color}
+        animationRef={animationStateRef}
+        showJetpack={canFly && (flightModeRef.current || !isGroundedRef.current)}
+      />
       {trailPoints.length >= 2 && (
         <Line
           points={trailPoints}
@@ -280,14 +284,16 @@ export function UserAvatar({
 interface HumanoidAvatarProps {
   color: string;
   animationRef: React.MutableRefObject<AnimationDescriptor>;
+  showJetpack?: boolean;
 }
 
-function HumanoidAvatar({ color, animationRef }: HumanoidAvatarProps) {
-  const headRef = useRef<THREE.Mesh>(null);
+function HumanoidAvatar({ color, animationRef, showJetpack = false }: HumanoidAvatarProps) {
+  const headRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Group>(null);
   const rightArmRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Group>(null);
   const rightLegRef = useRef<THREE.Group>(null);
+  const torsoRef = useRef<THREE.Mesh>(null);
 
   useFrame((state) => {
     const { mode, intensity } = animationRef.current;
@@ -313,36 +319,141 @@ function HumanoidAvatar({ color, animationRef }: HumanoidAvatarProps) {
           : Math.sin(state.clock.elapsedTime * 1.5) * 0.02;
       headRef.current.position.y = 2.4 + hover;
     }
+
+    // Breathing animation for torso
+    if (torsoRef.current && mode === 'idle') {
+      const breathe = Math.sin(state.clock.elapsedTime * 0.8) * 0.02 + 1;
+      torsoRef.current.scale.y = breathe;
+    }
   });
 
   return (
     <group>
-      <mesh ref={headRef} position={[0, 2.4, 0]} castShadow receiveShadow>
-        <sphereGeometry args={[0.55, 32, 32]} />
-        <meshStandardMaterial
-          color={color}
-          emissive={color}
-          emissiveIntensity={0.5}
-          metalness={0.2}
-          roughness={0.3}
-        />
-      </mesh>
+      {/* Head with facial features */}
+      <group ref={headRef} position={[0, 2.4, 0]}>
+        {/* Main head sphere */}
+        <mesh castShadow receiveShadow>
+          <sphereGeometry args={[0.55, 32, 32]} />
+          <meshStandardMaterial
+            color={color}
+            emissive={color}
+            emissiveIntensity={0.5}
+            metalness={0.2}
+            roughness={0.3}
+          />
+        </mesh>
 
-      <mesh position={[0, 1.1, 0]} castShadow receiveShadow>
-        <capsuleGeometry args={[0.55, 1.7, 16, 32]} />
-        <meshStandardMaterial
-          color={color}
-          emissive={color}
-          emissiveIntensity={0.35}
-          metalness={0.15}
-          roughness={0.35}
-        />
-      </mesh>
+        {/* Eyes */}
+        <mesh position={[-0.2, 0.1, 0.45]}>
+          <sphereGeometry args={[0.08, 16, 16]} />
+          <meshStandardMaterial
+            color="#ffffff"
+            emissive="#00ffff"
+            emissiveIntensity={0.8}
+          />
+        </mesh>
+        <mesh position={[0.2, 0.1, 0.45]}>
+          <sphereGeometry args={[0.08, 16, 16]} />
+          <meshStandardMaterial
+            color="#ffffff"
+            emissive="#00ffff"
+            emissiveIntensity={0.8}
+          />
+        </mesh>
 
+        {/* Visor/Face plate */}
+        <mesh position={[0, 0, 0.52]} rotation={[0, 0, 0]}>
+          <planeGeometry args={[0.8, 0.4]} />
+          <meshPhysicalMaterial
+            color="#00ffff"
+            transmission={0.9}
+            roughness={0.05}
+            metalness={0.8}
+            transparent
+            opacity={0.3}
+            emissive="#00ffff"
+            emissiveIntensity={0.2}
+          />
+        </mesh>
+
+        {/* Antenna/Communication device */}
+        <group position={[0, 0.55, -0.2]}>
+          <mesh>
+            <cylinderGeometry args={[0.02, 0.02, 0.3, 8]} />
+            <meshStandardMaterial
+              color="#00ffff"
+              emissive="#00ffff"
+              emissiveIntensity={0.6}
+              metalness={0.9}
+            />
+          </mesh>
+          <mesh position={[0, 0.18, 0]}>
+            <sphereGeometry args={[0.05, 16, 16]} />
+            <meshBasicMaterial color="#00ffff" />
+            <pointLight intensity={0.5} color="#00ffff" distance={3} />
+          </mesh>
+        </group>
+      </group>
+
+      {/* Torso with tool belt */}
+      <group position={[0, 1.1, 0]}>
+        <mesh ref={torsoRef} castShadow receiveShadow>
+          <capsuleGeometry args={[0.55, 1.7, 16, 32]} />
+          <meshStandardMaterial
+            color={color}
+            emissive={color}
+            emissiveIntensity={0.35}
+            metalness={0.15}
+            roughness={0.35}
+          />
+        </mesh>
+
+        {/* Tool belt */}
+        <mesh position={[0, -0.4, 0]} rotation={[0, 0, 0]}>
+          <torusGeometry args={[0.6, 0.08, 16, 32]} />
+          <meshStandardMaterial
+            color="#1a1a1a"
+            metalness={0.9}
+            roughness={0.2}
+            emissive="#00ffff"
+            emissiveIntensity={0.1}
+          />
+        </mesh>
+
+        {/* Belt pouches */}
+        <mesh position={[0.4, -0.4, 0.4]}>
+          <boxGeometry args={[0.15, 0.15, 0.1]} />
+          <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.3} />
+        </mesh>
+        <mesh position={[-0.4, -0.4, 0.4]}>
+          <boxGeometry args={[0.15, 0.15, 0.1]} />
+          <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.3} />
+        </mesh>
+
+        {/* Chest light indicator */}
+        <mesh position={[0, 0.5, 0.5]}>
+          <circleGeometry args={[0.08, 16]} />
+          <meshBasicMaterial color="#00ffff" transparent opacity={0.8} />
+          <pointLight intensity={0.3} color="#00ffff" distance={2} />
+        </mesh>
+      </group>
+
+      {/* Arms with gloves */}
       <group ref={leftArmRef} position={[0.85, 1.2, 0]}>
         <mesh castShadow>
           <capsuleGeometry args={[0.18, 1.0, 12, 16]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25} />
+        </mesh>
+        {/* Glove */}
+        <mesh position={[0, -0.6, 0]}>
+          <sphereGeometry args={[0.2, 16, 16]} />
+          <meshStandardMaterial
+            color="#1a1a1a"
+            metalness={0.9}
+            roughness={0.2}
+            emissive="#00ffff"
+            emissiveIntensity={0.1}
+          />
         </mesh>
       </group>
       <group ref={rightArmRef} position={[-0.85, 1.2, 0]}>
@@ -350,12 +461,38 @@ function HumanoidAvatar({ color, animationRef }: HumanoidAvatarProps) {
           <capsuleGeometry args={[0.18, 1.0, 12, 16]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25} />
         </mesh>
+        {/* Glove */}
+        <mesh position={[0, -0.6, 0]}>
+          <sphereGeometry args={[0.2, 16, 16]} />
+          <meshStandardMaterial
+            color="#1a1a1a"
+            metalness={0.9}
+            roughness={0.2}
+            emissive="#00ffff"
+            emissiveIntensity={0.1}
+          />
+        </mesh>
       </group>
 
+      {/* Legs with boots */}
       <group ref={leftLegRef} position={[0.35, 0, 0]}>
         <mesh castShadow>
           <capsuleGeometry args={[0.22, 1.2, 12, 16]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25} />
+        </mesh>
+        {/* Boot */}
+        <mesh position={[0, -0.7, 0.1]}>
+          <boxGeometry args={[0.28, 0.2, 0.4]} />
+          <meshStandardMaterial
+            color="#1a1a1a"
+            metalness={0.9}
+            roughness={0.2}
+          />
+        </mesh>
+        {/* Boot accent strip */}
+        <mesh position={[0, -0.7, 0.3]}>
+          <boxGeometry args={[0.3, 0.05, 0.05]} />
+          <meshBasicMaterial color="#00ffff" />
         </mesh>
       </group>
       <group ref={rightLegRef} position={[-0.35, 0, 0]}>
@@ -363,7 +500,94 @@ function HumanoidAvatar({ color, animationRef }: HumanoidAvatarProps) {
           <capsuleGeometry args={[0.22, 1.2, 12, 16]} />
           <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25} />
         </mesh>
+        {/* Boot */}
+        <mesh position={[0, -0.7, 0.1]}>
+          <boxGeometry args={[0.28, 0.2, 0.4]} />
+          <meshStandardMaterial
+            color="#1a1a1a"
+            metalness={0.9}
+            roughness={0.2}
+          />
+        </mesh>
+        {/* Boot accent strip */}
+        <mesh position={[0, -0.7, 0.3]}>
+          <boxGeometry args={[0.3, 0.05, 0.05]} />
+          <meshBasicMaterial color="#00ffff" />
+        </mesh>
       </group>
+
+      {/* Jetpack (visible during flight) */}
+      {showJetpack && (
+        <group position={[0, 1.2, -0.6]}>
+          {/* Main jetpack body */}
+          <mesh>
+            <boxGeometry args={[0.8, 1.2, 0.4]} />
+            <meshStandardMaterial
+              color="#1a1a1a"
+              metalness={0.9}
+              roughness={0.2}
+              emissive="#0080ff"
+              emissiveIntensity={0.3}
+            />
+          </mesh>
+
+          {/* Fuel tanks */}
+          <mesh position={[-0.25, 0, 0]}>
+            <cylinderGeometry args={[0.15, 0.15, 1.0, 16]} />
+            <meshStandardMaterial
+              color="#0a2f4a"
+              metalness={0.8}
+              roughness={0.3}
+              emissive="#00b4ff"
+              emissiveIntensity={0.4}
+            />
+          </mesh>
+          <mesh position={[0.25, 0, 0]}>
+            <cylinderGeometry args={[0.15, 0.15, 1.0, 16]} />
+            <meshStandardMaterial
+              color="#0a2f4a"
+              metalness={0.8}
+              roughness={0.3}
+              emissive="#00b4ff"
+              emissiveIntensity={0.4}
+            />
+          </mesh>
+
+          {/* Thrusters */}
+          <mesh position={[-0.25, -0.6, 0]}>
+            <coneGeometry args={[0.18, 0.3, 8]} />
+            <meshBasicMaterial color="#00ffff" transparent opacity={0.8} />
+            <pointLight intensity={1} color="#00ffff" distance={5} />
+          </mesh>
+          <mesh position={[0.25, -0.6, 0]}>
+            <coneGeometry args={[0.18, 0.3, 8]} />
+            <meshBasicMaterial color="#00ffff" transparent opacity={0.8} />
+            <pointLight intensity={1} color="#00ffff" distance={5} />
+          </mesh>
+
+          {/* Exhaust particles */}
+          {animationRef.current.mode === 'fly' && (
+            <>
+              <mesh position={[-0.25, -0.8, 0]}>
+                <sphereGeometry args={[0.1, 8, 8]} />
+                <meshBasicMaterial
+                  color="#00b4ff"
+                  transparent
+                  opacity={0.6}
+                />
+              </mesh>
+              <mesh position={[0.25, -0.8, 0]}>
+                <sphereGeometry args={[0.1, 8, 8]} />
+                <meshBasicMaterial
+                  color="#00b4ff"
+                  transparent
+                  opacity={0.6}
+                />
+              </mesh>
+            </>
+          )}
+        </group>
+      )}
     </group>
   );
 }

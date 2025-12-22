@@ -441,6 +441,12 @@ impl CoordinationManager {
         Ok(())
     }
 
+    /// Emit a raw coordination event for external callers
+    pub async fn emit_event(&self, event: CoordinationEvent) -> crate::Result<()> {
+        let _ = self.event_sender.send(event);
+        Ok(())
+    }
+
     /// Subscribe to coordination events
     pub async fn subscribe_to_events(&self) -> broadcast::Receiver<CoordinationEvent> {
         self.event_sender.subscribe()

@@ -2,6 +2,7 @@ pub mod activity;
 pub mod agent_wallet;
 pub mod comment;
 pub mod custom_field_definition;
+pub mod cinematic_brief;
 pub mod execution_process;
 pub mod execution_process_logs;
 pub mod executor_session;

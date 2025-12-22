@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
     extract::{Path, State, WebSocketUpgrade},
     response::{Response, sse::{Event, Sse}},
-    routing::{get, post},
+    routing::{get, post, patch},
 };
 use futures::stream::Stream;
 use chrono::{DateTime, Utc};
@@ -14,14 +14,16 @@ use db::models::project::Project;
 use deployment::Deployment;
 use nora::{
     NoraAgent, NoraConfig, NoraError,
-    agent::{NoraRequest, NoraRequestType, NoraResponse, RequestPriority},
+    agent::{NoraRequest, NoraRequestType, NoraResponse, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority},
     brain::LLMConfig,
     coordination::{AgentCoordinationState, CoordinationEvent, CoordinationStats},
+    graph::{GraphNodeStatus, GraphPlan, GraphPlanSummary},
     memory::{BudgetStatus, ProjectContext, ProjectStatus},
     personality::PersonalityConfig,
     tools::{NoraExecutiveTool, ToolExecutionResult},
     voice::{SpeechResponse, VoiceConfig, VoiceEngine, VoiceError, VoiceInteraction},
 };
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::RwLock;
@@ -45,6 +47,54 @@ static CHAT_RATE_LIMITER: tokio::sync::OnceCell<Arc<TokenBucket>> =
 /// Global rate limiter for voice synthesis (30 req/min, refill 1 per 2 seconds)
 static VOICE_RATE_LIMITER: tokio::sync::OnceCell<Arc<TokenBucket>> =
     tokio::sync::OnceCell::const_new();
+
+#[derive(Clone)]
+struct NoraModePreset {
+    id: &'static str,
+    label: &'static str,
+    description: &'static str,
+    config: NoraConfig,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NoraModeSummary {
+    id: &'static str,
+    label: &'static str,
+    description: &'static str,
+}
+
+static NORA_MODE_PRESETS: Lazy<Vec<NoraModePreset>> = Lazy::new(|| {
+    let default_cfg = NoraConfig::default();
+    let mut rapid_cfg = NoraConfig::default();
+    rapid_cfg.voice = VoiceConfig::development();
+    rapid_cfg.personality = PersonalityConfig::casual_british();
+
+    let mut boardroom_cfg = NoraConfig::default();
+    boardroom_cfg.voice = VoiceConfig::british_executive();
+    boardroom_cfg.personality = PersonalityConfig::british_executive_assistant();
+
+    vec![
+        NoraModePreset {
+            id: "rapid-builder",
+            label: "Rapid Builder",
+            description: "Fast prototyping mode with casual tone and lightweight voice stack",
+            config: rapid_cfg,
+        },
+        NoraModePreset {
+            id: "boardroom",
+            label: "Boardroom",
+            description: "High-formality executive briefing mode",
+            config: boardroom_cfg,
+        },
+        NoraModePreset {
+            id: "standard",
+            label: "Standard",
+            description: "Balanced configuration used by default",
+            config: default_cfg,
+        },
+    ]
+});
 
 /// Nora manager for coordinating agent instances
 #[derive(Clone)]
@@ -136,6 +186,97 @@ impl NoraManager {
             None
         }
     }
+
+    /// Sync Nora's context with live project data
+    pub async fn sync_live_context(&self) -> Result<usize, NoraError> {
+        let agent = self.agent.read().await;
+        if let Some(nora) = agent.as_ref() {
+            nora.sync_live_context().await
+        } else {
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
+        }
+    }
+
+    /// Run rapid prototyping playbook
+    pub async fn run_rapid_playbook(
+        &self,
+        payload: RapidPlaybookRequest,
+    ) -> Result<RapidPlaybookResult, NoraError> {
+        let agent = self.agent.read().await;
+        if let Some(nora) = agent.as_ref() {
+            nora.run_rapid_playbook(payload).await
+        } else {
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
+        }
+    }
+
+    /// Reinitialize Nora with a new config (optionally preserving memory/context)
+    pub async fn reinitialize_with_config(
+        &self,
+        config: NoraConfig,
+        preserve_memory: bool,
+    ) -> Result<String, NoraError> {
+        let mut agent_guard = self.agent.write().await;
+        let new_agent = NoraAgent::new(config).await?;
+
+        if preserve_memory {
+            if let Some(old) = agent_guard.as_ref() {
+                let old_memory = old.memory.read().await.clone();
+                let old_context = old.context.read().await.clone();
+                *new_agent.memory.write().await = old_memory;
+                *new_agent.context.write().await = old_context;
+            }
+        }
+
+        let id = new_agent.id.to_string();
+        *agent_guard = Some(new_agent);
+        Ok(id)
+    }
+
+    pub async fn list_graph_plans(&self) -> Result<Vec<GraphPlanSummary>, NoraError> {
+        let agent = self.agent.read().await;
+        if let Some(nora) = agent.as_ref() {
+            Ok(nora.graph_plan_summaries().await)
+        } else {
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
+        }
+    }
+
+    pub async fn get_graph_plan(&self, plan_id: &str) -> Result<GraphPlan, NoraError> {
+        let agent = self.agent.read().await;
+        if let Some(nora) = agent.as_ref() {
+            nora
+                .graph_plan_detail(plan_id)
+                .await
+                .ok_or_else(|| NoraError::ConfigError("Plan not found".to_string()))
+        } else {
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
+        }
+    }
+
+    pub async fn update_graph_node_status(
+        &self,
+        plan_id: &str,
+        node_id: &str,
+        status: GraphNodeStatus,
+    ) -> Result<GraphPlan, NoraError> {
+        let agent = self.agent.read().await;
+        if let Some(nora) = agent.as_ref() {
+            nora.update_graph_node_status(plan_id, node_id, status).await
+        } else {
+            Err(NoraError::NotInitialized(
+                "Nora agent not initialized".to_string(),
+            ))
+        }
+    }
 }
 
 /// Get or initialize chat rate limiter
@@ -176,6 +317,16 @@ pub fn nora_routes() -> Router<DeploymentImpl> {
         .route("/nora/voice/interaction", post(voice_interaction))
         .route("/nora/tools/execute", post(execute_executive_tool))
         .route("/nora/tools/available", get(get_available_tools))
+        .route("/nora/context/sync", post(sync_live_context_handler))
+        .route("/nora/modes", get(list_modes_handler))
+        .route("/nora/modes/apply", post(apply_mode_handler))
+        .route("/nora/playbooks/rapid", post(rapid_playbook_handler))
+        .route("/nora/graph/plans", get(list_graph_plans_handler))
+        .route("/nora/graph/plans/{plan_id}", get(get_graph_plan_handler))
+        .route(
+            "/nora/graph/plans/{plan_id}/nodes/{node_id}",
+            patch(update_graph_node_handler),
+        )
         .route("/nora/coordination/stats", get(get_coordination_stats))
         .route("/nora/coordination/agents", get(get_coordination_agents))
         .route("/nora/coordination/events", get(get_coordination_events_ws))
@@ -217,6 +368,45 @@ pub struct NoraStatusResponse {
     pub coordination_enabled: bool,
     pub executive_mode: bool,
     pub personality_mode: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextSyncResponse {
+    pub projects_refreshed: usize,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyModeRequest {
+    pub mode_id: String,
+    #[serde(default)]
+    pub preserve_memory: bool,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyModeResponse {
+    pub active_mode: String,
+    pub nora_id: String,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct RapidPlaybookBody {
+    pub project_name: String,
+    #[serde(default)]
+    pub objectives: Vec<String>,
+    #[serde(default)]
+    pub repo_hint: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateNodeStatusBody {
+    pub status: GraphNodeStatus,
 }
 
 /// Chat request to Nora
@@ -461,6 +651,125 @@ pub async fn get_nora_status(
             personality_mode: "Not initialized".to_string(),
         }))
     }
+}
+
+async fn sync_live_context_handler(
+    State(_state): State<DeploymentImpl>,
+) -> Result<Json<ContextSyncResponse>, ApiError> {
+    let manager = NoraManager::new().await;
+    let refreshed = manager
+        .sync_live_context()
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    Ok(Json(ContextSyncResponse {
+        projects_refreshed: refreshed,
+    }))
+}
+
+async fn list_modes_handler() -> Json<Vec<NoraModeSummary>> {
+    let summaries = NORA_MODE_PRESETS
+        .iter()
+        .map(|preset| NoraModeSummary {
+            id: preset.id,
+            label: preset.label,
+            description: preset.description,
+        })
+        .collect();
+    Json(summaries)
+}
+
+async fn apply_mode_handler(
+    Json(body): Json<ApplyModeRequest>,
+) -> Result<Json<ApplyModeResponse>, ApiError> {
+    let manager = NoraManager::new().await;
+    let preset = NORA_MODE_PRESETS
+        .iter()
+        .find(|preset| preset.id == body.mode_id)
+        .ok_or_else(|| ApiError::BadRequest("Unknown Nora mode".to_string()))?;
+
+    let nora_id = manager
+        .reinitialize_with_config(preset.config.clone(), body.preserve_memory)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    Ok(Json(ApplyModeResponse {
+        active_mode: preset.label.to_string(),
+        nora_id,
+    }))
+}
+
+async fn rapid_playbook_handler(
+    Json(body): Json<RapidPlaybookBody>,
+) -> Result<Json<RapidPlaybookResult>, ApiError> {
+    let manager = NoraManager::new().await;
+    let payload = RapidPlaybookRequest {
+        project_name: body.project_name,
+        objectives: body.objectives,
+        repo_hint: body.repo_hint,
+        notes: body.notes,
+    };
+
+    let result = manager
+        .run_rapid_playbook(payload)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    Ok(Json(result))
+}
+
+async fn list_graph_plans_handler(
+    State(_state): State<DeploymentImpl>,
+) -> Result<Json<Vec<GraphPlanSummary>>, ApiError> {
+    let manager = NoraManager::new().await;
+    let plans = manager
+        .list_graph_plans()
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    Ok(Json(plans))
+}
+
+async fn get_graph_plan_handler(
+    State(_state): State<DeploymentImpl>,
+    Path(plan_id): Path<String>,
+) -> Result<Json<GraphPlan>, ApiError> {
+    let manager = NoraManager::new().await;
+    let plan = manager
+        .get_graph_plan(&plan_id)
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    Ok(Json(plan))
+}
+
+async fn update_graph_node_handler(
+    State(_state): State<DeploymentImpl>,
+    Path((plan_id, node_id)): Path<(String, String)>,
+    Json(body): Json<UpdateNodeStatusBody>,
+) -> Result<Json<GraphPlan>, ApiError> {
+    let manager = NoraManager::new().await;
+    let plan = manager
+        .update_graph_node_status(&plan_id, &node_id, body.status.clone())
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    if let Some(node) = plan.nodes.iter().find(|node| node.id == node_id) {
+        emit_coordination_event(CoordinationEvent::AgentDirectiveIssued {
+            agent_id: node
+                .agent
+                .clone()
+                .unwrap_or_else(|| "NORA_GRAPH".to_string()),
+            issued_by: "NORA_GRAPH".to_string(),
+            content: format!(
+                "Node '{}' advanced to {:?}",
+                node.label, body.status
+            ),
+            priority: Some(format!("{:?}", body.status)),
+            timestamp: Utc::now(),
+        })
+        .await;
+    }
+
+    Ok(Json(plan))
 }
 
 /// Get cache statistics
@@ -1037,6 +1346,18 @@ pub async fn get_personality_config(
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
 
     Ok(Json(nora.config.personality.clone()))
+}
+
+/// Emit a coordination event so other routes can surface activity without recreating handles
+pub async fn emit_coordination_event(event: CoordinationEvent) {
+    if let Some(instance) = NORA_INSTANCE.get() {
+        let agent = instance.read().await;
+        if let Some(nora) = agent.as_ref() {
+            if let Err(err) = nora.coordination_manager.emit_event(event).await {
+                tracing::debug!("Failed to emit coordination event: {}", err);
+            }
+        }
+    }
 }
 
 /// Update personality configuration

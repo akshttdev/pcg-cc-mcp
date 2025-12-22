@@ -1,6 +1,8 @@
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { Grid, Environment, Stars } from '@react-three/drei';
+import { Component, type ReactNode, Suspense, useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { Grid, Environment, Stars, SpotLight } from '@react-three/drei';
+import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-three/postprocessing';
+import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
 import { CommandCenter } from '@/components/virtual-world/CommandCenter';
 import { NoraAvatar } from '@/components/virtual-world/NoraAvatar';
@@ -101,21 +103,72 @@ function AtmosphericLighting() {
   );
 }
 
-function AmbientParticles() {
-  const particleCount = 300;
-  const positions = useMemo(() => {
+// Enhanced particle system with wind effects
+function EnhancedParticles() {
+  const particleCount = 500;
+  const particlesRef = useRef<THREE.Points>(null);
+
+  // Initialize particle positions and types
+  const { positions, colors, sizes } = useMemo(() => {
     const pos = new Float32Array(particleCount * 3);
+    const cols = new Float32Array(particleCount * 3);
+    const szs = new Float32Array(particleCount);
+
+    const particleTypes = [
+      { color: new THREE.Color('#00ffff'), size: 0.3 }, // Dust (cyan)
+      { color: new THREE.Color('#ff8000'), size: 0.5 }, // Sparks (orange)
+      { color: new THREE.Color('#00ff80'), size: 0.2 }, // Data bits (green)
+    ];
+
     for (let i = 0; i < particleCount; i++) {
-      // Spread particles across large area
+      // Initial positions
       pos[i * 3] = (Math.random() - 0.5) * 400;
       pos[i * 3 + 1] = Math.random() * 100 + 10;
       pos[i * 3 + 2] = (Math.random() - 0.5) * 400;
+
+      // Particle type (random distribution)
+      const type = particleTypes[Math.floor(Math.random() * particleTypes.length)];
+      cols[i * 3] = type.color.r;
+      cols[i * 3 + 1] = type.color.g;
+      cols[i * 3 + 2] = type.color.b;
+      szs[i] = type.size;
     }
-    return pos;
+
+    return { positions: pos, colors: cols, sizes: szs };
   }, []);
 
+  // Wind effect animation
+  useFrame((state) => {
+    if (!particlesRef.current) return;
+
+    const time = state.clock.elapsedTime;
+
+    // Wind direction (circular, slowly changing)
+    const windX = Math.sin(time * 0.1) * 0.02;
+    const windZ = Math.cos(time * 0.1) * 0.02;
+    const windY = 0.01; // Slight upward drift
+
+    const positionsAttr = particlesRef.current.geometry.attributes.position;
+
+    for (let i = 0; i < particleCount; i++) {
+      // Apply wind
+      positionsAttr.array[i * 3] += windX;
+      positionsAttr.array[i * 3 + 1] += windY;
+      positionsAttr.array[i * 3 + 2] += windZ;
+
+      // Wrap around boundaries
+      if (positionsAttr.array[i * 3] > 200) positionsAttr.array[i * 3] = -200;
+      if (positionsAttr.array[i * 3] < -200) positionsAttr.array[i * 3] = 200;
+      if (positionsAttr.array[i * 3 + 1] > 110) positionsAttr.array[i * 3 + 1] = 10;
+      if (positionsAttr.array[i * 3 + 2] > 200) positionsAttr.array[i * 3 + 2] = -200;
+      if (positionsAttr.array[i * 3 + 2] < -200) positionsAttr.array[i * 3 + 2] = 200;
+    }
+
+    positionsAttr.needsUpdate = true;
+  });
+
   return (
-    <points>
+    <points ref={particlesRef}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
@@ -123,12 +176,24 @@ function AmbientParticles() {
           array={positions}
           itemSize={3}
         />
+        <bufferAttribute
+          attach="attributes-color"
+          count={particleCount}
+          array={colors}
+          itemSize={3}
+        />
+        <bufferAttribute
+          attach="attributes-size"
+          count={particleCount}
+          array={sizes}
+          itemSize={1}
+        />
       </bufferGeometry>
       <pointsMaterial
         size={0.3}
-        color="#00ffff"
+        vertexColors
         transparent
-        opacity={0.4}
+        opacity={0.5}
         sizeAttenuation
         blending={THREE.AdditiveBlending}
       />
@@ -145,6 +210,7 @@ export function VirtualEnvironmentPage() {
   const [activeInterior, setActiveInterior] = useState<ProjectData | null>(null);
   const [isConsoleInputActive, setIsConsoleInputActive] = useState(false);
   const [consoleFocusVersion, setConsoleFocusVersion] = useState(0);
+  const [postProcessingEnabled, setPostProcessingEnabled] = useState(true);
 
   const updateNoraLine = useCallback((line: string) => {
     setNoraLine(line);
@@ -289,8 +355,21 @@ export function VirtualEnvironmentPage() {
             sectionColor="#0df2ff"
           />
 
-          {/* Ambient particles */}
-          <AmbientParticles />
+          {/* Enhanced particles with wind */}
+          <EnhancedParticles />
+
+          {/* Volumetric lighting from command center (god rays) */}
+          <SpotLight
+            position={[0, 120, 0]}
+            angle={0.6}
+            penumbra={0.5}
+            intensity={2}
+            color="#00ffff"
+            distance={200}
+            castShadow
+            volumetric
+            opacity={0.15}
+          />
 
           {/* Command Center at origin */}
           <CommandCenter />
@@ -313,14 +392,21 @@ export function VirtualEnvironmentPage() {
           ))}
 
           {/* User avatar */}
-        <UserAvatar
-          initialPosition={INITIAL_PLAYER_POSITION}
-          color="#ff8000"
-          onPositionChange={handleUserPositionChange}
-          onInteract={handleAttemptEnter}
-          isSuspended={Boolean(activeInterior || isConsoleInputActive)}
-          canFly
-        />
+          <UserAvatar
+            initialPosition={INITIAL_PLAYER_POSITION}
+            color="#ff8000"
+            onPositionChange={handleUserPositionChange}
+            onInteract={handleAttemptEnter}
+            isSuspended={Boolean(activeInterior || isConsoleInputActive)}
+            canFly
+          />
+
+          {/* Post-processing effects for cyberpunk aesthetic */}
+          {postProcessingEnabled && (
+            <PostProcessingBoundary onError={() => setPostProcessingEnabled(false)}>
+              <PostProcessingEffects />
+            </PostProcessingBoundary>
+          )}
         </Suspense>
       </Canvas>
 
@@ -414,8 +500,68 @@ export function VirtualEnvironmentPage() {
           onExit={exitInterior}
         />
       )}
+
+      {!postProcessingEnabled && (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-yellow-400/40 bg-black/60 px-6 py-2 text-xs uppercase tracking-[0.4em] text-yellow-100">
+          Visual effects disabled — unsupported browser configuration detected
+        </div>
+      )}
     </div>
   );
 }
 
 export default VirtualEnvironmentPage;
+
+function PostProcessingEffects() {
+  return (
+    <EffectComposer multisampling={8}>
+      {/* Bloom - neon glow on emissive materials */}
+      <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur />
+
+      {/* Chromatic Aberration - cyberpunk edge distortion */}
+      <ChromaticAberration
+        blendFunction={BlendFunction.NORMAL}
+        offset={[0.002, 0.002]}
+        radialModulation
+        modulationOffset={0.5}
+      />
+
+      {/* Vignette - cinematic focus */}
+      <Vignette offset={0.1} darkness={0.5} eskil={false} />
+    </EffectComposer>
+  );
+}
+
+type PostProcessingBoundaryProps = {
+  children: ReactNode;
+  onError?: (error: Error) => void;
+};
+
+type PostProcessingBoundaryState = {
+  hasError: boolean;
+};
+
+class PostProcessingBoundary
+  extends Component<PostProcessingBoundaryProps, PostProcessingBoundaryState>
+{
+  constructor(props: PostProcessingBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): PostProcessingBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Disabling post-processing due to runtime error', error);
+    this.props.onError?.(error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
+}

@@ -3,6 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader } from '@/components/ui/loader';
 import {
@@ -14,6 +17,7 @@ import {
   Crown,
   Settings
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface SpeechRecognitionAlternative {
   transcript: string;
@@ -59,6 +63,7 @@ interface NoraResponse {
   voiceResponse?: string; // Base64 encoded audio
   followUpSuggestions: string[];
   contextUpdates: ContextUpdate[];
+  planId?: string;
   timestamp: string;
   processingTimeMs: number;
 }
@@ -71,7 +76,8 @@ type NoraRequestType =
   | 'performanceAnalysis'
   | 'communicationManagement'
   | 'decisionSupport'
-  | 'proactiveNotification';
+  | 'proactiveNotification'
+  | 'cinematicBrief';
 
 type NoraResponseType =
   | 'DirectResponse'
@@ -139,6 +145,15 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
   const [voiceEnabled, setVoiceEnabled] = useState(false); // Disabled due to quota limits
   const [currentInput, setCurrentInput] = useState('');
   const [conversationHistory, setConversationHistory] = useState<ConversationEntry[]>([]);
+  const [interactionMode, setInteractionMode] = useState<'chat' | 'cinematic'>('chat');
+  const [cinematicForm, setCinematicForm] = useState({
+    projectId: '',
+    title: '',
+    summary: '',
+    styleTags: '',
+    assetIds: '',
+    autoRender: true
+  });
 
   const sessionId = useRef(defaultSessionId || `session-${Date.now()}`);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -268,7 +283,11 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
     }]);
   };
 
-  const sendMessage = async (content: string, requestType: NoraRequestType = 'textInteraction') => {
+  const sendMessage = async (
+    content: string,
+    requestType: NoraRequestType = 'textInteraction',
+    context?: Record<string, unknown> | null
+  ) => {
     if (!content.trim() || isLoading) return;
 
     addMessage('user', content);
@@ -282,7 +301,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       requestType,
       voiceEnabled,
       priority: 'normal' as RequestPriority,
-      context: null
+      context: context ?? null
     };
 
     try {
@@ -295,6 +314,9 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       if (response.ok) {
         const noraResponse: NoraResponse = await response.json();
         addMessage('nora', noraResponse.content, noraResponse);
+        if (noraResponse.planId) {
+          toast.info(`Nora initiated orchestration plan ${noraResponse.planId.slice(0, 8)}…`);
+        }
 
         // Play voice response if available
         if (noraResponse.voiceResponse && voiceEnabled && audioRef.current) {
@@ -469,9 +491,69 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(currentInput);
+      if (interactionMode === 'cinematic') {
+        void sendCinematicBrief();
+      } else {
+        void sendMessage(currentInput);
+      }
     }
   };
+
+  const parseList = (value: string) =>
+    value
+      .split(',')
+      .map(entry => entry.trim())
+      .filter(Boolean);
+
+  const sendCinematicBrief = async () => {
+    if (!cinematicForm.projectId.trim() || !cinematicForm.title.trim() || !cinematicForm.summary.trim()) {
+      toast.error('Project ID, title, and summary are required for cinematic briefs.');
+      return;
+    }
+
+    const contextPayload = {
+      projectId: cinematicForm.projectId.trim(),
+      title: cinematicForm.title.trim(),
+      summary: cinematicForm.summary.trim(),
+      script: currentInput.trim() || undefined,
+      assetIds: parseList(cinematicForm.assetIds),
+      styleTags: parseList(cinematicForm.styleTags),
+      autoRender: cinematicForm.autoRender,
+      requesterId: 'executive'
+    };
+
+    await sendMessage(
+      `Cinematic brief: ${cinematicForm.title.trim()}`,
+      'cinematicBrief',
+      contextPayload
+    );
+
+    setCinematicForm(prev => ({
+      ...prev,
+      title: '',
+      summary: '',
+      styleTags: '',
+      assetIds: ''
+    }));
+    setCurrentInput('');
+  };
+
+  const handleSend = () => {
+    if (!canSend || isLoading) return;
+    if (interactionMode === 'cinematic') {
+      void sendCinematicBrief();
+    } else {
+      void sendMessage(currentInput);
+    }
+  };
+
+  const canSend = interactionMode === 'cinematic'
+    ? Boolean(
+        cinematicForm.projectId.trim() &&
+        cinematicForm.title.trim() &&
+        cinematicForm.summary.trim()
+      )
+    : Boolean((currentInput || interimTranscript).trim());
 
   return (
     <Card className={`flex flex-col h-full ${className}`}>
@@ -502,6 +584,110 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
           </div>
         ) : (
           <>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs uppercase text-muted-foreground">Mode</span>
+                  <select
+                    value={interactionMode}
+                    onChange={(event) => setInteractionMode(event.target.value as 'chat' | 'cinematic')}
+                    className="border rounded-md px-2 py-1 text-sm focus:outline-none"
+                  >
+                    <option value="chat">Executive Chat</option>
+                    <option value="cinematic">Cinematic Brief</option>
+                  </select>
+                </div>
+                {interactionMode === 'cinematic' && (
+                  <Badge variant="outline" className="text-purple-600 border-purple-300">
+                    Master Cinematographer engaged
+                  </Badge>
+                )}
+              </div>
+
+              {interactionMode === 'cinematic' && (
+                <div className="space-y-3 rounded-lg border border-purple-200/70 bg-purple-50/40 p-3 text-sm">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor="cinematic-project">Project ID</Label>
+                      <Input
+                        id="cinematic-project"
+                        placeholder="UUID for the target project"
+                        value={cinematicForm.projectId}
+                        onChange={(e) =>
+                          setCinematicForm(prev => ({ ...prev, projectId: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="cinematic-title">Production Title</Label>
+                      <Input
+                        id="cinematic-title"
+                        placeholder="e.g. Neon Metropolis Flythrough"
+                        value={cinematicForm.title}
+                        onChange={(e) =>
+                          setCinematicForm(prev => ({ ...prev, title: e.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="cinematic-summary">Creative Summary</Label>
+                    <Textarea
+                      id="cinematic-summary"
+                      rows={3}
+                      placeholder="Key beats, tone, and deliverable goals"
+                      value={cinematicForm.summary}
+                      onChange={(e) =>
+                        setCinematicForm(prev => ({ ...prev, summary: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor="cinematic-style">Style Tags</Label>
+                      <Input
+                        id="cinematic-style"
+                        placeholder="cyberpunk, volumetric lighting, slow dolly"
+                        value={cinematicForm.styleTags}
+                        onChange={(e) =>
+                          setCinematicForm(prev => ({ ...prev, styleTags: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="cinematic-assets">Asset IDs</Label>
+                      <Input
+                        id="cinematic-assets"
+                        placeholder="Comma separated project asset IDs"
+                        value={cinematicForm.assetIds}
+                        onChange={(e) =>
+                          setCinematicForm(prev => ({ ...prev, assetIds: e.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="cinematic-auto">Auto-render via ComfyUI</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Nora will immediately hand the brief to the Master Cinematographer
+                      </p>
+                    </div>
+                    <Switch
+                      id="cinematic-auto"
+                      checked={cinematicForm.autoRender}
+                      onCheckedChange={(checked) =>
+                        setCinematicForm(prev => ({ ...prev, autoRender: checked }))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Conversation History */}
             <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
               {conversationHistory.map((message, index) => (
@@ -584,10 +770,14 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             <div className="flex gap-2">
               <div className="flex-1">
                 <Textarea
-                  value={currentInput || interimTranscript}
+                  value={interactionMode === 'cinematic' ? currentInput : (currentInput || interimTranscript)}
                   onChange={(e) => setCurrentInput(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Ask Nora anything... (Press Enter to send, Shift+Enter for new line)"
+                  placeholder={
+                    interactionMode === 'cinematic'
+                      ? 'Optional script or beat sheet for this cinematic brief (Shift+Enter for new line)'
+                      : 'Ask Nora anything... (Press Enter to send, Shift+Enter for new line)'
+                  }
                   className="min-h-[40px] max-h-[120px] resize-none"
                   disabled={isLoading}
                 />
@@ -602,8 +792,8 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                   {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                 </Button>
                 <Button
-                  onClick={() => sendMessage(currentInput)}
-                  disabled={!currentInput.trim() || isLoading}
+                  onClick={handleSend}
+                  disabled={!canSend || isLoading}
                   size="icon"
                 >
                   <Send className="w-4 h-4" />

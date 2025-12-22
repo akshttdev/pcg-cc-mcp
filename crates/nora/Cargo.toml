@@ -48,6 +48,7 @@ ring = "0.17"
 # Database integration
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
 db = { path = "../db" }
+cinematics = { path = "../cinematics" }
 
 # British language patterns and NLP
 regex = "1.9"

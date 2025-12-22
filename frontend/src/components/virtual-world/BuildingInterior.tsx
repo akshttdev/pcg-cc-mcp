@@ -4,7 +4,7 @@ import { OrbitControls, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { BUILDING_THEMES, BuildingTheme, BuildingType } from '@/lib/virtual-world/buildingTypes';
 import { INTERIOR_AGENT_POSITIONS, INTERIOR_CAMERA, INTERIOR_ROOM } from '@/lib/virtual-world/constants';
-import { AgentAvatar } from '@/components/virtual-world/AgentAvatar';
+import { VoxelAgentAvatar, type AgentRole } from '@/components/virtual-world/VoxelAgentAvatar';
 
 interface InteriorProject {
   name: string;
@@ -42,15 +42,22 @@ export function BuildingInterior({ project, onExit }: BuildingInteriorProps) {
 
         <Suspense fallback={null}>
           <InteriorRoom project={project} theme={theme} />
-          {INTERIOR_AGENT_POSITIONS.map((pos, index) => (
-            <AgentAvatar
-              key={`${project.name}-agent-${index}`}
-              position={[pos[0], pos[1], pos[2]]}
-              color={theme.interior.agentColor}
-              pulseOffset={index * 0.7}
-              label={`AG-${index + 1}`}
-            />
-          ))}
+          {INTERIOR_AGENT_POSITIONS.map((pos, index) => {
+            const roles: AgentRole[] = ['developer', 'designer', 'analyst'];
+            const role = roles[index % 3];
+            const energy = 0.6 + Math.random() * 0.4; // 60-100% energy
+            return (
+              <VoxelAgentAvatar
+                key={`${project.name}-agent-${index}`}
+                position={[pos[0], pos[1], pos[2]]}
+                role={role}
+                status={index === 0 ? 'working' : 'idle'}
+                pulseOffset={index * 0.7}
+                label={`${role.toUpperCase().slice(0, 3)}-${index + 1}`}
+                energy={energy}
+              />
+            );
+          })}
         </Suspense>
         <OrbitControls enablePan={false} maxPolarAngle={Math.PI / 2.2} />
       </Canvas>
