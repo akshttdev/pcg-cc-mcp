@@ -281,11 +281,14 @@ PROXY_CACHE_PATH=/path/to/proxy/cache
 
 ### MVP (Minimum Viable Product)
 1. ✅ Editron agent profile defined
-2. ⏳ Dropbox link triggers automatic task creation
-3. ⏳ Videos downloaded and analyzed locally
-4. ⏳ Analysis results visible in frontend
-5. ⏳ Manual edit workflow using iMovie
-6. ⏳ Renders exported to multiple aspect ratios
+2. ✅ NORA executive tools wired up (IngestMediaBatch, AnalyzeMediaBatch, GenerateVideoEdits, RenderVideoDeliverables)
+3. ✅ MediaPipelineService integrated and initialized
+4. ✅ OpenAI tool schemas for LLM function calling
+5. ⏳ Dropbox link triggers automatic task creation (webhook needed)
+6. ⏳ Videos downloaded and analyzed locally (basic download works, needs real analysis)
+7. ⏳ Analysis results visible in frontend
+8. ⏳ Manual edit workflow using iMovie
+9. ⏳ Renders exported to multiple aspect ratios
 
 ### Production Ready
 1. Full automation (Dropbox → render)
