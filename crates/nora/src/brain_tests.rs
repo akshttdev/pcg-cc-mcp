@@ -73,11 +73,7 @@ mod tests {
         let client = LLMClient::new(config);
 
         let result = client
-            .generate(
-                "You are a helpful assistant",
-                "Say hello",
-                "No context",
-            )
+            .generate("You are a helpful assistant", "Say hello", "No context")
             .await;
 
         // Should fail without credentials
@@ -88,15 +84,21 @@ mod tests {
     fn test_llm_config_environment_override() {
         // Test that environment variables can override config
         // This is tested indirectly through the apply_llm_overrides function in routes
-        
+
         std::env::set_var("NORA_LLM_MODEL", "gpt-4-turbo");
         std::env::set_var("NORA_LLM_TEMPERATURE", "0.5");
         std::env::set_var("NORA_LLM_MAX_TOKENS", "1500");
 
         // These would be applied in the routes layer
         let model = std::env::var("NORA_LLM_MODEL").unwrap();
-        let temp = std::env::var("NORA_LLM_TEMPERATURE").unwrap().parse::<f32>().unwrap();
-        let max_tokens = std::env::var("NORA_LLM_MAX_TOKENS").unwrap().parse::<u32>().unwrap();
+        let temp = std::env::var("NORA_LLM_TEMPERATURE")
+            .unwrap()
+            .parse::<f32>()
+            .unwrap();
+        let max_tokens = std::env::var("NORA_LLM_MAX_TOKENS")
+            .unwrap()
+            .parse::<u32>()
+            .unwrap();
 
         assert_eq!(model, "gpt-4-turbo");
         assert_eq!(temp, 0.5);
@@ -115,8 +117,11 @@ mod tests {
 
         let provider = LLMProvider::OpenAI;
         let json = serde_json::to_string(&provider).unwrap();
-        // With camelCase serialization, it becomes "openAI" 
-        assert!(json.contains("openAI") || json.contains("OpenAI"), "JSON should contain provider name");
+        // With camelCase serialization, it becomes "openAI"
+        assert!(
+            json.contains("openAI") || json.contains("OpenAI"),
+            "JSON should contain provider name"
+        );
 
         let deserialized: LLMProvider = serde_json::from_str(&json).unwrap();
         assert!(matches!(deserialized, LLMProvider::OpenAI));
@@ -128,9 +133,9 @@ mod tests {
 
         let config = LLMConfig::default();
         let json = serde_json::to_string(&config).unwrap();
-        
+
         let deserialized: LLMConfig = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.model, config.model);
         assert_eq!(deserialized.temperature, config.temperature);
         assert_eq!(deserialized.max_tokens, config.max_tokens);

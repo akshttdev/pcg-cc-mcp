@@ -21,11 +21,17 @@ pub enum ProjectRole {
 
 impl ProjectRole {
     pub fn can_read(&self) -> bool {
-        matches!(self, ProjectRole::Owner | ProjectRole::Admin | ProjectRole::Editor | ProjectRole::Viewer)
+        matches!(
+            self,
+            ProjectRole::Owner | ProjectRole::Admin | ProjectRole::Editor | ProjectRole::Viewer
+        )
     }
 
     pub fn can_write(&self) -> bool {
-        matches!(self, ProjectRole::Owner | ProjectRole::Admin | ProjectRole::Editor)
+        matches!(
+            self,
+            ProjectRole::Owner | ProjectRole::Admin | ProjectRole::Editor
+        )
     }
 
     pub fn can_manage_members(&self) -> bool {
@@ -84,9 +90,7 @@ impl AccessContext {
     /// Check if user has admin access
     pub fn require_admin(&self) -> Result<(), ApiError> {
         if !self.is_admin {
-            return Err(ApiError::Forbidden(
-                "Admin access required".to_string(),
-            ));
+            return Err(ApiError::Forbidden("Admin access required".to_string()));
         }
         if !self.is_active {
             return Err(ApiError::Forbidden("User account is inactive".to_string()));
@@ -115,20 +119,21 @@ impl AccessContext {
         }
 
         // Check project membership
-        let member: Option<ProjectMember> = sqlx::query_as(
-            "SELECT * FROM project_members WHERE project_id = ? AND user_id = ?"
-        )
-        .bind(project_id)
-        .bind(self.user_id.as_bytes().to_vec())
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+        let member: Option<ProjectMember> =
+            sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
+                .bind(project_id)
+                .bind(self.user_id.as_bytes().to_vec())
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         match member {
             Some(m) => {
-                let role = m.role.parse::<ProjectRole>()
+                let role = m
+                    .role
+                    .parse::<ProjectRole>()
                     .map_err(|e| ApiError::InternalError(e))?;
-                
+
                 // Check if user has required permission level
                 let has_access = match required_role {
                     ProjectRole::Viewer => role.can_read(),
@@ -163,18 +168,19 @@ impl AccessContext {
             return Ok(Some(ProjectRole::Owner));
         }
 
-        let member: Option<ProjectMember> = sqlx::query_as(
-            "SELECT * FROM project_members WHERE project_id = ? AND user_id = ?"
-        )
-        .bind(project_id)
-        .bind(self.user_id.as_bytes().to_vec())
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+        let member: Option<ProjectMember> =
+            sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
+                .bind(project_id)
+                .bind(self.user_id.as_bytes().to_vec())
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         match member {
             Some(m) => {
-                let role = m.role.parse::<ProjectRole>()
+                let role = m
+                    .role
+                    .parse::<ProjectRole>()
                     .map_err(|e| ApiError::InternalError(e))?;
                 Ok(Some(role))
             }
@@ -190,7 +196,7 @@ pub async fn get_current_user(
     cookie_header: Option<&str>,
 ) -> Result<AccessContext, ApiError> {
     let pool = deployment.db().pool.clone();
-    
+
     // Try to get session from cookie first (SQLite auth)
     if let Some(cookies) = cookie_header {
         if let Some(session_id) = extract_session_from_cookies(cookies) {
@@ -201,14 +207,14 @@ pub async fn get_current_user(
                 is_admin: i32,
                 is_active: i32,
             }
-            
+
             let result: Option<UserSession> = sqlx::query_as(
                 r#"
                 SELECT u.id, u.is_admin, u.is_active
                 FROM sessions s
                 JOIN users u ON s.user_id = u.id
                 WHERE s.token_hash = ? AND s.expires_at > datetime('now')
-                "#
+                "#,
             )
             .bind(&session_id)
             .fetch_optional(&pool)
@@ -218,7 +224,7 @@ pub async fn get_current_user(
             if let Some(user_session) = result {
                 let user_id = Uuid::from_slice(&user_session.id)
                     .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
-                
+
                 return Ok(AccessContext {
                     user_id,
                     is_admin: user_session.is_admin == 1,
@@ -227,7 +233,7 @@ pub async fn get_current_user(
             }
         }
     }
-    
+
     // Try Bearer token (for API access)
     if let Some(token) = auth_header.and_then(|h| h.strip_prefix("Bearer ")) {
         // Hash the token to match against stored hash
@@ -241,14 +247,14 @@ pub async fn get_current_user(
             is_admin: i32,
             is_active: i32,
         }
-        
+
         let result: Option<UserSession> = sqlx::query_as(
             r#"
             SELECT u.id, u.is_admin, u.is_active
             FROM sessions s
             JOIN users u ON s.user_id = u.id
             WHERE s.token_hash = ? AND s.expires_at > datetime('now')
-            "#
+            "#,
         )
         .bind(&token_hash)
         .fetch_optional(&pool)
@@ -258,7 +264,7 @@ pub async fn get_current_user(
         if let Some(user_session) = result {
             let user_id = Uuid::from_slice(&user_session.id)
                 .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
-            
+
             return Ok(AccessContext {
                 user_id,
                 is_admin: user_session.is_admin == 1,
@@ -266,22 +272,22 @@ pub async fn get_current_user(
             });
         }
     }
-    
-    Err(ApiError::Unauthorized("Missing or invalid authentication".to_string()))
+
+    Err(ApiError::Unauthorized(
+        "Missing or invalid authentication".to_string(),
+    ))
 }
 
 /// Extract session ID from cookie header
 fn extract_session_from_cookies(cookie_header: &str) -> Option<String> {
-    cookie_header
-        .split(';')
-        .find_map(|cookie| {
-            let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
-            if parts.len() == 2 && parts[0] == "session_id" {
-                Some(parts[1].to_string())
-            } else {
-                None
-            }
-        })
+    cookie_header.split(';').find_map(|cookie| {
+        let parts: Vec<&str> = cookie.trim().splitn(2, '=').collect();
+        if parts.len() == 2 && parts[0] == "session_id" {
+            Some(parts[1].to_string())
+        } else {
+            None
+        }
+    })
 }
 
 /// Middleware to require authentication
@@ -294,11 +300,8 @@ pub async fn require_auth(
         .headers()
         .get("authorization")
         .and_then(|h| h.to_str().ok());
-    
-    let cookie_header = req
-        .headers()
-        .get("cookie")
-        .and_then(|h| h.to_str().ok());
+
+    let cookie_header = req.headers().get("cookie").and_then(|h| h.to_str().ok());
 
     match get_current_user(&deployment, auth_header, cookie_header).await {
         Ok(context) => {
@@ -319,11 +322,8 @@ pub async fn require_admin(
         .headers()
         .get("authorization")
         .and_then(|h| h.to_str().ok());
-    
-    let cookie_header = req
-        .headers()
-        .get("cookie")
-        .and_then(|h| h.to_str().ok());
+
+    let cookie_header = req.headers().get("cookie").and_then(|h| h.to_str().ok());
 
     match get_current_user(&deployment, auth_header, cookie_header).await {
         Ok(context) => {

@@ -55,32 +55,41 @@ pub struct TTSConfig {
 impl TTSConfig {
     pub fn british_executive() -> Self {
         Self {
-            provider: TTSProvider::ElevenLabs,
-            voice_id: "british_executive_female".to_string(),
+            provider: TTSProvider::OpenAI, // Use OpenAI as primary (already configured)
+            voice_id: "fable".to_string(), // British-leaning female voice
             speed: 1.0,
             volume: 0.85,
             pitch: 1.0,
             quality: TTSQuality::High,
             british_voice_preferences: vec![
+                "fable".to_string(),             // OpenAI British-leaning female
+                "nova".to_string(),              // OpenAI warm female
+                "echo".to_string(),              // OpenAI clear male
                 "Rachel".to_string(),            // ElevenLabs British voice
-                "Emma".to_string(),              // British neural voice
-                "Amy".to_string(),               // Amazon Polly British
                 "en-GB-SoniaNeural".to_string(), // Azure British
             ],
-            fallback_providers: vec![TTSProvider::Azure, TTSProvider::OpenAI, TTSProvider::System],
+            fallback_providers: vec![
+                TTSProvider::ElevenLabs,
+                TTSProvider::Azure,
+                TTSProvider::System,
+            ],
         }
     }
 
     pub fn development() -> Self {
         Self {
-            provider: TTSProvider::System,
-            voice_id: "system_default".to_string(),
-            speed: 1.2,
+            provider: TTSProvider::OpenAI, // Use OpenAI for dev too
+            voice_id: "fable".to_string(), // British-leaning voice
+            speed: 1.0,                    // Normal speed for better comprehension
             volume: 0.8,
             pitch: 1.0,
-            quality: TTSQuality::Medium,
-            british_voice_preferences: vec!["system_british".to_string()],
-            fallback_providers: vec![],
+            quality: TTSQuality::High, // Use high quality even in dev
+            british_voice_preferences: vec![
+                "fable".to_string(),
+                "nova".to_string(),
+                "echo".to_string(),
+            ],
+            fallback_providers: vec![TTSProvider::System],
         }
     }
 }

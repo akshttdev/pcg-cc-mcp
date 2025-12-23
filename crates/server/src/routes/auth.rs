@@ -6,6 +6,13 @@ use axum::{
     response::{Json as ResponseJson, Response},
     routing::{get, post},
 };
+// Import new auth types (will be conditionally compiled when PostgreSQL is available)
+#[cfg(feature = "postgres")]
+use db::{
+    models::user::{LoginRequest, LoginResponse, UserProfile},
+    repositories::{SessionRepository, UserRepository},
+    services::AuthService,
+};
 use deployment::Deployment;
 use octocrab::auth::Continue;
 use serde::{Deserialize, Serialize};
@@ -17,14 +24,6 @@ use services::services::{
 use utils::response::ApiResponse;
 
 use crate::{DeploymentImpl, error::ApiError};
-
-// Import new auth types (will be conditionally compiled when PostgreSQL is available)
-#[cfg(feature = "postgres")]
-use db::{
-    models::user::{LoginRequest, LoginResponse, UserProfile},
-    repositories::{UserRepository, SessionRepository},
-    services::AuthService,
-};
 
 // Import SQLite auth handlers
 mod auth_sqlite;
@@ -169,9 +168,9 @@ async fn login(
     ResponseJson(req): ResponseJson<LoginRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Get PostgreSQL pool from deployment
-    let pool = deployment.pg_pool().ok_or_else(|| {
-        ApiError::InternalError("PostgreSQL not configured".to_string())
-    })?;
+    let pool = deployment
+        .pg_pool()
+        .ok_or_else(|| ApiError::InternalError("PostgreSQL not configured".to_string()))?;
 
     // Find user by username
     let user = UserRepository::find_by_username(&pool, &req.username)
@@ -224,7 +223,9 @@ async fn login(
 
     Ok((
         [(header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap())],
-        ResponseJson(ApiResponse::<LoginResponse, LoginResponse>::success(response))
+        ResponseJson(ApiResponse::<LoginResponse, LoginResponse>::success(
+            response,
+        )),
     ))
 }
 
@@ -236,20 +237,20 @@ async fn get_current_user(
     req: Request,
 ) -> Result<ResponseJson<ApiResponse<UserProfile>>, ApiError> {
     // Get PostgreSQL pool
-    let pool = deployment.pg_pool().ok_or_else(|| {
-        ApiError::InternalError("PostgreSQL not configured".to_string())
-    })?;
+    let pool = deployment
+        .pg_pool()
+        .ok_or_else(|| ApiError::InternalError("PostgreSQL not configured".to_string()))?;
 
     // Extract session ID from cookie
-    let session_id = req.headers()
+    let session_id = req
+        .headers()
         .get(header::COOKIE)
         .and_then(|h| h.to_str().ok())
         .and_then(|cookies| {
-            cookies.split(';')
-                .find_map(|cookie| {
-                    let cookie = cookie.trim();
-                    cookie.strip_prefix("session_id=")
-                })
+            cookies.split(';').find_map(|cookie| {
+                let cookie = cookie.trim();
+                cookie.strip_prefix("session_id=")
+            })
         })
         .ok_or_else(|| ApiError::BadRequest("No session cookie found".to_string()))?;
 
@@ -287,26 +288,24 @@ async fn logout(
     State(deployment): State<DeploymentImpl>,
     req: Request,
 ) -> Result<impl IntoResponse, ApiError> {
-    let pool = deployment.pg_pool().ok_or_else(|| {
-        ApiError::InternalError("PostgreSQL not configured".to_string())
-    })?;
+    let pool = deployment
+        .pg_pool()
+        .ok_or_else(|| ApiError::InternalError("PostgreSQL not configured".to_string()))?;
 
     // Extract session ID from cookie
-    if let Some(session_id) = req.headers()
+    if let Some(session_id) = req
+        .headers()
         .get(header::COOKIE)
         .and_then(|h| h.to_str().ok())
         .and_then(|cookies| {
-            cookies.split(';')
-                .find_map(|cookie| {
-                    let cookie = cookie.trim();
-                    cookie.strip_prefix("session_id=")
-                })
+            cookies.split(';').find_map(|cookie| {
+                let cookie = cookie.trim();
+                cookie.strip_prefix("session_id=")
+            })
         })
     {
         // Delete session from database
-        SessionRepository::delete(&pool, session_id)
-            .await
-            .ok(); // Ignore errors
+        SessionRepository::delete(&pool, session_id).await.ok(); // Ignore errors
     }
 
     // Clear cookie
@@ -314,8 +313,10 @@ async fn logout(
 
     Ok((
         [(header::SET_COOKIE, HeaderValue::from_str(cookie).unwrap())],
-        ResponseJson(ApiResponse::<LogoutResponse, LogoutResponse>::success(LogoutResponse {
-            message: "Logged out successfully".to_string(),
-        }))
+        ResponseJson(ApiResponse::<LogoutResponse, LogoutResponse>::success(
+            LogoutResponse {
+                message: "Logged out successfully".to_string(),
+            },
+        )),
     ))
 }

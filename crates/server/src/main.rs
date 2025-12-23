@@ -28,7 +28,7 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let filter_string = format!(
-        "warn,server={level},services={level},db={level},executors={level},deployment={level},local_deployment={level},utils={level}",
+        "warn,server={level},services={level},db={level},executors={level},deployment={level},local_deployment={level},utils={level},nora={level}",
         level = log_level
     );
     let env_filter = EnvFilter::try_new(filter_string).expect("Failed to create tracing filter");
@@ -50,6 +50,12 @@ async fn main() -> Result<(), VibeKanbanError> {
     deployment
         .track_if_analytics_allowed("session_start", serde_json::json!({}))
         .await;
+
+    // Auto-initialize Nora executive assistant on server startup
+    if let Err(e) = routes::nora::initialize_nora_on_startup(&deployment).await {
+        tracing::warn!("Failed to auto-initialize NORA on startup: {}", e);
+        tracing::warn!("NORA can still be initialized later via POST /api/nora/initialize");
+    }
 
     // Pre-warm file search cache for most active projects
     let deployment_for_cache = deployment.clone();

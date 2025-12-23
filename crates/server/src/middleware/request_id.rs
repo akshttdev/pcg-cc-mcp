@@ -1,6 +1,6 @@
 use axum::{
     extract::Request,
-    http::{header::HeaderName, HeaderValue},
+    http::{HeaderValue, header::HeaderName},
     middleware::Next,
     response::Response,
 };
@@ -29,17 +29,18 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
     tracing::Span::current().record("request_id", &request_id.as_str());
 
     // Insert request ID into request extensions so handlers can access it
-    request.extensions_mut().insert(RequestId(request_id.clone()));
+    request
+        .extensions_mut()
+        .insert(RequestId(request_id.clone()));
 
     // Process the request
     let mut response = next.run(request).await;
 
     // Add request ID to response headers
     if let Ok(header_value) = HeaderValue::from_str(&request_id) {
-        response.headers_mut().insert(
-            HeaderName::from_static(REQUEST_ID_HEADER),
-            header_value,
-        );
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static(REQUEST_ID_HEADER), header_value);
     }
 
     response
@@ -58,23 +59,18 @@ impl RequestId {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_generates_request_id_when_missing() {
         let app = axum::Router::new()
-            .route(
-                "/test",
-                axum::routing::get(|| async { "ok" }),
-            )
+            .route("/test", axum::routing::get(|| async { "ok" }))
             .layer(axum::middleware::from_fn(request_id_middleware));
 
-        let request = Request::builder()
-            .uri("/test")
-            .body(Body::empty())
-            .unwrap();
+        let request = Request::builder().uri("/test").body(Body::empty()).unwrap();
 
         let response = app.oneshot(request).await.unwrap();
 
@@ -88,10 +84,7 @@ mod tests {
     #[tokio::test]
     async fn test_preserves_existing_request_id() {
         let app = axum::Router::new()
-            .route(
-                "/test",
-                axum::routing::get(|| async { "ok" }),
-            )
+            .route("/test", axum::routing::get(|| async { "ok" }))
             .layer(axum::middleware::from_fn(request_id_middleware));
 
         let existing_id = "custom-request-id-123";

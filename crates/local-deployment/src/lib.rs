@@ -2,6 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use db::DBService;
+#[cfg(feature = "postgres")]
+use db::PgDBService;
 use deployment::{Deployment, DeploymentError};
 use executors::profile::ExecutorConfigs;
 use services::services::{
@@ -15,16 +17,17 @@ use services::services::{
     filesystem::FilesystemService,
     git::GitService,
     image::ImageService,
+    media_pipeline::MediaPipelineService,
     sentry::SentryService,
 };
-use tokio::sync::RwLock;
-use utils::{assets::config_path, msg_store::MsgStore};
-use uuid::Uuid;
-
-#[cfg(feature = "postgres")]
-use db::PgDBService;
 #[cfg(feature = "postgres")]
 use sqlx::{Pool, Postgres};
+use tokio::sync::RwLock;
+use utils::{
+    assets::{asset_dir, config_path},
+    msg_store::MsgStore,
+};
+use uuid::Uuid;
 
 use crate::container::LocalContainerService;
 
@@ -49,6 +52,7 @@ pub struct LocalDeployment {
     events: EventService,
     file_search_cache: Arc<FileSearchCache>,
     approvals: Approvals,
+    media_pipeline: MediaPipelineService,
 }
 
 #[async_trait]
@@ -133,6 +137,9 @@ impl Deployment for LocalDeployment {
         let events = EventService::new(db.clone(), events_msg_store, events_entry_count);
         let file_search_cache = Arc::new(FileSearchCache::new());
 
+        let media_pipeline_root = asset_dir().join("media_pipeline");
+        let media_pipeline = MediaPipelineService::new(media_pipeline_root)?;
+
         // Try to initialize PostgreSQL connection if DATABASE_URL is set
         #[cfg(feature = "postgres")]
         let pg_db = {
@@ -145,7 +152,10 @@ impl Deployment for LocalDeployment {
                             Some(pg)
                         }
                         Err(e) => {
-                            tracing::warn!("Failed to connect to PostgreSQL: {}. Multi-user auth will be disabled.", e);
+                            tracing::warn!(
+                                "Failed to connect to PostgreSQL: {}. Multi-user auth will be disabled.",
+                                e
+                            );
                             None
                         }
                     }
@@ -174,6 +184,7 @@ impl Deployment for LocalDeployment {
             events,
             file_search_cache,
             approvals,
+            media_pipeline,
         })
     }
 
@@ -239,5 +250,9 @@ impl Deployment for LocalDeployment {
 
     fn approvals(&self) -> &Approvals {
         &self.approvals
+    }
+
+    fn media_pipeline(&self) -> &MediaPipelineService {
+        &self.media_pipeline
     }
 }

@@ -25,11 +25,11 @@ use utils::{path::expand_tilde, response::ApiResponse};
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl, 
-    error::ApiError, 
+    DeploymentImpl,
+    error::ApiError,
     middleware::{
-        load_project_middleware,
         access_control::{AccessContext, ProjectRole},
+        load_project_middleware,
     },
 };
 
@@ -45,14 +45,14 @@ pub async fn get_projects(
 
     // For regular users, get only projects they have access to
     let user_id_bytes = access_context.user_id.as_bytes().to_vec();
-    
+
     #[derive(sqlx::FromRow)]
     struct ProjectRow {
         id: String,
     }
-    
+
     let project_ids: Vec<String> = sqlx::query_as::<_, ProjectRow>(
-        "SELECT DISTINCT project_id as id FROM project_members WHERE user_id = ?"
+        "SELECT DISTINCT project_id as id FROM project_members WHERE user_id = ?",
     )
     .bind(&user_id_bytes)
     .fetch_all(&deployment.db().pool)
@@ -206,7 +206,9 @@ pub async fn list_project_assets(
     let assets = ProjectAsset::find_by_project(&deployment.db().pool, project.id).await?;
 
     if assets.is_empty() {
-        return Err(ApiError::NotFound("No assets found for the project".to_string()));
+        return Err(ApiError::NotFound(
+            "No assets found for the project".to_string(),
+        ));
     }
 
     Ok(ResponseJson(ApiResponse::success(assets)))

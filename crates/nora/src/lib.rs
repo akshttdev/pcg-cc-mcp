@@ -8,11 +8,15 @@ pub mod brain;
 pub mod cache;
 pub mod coordination;
 pub mod executor;
+pub mod integrations;
 pub mod memory;
 pub mod personality;
+pub mod profiles;
 pub mod tools;
+pub mod twilio;
 pub mod voice;
 pub mod graph;
+pub mod workflow;
 
 #[cfg(test)]
 mod agent_tests;
@@ -41,6 +45,10 @@ use serde::{Deserialize, Serialize};
 pub use tools::{ExecutiveTools, NoraExecutiveTool};
 use ts_rs::TS;
 pub use voice::{SpeechRequest, SpeechResponse, VoiceConfig, VoiceEngine};
+pub use workflow::{
+    WorkflowContext, WorkflowEvent, WorkflowInstance, WorkflowOrchestrator, WorkflowResult,
+    WorkflowState,
+};
 
 /// Core configuration for Nora
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

@@ -25,10 +25,7 @@ pub struct CreateBoardPayload {
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route(
-            "/boards",
-            get(list_boards).post(create_board),
-        )
+        .route("/boards", get(list_boards).post(create_board))
         .route(
             "/boards/{board_id}",
             patch(update_board).delete(delete_board),
@@ -63,14 +60,18 @@ async fn create_board(
         normalize_slug(&payload.slug)
     };
 
-    let board = ProjectBoard::create(&deployment.db().pool, &CreateProjectBoard {
-        project_id: project.id,
-        name: payload.name,
-        slug,
-        board_type: payload.board_type,
-        description: payload.description,
-        metadata: payload.metadata,
-    }).await?;
+    let board = ProjectBoard::create(
+        &deployment.db().pool,
+        &CreateProjectBoard {
+            project_id: project.id,
+            name: payload.name,
+            slug,
+            board_type: payload.board_type,
+            description: payload.description,
+            metadata: payload.metadata,
+        },
+    )
+    .await?;
     Ok((StatusCode::CREATED, Json(ApiResponse::success(board))))
 }
 

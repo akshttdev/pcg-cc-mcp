@@ -38,7 +38,8 @@ RUN apk add --no-cache \
     ca-certificates \
     tini \
     libgcc \
-    wget
+    wget \
+    sqlite
 
 # Create app user for security
 RUN addgroup -g 1001 -S appgroup && \
@@ -47,10 +48,16 @@ RUN addgroup -g 1001 -S appgroup && \
 # Copy binary and frontend assets from builder
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 COPY --from=builder /app/frontend/dist /app/frontend/dist
-COPY --from=builder /app/dev_assets /app/dev_assets
+
+# Copy dev_assets as SEED (not to final location) - preserves existing data
+COPY --from=builder /app/dev_assets /app/dev_assets_seed
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create necessary directories and set permissions
-RUN mkdir -p /repos /app/dev_assets && \
+RUN mkdir -p /repos /app/dev_assets /app/backups && \
     chown -R appuser:appgroup /repos /app
 
 # Switch to non-root user
@@ -70,6 +77,6 @@ WORKDIR /app
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --quiet --tries=1 --spider "http://127.0.0.1:3001/api/health" || exit 1
 
-# Run the application
-ENTRYPOINT ["/sbin/tini", "--"]
+# Run the application with entrypoint that preserves data
+ENTRYPOINT ["/sbin/tini", "--", "docker-entrypoint.sh"]
 CMD ["server"]

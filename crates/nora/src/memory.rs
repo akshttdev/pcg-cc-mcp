@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+use uuid::Uuid;
 
 use crate::agent::NoraRequest;
-use uuid::Uuid;
 
 /// Conversation memory management
 #[derive(Debug, Clone)]

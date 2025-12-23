@@ -1,9 +1,12 @@
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    sync::Arc,
+    time::Duration,
+};
+
 use moka::future::Cache;
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
-use std::sync::Arc;
-use std::time::Duration;
 
 /// Cache key for LLM responses
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -90,7 +93,8 @@ impl LlmCache {
         if result.is_some() {
             self.hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         } else {
-            self.misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.misses
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         result
     }
@@ -250,8 +254,12 @@ mod tests {
             },
         };
 
-        cache.put(CacheKey::new("test1", "text"), response.clone()).await;
-        cache.put(CacheKey::new("test2", "text"), response.clone()).await;
+        cache
+            .put(CacheKey::new("test1", "text"), response.clone())
+            .await;
+        cache
+            .put(CacheKey::new("test2", "text"), response.clone())
+            .await;
 
         // Run pending tasks to ensure cache is updated
         cache.cache.run_pending_tasks().await;

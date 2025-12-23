@@ -2,8 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::executor::{TaskDefinition, TaskExecutor};
     use db::models::task::Priority;
+
+    use crate::executor::{TaskDefinition, TaskExecutor};
 
     #[tokio::test]
     async fn test_executor_initialization() {
@@ -19,7 +20,7 @@ mod tests {
             board_id: None,
             pod_id: None,
         };
-        
+
         // Verify the struct can be instantiated
         assert_eq!(_task_def.title, "Test Task");
     }
@@ -38,7 +39,10 @@ mod tests {
 
         assert_eq!(task_def.title, "Integration Test");
         assert_eq!(task_def.priority, Some(Priority::Medium));
-        assert_eq!(task_def.tags, Some(vec!["integration".to_string(), "test".to_string()]));
+        assert_eq!(
+            task_def.tags,
+            Some(vec!["integration".to_string(), "test".to_string()])
+        );
         assert_eq!(task_def.assignee_id, Some("user-123".to_string()));
     }
 

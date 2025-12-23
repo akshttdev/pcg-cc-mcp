@@ -2,13 +2,14 @@
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
     use crate::{
         agent::{NoraAgent, NoraRequest, NoraRequestType, RequestPriority},
         memory::ConversationMemory,
         personality::PersonalityConfig,
         NoraConfig,
     };
-    use chrono::Utc;
 
     /// Test basic agent initialization
     #[tokio::test]
@@ -62,7 +63,10 @@ mod tests {
         let response = response.unwrap();
         assert_eq!(response.request_id, "test-123");
         assert_eq!(response.session_id, "session-456");
-        assert!(!response.content.is_empty(), "Response should contain content");
+        assert!(
+            !response.content.is_empty(),
+            "Response should contain content"
+        );
     }
 
     /// Test task coordination request
@@ -135,8 +139,11 @@ mod tests {
         };
 
         let response = agent.process_request(urgent_request).await;
-        assert!(response.is_ok(), "Urgent request should be processed successfully");
-        
+        assert!(
+            response.is_ok(),
+            "Urgent request should be processed successfully"
+        );
+
         let response = response.unwrap();
         // Response should acknowledge the request
         assert!(!response.content.is_empty(), "Should have response content");

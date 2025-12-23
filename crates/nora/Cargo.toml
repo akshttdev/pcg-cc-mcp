@@ -29,6 +29,7 @@ schemars = { workspace = true }
 # HTTP client for external APIs
 reqwest = { version = "0.11", features = ["json", "multipart", "stream"] }
 bytes = "1.5"
+services = { path = "../services" }
 
 # Audio processing (for voice capabilities)
 tokio-tungstenite = "0.20"
@@ -56,6 +57,11 @@ once_cell = "1.20"
 
 # Additional dependencies for voice processing
 async-trait = "0.1"
+
+# External API integrations
+lettre = { version = "0.11", default-features = false, features = ["builder", "tokio1-rustls-tls", "smtp-transport", "pool"] }
+google-calendar3 = "5.0"
+yup-oauth2 = "10.0"
 
 # LRU cache for LLM response caching
 moka = { version = "0.12", features = ["future"] }

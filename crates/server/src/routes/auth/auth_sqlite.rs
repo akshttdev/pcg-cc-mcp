@@ -1,15 +1,15 @@
 // SQLite-based authentication endpoints
 use axum::{
-    extract::State,
-    http::{header, StatusCode},
-    response::{IntoResponse, Response},
     Json as ResponseJson,
+    extract::State,
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 use utils::response::ApiResponse;
+use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -70,7 +70,7 @@ pub async fn login(
     let user = sqlx::query_as::<_, User>(
         "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin 
          FROM users 
-         WHERE username = ? AND is_active = 1"
+         WHERE username = ? AND is_active = 1",
     )
     .bind(&req.username)
     .fetch_optional(pool)
@@ -79,8 +79,9 @@ pub async fn login(
     .ok_or_else(|| ApiError::BadRequest("Invalid credentials".to_string()))?;
 
     // Verify password using bcrypt
-    let is_valid = db::services::AuthService::verify_password(&req.password, &user.password_hash)
-        .map_err(|e| ApiError::InternalError(format!("Password verification error: {}", e)))?;
+    let is_valid =
+        db::services::AuthService::verify_password(&req.password, &user.password_hash)
+            .map_err(|e| ApiError::InternalError(format!("Password verification error: {}", e)))?;
 
     if !is_valid {
         return Err(ApiError::BadRequest("Invalid credentials".to_string()));
@@ -100,7 +101,7 @@ pub async fn login(
     let expires_at = chrono::Utc::now() + chrono::Duration::days(30);
     sqlx::query(
         "INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at, last_used_at)
-         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))"
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
     .bind(Uuid::new_v4().as_bytes().as_slice())
     .bind(user.id.as_bytes().as_slice())
@@ -124,7 +125,7 @@ pub async fn login(
         "SELECT o.id, o.name, o.slug, om.role
          FROM organizations o
          JOIN organization_members om ON o.id = om.organization_id
-         WHERE om.user_id = ? AND o.is_active = 1"
+         WHERE om.user_id = ? AND o.is_active = 1",
     )
     .bind(user.id.as_bytes().as_slice())
     .fetch_all(pool)
@@ -166,7 +167,9 @@ pub async fn login(
     Ok((
         StatusCode::OK,
         [(header::SET_COOKIE, cookie)],
-        ResponseJson(ApiResponse::<LoginResponse, LoginResponse>::success(response)),
+        ResponseJson(ApiResponse::<LoginResponse, LoginResponse>::success(
+            response,
+        )),
     )
         .into_response())
 }
@@ -202,7 +205,7 @@ pub async fn get_current_user(
     }
 
     let session = sqlx::query_as::<_, Session>(
-        "SELECT user_id, expires_at FROM sessions WHERE token_hash = ?"
+        "SELECT user_id, expires_at FROM sessions WHERE token_hash = ?",
     )
     .bind(session_id)
     .fetch_optional(pool)
@@ -213,7 +216,7 @@ pub async fn get_current_user(
     // Check if session expired
     let expires_at = chrono::DateTime::parse_from_rfc3339(&session.expires_at)
         .map_err(|e| ApiError::InternalError(format!("Invalid expiry date: {}", e)))?;
-    
+
     if expires_at < chrono::Utc::now() {
         return Err(ApiError::BadRequest("Session expired".to_string()));
     }
@@ -221,7 +224,7 @@ pub async fn get_current_user(
     // Get user
     let user = sqlx::query_as::<_, User>(
         "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin 
-         FROM users WHERE id = ?"
+         FROM users WHERE id = ?",
     )
     .bind(session.user_id.as_bytes().as_slice())
     .fetch_optional(pool)
@@ -243,7 +246,7 @@ pub async fn get_current_user(
         "SELECT o.id, o.name, o.slug, om.role
          FROM organizations o
          JOIN organization_members om ON o.id = om.organization_id
-         WHERE om.user_id = ? AND o.is_active = 1"
+         WHERE om.user_id = ? AND o.is_active = 1",
     )
     .bind(user.id.as_bytes().as_slice())
     .fetch_all(pool)
@@ -276,11 +279,7 @@ pub async fn get_current_user(
         data: UserProfile,
     }
 
-    Ok((
-        StatusCode::OK,
-        ResponseJson(ApiResponse { data: profile }),
-    )
-        .into_response())
+    Ok((StatusCode::OK, ResponseJson(ApiResponse { data: profile })).into_response())
 }
 
 /// POST /auth/logout
@@ -296,7 +295,7 @@ pub async fn logout(
             part.strip_prefix("session_id=")
         }) {
             let pool = &deployment.db().pool;
-            
+
             // Delete session from database
             let _ = sqlx::query("DELETE FROM sessions WHERE token_hash = ?")
                 .bind(session_id)

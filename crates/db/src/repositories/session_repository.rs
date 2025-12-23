@@ -1,8 +1,9 @@
 // Session database repository
-use crate::models::user::Session;
 use chrono::{Duration, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
+
+use crate::models::user::Session;
 
 pub struct SessionRepository;
 
@@ -21,7 +22,7 @@ impl SessionRepository {
             INSERT INTO sessions (id, user_id, created_at, expires_at, last_accessed)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING *
-            "#
+            "#,
         )
         .bind(session_id)
         .bind(user_id)
@@ -33,23 +34,22 @@ impl SessionRepository {
     }
 
     /// Find session by ID
-    pub async fn find_by_id(pool: &PgPool, session_id: &str) -> Result<Option<Session>, sqlx::Error> {
-        sqlx::query_as::<_, Session>(
-            "SELECT * FROM sessions WHERE id = $1 AND expires_at > NOW()"
-        )
-        .bind(session_id)
-        .fetch_optional(pool)
-        .await
+    pub async fn find_by_id(
+        pool: &PgPool,
+        session_id: &str,
+    ) -> Result<Option<Session>, sqlx::Error> {
+        sqlx::query_as::<_, Session>("SELECT * FROM sessions WHERE id = $1 AND expires_at > NOW()")
+            .bind(session_id)
+            .fetch_optional(pool)
+            .await
     }
 
     /// Update last accessed time
     pub async fn update_last_accessed(pool: &PgPool, session_id: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE sessions SET last_accessed = NOW() WHERE id = $1"
-        )
-        .bind(session_id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE sessions SET last_accessed = NOW() WHERE id = $1")
+            .bind(session_id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 

@@ -4,8 +4,6 @@
 //! Note: The main MCP server implementation is in nora_server.rs
 //! This module contains helper definitions and utilities.
 
-
-
 // Helper functions and types for Nora MCP integration
 // Main implementation is in nora_server.rs which provides the full MCP server
 

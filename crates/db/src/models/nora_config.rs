@@ -15,17 +15,14 @@ impl NoraVoiceConfig {
     /// Get the singleton configuration
     pub async fn get(db: &sqlx::SqlitePool) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, NoraVoiceConfig>(
-            "SELECT id, config_json, created_at, updated_at FROM nora_voice_config WHERE id = 1"
+            "SELECT id, config_json, created_at, updated_at FROM nora_voice_config WHERE id = 1",
         )
         .fetch_optional(db)
         .await
     }
 
     /// Save or update the configuration
-    pub async fn save(
-        db: &sqlx::SqlitePool,
-        config_json: &str,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn save(db: &sqlx::SqlitePool, config_json: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO nora_voice_config (id, config_json) VALUES (1, ?)
              ON CONFLICT(id) DO UPDATE SET config_json = excluded.config_json, updated_at = CURRENT_TIMESTAMP"

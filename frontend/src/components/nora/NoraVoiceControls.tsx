@@ -244,13 +244,24 @@ export function NoraVoiceControls({ className, onConfigChange }: NoraVoiceContro
       });
 
       if (response.ok) {
-        const { audio_data } = (await response.json()) as { audio_data: string };
-        const audioData = atob(audio_data);
+        const speechResponse = (await response.json()) as { 
+          audioData: string;
+          durationMs: number;
+          sampleRate: number;
+          format: string;
+          processingTimeMs: number;
+        };
+        
+        // Decode base64 audio data
+        const audioData = atob(speechResponse.audioData);
         const audioBuffer = new Uint8Array(audioData.length);
         for (let i = 0; i < audioData.length; i += 1) {
           audioBuffer[i] = audioData.charCodeAt(i);
         }
-        const audioBlob = new Blob([audioBuffer], { type: 'audio/wav' });
+        
+        // Determine MIME type based on format
+        const mimeType = speechResponse.format === 'Mp3' ? 'audio/mpeg' : 'audio/wav';
+        const audioBlob = new Blob([audioBuffer], { type: mimeType });
         const audioUrl = URL.createObjectURL(audioBlob);
         const audioElement = new Audio(audioUrl);
         await audioElement.play();
@@ -392,7 +403,12 @@ export function NoraVoiceControls({ className, onConfigChange }: NoraVoiceContro
 
             {/* Voice ID */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Voice</label>
+              <label className="text-sm font-medium">
+                Voice
+                {config.tts.provider === "openAI" && (
+                  <span className="ml-2 text-xs text-muted-foreground">(British style)</span>
+                )}
+              </label>
               <Select
                 value={config.tts.voiceId}
                 onValueChange={(value) => updateConfig({
@@ -403,7 +419,16 @@ export function NoraVoiceControls({ className, onConfigChange }: NoraVoiceContro
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {config.tts.britishVoicePreferences.map((voice) => (
+                  {config.tts.provider === "openAI" ? (
+                    <>
+                      <SelectItem value="fable">Fable (British Female Executive)</SelectItem>
+                      <SelectItem value="nova">Nova (Professional Female)</SelectItem>
+                      <SelectItem value="echo">Echo (British Male Executive)</SelectItem>
+                      <SelectItem value="onyx">Onyx (Professional Male)</SelectItem>
+                      <SelectItem value="shimmer">Shimmer (Softer Female)</SelectItem>
+                      <SelectItem value="alloy">Alloy (Neutral)</SelectItem>
+                    </>
+                  ) : config.tts.britishVoicePreferences.map((voice) => (
                     <SelectItem key={voice} value={voice}>
                       {voice}
                     </SelectItem>

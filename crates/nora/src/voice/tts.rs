@@ -548,7 +548,6 @@ impl AzureTTS {
 /// OpenAI TTS implementation
 #[derive(Debug)]
 pub struct OpenAITTS {
-    #[allow(dead_code)]
     config: TTSConfig,
     client: reqwest::Client,
     api_key: Option<String>,
@@ -580,16 +579,25 @@ impl TextToSpeech for OpenAITTS {
             .as_ref()
             .ok_or_else(|| VoiceError::TTSError("OpenAI API key not configured".to_string()))?;
 
-        // OpenAI doesn't have specific British voices, but we can use their best quality ones
-        let voice = match request.voice_profile {
-            VoiceProfile::BritishExecutiveFemale | VoiceProfile::BritishProfessionalFemale => {
-                "nova"
+        // Use the configured voice_id if it's a valid OpenAI voice, otherwise map from profile
+        let valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+        let voice = if valid_voices.contains(&self.config.voice_id.as_str()) {
+            self.config.voice_id.as_str()
+        } else {
+            // Fall back to profile-based mapping for non-OpenAI voice IDs
+            match request.voice_profile {
+                VoiceProfile::BritishExecutiveFemale => "fable", // Most British-sounding female
+                VoiceProfile::BritishProfessionalFemale => "nova", // Warm professional female
+                VoiceProfile::BritishExecutiveMale => "echo",    // Clear, authoritative male
+                VoiceProfile::BritishProfessionalMale => "onyx", // Deep, professional male
+                VoiceProfile::SystemDefault => "fable",          // Default to British-leaning voice
             }
-            VoiceProfile::BritishExecutiveMale | VoiceProfile::BritishProfessionalMale => "echo",
-            VoiceProfile::SystemDefault => "alloy",
         };
 
-        info!("Synthesizing speech with OpenAI voice: {}", voice);
+        info!(
+            "Synthesizing speech with OpenAI voice: {} (config voice_id: {}, profile: {:?})",
+            voice, self.config.voice_id, request.voice_profile
+        );
 
         let payload = serde_json::json!({
             "model": "tts-1-hd",

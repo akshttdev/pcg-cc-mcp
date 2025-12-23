@@ -1,26 +1,36 @@
 use axum::{
     Router,
-    extract::{Path, State, Extension},
+    extract::{Extension, Path, State},
     http::StatusCode,
-    response::Json as ResponseJson,
-    routing::{get, post, delete},
     middleware,
+    response::Json as ResponseJson,
+    routing::{delete, get, post},
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use ts_rs::TS;
-use uuid::Uuid;
 use utils::response::ApiResponse;
+use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::{AccessContext, ProjectRole}};
+use crate::{
+    DeploymentImpl,
+    error::ApiError,
+    middleware::{AccessContext, ProjectRole},
+};
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/projects/{project_id}/members", get(list_project_members))
         .route("/projects/{project_id}/members", post(add_project_member))
-        .route("/projects/{project_id}/members/{user_id}", delete(remove_project_member))
-        .route("/projects/{project_id}/members/{user_id}/role", post(update_member_role))
+        .route(
+            "/projects/{project_id}/members/{user_id}",
+            delete(remove_project_member),
+        )
+        .route(
+            "/projects/{project_id}/members/{user_id}/role",
+            post(update_member_role),
+        )
         .route("/projects/{project_id}/access", get(check_project_access))
         .route("/my-projects", get(list_my_projects))
         .layer(middleware::from_fn_with_state(
@@ -123,10 +133,12 @@ async fn list_project_members(
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ProjectMemberItem>>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    
+
     // Check if user has at least viewer access to the project
-    context.check_project_access(&pool, &project_id, ProjectRole::Viewer).await?;
-    
+    context
+        .check_project_access(&pool, &project_id, ProjectRole::Viewer)
+        .await?;
+
     let rows: Vec<ProjectMemberRow> = sqlx::query_as(
         r#"
         SELECT 
@@ -145,15 +157,15 @@ async fn list_project_members(
         LEFT JOIN users gb ON pm.granted_by = gb.id
         WHERE pm.project_id = ?
         ORDER BY pm.granted_at DESC
-        "#
+        "#,
     )
     .bind(&project_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch project members: {}", e)))?;
-    
+
     let members: Vec<ProjectMemberItem> = rows.into_iter().map(Into::into).collect();
-    
+
     Ok(ResponseJson(ApiResponse::success(members)))
 }
 
@@ -165,53 +177,57 @@ async fn add_project_member(
     ResponseJson(req): ResponseJson<AddProjectMemberRequest>,
 ) -> Result<ResponseJson<ApiResponse<ProjectMemberItem>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    
+
     // Check if user has admin access to the project
-    context.check_project_access(&pool, &project_id, ProjectRole::Admin).await?;
-    
+    context
+        .check_project_access(&pool, &project_id, ProjectRole::Admin)
+        .await?;
+
     // Validate role
-    let role: ProjectRole = req.role.parse()
+    let role: ProjectRole = req
+        .role
+        .parse()
         .map_err(|e: String| ApiError::BadRequest(e))?;
-    
+
     // Parse user_id
     let user_id = Uuid::parse_str(&req.user_id)
         .map_err(|_| ApiError::BadRequest("Invalid user ID".to_string()))?;
-    
+
     // Check if user exists
-    let user_exists: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM users WHERE id = ?"
-    )
-    .bind(user_id.as_bytes().to_vec())
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
-    
+    let user_exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE id = ?")
+        .bind(user_id.as_bytes().to_vec())
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
     if user_exists == 0 {
         return Err(ApiError::BadRequest("User not found".to_string()));
     }
-    
+
     // Check if member already exists
     let existing: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM project_members WHERE project_id = ? AND user_id = ?"
+        "SELECT COUNT(*) FROM project_members WHERE project_id = ? AND user_id = ?",
     )
     .bind(&project_id)
     .bind(user_id.as_bytes().to_vec())
     .fetch_one(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
-    
+
     if existing > 0 {
-        return Err(ApiError::BadRequest("User is already a member of this project".to_string()));
+        return Err(ApiError::BadRequest(
+            "User is already a member of this project".to_string(),
+        ));
     }
-    
+
     let member_id = Uuid::new_v4();
-    
+
     // Add member
     sqlx::query(
         r#"
         INSERT INTO project_members (id, project_id, user_id, role, granted_by)
         VALUES (?, ?, ?, ?, ?)
-        "#
+        "#,
     )
     .bind(member_id.as_bytes().to_vec())
     .bind(&project_id)
@@ -221,7 +237,7 @@ async fn add_project_member(
     .execute(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to add project member: {}", e)))?;
-    
+
     // Log the action
     log_permission_action(
         &pool,
@@ -231,8 +247,9 @@ async fn add_project_member(
         Some(&project_id),
         &format!(r#"{{"role":"{}"}}"#, role),
         &context.user_id,
-    ).await?;
-    
+    )
+    .await?;
+
     // Fetch and return the created member
     let row: ProjectMemberRow = sqlx::query_as(
         r#"
@@ -251,13 +268,13 @@ async fn add_project_member(
         JOIN users u ON pm.user_id = u.id
         LEFT JOIN users gb ON pm.granted_by = gb.id
         WHERE pm.id = ?
-        "#
+        "#,
     )
     .bind(member_id.as_bytes().to_vec())
     .fetch_one(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch created member: {}", e)))?;
-    
+
     Ok(ResponseJson(ApiResponse::success(row.into())))
 }
 
@@ -268,47 +285,46 @@ async fn remove_project_member(
     Path((project_id, user_id_str)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     let pool = deployment.db().pool.clone();
-    
+
     // Check if user has admin access to the project
-    context.check_project_access(&pool, &project_id, ProjectRole::Admin).await?;
-    
+    context
+        .check_project_access(&pool, &project_id, ProjectRole::Admin)
+        .await?;
+
     let user_id = Uuid::parse_str(&user_id_str)
         .map_err(|_| ApiError::BadRequest("Invalid user ID".to_string()))?;
-    
+
     // Don't allow removing the last owner
     let owner_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM project_members WHERE project_id = ? AND role = 'owner'"
+        "SELECT COUNT(*) FROM project_members WHERE project_id = ? AND role = 'owner'",
     )
     .bind(&project_id)
     .fetch_one(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
-    
-    let member_role: Option<String> = sqlx::query_scalar(
-        "SELECT role FROM project_members WHERE project_id = ? AND user_id = ?"
-    )
-    .bind(&project_id)
-    .bind(user_id.as_bytes().to_vec())
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
-    
+
+    let member_role: Option<String> =
+        sqlx::query_scalar("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?")
+            .bind(&project_id)
+            .bind(user_id.as_bytes().to_vec())
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
     if member_role == Some("owner".to_string()) && owner_count <= 1 {
         return Err(ApiError::BadRequest(
-            "Cannot remove the last owner from the project".to_string()
+            "Cannot remove the last owner from the project".to_string(),
         ));
     }
-    
+
     // Remove member
-    sqlx::query(
-        "DELETE FROM project_members WHERE project_id = ? AND user_id = ?"
-    )
-    .bind(&project_id)
-    .bind(user_id.as_bytes().to_vec())
-    .execute(&pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to remove project member: {}", e)))?;
-    
+    sqlx::query("DELETE FROM project_members WHERE project_id = ? AND user_id = ?")
+        .bind(&project_id)
+        .bind(user_id.as_bytes().to_vec())
+        .execute(&pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to remove project member: {}", e)))?;
+
     // Log the action
     log_permission_action(
         &pool,
@@ -318,8 +334,9 @@ async fn remove_project_member(
         Some(&project_id),
         "{}",
         &context.user_id,
-    ).await?;
-    
+    )
+    .await?;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -331,52 +348,53 @@ async fn update_member_role(
     ResponseJson(req): ResponseJson<UpdateMemberRoleRequest>,
 ) -> Result<ResponseJson<ApiResponse<ProjectMemberItem>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    
+
     // Check if user has admin access to the project
-    context.check_project_access(&pool, &project_id, ProjectRole::Admin).await?;
-    
+    context
+        .check_project_access(&pool, &project_id, ProjectRole::Admin)
+        .await?;
+
     // Validate role
-    let role: ProjectRole = req.role.parse()
+    let role: ProjectRole = req
+        .role
+        .parse()
         .map_err(|e: String| ApiError::BadRequest(e))?;
-    
+
     let user_id = Uuid::parse_str(&user_id_str)
         .map_err(|_| ApiError::BadRequest("Invalid user ID".to_string()))?;
-    
+
     // Don't allow changing the last owner's role
     let owner_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM project_members WHERE project_id = ? AND role = 'owner'"
+        "SELECT COUNT(*) FROM project_members WHERE project_id = ? AND role = 'owner'",
     )
     .bind(&project_id)
     .fetch_one(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
-    
-    let current_role: Option<String> = sqlx::query_scalar(
-        "SELECT role FROM project_members WHERE project_id = ? AND user_id = ?"
-    )
-    .bind(&project_id)
-    .bind(user_id.as_bytes().to_vec())
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
-    
+
+    let current_role: Option<String> =
+        sqlx::query_scalar("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?")
+            .bind(&project_id)
+            .bind(user_id.as_bytes().to_vec())
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
     if current_role == Some("owner".to_string()) && owner_count <= 1 && role != ProjectRole::Owner {
         return Err(ApiError::BadRequest(
-            "Cannot change the role of the last owner".to_string()
+            "Cannot change the role of the last owner".to_string(),
         ));
     }
-    
+
     // Update role
-    sqlx::query(
-        "UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?"
-    )
-    .bind(role.to_string())
-    .bind(&project_id)
-    .bind(user_id.as_bytes().to_vec())
-    .execute(&pool)
-    .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to update member role: {}", e)))?;
-    
+    sqlx::query("UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?")
+        .bind(role.to_string())
+        .bind(&project_id)
+        .bind(user_id.as_bytes().to_vec())
+        .execute(&pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to update member role: {}", e)))?;
+
     // Log the action
     log_permission_action(
         &pool,
@@ -386,8 +404,9 @@ async fn update_member_role(
         Some(&project_id),
         &format!(r#"{{"new_role":"{}"}}"#, role),
         &context.user_id,
-    ).await?;
-    
+    )
+    .await?;
+
     // Fetch and return updated member
     let row: ProjectMemberRow = sqlx::query_as(
         r#"
@@ -406,14 +425,14 @@ async fn update_member_role(
         JOIN users u ON pm.user_id = u.id
         LEFT JOIN users gb ON pm.granted_by = gb.id
         WHERE pm.project_id = ? AND pm.user_id = ?
-        "#
+        "#,
     )
     .bind(&project_id)
     .bind(user_id.as_bytes().to_vec())
     .fetch_one(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch updated member: {}", e)))?;
-    
+
     Ok(ResponseJson(ApiResponse::success(row.into())))
 }
 
@@ -424,9 +443,9 @@ async fn check_project_access(
     Path(project_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<ProjectAccessResponse>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    
+
     let role_opt = context.get_project_role(&pool, &project_id).await?;
-    
+
     let response = match role_opt {
         Some(role) => ProjectAccessResponse {
             has_access: true,
@@ -445,7 +464,7 @@ async fn check_project_access(
             can_delete: false,
         },
     };
-    
+
     Ok(ResponseJson(ApiResponse::success(response)))
 }
 
@@ -455,14 +474,14 @@ async fn list_my_projects(
     Extension(context): Extension<AccessContext>,
 ) -> Result<ResponseJson<ApiResponse<Vec<MyProjectItem>>>, ApiError> {
     let pool = deployment.db().pool.clone();
-    
+
     // If admin, return all projects
     if context.is_admin {
         // This would need to join with actual projects table
         // For now, return empty list for admins as they have access to all
         return Ok(ResponseJson(ApiResponse::success(vec![])));
     }
-    
+
     let projects: Vec<MyProjectItem> = sqlx::query_as(
         r#"
         SELECT 
@@ -473,13 +492,13 @@ async fn list_my_projects(
         FROM project_members pm
         WHERE pm.user_id = ?
         ORDER BY pm.granted_at DESC
-        "#
+        "#,
     )
     .bind(context.user_id.as_bytes().to_vec())
     .fetch_all(&pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch projects: {}", e)))?;
-    
+
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
 
@@ -494,13 +513,13 @@ async fn log_permission_action(
     performed_by: &Uuid,
 ) -> Result<(), ApiError> {
     let log_id = Uuid::new_v4();
-    
+
     sqlx::query(
         r#"
         INSERT INTO permission_audit_log 
         (id, user_id, action, resource_type, resource_id, details, performed_by)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        "#
+        "#,
     )
     .bind(log_id.as_bytes().to_vec())
     .bind(user_id.as_bytes().to_vec())
@@ -512,6 +531,6 @@ async fn log_permission_action(
     .execute(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to log permission action: {}", e)))?;
-    
+
     Ok(())
 }

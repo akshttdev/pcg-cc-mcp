@@ -3,6 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use anyhow::Error as AnyhowError;
 use async_trait::async_trait;
 use axum::response::sse::Event;
+#[cfg(feature = "postgres")]
+use db::PgDBService;
 use db::{
     DBService,
     models::{
@@ -12,12 +14,6 @@ use db::{
         task_attempt::{TaskAttempt, TaskAttemptError},
     },
 };
-
-#[cfg(feature = "postgres")]
-use db::PgDBService;
-#[cfg(feature = "postgres")]
-use sqlx::{Pool, Postgres};
-
 use executors::executors::ExecutorError;
 use futures::{StreamExt, TryStreamExt};
 use git2::Error as Git2Error;
@@ -34,11 +30,14 @@ use services::services::{
     filesystem_watcher::FilesystemWatcherError,
     git::{GitService, GitServiceError},
     image::{ImageError, ImageService},
+    media_pipeline::{MediaPipelineError, MediaPipelineService},
     pr_monitor::PrMonitorService,
     sentry::SentryService,
     worktree_manager::WorktreeError,
 };
 use sqlx::{Error as SqlxError, types::Uuid};
+#[cfg(feature = "postgres")]
+use sqlx::{Pool, Postgres};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use utils::msg_store::MsgStore;
@@ -73,6 +72,8 @@ pub enum DeploymentError {
     Event(#[from] EventError),
     #[error(transparent)]
     Config(#[from] ConfigError),
+    #[error(transparent)]
+    MediaPipeline(#[from] MediaPipelineError),
     #[error(transparent)]
     Other(#[from] AnyhowError),
 }
@@ -115,6 +116,8 @@ pub trait Deployment: Clone + Send + Sync + 'static {
     fn file_search_cache(&self) -> &Arc<FileSearchCache>;
 
     fn approvals(&self) -> &Approvals;
+
+    fn media_pipeline(&self) -> &MediaPipelineService;
 
     async fn update_sentry_scope(&self) -> Result<(), DeploymentError> {
         let user_id = self.user_id();
