@@ -119,6 +119,7 @@ impl TokenBucket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn test_rate_limit_config_default() {
