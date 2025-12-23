@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                batch_id as \"batch_id!: Uuid\",\n                filename,\n                file_path,\n                size_bytes,\n                checksum_sha256,\n                duration_seconds,\n                resolution,\n                codec,\n                fps,\n                metadata as \"metadata!: Json<Value>\",\n                created_at as \"created_at!: DateTime<Utc>\"\n            FROM media_files WHERE batch_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "batch_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "filename",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_path",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "size_bytes",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "checksum_sha256",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "duration_seconds",
+        "ordinal": 6,
+        "type_info": "Float"
+      },
+      {
+        "name": "resolution",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "codec",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "fps",
+        "ordinal": 9,
+        "type_info": "Float"
+      },
+      {
+        "name": "metadata!: Json<Value>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "a73c6c4b2da3ac362fe3e021d74dd44d000155d36bcc0c28da5d00222ba7f862"
+}

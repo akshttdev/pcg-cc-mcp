@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO cinematic_shot_plans (\n                id,\n                brief_id,\n                shot_index,\n                title,\n                prompt,\n                negative_prompt,\n                camera_notes,\n                duration_seconds,\n                metadata,\n                status\n            ) VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10\n            )\n            RETURNING\n                id as \"id!: Uuid\",\n                brief_id as \"brief_id!: Uuid\",\n                shot_index as \"shot_index!: i64\",\n                title as \"title!: String\",\n                prompt as \"prompt!: String\",\n                negative_prompt as \"negative_prompt!: String\",\n                camera_notes as \"camera_notes!: String\",\n                duration_seconds as \"duration_seconds!: i64\",\n                metadata as \"metadata: Json<Value>\",\n                status as \"status!: CinematicShotPlanStatus\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "brief_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "shot_index!: i64",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "title!: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "prompt!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "negative_prompt!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "camera_notes!: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "duration_seconds!: i64",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "metadata: Json<Value>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: CinematicShotPlanStatus",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 10
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "65e108a86e3caf621b681fdffc73df1af97092fdad2d3d9fd29a0f340774d548"
+}
