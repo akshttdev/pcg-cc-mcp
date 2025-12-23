@@ -12,6 +12,7 @@ pub mod git;
 pub mod git_cli;
 pub mod github_service;
 pub mod image;
+pub mod media_pipeline;
 pub mod notification;
 pub mod pcg_policy;
 pub mod pr_monitor;

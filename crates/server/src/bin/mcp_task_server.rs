@@ -1,9 +1,5 @@
 use db::DBService;
-use rmcp::{
-    ServiceExt,
-    service::ServerInitializeError,
-    transport::stdio,
-};
+use rmcp::{ServiceExt, service::ServerInitializeError, transport::stdio};
 use server::mcp::task_server::TaskServer;
 use tracing_subscriber::{EnvFilter, prelude::*};
 use utils::sentry::sentry_layer;

@@ -6,10 +6,9 @@
 pub mod call_handler;
 pub mod twiml;
 
+pub use call_handler::{TwilioCallHandler, TwilioCallState};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-
-pub use call_handler::{TwilioCallHandler, TwilioCallState};
 pub use twiml::TwimlBuilder;
 
 /// Configuration for Twilio integration

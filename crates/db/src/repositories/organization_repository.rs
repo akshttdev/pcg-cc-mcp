@@ -1,7 +1,8 @@
 // Organization database repository
-use crate::models::user::{Organization, OrganizationRole, User};
 use sqlx::PgPool;
 use uuid::Uuid;
+
+use crate::models::user::{Organization, OrganizationRole, User};
 
 pub struct OrganizationRepository;
 
@@ -18,7 +19,7 @@ impl OrganizationRepository {
             INSERT INTO organizations (name, slug, created_by)
             VALUES ($1, $2, $3)
             RETURNING *
-            "#
+            "#,
         )
         .bind(name)
         .bind(slug)
@@ -30,7 +31,7 @@ impl OrganizationRepository {
     /// Find organization by ID
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Organization>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT * FROM organizations WHERE id = $1 AND is_active = true"
+            "SELECT * FROM organizations WHERE id = $1 AND is_active = true",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -38,9 +39,12 @@ impl OrganizationRepository {
     }
 
     /// Find organization by slug
-    pub async fn find_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Organization>, sqlx::Error> {
+    pub async fn find_by_slug(
+        pool: &PgPool,
+        slug: &str,
+    ) -> Result<Option<Organization>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT * FROM organizations WHERE slug = $1 AND is_active = true"
+            "SELECT * FROM organizations WHERE slug = $1 AND is_active = true",
         )
         .bind(slug)
         .fetch_optional(pool)
@@ -50,7 +54,7 @@ impl OrganizationRepository {
     /// List all organizations
     pub async fn list_all(pool: &PgPool) -> Result<Vec<Organization>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT * FROM organizations WHERE is_active = true ORDER BY created_at DESC"
+            "SELECT * FROM organizations WHERE is_active = true ORDER BY created_at DESC",
         )
         .fetch_all(pool)
         .await
@@ -83,7 +87,7 @@ impl OrganizationRepository {
         query.push_str(&format!(" WHERE id = ${} RETURNING *", bind_count));
 
         let mut q = sqlx::query_as::<_, Organization>(&query);
-        
+
         if let Some(n) = name {
             q = q.bind(n);
         }
@@ -108,7 +112,10 @@ impl OrganizationRepository {
     }
 
     /// Get organization members
-    pub async fn get_members(pool: &PgPool, org_id: Uuid) -> Result<Vec<(User, OrganizationRole)>, sqlx::Error> {
+    pub async fn get_members(
+        pool: &PgPool,
+        org_id: Uuid,
+    ) -> Result<Vec<(User, OrganizationRole)>, sqlx::Error> {
         #[derive(sqlx::FromRow)]
         struct MemberRow {
             #[sqlx(flatten)]
@@ -125,7 +132,7 @@ impl OrganizationRepository {
             JOIN organization_members om ON u.id = om.user_id
             WHERE om.organization_id = $1 AND u.is_active = true
             ORDER BY om.joined_at DESC
-            "#
+            "#,
         )
         .bind(org_id)
         .fetch_all(pool)
@@ -141,14 +148,16 @@ impl OrganizationRepository {
     }
 
     /// Remove user from organization
-    pub async fn remove_member(pool: &PgPool, org_id: Uuid, user_id: Uuid) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "DELETE FROM organization_members WHERE organization_id = $1 AND user_id = $2"
-        )
-        .bind(org_id)
-        .bind(user_id)
-        .execute(pool)
-        .await?;
+    pub async fn remove_member(
+        pool: &PgPool,
+        org_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM organization_members WHERE organization_id = $1 AND user_id = $2")
+            .bind(org_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -160,7 +169,7 @@ impl OrganizationRepository {
         role: OrganizationRole,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "UPDATE organization_members SET role = $1 WHERE organization_id = $2 AND user_id = $3"
+            "UPDATE organization_members SET role = $1 WHERE organization_id = $2 AND user_id = $3",
         )
         .bind(role.to_string())
         .bind(org_id)
@@ -171,9 +180,13 @@ impl OrganizationRepository {
     }
 
     /// Check if user is member of organization
-    pub async fn is_member(pool: &PgPool, org_id: Uuid, user_id: Uuid) -> Result<bool, sqlx::Error> {
+    pub async fn is_member(
+        pool: &PgPool,
+        org_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
         let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM organization_members WHERE organization_id = $1 AND user_id = $2"
+            "SELECT COUNT(*) FROM organization_members WHERE organization_id = $1 AND user_id = $2",
         )
         .bind(org_id)
         .bind(user_id)
@@ -189,7 +202,7 @@ impl OrganizationRepository {
         user_id: Uuid,
     ) -> Result<Option<OrganizationRole>, sqlx::Error> {
         let result: Option<(String,)> = sqlx::query_as(
-            "SELECT role FROM organization_members WHERE organization_id = $1 AND user_id = $2"
+            "SELECT role FROM organization_members WHERE organization_id = $1 AND user_id = $2",
         )
         .bind(org_id)
         .bind(user_id)

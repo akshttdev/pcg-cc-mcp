@@ -89,15 +89,15 @@ impl PgDBService {
     pub async fn new() -> Result<PgDBService, Error> {
         let database_url = std::env::var("DATABASE_URL")
             .expect("DATABASE_URL must be set for PostgreSQL connection");
-        
+
         let pool = PgPoolOptions::new()
             .max_connections(5)
             .connect(&database_url)
             .await?;
-        
+
         // Run migrations
         sqlx::migrate!("./migrations_pg").run(&pool).await?;
-        
+
         Ok(PgDBService { pool })
     }
 
@@ -107,10 +107,10 @@ impl PgDBService {
             .max_connections(5)
             .connect(database_url)
             .await?;
-        
+
         // Run migrations
         sqlx::migrate!("./migrations_pg").run(&pool).await?;
-        
+
         Ok(PgDBService { pool })
     }
 }

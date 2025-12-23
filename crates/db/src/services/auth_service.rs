@@ -1,5 +1,5 @@
 // Simplified authentication service using bcrypt and sessions
-use bcrypt::{hash, verify, DEFAULT_COST};
+use bcrypt::{DEFAULT_COST, hash, verify};
 use uuid::Uuid;
 
 /// Simple auth service for internal use
@@ -34,10 +34,10 @@ mod tests {
     fn test_password_hashing() {
         let password = "test_password_123";
         let hash = AuthService::hash_password(password).unwrap();
-        
+
         // Verify correct password
         assert!(AuthService::verify_password(password, &hash).unwrap());
-        
+
         // Verify wrong password fails
         assert!(!AuthService::verify_password("wrong_password", &hash).unwrap());
     }
@@ -55,10 +55,10 @@ mod tests {
     fn test_session_id_generation() {
         let session1 = AuthService::generate_session_id();
         let session2 = AuthService::generate_session_id();
-        
+
         // Each session ID should be unique
         assert_ne!(session1, session2);
-        
+
         // Should be valid UUIDs
         assert!(Uuid::parse_str(&session1).is_ok());
         assert!(Uuid::parse_str(&session2).is_ok());

@@ -1,9 +1,9 @@
 use axum::{
     Router,
-    routing::{IntoMakeService, get},
-    middleware,
     http::StatusCode,
+    middleware,
     response::IntoResponse,
+    routing::{IntoMakeService, get},
 };
 
 use crate::{DeploymentImpl, middleware as app_middleware};
@@ -23,6 +23,7 @@ pub mod frontend;
 pub mod health;
 pub mod images;
 pub mod nora;
+pub mod permissions;
 pub mod project_boards;
 pub mod projects;
 pub mod task_attempts;
@@ -30,7 +31,6 @@ pub mod task_templates;
 pub mod tasks;
 pub mod twilio;
 pub mod users;
-pub mod permissions;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -45,12 +45,13 @@ async fn metrics_handler() -> impl IntoResponse {
 
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // Admin routes with require_admin middleware applied BEFORE state
-    let admin_routes = Router::new()
-        .merge(users::router(&deployment))
-        .layer(middleware::from_fn_with_state(
-            deployment.clone(),
-            app_middleware::require_admin,
-        ));
+    let admin_routes =
+        Router::new()
+            .merge(users::router(&deployment))
+            .layer(middleware::from_fn_with_state(
+                deployment.clone(),
+                app_middleware::require_admin,
+            ));
 
     // All routes (public and protected)
     let base_routes = Router::new()

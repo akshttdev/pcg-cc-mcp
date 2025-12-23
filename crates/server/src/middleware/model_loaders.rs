@@ -11,7 +11,10 @@ use db::models::{
 use deployment::Deployment;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, middleware::access_control::{AccessContext, ProjectRole}};
+use crate::{
+    DeploymentImpl,
+    middleware::access_control::{AccessContext, ProjectRole},
+};
 
 pub async fn load_project_middleware(
     State(deployment): State<DeploymentImpl>,
@@ -36,7 +39,11 @@ pub async fn load_project_middleware(
     if let Some(access_context) = request.extensions().get::<AccessContext>() {
         // Check if user has at least viewer access to this project
         match access_context
-            .check_project_access(&deployment.db().pool, &project.id.to_string(), ProjectRole::Viewer)
+            .check_project_access(
+                &deployment.db().pool,
+                &project.id.to_string(),
+                ProjectRole::Viewer,
+            )
             .await
         {
             Ok(_role) => {

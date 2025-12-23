@@ -1,15 +1,23 @@
 //! Core Nora agent implementation
 
 use std::{
-    fs,
-    io,
+    collections::HashMap,
+    fs, io,
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
 };
 
 use chrono::{DateTime, Duration, Utc};
+use db::models::{
+    project::{CreateProject, Project},
+    task::Priority,
+};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use services::services::media_pipeline::MediaPipelineService;
+use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -24,15 +32,11 @@ use crate::{
         ProjectStatus,
     },
     personality::BritishPersonality,
+    profiles::default_agent_profiles,
     tools::ExecutiveTools,
     voice::VoiceEngine,
     NoraConfig, NoraError, Result,
 };
-use db::models::{project::{CreateProject, Project}, task::Priority};
-use once_cell::sync::Lazy;
-use regex::Regex;
-use sqlx::SqlitePool;
-use std::collections::HashMap;
 
 /// Main Nora agent structure
 pub struct NoraAgent {
@@ -40,16 +44,18 @@ pub struct NoraAgent {
     pub config: NoraConfig,
     pub voice_engine: Arc<VoiceEngine>,
     pub coordination_manager: Arc<CoordinationManager>,
+    pub workflow_orchestrator: Arc<crate::workflow::WorkflowOrchestrator>,
     pub memory: Arc<RwLock<ConversationMemory>>,
     pub personality: BritishPersonality,
-    pub executive_tools: ExecutiveTools,
+    pub executive_tools: Arc<ExecutiveTools>,
     pub context: Arc<RwLock<ExecutiveContext>>,
     pub llm: Option<Arc<LLMClient>>,
     pub is_active: Arc<RwLock<bool>>,
     pub pool: Option<SqlitePool>,
     pub executor: Option<Arc<TaskExecutor>>,
     /// Conversation history per session for true conversational mode
-    pub conversation_histories: Arc<RwLock<HashMap<String, Vec<crate::brain::ConversationMessage>>>>,
+    pub conversation_histories:
+        Arc<RwLock<HashMap<String, Vec<crate::brain::ConversationMessage>>>>,
 }
 
 /// Request to Nora for processing
@@ -163,8 +169,13 @@ impl NoraAgent {
         // Initialize voice engine
         let voice_engine = Arc::new(VoiceEngine::new(config.voice.clone()).await?);
 
-        // Initialize coordination manager
+        // Initialize coordination manager and seed default agent profiles
         let coordination_manager = Arc::new(CoordinationManager::new().await?);
+        for profile in default_agent_profiles() {
+            coordination_manager
+                .register_agent(profile.to_coordination_state())
+                .await?;
+        }
 
         // Initialize memory
         let memory = Arc::new(RwLock::new(ConversationMemory::new()));
@@ -173,7 +184,13 @@ impl NoraAgent {
         let personality = BritishPersonality::new(config.personality.clone());
 
         // Initialize executive tools
-        let executive_tools = ExecutiveTools::new();
+        let executive_tools = Arc::new(ExecutiveTools::new());
+
+        // Initialize workflow orchestrator (Nora will execute the actual tools)
+        let workflow_orchestrator = Arc::new(crate::workflow::WorkflowOrchestrator::new(
+            default_agent_profiles(),
+            coordination_manager.clone(),
+        ));
 
         // Initialize executive context
         let context = Arc::new(RwLock::new(ExecutiveContext::new()));
@@ -208,6 +225,7 @@ impl NoraAgent {
             config,
             voice_engine,
             coordination_manager,
+            workflow_orchestrator,
             memory,
             personality,
             executive_tools,
@@ -223,12 +241,35 @@ impl NoraAgent {
     /// Set the database pool and initialize the task executor
     pub fn with_database(mut self, pool: SqlitePool) -> Self {
         let executor = Arc::new(TaskExecutor::new(pool.clone()));
-        self.pool = Some(pool);
+        self.pool = Some(pool.clone());
         self.executor = Some(executor.clone());
-        
+
         // Set executor in executive tools so they can create projects/boards/tasks
-        self.executive_tools.set_task_executor(executor);
-        
+        // Need to get mutable access to executive tools
+        {
+            let tools = Arc::get_mut(&mut self.executive_tools)
+                .expect("Executive tools should not be shared yet during initialization");
+            tools.set_task_executor(executor.clone());
+            tools.set_workflow_orchestrator(self.workflow_orchestrator.clone());
+        }
+
+        // Configure workflow orchestrator with database and executor
+        let workflow_orchestrator = self.workflow_orchestrator.clone();
+        tokio::spawn(async move {
+            workflow_orchestrator.set_database(pool).await;
+            workflow_orchestrator.set_task_executor(executor).await;
+        });
+
+        // Start Nora's workflow monitoring and execution loop
+        self.start_workflow_monitor();
+
+        self
+    }
+
+    pub fn with_media_pipeline(mut self, pipeline: MediaPipelineService) -> Self {
+        if let Some(tools) = Arc::get_mut(&mut self.executive_tools) {
+            tools.set_media_pipeline(pipeline);
+        }
         self
     }
 
@@ -271,8 +312,7 @@ impl NoraAgent {
                 NoraResponseType::PerformanceInsight,
             ),
             NoraRequestType::CommunicationManagement => {
-                let (content, actions) =
-                    self.process_communication_management(&request).await?;
+                let (content, actions) = self.process_communication_management(&request).await?;
                 (content, actions, NoraResponseType::DirectResponse)
             }
             NoraRequestType::DecisionSupport => (
@@ -382,9 +422,13 @@ impl NoraAgent {
         let original = request.content.trim();
         let lowered = original.to_lowercase();
         let session_id = &request.session_id;
-        
+
         tracing::debug!("[TOOL_FLOW] Starting process_text_with_tools");
-        tracing::debug!("[TOOL_FLOW] Session: {}, User input: {}", session_id, original);
+        tracing::debug!(
+            "[TOOL_FLOW] Session: {}, User input: {}",
+            session_id,
+            original
+        );
 
         // Check if user is confirming a pending action
         if self.is_confirmation(&lowered).await {
@@ -396,60 +440,89 @@ impl NoraAgent {
 
         // Handle simple greetings without LLM
         let is_short_message = original.split_whitespace().count() <= 5;
-        if is_short_message && (lowered.starts_with("hello")
-            || lowered.starts_with("hi ")
-            || lowered.starts_with("hi,")
-            || lowered == "hi"
-            || lowered.starts_with("good morning")
-            || lowered.starts_with("good afternoon")
-            || lowered.starts_with("good evening"))
+        if is_short_message
+            && (lowered.starts_with("hello")
+                || lowered.starts_with("hi ")
+                || lowered.starts_with("hi,")
+                || lowered == "hi"
+                || lowered.starts_with("good morning")
+                || lowered.starts_with("good afternoon")
+                || lowered.starts_with("good evening"))
         {
             tracing::debug!("[TOOL_FLOW] Detected greeting - returning canned response");
-            let greeting_response = "Hello there! Lovely to meet you. How can I help today?".to_string();
+            let greeting_response =
+                "Hello there! Lovely to meet you. How can I help today?".to_string();
             // Still add to history for context
-            self.add_to_conversation_history(session_id, original, &greeting_response).await;
+            self.add_to_conversation_history(session_id, original, &greeting_response)
+                .await;
             return Ok(greeting_response);
         } else if is_short_message && lowered.contains("thank") {
             tracing::debug!("[TOOL_FLOW] Detected thanks - returning canned response");
             let thanks_response = "You're very welcome! Always happy to help. Just give me a shout when you need anything.".to_string();
-            self.add_to_conversation_history(session_id, original, &thanks_response).await;
+            self.add_to_conversation_history(session_id, original, &thanks_response)
+                .await;
             return Ok(thanks_response);
         }
 
         // Get conversation history for this session
         let conversation_history = self.get_conversation_history(session_id).await;
-        tracing::debug!("[TOOL_FLOW] Loaded {} messages from conversation history", conversation_history.len());
+        tracing::debug!(
+            "[TOOL_FLOW] Loaded {} messages from conversation history",
+            conversation_history.len()
+        );
 
         // Use LLM with function calling for all other requests
         if let Some(llm) = &self.llm {
             tracing::debug!("[TOOL_FLOW] LLM is configured - proceeding with function calling");
             let context_snapshot = self.build_context_snapshot(request).await;
-            tracing::debug!("[TOOL_FLOW] Built context snapshot ({} chars)", context_snapshot.len());
+            tracing::debug!(
+                "[TOOL_FLOW] Built context snapshot ({} chars)",
+                context_snapshot.len()
+            );
             let system_prompt = self.system_prompt();
-            tracing::debug!("[TOOL_FLOW] System prompt length: {} chars", system_prompt.len());
+            tracing::debug!(
+                "[TOOL_FLOW] System prompt length: {} chars",
+                system_prompt.len()
+            );
             let tools = crate::tools::ExecutiveTools::get_openai_tool_schemas();
             tracing::debug!("[TOOL_FLOW] Loaded {} tool schemas", tools.len());
             tracing::info!("[TOOL_FLOW] Sending request to LLM with function calling enabled (history: {} msgs)", conversation_history.len());
 
             // First call - LLM may request tool calls (with conversation history)
-            match llm.generate_with_tools_and_history(&system_prompt, original, &context_snapshot, &tools, &conversation_history).await {
+            match llm
+                .generate_with_tools_and_history(
+                    &system_prompt,
+                    original,
+                    &context_snapshot,
+                    &tools,
+                    &conversation_history,
+                )
+                .await
+            {
                 Ok(crate::brain::LLMResponse::Text(response)) => {
                     // LLM responded directly without needing tools
                     tracing::info!("[TOOL_FLOW] LLM returned text response (no tools needed)");
-                    tracing::debug!("[TOOL_FLOW] Response: {}", &response[..response.len().min(200)]);
+                    tracing::debug!(
+                        "[TOOL_FLOW] Response: {}",
+                        &response[..response.len().min(200)]
+                    );
                     // Add to conversation history
-                    self.add_to_conversation_history(session_id, original, &response).await;
+                    self.add_to_conversation_history(session_id, original, &response)
+                        .await;
                     return Ok(response);
                 }
                 Ok(crate::brain::LLMResponse::ToolCalls(tool_calls)) => {
                     // LLM wants to call tools - execute them
                     tracing::info!("[TOOL_FLOW] ========== TOOL CALLS REQUESTED ==========");
-                    tracing::info!("[TOOL_FLOW] LLM requested {} tool call(s)", tool_calls.len());
+                    tracing::info!(
+                        "[TOOL_FLOW] LLM requested {} tool call(s)",
+                        tool_calls.len()
+                    );
                     for (i, tc) in tool_calls.iter().enumerate() {
                         tracing::info!("[TOOL_FLOW] Tool {}: {} (id: {})", i + 1, tc.name, tc.id);
                         tracing::debug!("[TOOL_FLOW] Tool {} arguments: {}", i + 1, tc.arguments);
                     }
-                    
+
                     let mut tool_results = Vec::new();
                     let permissions = vec![
                         crate::tools::Permission::Executive,
@@ -462,29 +535,62 @@ impl NoraAgent {
                         tracing::info!("[TOOL_FLOW] Tool name: {}", tc.name);
                         tracing::info!("[TOOL_FLOW] Tool ID: {}", tc.id);
                         tracing::debug!("[TOOL_FLOW] Arguments: {}", tc.arguments);
-                        
+
                         tracing::debug!("[TOOL_FLOW] Parsing tool call to NoraExecutiveTool...");
-                        if let Some(nora_tool) = crate::tools::ExecutiveTools::parse_tool_call(&tc.name, &tc.arguments) {
-                            tracing::debug!("[TOOL_FLOW] Successfully parsed tool: {:?}", nora_tool);
-                            tracing::info!("[TOOL_FLOW] Executing tool with permissions: {:?}", permissions);
-                            match self.executive_tools.execute_tool(nora_tool, permissions.clone()).await {
+                        if let Some(nora_tool) =
+                            crate::tools::ExecutiveTools::parse_tool_call(&tc.name, &tc.arguments)
+                        {
+                            tracing::debug!(
+                                "[TOOL_FLOW] Successfully parsed tool: {:?}",
+                                nora_tool
+                            );
+                            tracing::info!(
+                                "[TOOL_FLOW] Executing tool with permissions: {:?}",
+                                permissions
+                            );
+                            match self
+                                .executive_tools
+                                .execute_tool(nora_tool, permissions.clone())
+                                .await
+                            {
                                 Ok(result) => {
-                                    let success = matches!(result.status, crate::tools::ExecutionStatus::Success);
-                                    tracing::info!("[TOOL_FLOW] Tool execution completed - success: {}", success);
-                                    tracing::debug!("[TOOL_FLOW] Execution status: {:?}", result.status);
-                                    tracing::debug!("[TOOL_FLOW] Execution time: {}ms", result.execution_time_ms);
+                                    let success = matches!(
+                                        result.status,
+                                        crate::tools::ExecutionStatus::Success
+                                    );
+                                    tracing::info!(
+                                        "[TOOL_FLOW] Tool execution completed - success: {}",
+                                        success
+                                    );
+                                    tracing::debug!(
+                                        "[TOOL_FLOW] Execution status: {:?}",
+                                        result.status
+                                    );
+                                    tracing::debug!(
+                                        "[TOOL_FLOW] Execution time: {}ms",
+                                        result.execution_time_ms
+                                    );
                                     let result_text = if success {
-                                        let data = result.result_data
-                                            .map(|d| serde_json::to_string(&d).unwrap_or_else(|_| "Success".to_string()))
+                                        let data = result
+                                            .result_data
+                                            .map(|d| {
+                                                serde_json::to_string(&d)
+                                                    .unwrap_or_else(|_| "Success".to_string())
+                                            })
                                             .unwrap_or_else(|| "Success".to_string());
-                                        tracing::info!("[TOOL_FLOW] Tool SUCCESS - result: {}", &data[..data.len().min(200)]);
+                                        tracing::info!(
+                                            "[TOOL_FLOW] Tool SUCCESS - result: {}",
+                                            &data[..data.len().min(200)]
+                                        );
                                         data
                                     } else {
-                                        let err = result.error_message.unwrap_or_else(|| "Unknown error".to_string());
+                                        let err = result
+                                            .error_message
+                                            .unwrap_or_else(|| "Unknown error".to_string());
                                         tracing::error!("[TOOL_FLOW] Tool FAILED - error: {}", err);
                                         err
                                     };
-                                    
+
                                     tool_results.push(crate::brain::ToolResult {
                                         tool_call_id: tc.id.clone(),
                                         success,
@@ -501,8 +607,14 @@ impl NoraAgent {
                                 }
                             }
                         } else {
-                            tracing::warn!("[TOOL_FLOW] Failed to parse tool call - unknown tool: {}", tc.name);
-                            tracing::debug!("[TOOL_FLOW] Arguments that failed to parse: {}", tc.arguments);
+                            tracing::warn!(
+                                "[TOOL_FLOW] Failed to parse tool call - unknown tool: {}",
+                                tc.name
+                            );
+                            tracing::debug!(
+                                "[TOOL_FLOW] Arguments that failed to parse: {}",
+                                tc.arguments
+                            );
                             tool_results.push(crate::brain::ToolResult {
                                 tool_call_id: tc.id.clone(),
                                 success: false,
@@ -512,40 +624,72 @@ impl NoraAgent {
                     }
 
                     // Second call - pass tool results back to LLM for final response (with history)
-                    tracing::info!("[TOOL_FLOW] ========== CONTINUING WITH TOOL RESULTS ==========");
-                    tracing::info!("[TOOL_FLOW] Passing {} tool result(s) back to LLM", tool_results.len());
+                    tracing::info!(
+                        "[TOOL_FLOW] ========== CONTINUING WITH TOOL RESULTS =========="
+                    );
+                    tracing::info!(
+                        "[TOOL_FLOW] Passing {} tool result(s) back to LLM",
+                        tool_results.len()
+                    );
                     for (i, tr) in tool_results.iter().enumerate() {
-                        tracing::debug!("[TOOL_FLOW] Result {}: success={}, data={}", i + 1, tr.success, &tr.result[..tr.result.len().min(100)]);
+                        tracing::debug!(
+                            "[TOOL_FLOW] Result {}: success={}, data={}",
+                            i + 1,
+                            tr.success,
+                            &tr.result[..tr.result.len().min(100)]
+                        );
                     }
-                    
-                    match llm.continue_with_tool_results_and_history(
-                        &system_prompt,
-                        original,
-                        &context_snapshot,
-                        &tool_calls,
-                        &tool_results,
-                        &conversation_history,
-                    ).await {
+
+                    match llm
+                        .continue_with_tool_results_and_history(
+                            &system_prompt,
+                            original,
+                            &context_snapshot,
+                            &tool_calls,
+                            &tool_results,
+                            &conversation_history,
+                        )
+                        .await
+                    {
                         Ok(final_response) => {
-                            tracing::info!("[TOOL_FLOW] ========== FINAL RESPONSE RECEIVED ==========");
-                            tracing::debug!("[TOOL_FLOW] Final response: {}", &final_response[..final_response.len().min(300)]);
+                            tracing::info!(
+                                "[TOOL_FLOW] ========== FINAL RESPONSE RECEIVED =========="
+                            );
+                            tracing::debug!(
+                                "[TOOL_FLOW] Final response: {}",
+                                &final_response[..final_response.len().min(300)]
+                            );
                             // Add to conversation history
-                            self.add_to_conversation_history(session_id, original, &final_response).await;
+                            self.add_to_conversation_history(session_id, original, &final_response)
+                                .await;
                             return Ok(final_response);
                         }
                         Err(e) => {
                             tracing::error!("[TOOL_FLOW] LLM continuation FAILED: {}", e);
                             // Fall back to summarizing what we did
-                            tracing::info!("[TOOL_FLOW] Falling back to manual summary of tool results");
-                            let summary: Vec<String> = tool_results.iter()
-                                .map(|r| if r.success { 
-                                    format!("✅ {}", r.result) 
-                                } else { 
-                                    format!("❌ {}", r.result) 
+                            tracing::info!(
+                                "[TOOL_FLOW] Falling back to manual summary of tool results"
+                            );
+                            let summary: Vec<String> = tool_results
+                                .iter()
+                                .map(|r| {
+                                    if r.success {
+                                        format!("✅ {}", r.result)
+                                    } else {
+                                        format!("❌ {}", r.result)
+                                    }
                                 })
                                 .collect();
-                            let fallback_response = format!("I've completed the requested actions:\n\n{}", summary.join("\n"));
-                            self.add_to_conversation_history(session_id, original, &fallback_response).await;
+                            let fallback_response = format!(
+                                "I've completed the requested actions:\n\n{}",
+                                summary.join("\n")
+                            );
+                            self.add_to_conversation_history(
+                                session_id,
+                                original,
+                                &fallback_response,
+                            )
+                            .await;
                             return Ok(fallback_response);
                         }
                     }
@@ -554,7 +698,8 @@ impl NoraAgent {
                     tracing::warn!("[TOOL_FLOW] LLM with tools FAILED: {} - falling back to regular generation", e);
                     // Fall back to regular generation
                     let fallback = self.generate_llm_response(request, original).await;
-                    self.add_to_conversation_history(session_id, original, &fallback).await;
+                    self.add_to_conversation_history(session_id, original, &fallback)
+                        .await;
                     return Ok(fallback);
                 }
             }
@@ -567,30 +712,45 @@ impl NoraAgent {
     }
 
     /// Get conversation history for a session
-    async fn get_conversation_history(&self, session_id: &str) -> Vec<crate::brain::ConversationMessage> {
+    async fn get_conversation_history(
+        &self,
+        session_id: &str,
+    ) -> Vec<crate::brain::ConversationMessage> {
         let histories = self.conversation_histories.read().await;
         histories.get(session_id).cloned().unwrap_or_default()
     }
 
     /// Add a user message and assistant response to conversation history
-    async fn add_to_conversation_history(&self, session_id: &str, user_message: &str, assistant_response: &str) {
+    async fn add_to_conversation_history(
+        &self,
+        session_id: &str,
+        user_message: &str,
+        assistant_response: &str,
+    ) {
         let mut histories = self.conversation_histories.write().await;
-        let history = histories.entry(session_id.to_string()).or_insert_with(Vec::new);
-        
+        let history = histories
+            .entry(session_id.to_string())
+            .or_insert_with(Vec::new);
+
         // Add user message
         history.push(crate::brain::ConversationMessage::user(user_message));
         // Add assistant response
-        history.push(crate::brain::ConversationMessage::assistant(assistant_response));
-        
+        history.push(crate::brain::ConversationMessage::assistant(
+            assistant_response,
+        ));
+
         // Limit history size to prevent unbounded growth (keep last 20 messages = 10 exchanges)
         const MAX_HISTORY_SIZE: usize = 20;
         if history.len() > MAX_HISTORY_SIZE {
             let drain_count = history.len() - MAX_HISTORY_SIZE;
             history.drain(0..drain_count);
         }
-        
-        tracing::debug!("[CONVERSATION] Added exchange to session {}, history now has {} messages", 
-            session_id, history.len());
+
+        tracing::debug!(
+            "[CONVERSATION] Added exchange to session {}, history now has {} messages",
+            session_id,
+            history.len()
+        );
     }
 
     /// Clear conversation history for a session (useful for "start fresh" commands)
@@ -616,13 +776,14 @@ impl NoraAgent {
         // For anything longer or more complex, use the LLM
         let is_short_message = original.split_whitespace().count() <= 5;
 
-        let response = if is_short_message && (lowered.starts_with("hello")
-            || lowered.starts_with("hi ")
-            || lowered.starts_with("hi,")
-            || lowered == "hi"
-            || lowered.starts_with("good morning")
-            || lowered.starts_with("good afternoon")
-            || lowered.starts_with("good evening"))
+        let response = if is_short_message
+            && (lowered.starts_with("hello")
+                || lowered.starts_with("hi ")
+                || lowered.starts_with("hi,")
+                || lowered == "hi"
+                || lowered.starts_with("good morning")
+                || lowered.starts_with("good afternoon")
+                || lowered.starts_with("good evening"))
         {
             "Hello there! Lovely to meet you. How can I help today?".to_string()
         } else if is_short_message && lowered.contains("thank") {
@@ -632,7 +793,8 @@ impl NoraAgent {
             let llm_response = self.generate_llm_response(request, original).await;
 
             // After LLM response, check if we should execute tasks
-            self.extract_and_execute_tasks(original, &llm_response).await?;
+            self.extract_and_execute_tasks(original, &llm_response)
+                .await?;
 
             llm_response
         };
@@ -873,7 +1035,10 @@ impl NoraAgent {
 
         // Try to fetch real-time data from database
         if let Some(executor) = &self.executor {
-            tracing::info!("Executor available, building context for: {}", request.content);
+            tracing::info!(
+                "Executor available, building context for: {}",
+                request.content
+            );
             // Check if a specific project is mentioned
             if let Some(project_name) = self.extract_project_name(&request.content) {
                 tracing::info!("Extracted project name: {}", project_name);
@@ -882,7 +1047,10 @@ impl NoraAgent {
                     Ok(project_id) => {
                         match executor.get_project_details(project_id).await {
                             Ok(details) => {
-                                sections.push(format!("**LIVE DATA FOR {} PROJECT:**", details.name.to_uppercase()));
+                                sections.push(format!(
+                                    "**LIVE DATA FOR {} PROJECT:**",
+                                    details.name.to_uppercase()
+                                ));
                                 sections.push(format!("Repository: {}", details.git_repo_path));
 
                                 // Get project stats
@@ -896,7 +1064,10 @@ impl NoraAgent {
 
                                 // List all tasks
                                 if !details.tasks.is_empty() {
-                                    sections.push(format!("\nCurrent tasks ({}):", details.tasks.len()));
+                                    sections.push(format!(
+                                        "\nCurrent tasks ({}):",
+                                        details.tasks.len()
+                                    ));
                                     for (i, task) in details.tasks.iter().take(20).enumerate() {
                                         sections.push(format!(
                                             "  {}. [{}] {} - {}",
@@ -907,18 +1078,22 @@ impl NoraAgent {
                                         ));
                                     }
                                 } else {
-                                    sections.push("No tasks found in database for this project.".to_string());
+                                    sections.push(
+                                        "No tasks found in database for this project.".to_string(),
+                                    );
                                 }
 
                                 // List boards
                                 if !details.boards.is_empty() {
-                                    let board_names: Vec<String> = details.boards.iter().map(|b| b.name.clone()).collect();
+                                    let board_names: Vec<String> =
+                                        details.boards.iter().map(|b| b.name.clone()).collect();
                                     sections.push(format!("\nBoards: {}", board_names.join(", ")));
                                 }
 
                                 // List pods
                                 if !details.pods.is_empty() {
-                                    let pod_names: Vec<String> = details.pods.iter().map(|p| p.name.clone()).collect();
+                                    let pod_names: Vec<String> =
+                                        details.pods.iter().map(|p| p.name.clone()).collect();
                                     sections.push(format!("Pods: {}", pod_names.join(", ")));
                                 }
 
@@ -935,11 +1110,14 @@ impl NoraAgent {
                 }
             } else if request.content.to_lowercase().contains("task") {
                 // No specific project, but asking about tasks - show all tasks across all projects
-                tracing::info!("No specific project found, but request contains 'task' - fetching all tasks");
+                tracing::info!(
+                    "No specific project found, but request contains 'task' - fetching all tasks"
+                );
                 match executor.get_all_tasks().await {
                     Ok(tasks) => {
                         if !tasks.is_empty() {
-                            sections.push("**LIVE DATA - ALL TASKS ACROSS ECOSYSTEM:**".to_string());
+                            sections
+                                .push("**LIVE DATA - ALL TASKS ACROSS ECOSYSTEM:**".to_string());
                             sections.push(format!("Total tasks in database: {}", tasks.len()));
                             sections.push("\nRecent tasks:".to_string());
                             for (i, task) in tasks.iter().take(30).enumerate() {
@@ -1065,6 +1243,22 @@ CAPABILITIES:
 - Analyze project progress and identify blockers
 - Suggest improvements based on actual data
 - Track changes and objectives across all projects
+- Execute multi-stage agent workflows for complex operations
+
+WORKFLOW EXECUTION:
+You can orchestrate complex multi-stage workflows through specialized agents:
+- Editron (editron-post): Video production workflows - ingesting footage, analysis, editing, rendering
+- Astra (astra-strategy): Strategic planning and roadmap generation
+- Harbor (harbor-intel): Intelligence gathering and analysis
+- Pulse (pulse-growth): Growth initiatives and marketing campaigns
+- Vesper (vesper-creative): Creative asset generation
+- Forge (forge-systems): System development and deployment
+
+When a user requests a complex operation that involves multiple coordinated steps, use the execute_workflow tool:
+- Example: \"Editron, create a recap video from this Dropbox link\" → execute_workflow with agent_id='editron-post', workflow_id='event-recap-forge'
+- Example: \"Have Astra generate a roadmap for Q1\" → execute_workflow with agent_id='astra-strategy', workflow_id='roadmap-compression'
+
+Workflows automatically create tracking tasks for each stage, providing full visibility on the dashboard. Monitor workflow progress through task status updates.
 
 When presented with LIVE DATA, use it as your primary source of truth. Answer questions with specific, data-driven insights based on the actual current state of projects.
 
@@ -1126,15 +1320,11 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     }
 
     async fn bootstrap_project(&self, project_name: &str) -> Result<String> {
-        let executor = self
-            .executor
-            .as_ref()
-            .ok_or_else(|| NoraError::ExecutionError("Task executor not initialised".to_string()))?;
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            NoraError::ExecutionError("Task executor not initialised".to_string())
+        })?;
 
-        if let Some(existing) = executor
-            .find_project_record_by_name(project_name)
-            .await?
-        {
+        if let Some(existing) = executor.find_project_record_by_name(project_name).await? {
             self.add_project_to_context(&existing).await;
             return Ok(format!(
                 "{} already exists in the command centre. I can dive straight into its boards, pods, or tasks whenever you’re ready.",
@@ -1212,10 +1402,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         context.last_updated = Utc::now();
     }
 
-    async fn resolve_project_for_task(
-        &self,
-        project_hint: Option<&str>,
-    ) -> Option<(Uuid, String)> {
+    async fn resolve_project_for_task(&self, project_hint: Option<&str>) -> Option<(Uuid, String)> {
         if let Some(executor) = &self.executor {
             if let Some(hint) = project_hint {
                 if let Ok(Some(project)) = executor.find_project_record_by_name(hint).await {
@@ -1251,8 +1438,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         utterance: &str,
     ) -> Option<String> {
         let executor = self.executor.as_ref()?;
-        let (project_id, project_label) =
-            self.resolve_project_for_task(project_hint).await?;
+        let (project_id, project_label) = self.resolve_project_for_task(project_hint).await?;
         let board = match executor.get_default_board_for_tasks(project_id).await {
             Ok(board) => board,
             Err(err) => {
@@ -1317,11 +1503,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
 
         match std::env::current_dir() {
             Ok(dir) => {
-                if dir
-                    .file_name()
-                    .map(|n| n == "pcg-cc-mcp")
-                    .unwrap_or(false)
-                {
+                if dir.file_name().map(|n| n == "pcg-cc-mcp").unwrap_or(false) {
                     dir.parent().map(Path::to_path_buf).unwrap_or(dir)
                 } else {
                     dir
@@ -1385,7 +1567,9 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             },
             TaskDefinition {
                 title: format!("Collect research + asset tracker for {}", name),
-                description: Some("Ingest docs, references, and blockers into the board".to_string()),
+                description: Some(
+                    "Ingest docs, references, and blockers into the board".to_string(),
+                ),
                 priority: Some(Priority::Medium),
                 tags: Some(vec!["nora".to_string(), "research".to_string()]),
                 assignee_id: None,
@@ -1465,9 +1649,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                 .map(|m| m.as_str().trim())
                 .filter(|s| !s.is_empty())
                 .map(title_case)?;
-            let project_hint = caps
-                .get(2)
-                .map(|m| m.as_str().trim().to_string());
+            let project_hint = caps.get(2).map(|m| m.as_str().trim().to_string());
 
             if let Some(message) = self
                 .try_create_task_record(&task_name, project_hint.as_deref(), user_text)
@@ -1502,7 +1684,10 @@ Provide concise, insight-driven British executive responses. Surface actionable 
 
         let context = self.context.read().await;
 
-        if utterance.contains("project") || utterance.contains("pipeline") || utterance.contains("roadmap") {
+        if utterance.contains("project")
+            || utterance.contains("pipeline")
+            || utterance.contains("roadmap")
+        {
             let projects = &context.active_projects;
             if projects.is_empty() {
                 return Some(
@@ -1511,13 +1696,27 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             }
 
             let mut lines = Vec::new();
-            lines.push(format!("I’m monitoring {} active initiatives:", projects.len()));
+            lines.push(format!(
+                "I’m monitoring {} active initiatives:",
+                projects.len()
+            ));
             for project in projects.iter().take(5) {
                 let milestone_summary = project
                     .key_milestones
                     .iter()
-                    .find(|m| matches!(m.status, MilestoneStatus::InProgress | MilestoneStatus::NotStarted))
-                    .map(|m| format!("next milestone '{}' due {}", m.name, m.due_date.format("%b %d")))
+                    .find(|m| {
+                        matches!(
+                            m.status,
+                            MilestoneStatus::InProgress | MilestoneStatus::NotStarted
+                        )
+                    })
+                    .map(|m| {
+                        format!(
+                            "next milestone '{}' due {}",
+                            m.name,
+                            m.due_date.format("%b %d")
+                        )
+                    })
                     .unwrap_or_else(|| "no upcoming milestones logged".to_string());
 
                 lines.push(format!(
@@ -1541,14 +1740,23 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             return Some(lines.join("\n"));
         }
 
-        if utterance.contains("capab") || utterance.contains("ability") || utterance.contains("what can you do") {
+        if utterance.contains("capab")
+            || utterance.contains("ability")
+            || utterance.contains("what can you do")
+        {
             return Some(
                 "Here’s what I’m cleared to do for you right now:\n- Summarise active projects and surface risks ahead of reviews\n- Coordinate human + AI agents via the MCP tools (create/update tasks, monitor pods, run diffs)\n- Assemble exec-ready briefs, retros, or go/no-go packets from repository data\n- Watch budget burn, milestones, and release health so you get early warning\nJust give me a directive and I’ll move the pieces.".to_string(),
             );
         }
 
-        if utterance.starts_with("hello") || utterance.starts_with("hi") || utterance.contains("good morning") {
-            return Some("Hello there. I’m synced with the coordination feeds and ready whenever you are.".to_string());
+        if utterance.starts_with("hello")
+            || utterance.starts_with("hi")
+            || utterance.contains("good morning")
+        {
+            return Some(
+                "Hello there. I’m synced with the coordination feeds and ready whenever you are."
+                    .to_string(),
+            );
         }
 
         None
@@ -1825,11 +2033,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     }
 
     /// Extract tasks from user request and LLM response, then execute or confirm
-    async fn extract_and_execute_tasks(
-        &self,
-        user_input: &str,
-        llm_response: &str,
-    ) -> Result<()> {
+    async fn extract_and_execute_tasks(&self, user_input: &str, llm_response: &str) -> Result<()> {
         use crate::memory::{PendingAction, PendingActionType};
 
         // Check if executor is available
@@ -1932,10 +2136,10 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                     .next()
                     .unwrap_or(after)
                     .trim();
-                
+
                 // Remove surrounding quotes if present
                 let name = name.trim_matches('"').trim_matches('\'').trim();
-                
+
                 if !name.is_empty() {
                     return Some(name.to_string());
                 }
@@ -1953,9 +2157,9 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                     .next()
                     .unwrap_or(after)
                     .trim();
-                
+
                 let name = name.trim_matches('"').trim_matches('\'').trim();
-                
+
                 if !name.is_empty() {
                     return Some(name.to_string());
                 }
@@ -2033,15 +2237,18 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     }
 
     /// Try to detect and execute tools based on user request
-    async fn try_execute_tools_from_request(&self, request: &NoraRequest) -> Result<Option<String>> {
+    async fn try_execute_tools_from_request(
+        &self,
+        request: &NoraRequest,
+    ) -> Result<Option<String>> {
         let content_lower = request.content.to_lowercase();
-        
+
         // Detect "create project" intent
         if content_lower.contains("create") && content_lower.contains("project") {
             // Extract project name using existing method
             if let Some(project_name) = self.extract_project_name(&request.content) {
                 tracing::info!("Detected project creation intent: {}", project_name);
-                
+
                 // Execute CreateProject tool
                 let tool = crate::tools::NoraExecutiveTool::CreateProject {
                     name: project_name.clone(),
@@ -2049,27 +2256,29 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                     setup_script: None,
                     dev_script: None,
                 };
-                
+
                 // Execute with full permissions (Nora has executive access)
                 let permissions = vec![
                     crate::tools::Permission::Executive,
                     crate::tools::Permission::Write,
                     crate::tools::Permission::ReadOnly,
                 ];
-                
+
                 match self.executive_tools.execute_tool(tool, permissions).await {
                     Ok(result) => {
                         use crate::tools::ExecutionStatus;
                         match result.status {
-                                                       ExecutionStatus::Success => {
+                            ExecutionStatus::Success => {
                                 if let Some(data) = result.result_data {
-                                    let message = data.get("message")
+                                    let message = data
+                                        .get("message")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("Project created");
-                                    let project_id = data.get("project_id")
+                                    let project_id = data
+                                        .get("project_id")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("unknown");
-                                    
+
                                     return Ok(Some(format!(
                                         "✅ {}\n📋 Project ID: {}\n",
                                         message, project_id
@@ -2077,7 +2286,9 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                                 }
                             }
                             ExecutionStatus::Failed => {
-                                let error = result.error_message.unwrap_or_else(|| "Unknown error".to_string());
+                                let error = result
+                                    .error_message
+                                    .unwrap_or_else(|| "Unknown error".to_string());
                                 return Ok(Some(format!("❌ Failed to create project: {}", error)));
                             }
                             _ => {}
@@ -2090,8 +2301,140 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                 }
             }
         }
-        
+
         Ok(None)
+    }
+
+    /// Start Nora's workflow monitoring and execution loop
+    /// Nora actively monitors workflows and executes pending stages
+    fn start_workflow_monitor(&self) {
+        let orchestrator = self.workflow_orchestrator.clone();
+        let tools = self.executive_tools.clone();
+        let executor = self.executor.clone();
+
+        tokio::spawn(async move {
+            tracing::info!("[NORA_WORKFLOW_MONITOR] Starting workflow execution monitor");
+
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+
+            loop {
+                interval.tick().await;
+
+                // Get all active workflows
+                let workflows = orchestrator.get_active_workflows().await;
+
+                for workflow_instance in workflows {
+                    // Skip if not running
+                    if !matches!(workflow_instance.state, crate::workflow::WorkflowState::Running { .. }) {
+                        continue;
+                    }
+
+                    tracing::info!(
+                        "[NORA_WORKFLOW_MONITOR] Processing workflow {} - stage {}/{}",
+                        workflow_instance.id,
+                        workflow_instance.current_stage + 1,
+                        workflow_instance.workflow.stages.len()
+                    );
+
+                    // Get current stage
+                    let stage_index = workflow_instance.current_stage;
+                    if stage_index >= workflow_instance.workflow.stages.len() {
+                        // Workflow complete
+                        continue;
+                    }
+
+                    let stage = &workflow_instance.workflow.stages[stage_index];
+
+                    // Execute the stage based on its description
+                    match Self::execute_workflow_stage(
+                        stage,
+                        &workflow_instance.context,
+                        &tools,
+                        &executor,
+                    ).await {
+                        Ok(output) => {
+                            tracing::info!(
+                                "[NORA_WORKFLOW_MONITOR] Stage '{}' completed successfully",
+                                stage.name
+                            );
+
+                            // Update workflow to next stage
+                            // This will be implemented when we add state persistence
+                            // For now, just log the progress
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "[NORA_WORKFLOW_MONITOR] Stage '{}' failed: {}",
+                                stage.name,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /// Execute a single workflow stage
+    async fn execute_workflow_stage(
+        stage: &crate::profiles::WorkflowStage,
+        context: &crate::workflow::WorkflowContext,
+        tools: &ExecutiveTools,
+        executor: &Option<Arc<crate::executor::TaskExecutor>>,
+    ) -> Result<serde_json::Value> {
+        use crate::tools::NoraExecutiveTool;
+
+        let stage_lower = stage.name.to_lowercase();
+        let desc_lower = stage.description.to_lowercase();
+
+        tracing::info!("[NORA_WORKFLOW_MONITOR] Executing stage: {} - {}", stage.name, stage.description);
+
+        // Map stage descriptions to tool executions (Editron-specific for now)
+        if desc_lower.contains("ingest") || desc_lower.contains("download") || stage_lower.contains("batch intake") || stage_lower.contains("intake") {
+            // Ingest media stage
+            let source_url = context
+                .inputs
+                .get("source_url")
+                .or_else(|| context.inputs.get("dropbox_url"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| NoraError::ToolExecutionError("Missing source_url in context".to_string()))?;
+
+            tracing::info!("[NORA_WORKFLOW_MONITOR] Ingesting media from: {}", source_url);
+
+            let tool = NoraExecutiveTool::IngestMediaBatch {
+                source_url: source_url.to_string(),
+                reference_name: context.inputs.get("reference_name").and_then(|v| v.as_str()).map(String::from),
+                storage_tier: context.inputs.get("storage_tier")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("hot")
+                    .to_string(),
+                checksum_required: true,
+                project_id: context.project_id.map(|id| id.to_string()),
+            };
+
+            let result = tools.execute_tool_implementation(tool).await?;
+            return Ok(result);
+        }
+
+        if desc_lower.contains("analyze") || desc_lower.contains("storyboard") || stage_lower.contains("analysis") {
+            // Analysis stage - needs batch_id from previous stage
+            tracing::info!("[NORA_WORKFLOW_MONITOR] Analysis stage - checking for batch_id from previous stage");
+
+            // For now, return a placeholder since we need stage output chaining
+            return Ok(serde_json::json!({
+                "stage": stage.name,
+                "status": "pending",
+                "note": "Waiting for batch_id from ingest stage"
+            }));
+        }
+
+        // Generic stage execution
+        tracing::info!("[NORA_WORKFLOW_MONITOR] Generic stage execution: {}", stage.name);
+        Ok(serde_json::json!({
+            "stage": stage.name,
+            "output": stage.output,
+            "status": "completed"
+        }))
     }
 }
 

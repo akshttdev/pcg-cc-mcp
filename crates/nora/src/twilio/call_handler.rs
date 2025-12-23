@@ -3,16 +3,17 @@
 //! Handles the lifecycle of phone calls and integrates with NORA's
 //! conversation capabilities.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use super::{TwilioCallRequest, TwilioConfig, TwilioError, TwilioResult, TwilioSpeechResult};
-use super::twiml::TwimlBuilder;
+use super::{
+    twiml::TwimlBuilder, TwilioCallRequest, TwilioConfig, TwilioError, TwilioResult,
+    TwilioSpeechResult,
+};
 
 /// Manages active Twilio phone calls
 pub struct TwilioCallHandler {
@@ -100,10 +101,7 @@ impl TwilioCallHandler {
     }
 
     /// Handle an incoming call - returns TwiML for initial greeting
-    pub async fn handle_incoming_call(
-        &self,
-        request: TwilioCallRequest,
-    ) -> TwilioResult<String> {
+    pub async fn handle_incoming_call(&self, request: TwilioCallRequest) -> TwilioResult<String> {
         if !self.is_configured() {
             return Err(TwilioError::NotConfigured);
         }
@@ -172,7 +170,10 @@ impl TwilioCallHandler {
 
         // Record user's speech
         if let Some(ref text) = speech_result.speech_result {
-            info!("Caller said: '{}' (confidence: {:?})", text, speech_result.confidence);
+            info!(
+                "Caller said: '{}' (confidence: {:?})",
+                text, speech_result.confidence
+            );
 
             call_state.conversation.push(ConversationTurn {
                 speaker: Speaker::Caller,
@@ -336,7 +337,10 @@ impl TwilioCallHandler {
         }
 
         // Compute HMAC-SHA1
-        let key = hmac::Key::new(hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY, self.config.auth_token.as_bytes());
+        let key = hmac::Key::new(
+            hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
+            self.config.auth_token.as_bytes(),
+        );
         let computed_signature = hmac::sign(&key, validation_string.as_bytes());
         let computed_b64 = base64::Engine::encode(
             &base64::engine::general_purpose::STANDARD,

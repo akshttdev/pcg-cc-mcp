@@ -235,7 +235,9 @@ impl TwimlBuilder {
     pub fn greeting_with_gather(greeting: &str, action: &str, language: &str) -> String {
         TwimlBuilder::new()
             .gather_speech(action, 10, language, None, Some(greeting))
-            .say_british("I didn't catch that. Please try again, or press any key to speak with me.")
+            .say_british(
+                "I didn't catch that. Please try again, or press any key to speak with me.",
+            )
             .redirect(action)
             .build()
     }
@@ -260,9 +262,7 @@ impl TwimlBuilder {
 
     /// Create an error response
     pub fn error(message: &str, retry_url: Option<&str>) -> String {
-        let mut builder = TwimlBuilder::new()
-            .say_british(message)
-            .pause(1);
+        let mut builder = TwimlBuilder::new().say_british(message).pause(1);
 
         if let Some(url) = retry_url {
             builder = builder.redirect(url);

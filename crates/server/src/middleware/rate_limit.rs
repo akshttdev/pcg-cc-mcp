@@ -1,8 +1,9 @@
+use std::sync::Arc;
+
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use std::sync::Arc;
 
 /// Rate limiting configuration for Nora endpoints
 #[derive(Clone, Debug)]
@@ -18,9 +19,9 @@ pub struct RateLimitConfig {
 impl Default for RateLimitConfig {
     fn default() -> Self {
         Self {
-            max_requests: 60,     // 60 requests
-            period_seconds: 60,    // per minute
-            burst_size: 10,        // burst of 10
+            max_requests: 60,   // 60 requests
+            period_seconds: 60, // per minute
+            burst_size: 10,     // burst of 10
         }
     }
 }

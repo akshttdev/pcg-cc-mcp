@@ -57,7 +57,7 @@ impl std::fmt::Display for OrganizationRole {
 
 impl std::str::FromStr for OrganizationRole {
     type Err = String;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "admin" => Ok(OrganizationRole::Admin),

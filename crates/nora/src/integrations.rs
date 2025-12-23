@@ -68,20 +68,21 @@ impl EmailService {
 
     pub fn from_env() -> Result<Self> {
         let config = SmtpConfig::default();
-        
+
         // Validate required fields
         if config.username.is_empty() || config.password.is_empty() {
             return Err(IntegrationError::Config(
-                "SMTP credentials not configured. Set SMTP_USERNAME and SMTP_PASSWORD env vars".to_string()
+                "SMTP credentials not configured. Set SMTP_USERNAME and SMTP_PASSWORD env vars"
+                    .to_string(),
             ));
         }
-        
+
         if config.from_email.is_empty() {
             return Err(IntegrationError::Config(
-                "SMTP from email not configured. Set SMTP_FROM_EMAIL env var".to_string()
+                "SMTP from email not configured. Set SMTP_FROM_EMAIL env var".to_string(),
             ));
         }
-        
+
         Ok(Self { config })
     }
 
@@ -93,27 +94,24 @@ impl EmailService {
         is_html: bool,
     ) -> Result<String> {
         use lettre::{
-            Message, SmtpTransport, Transport,
             message::{header::ContentType, Mailbox},
             transport::smtp::authentication::Credentials,
+            Message, SmtpTransport, Transport,
         };
 
         // Build message
-        let from_mailbox: Mailbox = format!("{} <{}>", self.config.from_name, self.config.from_email)
-            .parse()
-            .map_err(|e| IntegrationError::Smtp(format!("Invalid from address: {}", e)))?;
+        let from_mailbox: Mailbox =
+            format!("{} <{}>", self.config.from_name, self.config.from_email)
+                .parse()
+                .map_err(|e| IntegrationError::Smtp(format!("Invalid from address: {}", e)))?;
 
-        let mut message_builder = Message::builder()
-            .from(from_mailbox)
-            .subject(subject);
+        let mut message_builder = Message::builder().from(from_mailbox).subject(subject);
 
         // Add recipients
         for recipient in recipients {
-            message_builder = message_builder.to(
-                recipient
-                    .parse()
-                    .map_err(|e| IntegrationError::Smtp(format!("Invalid recipient: {}", e)))?
-            );
+            message_builder = message_builder.to(recipient
+                .parse()
+                .map_err(|e| IntegrationError::Smtp(format!("Invalid recipient: {}", e)))?);
         }
 
         // Set content type and body
@@ -127,10 +125,8 @@ impl EmailService {
         .map_err(|e| IntegrationError::Smtp(format!("Failed to build message: {}", e)))?;
 
         // Create SMTP transport
-        let credentials = Credentials::new(
-            self.config.username.clone(),
-            self.config.password.clone(),
-        );
+        let credentials =
+            Credentials::new(self.config.username.clone(), self.config.password.clone());
 
         let mailer = if self.config.use_tls {
             SmtpTransport::starttls_relay(&self.config.host)
@@ -209,23 +205,19 @@ impl DiscordService {
 
     pub fn from_env() -> Result<Self> {
         let config = DiscordConfig::default();
-        
+
         if config.webhook_url.is_empty() {
             return Err(IntegrationError::Config(
-                "Discord webhook URL not configured. Set DISCORD_WEBHOOK_URL env var".to_string()
+                "Discord webhook URL not configured. Set DISCORD_WEBHOOK_URL env var".to_string(),
             ));
         }
-        
+
         Ok(Self::new(config))
     }
 
-    pub async fn send_message(
-        &self,
-        message: &str,
-        mention_users: &[String],
-    ) -> Result<()> {
+    pub async fn send_message(&self, message: &str, mention_users: &[String]) -> Result<()> {
         let mut content = message.to_string();
-        
+
         // Add mentions
         if !mention_users.is_empty() {
             let mentions: Vec<String> = mention_users
@@ -242,14 +234,18 @@ impl DiscordService {
             embeds: None,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.config.webhook_url)
             .json(&payload)
             .send()
             .await?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(IntegrationError::Discord(format!(
                 "Failed to send message: {}",
                 error_text
@@ -280,14 +276,18 @@ impl DiscordService {
             embeds: Some(vec![embed]),
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.config.webhook_url)
             .json(&payload)
             .send()
             .await?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(IntegrationError::Discord(format!(
                 "Failed to send embed: {}",
                 error_text
@@ -414,7 +414,10 @@ impl CalendarService {
             .await
             .map_err(|e| IntegrationError::Calendar(format!("Failed to create event: {}", e)))?;
 
-        let event_id = result.1.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let event_id = result
+            .1
+            .id
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         tracing::info!("Calendar event created: {}", event_id);
 
         Ok(event_id)
@@ -465,22 +468,15 @@ impl CalendarService {
         let request = FreeBusyRequest {
             time_min: Some(start_time),
             time_max: Some(end_time),
-            items: Some(vec![
-                google_calendar3::api::FreeBusyRequestItem {
-                    id: Some(user_email.to_string()),
-                },
-            ]),
+            items: Some(vec![google_calendar3::api::FreeBusyRequestItem {
+                id: Some(user_email.to_string()),
+            }]),
             ..Default::default()
         };
 
-        let result = hub
-            .freebusy()
-            .query(request)
-            .doit()
-            .await
-            .map_err(|e| {
-                IntegrationError::Calendar(format!("Failed to query availability: {}", e))
-            })?;
+        let result = hub.freebusy().query(request).doit().await.map_err(|e| {
+            IntegrationError::Calendar(format!("Failed to query availability: {}", e))
+        })?;
 
         // Check if user has any busy periods in the time range
         let is_available = if let Some(ref calendars) = result.1.calendars {
@@ -510,7 +506,7 @@ impl CalendarService {
         // Full implementation would query all participants' calendars
         let mut slots = Vec::new();
         let now = Utc::now();
-        
+
         for day in 1..=days_ahead {
             let start = now + chrono::Duration::days(day as i64);
             let end = start + chrono::Duration::minutes(duration_minutes as i64);

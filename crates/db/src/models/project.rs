@@ -152,12 +152,11 @@ impl Project {
         pool: &SqlitePool,
         name: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
-        let row: Option<(Vec<u8>,)> = sqlx::query_as(
-            "SELECT id FROM projects WHERE LOWER(name) = LOWER(?) LIMIT 1",
-        )
-        .bind(name)
-        .fetch_optional(pool)
-        .await?;
+        let row: Option<(Vec<u8>,)> =
+            sqlx::query_as("SELECT id FROM projects WHERE LOWER(name) = LOWER(?) LIMIT 1")
+                .bind(name)
+                .fetch_optional(pool)
+                .await?;
 
         if let Some((bytes,)) = row {
             if let Ok(uuid) = Uuid::from_slice(&bytes) {

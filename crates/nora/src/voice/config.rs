@@ -55,8 +55,8 @@ pub struct TTSConfig {
 impl TTSConfig {
     pub fn british_executive() -> Self {
         Self {
-            provider: TTSProvider::OpenAI,  // Use OpenAI as primary (already configured)
-            voice_id: "fable".to_string(),  // British-leaning female voice
+            provider: TTSProvider::OpenAI, // Use OpenAI as primary (already configured)
+            voice_id: "fable".to_string(), // British-leaning female voice
             speed: 1.0,
             volume: 0.85,
             pitch: 1.0,
@@ -68,18 +68,22 @@ impl TTSConfig {
                 "Rachel".to_string(),            // ElevenLabs British voice
                 "en-GB-SoniaNeural".to_string(), // Azure British
             ],
-            fallback_providers: vec![TTSProvider::ElevenLabs, TTSProvider::Azure, TTSProvider::System],
+            fallback_providers: vec![
+                TTSProvider::ElevenLabs,
+                TTSProvider::Azure,
+                TTSProvider::System,
+            ],
         }
     }
 
     pub fn development() -> Self {
         Self {
-            provider: TTSProvider::OpenAI,  // Use OpenAI for dev too
-            voice_id: "fable".to_string(),  // British-leaning voice
-            speed: 1.0,  // Normal speed for better comprehension
+            provider: TTSProvider::OpenAI, // Use OpenAI for dev too
+            voice_id: "fable".to_string(), // British-leaning voice
+            speed: 1.0,                    // Normal speed for better comprehension
             volume: 0.8,
             pitch: 1.0,
-            quality: TTSQuality::High,  // Use high quality even in dev
+            quality: TTSQuality::High, // Use high quality even in dev
             british_voice_preferences: vec![
                 "fable".to_string(),
                 "nova".to_string(),

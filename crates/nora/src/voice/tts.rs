@@ -586,16 +586,18 @@ impl TextToSpeech for OpenAITTS {
         } else {
             // Fall back to profile-based mapping for non-OpenAI voice IDs
             match request.voice_profile {
-                VoiceProfile::BritishExecutiveFemale => "fable",  // Most British-sounding female
+                VoiceProfile::BritishExecutiveFemale => "fable", // Most British-sounding female
                 VoiceProfile::BritishProfessionalFemale => "nova", // Warm professional female
-                VoiceProfile::BritishExecutiveMale => "echo",     // Clear, authoritative male
-                VoiceProfile::BritishProfessionalMale => "onyx",  // Deep, professional male
-                VoiceProfile::SystemDefault => "fable",           // Default to British-leaning voice
+                VoiceProfile::BritishExecutiveMale => "echo",    // Clear, authoritative male
+                VoiceProfile::BritishProfessionalMale => "onyx", // Deep, professional male
+                VoiceProfile::SystemDefault => "fable",          // Default to British-leaning voice
             }
         };
 
-        info!("Synthesizing speech with OpenAI voice: {} (config voice_id: {}, profile: {:?})", 
-              voice, self.config.voice_id, request.voice_profile);
+        info!(
+            "Synthesizing speech with OpenAI voice: {} (config voice_id: {}, profile: {:?})",
+            voice, self.config.voice_id, request.voice_profile
+        );
 
         let payload = serde_json::json!({
             "model": "tts-1-hd",

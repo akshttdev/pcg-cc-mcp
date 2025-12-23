@@ -1,33 +1,36 @@
 // User database repository
-use crate::models::user::{Organization, OrganizationRole, User, UserOrganization, UserProfile};
 use sqlx::PgPool;
 use uuid::Uuid;
+
+use crate::models::user::{Organization, OrganizationRole, User, UserOrganization, UserProfile};
 
 pub struct UserRepository;
 
 impl UserRepository {
     /// Find user by username
-    pub async fn find_by_username(pool: &PgPool, username: &str) -> Result<Option<User>, sqlx::Error> {
-        sqlx::query_as::<_, User>(
-            "SELECT * FROM users WHERE username = $1 AND is_active = true"
-        )
-        .bind(username)
-        .fetch_optional(pool)
-        .await
+    pub async fn find_by_username(
+        pool: &PgPool,
+        username: &str,
+    ) -> Result<Option<User>, sqlx::Error> {
+        sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = $1 AND is_active = true")
+            .bind(username)
+            .fetch_optional(pool)
+            .await
     }
 
     /// Find user by ID
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<User>, sqlx::Error> {
-        sqlx::query_as::<_, User>(
-            "SELECT * FROM users WHERE id = $1"
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await
+        sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
     }
 
     /// Get user with their organizations
-    pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<Option<UserProfile>, sqlx::Error> {
+    pub async fn get_user_profile(
+        pool: &PgPool,
+        user_id: Uuid,
+    ) -> Result<Option<UserProfile>, sqlx::Error> {
         let user = match Self::find_by_id(pool, user_id).await? {
             Some(u) => u,
             None => return Ok(None),
@@ -47,7 +50,7 @@ impl UserRepository {
             FROM organizations o
             JOIN organization_members om ON o.id = om.organization_id
             WHERE om.user_id = $1 AND o.is_active = true
-            "#
+            "#,
         )
         .bind(user_id)
         .fetch_all(pool)
@@ -55,13 +58,11 @@ impl UserRepository {
 
         let organizations = org_rows
             .into_iter()
-            .map(|row| {
-                UserOrganization {
-                    id: row.id,
-                    name: row.name,
-                    slug: row.slug,
-                    role: row.role.parse().unwrap_or(OrganizationRole::Member),
-                }
+            .map(|row| UserOrganization {
+                id: row.id,
+                name: row.name,
+                slug: row.slug,
+                role: row.role.parse().unwrap_or(OrganizationRole::Member),
             })
             .collect();
 
@@ -91,7 +92,7 @@ impl UserRepository {
             INSERT INTO users (username, email, password_hash, full_name, is_admin, created_by)
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
-            "#
+            "#,
         )
         .bind(username)
         .bind(email)
@@ -105,11 +106,9 @@ impl UserRepository {
 
     /// List all users (admin only)
     pub async fn list_all(pool: &PgPool) -> Result<Vec<User>, sqlx::Error> {
-        sqlx::query_as::<_, User>(
-            "SELECT * FROM users ORDER BY created_at DESC"
-        )
-        .fetch_all(pool)
-        .await
+        sqlx::query_as::<_, User>("SELECT * FROM users ORDER BY created_at DESC")
+            .fetch_all(pool)
+            .await
     }
 
     /// Update user
@@ -144,7 +143,7 @@ impl UserRepository {
         query.push_str(&format!(" WHERE id = ${} RETURNING *", bind_count));
 
         let mut q = sqlx::query_as::<_, User>(&query);
-        
+
         if let Some(e) = email {
             q = q.bind(e);
         }
@@ -164,12 +163,10 @@ impl UserRepository {
 
     /// Update last login time
     pub async fn update_last_login(pool: &PgPool, user_id: Uuid) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE users SET last_login_at = NOW() WHERE id = $1"
-        )
-        .bind(user_id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE users SET last_login_at = NOW() WHERE id = $1")
+            .bind(user_id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -179,13 +176,11 @@ impl UserRepository {
         user_id: Uuid,
         new_password_hash: &str,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2"
-        )
-        .bind(new_password_hash)
-        .bind(user_id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2")
+            .bind(new_password_hash)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -206,7 +201,7 @@ impl UserRepository {
         role: OrganizationRole,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO organization_members (user_id, organization_id, role) VALUES ($1, $2, $3)"
+            "INSERT INTO organization_members (user_id, organization_id, role) VALUES ($1, $2, $3)",
         )
         .bind(user_id)
         .bind(org_id)
@@ -227,7 +222,7 @@ impl UserRepository {
             FROM organizations o
             JOIN organization_members om ON o.id = om.organization_id
             WHERE om.user_id = $1 AND o.is_active = true
-            "#
+            "#,
         )
         .bind(user_id)
         .fetch_all(pool)

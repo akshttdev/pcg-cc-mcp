@@ -205,6 +205,10 @@ Pluggable AI agent executors with actions:
 - `coding_agent_initial`, `coding_agent_follow_up`, `script`
 - Support for Claude, Gemini, and other AI providers
 
+### Specialized Agents
+- **Editron** – Post-Production Architect that ingests Dropbox batches, analyzes footage, synthesizes story blueprints, and drives iMovie/Compressor automations for recaps, highlight reels, and social hooks. See [`docs/editron-pipeline.md`](docs/editron-pipeline.md).
+- **Master Cinematographer (Spectra)** – AI cinematic specialist that generates Stable Diffusion / Runway motion plates, LUT kits, and typography packs Editron can pull into the motion systems tier.
+
 ## Database Operations
 
 ```bash

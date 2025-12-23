@@ -5,13 +5,16 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, State, WebSocketUpgrade},
-    response::{Response, sse::{Event, Sse}},
+    response::{
+        Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
-use futures::stream::Stream;
 use chrono::{DateTime, Utc};
 use db::models::project::Project;
 use deployment::Deployment;
+use futures::stream::Stream;
 use nora::{
     NoraAgent, NoraConfig, NoraError,
     agent::{NoraRequest, NoraRequestType, NoraResponse, RequestPriority},
@@ -24,7 +27,7 @@ use nora::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -35,8 +38,7 @@ static NORA_INSTANCE: tokio::sync::OnceCell<Arc<RwLock<Option<NoraAgent>>>> =
     tokio::sync::OnceCell::const_new();
 
 /// Global Nora initialization timestamp
-static NORA_INIT_TIME: tokio::sync::OnceCell<DateTime<Utc>> =
-    tokio::sync::OnceCell::const_new();
+static NORA_INIT_TIME: tokio::sync::OnceCell<DateTime<Utc>> = tokio::sync::OnceCell::const_new();
 
 /// Global rate limiter for chat endpoints (20 req/min, refill 1 per 3 seconds)
 static CHAT_RATE_LIMITER: tokio::sync::OnceCell<Arc<TokenBucket>> =
@@ -112,10 +114,10 @@ impl NoraManager {
         let mut agent = self.agent.write().await;
         let nora = NoraAgent::new(config).await?;
         let id = nora.id.to_string();
-        
+
         // Record initialization time
         let _ = NORA_INIT_TIME.set(Utc::now());
-        
+
         *agent = Some(nora);
         Ok(id)
     }
@@ -180,6 +182,10 @@ pub fn nora_routes() -> Router<DeploymentImpl> {
         .route("/nora/coordination/agents", get(get_coordination_agents))
         .route("/nora/coordination/events", get(get_coordination_events_ws))
         .route(
+            "/nora/coordination/events/sse",
+            get(get_coordination_events_sse),
+        )
+        .route(
             "/nora/coordination/agents/{agent_id}/directives",
             post(send_agent_directive),
         )
@@ -188,7 +194,9 @@ pub fn nora_routes() -> Router<DeploymentImpl> {
         .route("/nora/project/create", post(nora_create_project))
         .route("/nora/board/create", post(nora_create_board))
         .route("/nora/task/create", post(nora_create_task))
-        .layer(axum::middleware::from_fn(crate::middleware::request_id_middleware))
+        .layer(axum::middleware::from_fn(
+            crate::middleware::request_id_middleware,
+        ))
 }
 
 /// Request to initialize Nora
@@ -423,14 +431,19 @@ pub async fn initialize_nora(
     apply_llm_overrides(&mut config);
 
     // Load persisted voice configuration if available
-    if let Ok(Some(persisted_config)) = db::models::nora_config::NoraVoiceConfig::get(&state.db().pool).await {
+    if let Ok(Some(persisted_config)) =
+        db::models::nora_config::NoraVoiceConfig::get(&state.db().pool).await
+    {
         match serde_json::from_str::<VoiceConfig>(&persisted_config.config_json) {
             Ok(voice_config) => {
                 tracing::info!("Loaded persisted voice configuration from database");
                 config.voice = voice_config;
             }
             Err(e) => {
-                tracing::warn!("Failed to parse persisted voice config, using default: {}", e);
+                tracing::warn!(
+                    "Failed to parse persisted voice config, using default: {}",
+                    e
+                );
             }
         }
     } else {
@@ -444,13 +457,14 @@ pub async fn initialize_nora(
 
     let project_context = map_projects_to_context(projects);
 
-    let nora_agent = nora::initialize_nora(config).await.map_err(|e| {
-        tracing::error!("Failed to initialize Nora: {}", e);
-        ApiError::InternalError(format!("Nora initialization failed: {}", e))
-    })?;
-
-    // Wire up database pool for task execution
-    let nora_agent = nora_agent.with_database(state.db().pool.clone());
+    let nora_agent = nora::initialize_nora(config)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to initialize Nora: {}", e);
+            ApiError::InternalError(format!("Nora initialization failed: {}", e))
+        })?
+        .with_database(state.db().pool.clone())
+        .with_media_pipeline(state.media_pipeline().clone());
 
     nora_agent
         .seed_projects(project_context)
@@ -510,14 +524,19 @@ pub async fn initialize_nora_on_startup(state: &DeploymentImpl) -> Result<String
     apply_llm_overrides(&mut config);
 
     // Load persisted voice configuration if available
-    if let Ok(Some(persisted_config)) = db::models::nora_config::NoraVoiceConfig::get(&state.db().pool).await {
+    if let Ok(Some(persisted_config)) =
+        db::models::nora_config::NoraVoiceConfig::get(&state.db().pool).await
+    {
         match serde_json::from_str::<VoiceConfig>(&persisted_config.config_json) {
             Ok(voice_config) => {
                 tracing::info!("Loaded persisted voice configuration from database");
                 config.voice = voice_config;
             }
             Err(e) => {
-                tracing::warn!("Failed to parse persisted voice config, using default: {}", e);
+                tracing::warn!(
+                    "Failed to parse persisted voice config, using default: {}",
+                    e
+                );
             }
         }
     }
@@ -532,10 +551,9 @@ pub async fn initialize_nora_on_startup(state: &DeploymentImpl) -> Result<String
     // Initialize Nora agent
     let nora_agent = nora::initialize_nora(config)
         .await
-        .map_err(|e| format!("Nora initialization failed: {}", e))?;
-
-    // Wire up database pool for task execution
-    let nora_agent = nora_agent.with_database(state.db().pool.clone());
+        .map_err(|e| format!("Nora initialization failed: {}", e))?
+        .with_database(state.db().pool.clone())
+        .with_media_pipeline(state.media_pipeline().clone());
 
     // Seed project context
     nora_agent
@@ -577,7 +595,7 @@ pub async fn get_nora_status(
 
     if let Some(nora) = instance.as_ref() {
         let is_active = nora.is_active().await;
-        
+
         // Calculate uptime
         let uptime_ms = if let Some(init_time) = NORA_INIT_TIME.get() {
             let now = Utc::now();
@@ -626,7 +644,7 @@ pub async fn get_cache_stats(
 
     // Update Prometheus metrics with current cache stats
     crate::nora_metrics::update_cache_metrics(&stats);
-    
+
     tracing::debug!(
         "Cache stats - Hits: {}, Misses: {}, Hit Rate: {:.2}%",
         stats.hits,
@@ -665,16 +683,16 @@ pub async fn chat_with_nora(
     Json(request): Json<ChatRequest>,
 ) -> Result<Json<NoraResponse>, ApiError> {
     let _timer = crate::nora_metrics::start_request_timer("chat");
-    
+
     // Apply rate limiting
     let rate_limiter = get_chat_rate_limiter().await;
     if !rate_limiter.try_consume().await {
         tracing::warn!("Chat rate limit exceeded");
         return Err(ApiError::TooManyRequests(
-            "Rate limit exceeded. Please slow down your chat requests.".to_string()
+            "Rate limit exceeded. Please slow down your chat requests.".to_string(),
         ));
     }
-    
+
     tracing::info!("Received chat request: {:?}", request.message);
 
     // Get request ID from middleware or generate new one
@@ -736,18 +754,18 @@ pub async fn chat_with_nora_stream(
     Json(request): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError> {
     use futures::stream::StreamExt;
-    
+
     let _timer = crate::nora_metrics::start_request_timer("chat_stream");
-    
+
     // Apply rate limiting
     let rate_limiter = get_chat_rate_limiter().await;
     if !rate_limiter.try_consume().await {
         tracing::warn!("Chat stream rate limit exceeded");
         return Err(ApiError::TooManyRequests(
-            "Rate limit exceeded. Please slow down your chat requests.".to_string()
+            "Rate limit exceeded. Please slow down your chat requests.".to_string(),
         ));
     }
-    
+
     tracing::info!("Received streaming chat request: {:?}", request.message);
 
     // Get request ID from middleware or generate new one
@@ -767,39 +785,39 @@ pub async fn chat_with_nora_stream(
     }
 
     // Get the LLM client directly
-    let llm_client = nora.llm.clone().ok_or_else(|| {
-        ApiError::InternalError("LLM not available".to_string())
-    })?;
-    
+    let llm_client = nora
+        .llm
+        .clone()
+        .ok_or_else(|| ApiError::InternalError("LLM not available".to_string()))?;
+
     // Prepare context
-    let context = request.context
+    let context = request
+        .context
         .map(|c| serde_json::to_string_pretty(&c).unwrap_or_default())
         .unwrap_or_default();
-    
+
     let message = request.message.clone();
-    
+
     // Create stream
     let llm_stream = llm_client
         .generate_stream("", &message, &context)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create stream: {}", e)))?;
-    
+
     // Convert to SSE stream
-    let sse_stream = llm_stream.map(|chunk_result| {
-        match chunk_result {
-            Ok(chunk) => {
-                tracing::debug!("Streaming chunk: {} chars", chunk.len());
-                Ok(Event::default().data(chunk))
-            }
-            Err(e) => {
-                tracing::error!("Stream error: {}", e);
-                Ok(Event::default().data(format!("[ERROR]: {}", e)))
-            }
+    let sse_stream = llm_stream.map(|chunk_result| match chunk_result {
+        Ok(chunk) => {
+            tracing::debug!("Streaming chunk: {} chars", chunk.len());
+            Ok(Event::default().data(chunk))
+        }
+        Err(e) => {
+            tracing::error!("Stream error: {}", e);
+            Ok(Event::default().data(format!("[ERROR]: {}", e)))
         }
     });
-    
+
     crate::nora_metrics::record_request("chat_stream", "normal");
-    
+
     Ok(Sse::new(sse_stream))
 }
 
@@ -813,10 +831,10 @@ pub async fn synthesize_speech(
     if !rate_limiter.try_consume().await {
         tracing::warn!("Voice synthesis rate limit exceeded");
         return Err(ApiError::TooManyRequests(
-            "Rate limit exceeded. Please slow down your voice synthesis requests.".to_string()
+            "Rate limit exceeded. Please slow down your voice synthesis requests.".to_string(),
         ));
     }
-    
+
     let nora_instance = get_nora_instance().await?;
     let instance = nora_instance.read().await;
     let nora = instance
@@ -888,10 +906,10 @@ pub async fn voice_interaction(
     if !rate_limiter.try_consume().await {
         tracing::warn!("Voice interaction rate limit exceeded");
         return Err(ApiError::TooManyRequests(
-            "Rate limit exceeded. Please slow down your voice interaction requests.".to_string()
+            "Rate limit exceeded. Please slow down your voice interaction requests.".to_string(),
         ));
     }
-    
+
     let start = std::time::Instant::now();
     let nora_instance = get_nora_instance().await?;
     let instance = nora_instance.read().await;
@@ -987,7 +1005,7 @@ pub async fn update_voice_config(
     // Persist configuration to database
     let config_json = serde_json::to_string(&new_config)
         .map_err(|e| ApiError::InternalError(format!("Failed to serialize config: {}", e)))?;
-    
+
     db::models::nora_config::NoraVoiceConfig::save(&state.db().pool, &config_json)
         .await
         .map_err(|e| {
@@ -1143,8 +1161,7 @@ pub async fn send_agent_directive(
 
     let acknowledgement = format!(
         "{} acknowledges directive and is prioritizing: {}",
-        agent_state.agent_type,
-        request.content
+        agent_state.agent_type, request.content
     );
 
     let echoed_command = request
@@ -1171,6 +1188,36 @@ pub async fn get_coordination_events_ws(
     State(_state): State<DeploymentImpl>,
 ) -> Response {
     ws.on_upgrade(handle_coordination_events_websocket)
+}
+
+/// SSE endpoint for coordination events (fallback when WebSockets are unavailable)
+pub async fn get_coordination_events_sse(
+    State(_state): State<DeploymentImpl>,
+) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError> {
+    let nora_instance = get_nora_instance().await?;
+    let receiver = {
+        let instance = nora_instance.read().await;
+        let nora = instance
+            .as_ref()
+            .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
+        nora.coordination_manager.subscribe_to_events().await
+    };
+
+    let stream = futures::stream::unfold(receiver, |mut rx| async move {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let payload = coordination_event_payload(event);
+                    let data = payload.to_string();
+                    return Some((Ok(Event::default().event("coordination_event").data(data)), rx));
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    });
+
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new()))
 }
 
 /// Get personality configuration
@@ -1251,7 +1298,9 @@ pub async fn nora_create_board(
 
     let board_type = match request.board_type.as_deref() {
         Some("custom") => Some(db::models::project_board::ProjectBoardType::Custom),
-        Some("executive_assets") => Some(db::models::project_board::ProjectBoardType::ExecutiveAssets),
+        Some("executive_assets") => {
+            Some(db::models::project_board::ProjectBoardType::ExecutiveAssets)
+        }
         Some("brand_assets") => Some(db::models::project_board::ProjectBoardType::BrandAssets),
         Some("dev_assets") => Some(db::models::project_board::ProjectBoardType::DevAssets),
         Some("social_assets") => Some(db::models::project_board::ProjectBoardType::SocialAssets),
@@ -1382,107 +1431,7 @@ async fn handle_coordination_events_websocket(mut socket: axum::extract::ws::Web
             event = receiver.recv() => {
                 match event {
                     Ok(event) => {
-                        let payload = match event {
-                            CoordinationEvent::AgentStatusUpdate {
-                                agent_id,
-                                status,
-                                capabilities,
-                                timestamp,
-                            } => json!({
-                                "type": "AgentStatusUpdate",
-                                "agentId": agent_id,
-                                "status": status,
-                                "capabilities": capabilities,
-                                "timestamp": timestamp,
-                            }),
-                            CoordinationEvent::TaskHandoff {
-                                from_agent,
-                                to_agent,
-                                task_id,
-                                context,
-                                timestamp,
-                            } => json!({
-                                "type": "TaskHandoff",
-                                "fromAgent": from_agent,
-                                "toAgent": to_agent,
-                                "taskId": task_id,
-                                "context": context,
-                                "timestamp": timestamp,
-                            }),
-                            CoordinationEvent::ConflictResolution {
-                                conflict_id,
-                                involved_agents,
-                                description,
-                                priority,
-                                timestamp,
-                            } => json!({
-                                "type": "ConflictResolution",
-                                "conflictId": conflict_id,
-                                "involvedAgents": involved_agents,
-                                "description": description,
-                                "priority": priority,
-                                "timestamp": timestamp,
-                            }),
-                            CoordinationEvent::HumanAvailabilityUpdate {
-                                user_id,
-                                availability,
-                                available_until,
-                                timestamp,
-                            } => json!({
-                                "type": "HumanAvailabilityUpdate",
-                                "userId": user_id,
-                                "availability": availability,
-                                "availableUntil": available_until,
-                                "timestamp": timestamp,
-                            }),
-                            CoordinationEvent::ApprovalRequest {
-                                request_id,
-                                requesting_agent,
-                                action_description,
-                                required_approver,
-                                urgency,
-                                timestamp,
-                            } => json!({
-                                "type": "ApprovalRequest",
-                                "requestId": request_id,
-                                "requestingAgent": requesting_agent,
-                                "actionDescription": action_description,
-                                "requiredApprover": required_approver,
-                                "urgency": urgency,
-                                "timestamp": timestamp,
-                            }),
-                            CoordinationEvent::ExecutiveAlert {
-                                alert_id,
-                                source,
-                                message,
-                                severity,
-                                requires_action,
-                                timestamp,
-                            } => json!({
-                                "type": "ExecutiveAlert",
-                                "alertId": alert_id,
-                                "source": source,
-                                "message": message,
-                                "severity": severity,
-                                "requiresAction": requires_action,
-                                "timestamp": timestamp,
-                            }),
-                            CoordinationEvent::AgentDirectiveIssued {
-                                agent_id,
-                                issued_by,
-                                content,
-                                priority,
-                                timestamp,
-                            } => json!({
-                                "type": "AgentDirective",
-                                "agentId": agent_id,
-                                "issuedBy": issued_by,
-                                "content": content,
-                                "priority": priority,
-                                "timestamp": timestamp,
-                            }),
-                        };
-
+                        let payload = coordination_event_payload(event);
                         let text = payload.to_string();
                         if socket
                             .send(axum::extract::ws::Message::Text(text.into()))
@@ -1506,6 +1455,109 @@ async fn handle_coordination_events_websocket(mut socket: axum::extract::ws::Web
     }
 
     let _ = socket.send(axum::extract::ws::Message::Close(None)).await;
+}
+
+fn coordination_event_payload(event: CoordinationEvent) -> serde_json::Value {
+    match event {
+        CoordinationEvent::AgentStatusUpdate {
+            agent_id,
+            status,
+            capabilities,
+            timestamp,
+        } => json!({
+            "type": "AgentStatusUpdate",
+            "agentId": agent_id,
+            "status": status,
+            "capabilities": capabilities,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::TaskHandoff {
+            from_agent,
+            to_agent,
+            task_id,
+            context,
+            timestamp,
+        } => json!({
+            "type": "TaskHandoff",
+            "fromAgent": from_agent,
+            "toAgent": to_agent,
+            "taskId": task_id,
+            "context": context,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ConflictResolution {
+            conflict_id,
+            involved_agents,
+            description,
+            priority,
+            timestamp,
+        } => json!({
+            "type": "ConflictResolution",
+            "conflictId": conflict_id,
+            "involvedAgents": involved_agents,
+            "description": description,
+            "priority": priority,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::HumanAvailabilityUpdate {
+            user_id,
+            availability,
+            available_until,
+            timestamp,
+        } => json!({
+            "type": "HumanAvailabilityUpdate",
+            "userId": user_id,
+            "availability": availability,
+            "availableUntil": available_until,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ApprovalRequest {
+            request_id,
+            requesting_agent,
+            action_description,
+            required_approver,
+            urgency,
+            timestamp,
+        } => json!({
+            "type": "ApprovalRequest",
+            "requestId": request_id,
+            "requestingAgent": requesting_agent,
+            "actionDescription": action_description,
+            "requiredApprover": required_approver,
+            "urgency": urgency,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ExecutiveAlert {
+            alert_id,
+            source,
+            message,
+            severity,
+            requires_action,
+            timestamp,
+        } => json!({
+            "type": "ExecutiveAlert",
+            "alertId": alert_id,
+            "source": source,
+            "message": message,
+            "severity": severity,
+            "requiresAction": requires_action,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::AgentDirectiveIssued {
+            agent_id,
+            issued_by,
+            content,
+            priority,
+            timestamp,
+        } => json!({
+            "type": "AgentDirective",
+            "agentId": agent_id,
+            "issuedBy": issued_by,
+            "content": content,
+            "priority": priority,
+            "timestamp": timestamp,
+        }),
+    }
 }
 
 fn map_projects_to_context(projects: Vec<Project>) -> Vec<ProjectContext> {

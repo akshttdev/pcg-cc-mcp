@@ -6,11 +6,11 @@
 use std::sync::Arc;
 
 use axum::{
+    Form, Router,
     extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Form, Router,
 };
 use chrono::Utc;
 use nora::{
@@ -25,7 +25,7 @@ use serde_json::json;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::{routes::nora::get_nora_instance, DeploymentImpl};
+use crate::{DeploymentImpl, routes::nora::get_nora_instance};
 
 /// Global Twilio call handler
 static TWILIO_HANDLER: tokio::sync::OnceCell<Arc<TwilioCallHandler>> =
@@ -86,7 +86,10 @@ pub async fn handle_incoming_call(
     State(_state): State<DeploymentImpl>,
     Form(request): Form<TwilioCallRequest>,
 ) -> impl IntoResponse {
-    info!("Incoming Twilio call: {} from {}", request.call_sid, request.from);
+    info!(
+        "Incoming Twilio call: {} from {}",
+        request.call_sid, request.from
+    );
 
     let handler = match get_twilio_handler().await {
         Some(h) => h,
@@ -96,11 +99,7 @@ pub async fn handle_incoming_call(
                 .say_british("I apologise, the phone system is not currently configured. Please try again later.")
                 .hangup()
                 .build();
-            return (
-                StatusCode::OK,
-                [("Content-Type", "application/xml")],
-                twiml,
-            );
+            return (StatusCode::OK, [("Content-Type", "application/xml")], twiml);
         }
     };
 
@@ -194,7 +193,10 @@ pub async fn handle_speech_input(
     };
 
     // Generate TwiML response
-    match handler.handle_speech_input(speech_result, nora_response).await {
+    match handler
+        .handle_speech_input(speech_result, nora_response)
+        .await
+    {
         Ok(twiml) => (StatusCode::OK, [("Content-Type", "application/xml")], twiml),
         Err(e) => {
             error!("Error generating speech response: {}", e);

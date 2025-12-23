@@ -1,11 +1,14 @@
+use std::{pin::Pin, sync::Arc};
+
+use futures::stream::Stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use ts_rs::TS;
-use futures::stream::Stream;
-use std::pin::Pin;
 
-use crate::{cache::{CacheKey, CachedResponse, LlmCache, ResponseMetadata}, NoraError, Result};
+use crate::{
+    cache::{CacheKey, CachedResponse, LlmCache, ResponseMetadata},
+    NoraError, Result,
+};
 
 /// A message in the conversation history
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,7 +196,7 @@ impl LLMClient {
         // Note: Streaming responses bypass the cache
         // We could cache the full response after streaming completes, but that's TODO
         tracing::info!("LLM streaming request (cache bypassed)");
-        
+
         match self.config.provider {
             LLMProvider::OpenAI => {
                 self.generate_openai_stream(system_prompt, user_query, context)
@@ -295,15 +298,19 @@ impl LLMClient {
         conversation_history: &[ConversationMessage],
     ) -> Result<LLMResponse> {
         tracing::debug!("[LLM_API] generate_openai_with_tools_and_history called");
-        tracing::debug!("[LLM_API] Model: {}, Tools: {}, History: {} messages", 
-            self.config.model, tools.len(), conversation_history.len());
-        
+        tracing::debug!(
+            "[LLM_API] Model: {}, Tools: {}, History: {} messages",
+            self.config.model,
+            tools.len(),
+            conversation_history.len()
+        );
+
         let endpoint = self
             .config
             .endpoint
             .clone()
             .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
-        
+
         tracing::debug!("[LLM_API] Endpoint: {}", endpoint);
 
         let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
@@ -322,9 +329,8 @@ impl LLMClient {
         };
 
         // Build messages array with conversation history
-        let mut messages: Vec<serde_json::Value> = vec![
-            serde_json::json!({ "role": "system", "content": system }),
-        ];
+        let mut messages: Vec<serde_json::Value> =
+            vec![serde_json::json!({ "role": "system", "content": system })];
 
         // Add conversation history (limit to last 10 messages to control tokens)
         let history_limit = 10;
@@ -362,11 +368,17 @@ impl LLMClient {
         if !tools.is_empty() {
             payload["tools"] = serde_json::json!(tools);
             payload["tool_choice"] = serde_json::json!("auto");
-            tracing::debug!("[LLM_API] Added {} tools to payload with tool_choice=auto", tools.len());
+            tracing::debug!(
+                "[LLM_API] Added {} tools to payload with tool_choice=auto",
+                tools.len()
+            );
         }
 
-        tracing::info!("[LLM_API] Sending request to OpenAI API with {} total messages...", messages.len());
-        
+        tracing::info!(
+            "[LLM_API] Sending request to OpenAI API with {} total messages...",
+            messages.len()
+        );
+
         let client = self
             .client
             .post(&endpoint)
@@ -384,7 +396,7 @@ impl LLMClient {
         })?;
 
         tracing::debug!("[LLM_API] Response status: {}", response.status());
-        
+
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
@@ -399,23 +411,30 @@ impl LLMClient {
             tracing::error!("[LLM_API] Failed to parse response: {}", e);
             NoraError::LLMError(format!("Failed to parse response: {}", e))
         })?;
-        
+
         tracing::debug!("[LLM_API] Response parsed successfully");
 
         // Check if LLM wants to call tools
         if let Some(tool_calls) = json["choices"][0]["message"]["tool_calls"].as_array() {
-            tracing::info!("[LLM_API] LLM returned tool_calls array with {} items", tool_calls.len());
+            tracing::info!(
+                "[LLM_API] LLM returned tool_calls array with {} items",
+                tool_calls.len()
+            );
             let calls: Vec<ToolCall> = tool_calls
                 .iter()
                 .filter_map(|tc| {
                     let id = tc["id"].as_str()?.to_string();
                     let name = tc["function"]["name"].as_str()?.to_string();
                     tracing::debug!("[LLM_API] Parsing tool call: id={}, name={}", id, name);
-                    let arguments: serde_json::Value = serde_json::from_str(
-                        tc["function"]["arguments"].as_str().unwrap_or("{}")
-                    ).unwrap_or(serde_json::json!({}));
+                    let arguments: serde_json::Value =
+                        serde_json::from_str(tc["function"]["arguments"].as_str().unwrap_or("{}"))
+                            .unwrap_or(serde_json::json!({}));
                     tracing::debug!("[LLM_API] Tool arguments: {}", arguments);
-                    Some(ToolCall { id, name, arguments })
+                    Some(ToolCall {
+                        id,
+                        name,
+                        arguments,
+                    })
                 })
                 .collect();
 
@@ -434,7 +453,10 @@ impl LLMClient {
             .trim()
             .to_string();
 
-        tracing::info!("[LLM_API] Returning text response ({} chars)", content.len());
+        tracing::info!(
+            "[LLM_API] Returning text response ({} chars)",
+            content.len()
+        );
         Ok(LLMResponse::Text(content))
     }
 
@@ -448,9 +470,13 @@ impl LLMClient {
         conversation_history: &[ConversationMessage],
     ) -> Result<String> {
         tracing::debug!("[LLM_API] continue_openai_with_tool_results_and_history called");
-        tracing::debug!("[LLM_API] Tool calls: {}, Tool results: {}, History: {} messages", 
-            tool_calls.len(), tool_results.len(), conversation_history.len());
-        
+        tracing::debug!(
+            "[LLM_API] Tool calls: {}, Tool results: {}, History: {} messages",
+            tool_calls.len(),
+            tool_results.len(),
+            conversation_history.len()
+        );
+
         let endpoint = self
             .config
             .endpoint
@@ -472,9 +498,8 @@ impl LLMClient {
         };
 
         // Build the conversation with history, tool call, and results
-        let mut messages: Vec<serde_json::Value> = vec![
-            serde_json::json!({ "role": "system", "content": system }),
-        ];
+        let mut messages: Vec<serde_json::Value> =
+            vec![serde_json::json!({ "role": "system", "content": system })];
 
         // Add conversation history (limit to last 10 messages)
         let history_limit = 10;
@@ -537,7 +562,10 @@ impl LLMClient {
             "messages": messages
         });
 
-        tracing::debug!("[LLM_API] Constructed continuation payload with {} messages", messages.len());
+        tracing::debug!(
+            "[LLM_API] Constructed continuation payload with {} messages",
+            messages.len()
+        );
         tracing::info!("[LLM_API] Sending continuation request to OpenAI API...");
 
         let client = self
@@ -556,7 +584,10 @@ impl LLMClient {
             NoraError::LLMError(format!("Failed to send request: {}", e))
         })?;
 
-        tracing::debug!("[LLM_API] Continuation response status: {}", response.status());
+        tracing::debug!(
+            "[LLM_API] Continuation response status: {}",
+            response.status()
+        );
 
         if !response.status().is_success() {
             let status = response.status();
@@ -579,8 +610,14 @@ impl LLMClient {
             .trim()
             .to_string();
 
-        tracing::info!("[LLM_API] Continuation response received ({} chars)", content.len());
-        tracing::debug!("[LLM_API] Final content: {}", &content[..content.len().min(200)]);
+        tracing::info!(
+            "[LLM_API] Continuation response received ({} chars)",
+            content.len()
+        );
+        tracing::debug!(
+            "[LLM_API] Final content: {}",
+            &content[..content.len().min(200)]
+        );
 
         Ok(content)
     }
@@ -593,14 +630,18 @@ impl LLMClient {
         tools: &[serde_json::Value],
     ) -> Result<LLMResponse> {
         tracing::debug!("[LLM_API] generate_openai_with_tools called");
-        tracing::debug!("[LLM_API] Model: {}, Tools count: {}", self.config.model, tools.len());
-        
+        tracing::debug!(
+            "[LLM_API] Model: {}, Tools count: {}",
+            self.config.model,
+            tools.len()
+        );
+
         let endpoint = self
             .config
             .endpoint
             .clone()
             .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
-        
+
         tracing::debug!("[LLM_API] Endpoint: {}", endpoint);
 
         let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
@@ -639,11 +680,14 @@ impl LLMClient {
         if !tools.is_empty() {
             payload["tools"] = serde_json::json!(tools);
             payload["tool_choice"] = serde_json::json!("auto");
-            tracing::debug!("[LLM_API] Added {} tools to payload with tool_choice=auto", tools.len());
+            tracing::debug!(
+                "[LLM_API] Added {} tools to payload with tool_choice=auto",
+                tools.len()
+            );
         }
 
         tracing::info!("[LLM_API] Sending request to OpenAI API...");
-        
+
         let client = self
             .client
             .post(&endpoint)
@@ -661,7 +705,7 @@ impl LLMClient {
         })?;
 
         tracing::debug!("[LLM_API] Response status: {}", response.status());
-        
+
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
@@ -676,23 +720,30 @@ impl LLMClient {
             tracing::error!("[LLM_API] Failed to parse response: {}", e);
             NoraError::LLMError(format!("Failed to parse response: {}", e))
         })?;
-        
+
         tracing::debug!("[LLM_API] Response parsed successfully");
 
         // Check if LLM wants to call tools
         if let Some(tool_calls) = json["choices"][0]["message"]["tool_calls"].as_array() {
-            tracing::info!("[LLM_API] LLM returned tool_calls array with {} items", tool_calls.len());
+            tracing::info!(
+                "[LLM_API] LLM returned tool_calls array with {} items",
+                tool_calls.len()
+            );
             let calls: Vec<ToolCall> = tool_calls
                 .iter()
                 .filter_map(|tc| {
                     let id = tc["id"].as_str()?.to_string();
                     let name = tc["function"]["name"].as_str()?.to_string();
                     tracing::debug!("[LLM_API] Parsing tool call: id={}, name={}", id, name);
-                    let arguments: serde_json::Value = serde_json::from_str(
-                        tc["function"]["arguments"].as_str().unwrap_or("{}")
-                    ).unwrap_or(serde_json::json!({}));
+                    let arguments: serde_json::Value =
+                        serde_json::from_str(tc["function"]["arguments"].as_str().unwrap_or("{}"))
+                            .unwrap_or(serde_json::json!({}));
                     tracing::debug!("[LLM_API] Tool arguments: {}", arguments);
-                    Some(ToolCall { id, name, arguments })
+                    Some(ToolCall {
+                        id,
+                        name,
+                        arguments,
+                    })
                 })
                 .collect();
 
@@ -711,7 +762,10 @@ impl LLMClient {
             .trim()
             .to_string();
 
-        tracing::info!("[LLM_API] Returning text response ({} chars)", content.len());
+        tracing::info!(
+            "[LLM_API] Returning text response ({} chars)",
+            content.len()
+        );
         Ok(LLMResponse::Text(content))
     }
 
@@ -724,8 +778,12 @@ impl LLMClient {
         tool_results: &[ToolResult],
     ) -> Result<String> {
         tracing::debug!("[LLM_API] continue_openai_with_tool_results called");
-        tracing::debug!("[LLM_API] Tool calls: {}, Tool results: {}", tool_calls.len(), tool_results.len());
-        
+        tracing::debug!(
+            "[LLM_API] Tool calls: {}, Tool results: {}",
+            tool_calls.len(),
+            tool_results.len()
+        );
+
         let endpoint = self
             .config
             .endpoint
@@ -795,7 +853,10 @@ impl LLMClient {
             "messages": messages
         });
 
-        tracing::debug!("[LLM_API] Constructed continuation payload with {} messages", messages.len());
+        tracing::debug!(
+            "[LLM_API] Constructed continuation payload with {} messages",
+            messages.len()
+        );
         tracing::info!("[LLM_API] Sending continuation request to OpenAI API...");
 
         let client = self
@@ -814,7 +875,10 @@ impl LLMClient {
             NoraError::LLMError(format!("Failed to send request: {}", e))
         })?;
 
-        tracing::debug!("[LLM_API] Continuation response status: {}", response.status());
+        tracing::debug!(
+            "[LLM_API] Continuation response status: {}",
+            response.status()
+        );
 
         if !response.status().is_success() {
             let status = response.status();
@@ -837,9 +901,15 @@ impl LLMClient {
             .trim()
             .to_string();
 
-        tracing::info!("[LLM_API] Continuation response received ({} chars)", content.len());
-        tracing::debug!("[LLM_API] Final content: {}", &content[..content.len().min(200)]);
-        
+        tracing::info!(
+            "[LLM_API] Continuation response received ({} chars)",
+            content.len()
+        );
+        tracing::debug!(
+            "[LLM_API] Final content: {}",
+            &content[..content.len().min(200)]
+        );
+
         Ok(content)
     }
 
@@ -1008,33 +1078,33 @@ impl LLMClient {
 
         // Convert response bytes stream to text chunks
         let byte_stream = response.bytes_stream();
-        
+
         let text_stream = byte_stream.map(move |chunk_result| {
-            let chunk = chunk_result.map_err(|e| {
-                NoraError::LLMError(format!("Stream chunk error: {}", e))
-            })?;
-            
+            let chunk = chunk_result
+                .map_err(|e| NoraError::LLMError(format!("Stream chunk error: {}", e)))?;
+
             // Parse SSE format: "data: {...}\n\n"
             let text = String::from_utf8_lossy(&chunk);
             let mut content_chunks = Vec::new();
-            
+
             for line in text.lines() {
                 if line.starts_with("data: ") {
                     let json_str = line.strip_prefix("data: ").unwrap_or("");
-                    
+
                     // OpenAI sends "[DONE]" as the final message
                     if json_str == "[DONE]" {
                         continue;
                     }
-                    
+
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
-                        if let Some(delta_content) = json["choices"][0]["delta"]["content"].as_str() {
+                        if let Some(delta_content) = json["choices"][0]["delta"]["content"].as_str()
+                        {
                             content_chunks.push(delta_content.to_string());
                         }
                     }
                 }
             }
-            
+
             Ok(content_chunks.join(""))
         });
 
