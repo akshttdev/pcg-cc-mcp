@@ -844,8 +844,8 @@ impl ExecutiveTools {
                         "properties": {
                             "agent_id": {
                                 "type": "string",
-                                "description": "The agent identifier (e.g., 'editron-post', 'astra-strategy', 'harbor-intel', 'pulse-growth', 'vesper-creative', 'forge-systems')",
-                                "enum": ["editron-post", "astra-strategy", "harbor-intel", "pulse-growth", "vesper-creative", "forge-systems"]
+                                "description": "The agent identifier (e.g., 'editron-post', 'master-cinematographer', 'astra-strategy', 'harbor-ops', 'pulse-intel', 'vesper-comms', 'forge-bd')",
+                                "enum": ["editron-post", "master-cinematographer", "astra-strategy", "harbor-ops", "pulse-intel", "vesper-comms", "forge-bd"]
                             },
                             "workflow_id": {
                                 "type": "string",
