@@ -140,6 +140,12 @@ pub enum NoraExecutiveTool {
         project_id: Option<String>,
         inputs: HashMap<String, serde_json::Value>,
     },
+    /// Cancel a running workflow
+    CancelWorkflow {
+        workflow_instance_id: String,
+    },
+    /// List all active workflow executions
+    ListActiveWorkflows,
 
     /// Team Coordination
     CoordinateTeamMeeting {
@@ -868,6 +874,34 @@ impl ExecutiveTools {
             serde_json::json!({
                 "type": "function",
                 "function": {
+                    "name": "cancel_workflow",
+                    "description": "Cancel a running workflow execution. Use this when a workflow is stuck, failing repeatedly, or needs to be stopped.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "workflow_instance_id": {
+                                "type": "string",
+                                "description": "The UUID of the workflow instance to cancel"
+                            }
+                        },
+                        "required": ["workflow_instance_id"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "list_active_workflows",
+                    "description": "List all currently running workflow executions with their status, agent, and instance IDs.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
                     "name": "send_email",
                     "description": "Send an email to one or more recipients. Use this when the user wants to send, compose, or draft an email.",
                     "parameters": {
@@ -1026,6 +1060,15 @@ impl ExecutiveTools {
                     project_id,
                     inputs,
                 })
+            }
+            "cancel_workflow" => {
+                let workflow_instance_id = arguments.get("workflow_instance_id")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::CancelWorkflow {
+                    workflow_instance_id,
+                })
+            }
+            "list_active_workflows" => {
+                Some(NoraExecutiveTool::ListActiveWorkflows)
             }
             "send_email" => {
                 let recipients: Vec<String> = arguments
@@ -1635,6 +1678,8 @@ impl ExecutiveTools {
             NoraExecutiveTool::CreateTaskOnBoard { .. } => "create_task_on_board".to_string(),
             NoraExecutiveTool::AddTaskToBoard { .. } => "add_task_to_board".to_string(),
             NoraExecutiveTool::ExecuteWorkflow { .. } => "execute_workflow".to_string(),
+            NoraExecutiveTool::CancelWorkflow { .. } => "cancel_workflow".to_string(),
+            NoraExecutiveTool::ListActiveWorkflows => "list_active_workflows".to_string(),
 
             // Coordination
             NoraExecutiveTool::CoordinateTeamMeeting { .. } => {
@@ -1872,6 +1917,97 @@ impl ExecutiveTools {
                         "error": "Workflow orchestrator not available. Nora needs to be initialized with workflow support.",
                         "agent_id": agent_id,
                         "workflow_id": workflow_id,
+                    }))
+                }
+            }
+            NoraExecutiveTool::CancelWorkflow {
+                workflow_instance_id,
+            } => {
+                if let Some(orchestrator) = &self.workflow_orchestrator {
+                    tracing::info!(
+                        "[TOOL] Cancelling workflow instance: {}",
+                        workflow_instance_id
+                    );
+
+                    match Uuid::parse_str(&workflow_instance_id) {
+                        Ok(workflow_uuid) => {
+                            match orchestrator.cancel_workflow(workflow_uuid).await {
+                                Ok(_) => {
+                                    tracing::info!(
+                                        "[TOOL] Workflow cancelled successfully: {}",
+                                        workflow_instance_id
+                                    );
+                                    Ok(serde_json::json!({
+                                        "success": true,
+                                        "message": format!("Workflow instance {} has been cancelled", workflow_instance_id),
+                                        "workflow_instance_id": workflow_instance_id,
+                                    }))
+                                }
+                                Err(e) => {
+                                    tracing::error!("[TOOL] Failed to cancel workflow: {}", e);
+                                    Ok(serde_json::json!({
+                                        "success": false,
+                                        "error": format!("Failed to cancel workflow: {}", e),
+                                        "workflow_instance_id": workflow_instance_id,
+                                    }))
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("[TOOL] Invalid workflow instance ID: {}", e);
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Invalid workflow instance ID: {}", e),
+                                "workflow_instance_id": workflow_instance_id,
+                            }))
+                        }
+                    }
+                } else {
+                    tracing::warn!("[TOOL] Workflow orchestrator not available");
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Workflow orchestrator not available",
+                        "workflow_instance_id": workflow_instance_id,
+                    }))
+                }
+            }
+            NoraExecutiveTool::ListActiveWorkflows => {
+                if let Some(orchestrator) = &self.workflow_orchestrator {
+                    tracing::info!("[TOOL] Listing active workflows");
+
+                    let workflows = orchestrator.get_active_workflows().await;
+                    let workflow_list: Vec<serde_json::Value> = workflows
+                        .iter()
+                        .map(|w| {
+                            serde_json::json!({
+                                "workflow_instance_id": w.id.to_string(),
+                                "agent_id": w.agent_id,
+                                "workflow_id": w.workflow_id,
+                                "workflow_name": w.workflow.name,
+                                "current_stage": w.current_stage,
+                                "total_stages": w.workflow.stages.len(),
+                                "state": match &w.state {
+                                    crate::workflow::WorkflowState::Queued => "queued",
+                                    crate::workflow::WorkflowState::Running { .. } => "running",
+                                    crate::workflow::WorkflowState::Paused { .. } => "paused",
+                                    crate::workflow::WorkflowState::Failed { .. } => "failed",
+                                    crate::workflow::WorkflowState::Completed { .. } => "completed",
+                                },
+                                "started_at": w.started_at.to_rfc3339(),
+                            })
+                        })
+                        .collect();
+
+                    Ok(serde_json::json!({
+                        "success": true,
+                        "workflows": workflow_list,
+                        "count": workflow_list.len(),
+                    }))
+                } else {
+                    tracing::warn!("[TOOL] Workflow orchestrator not available");
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Workflow orchestrator not available",
                     }))
                 }
             }
