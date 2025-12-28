@@ -1,10 +1,11 @@
 use axum::{
     Router,
-    http::StatusCode,
+    http::{StatusCode, Method, header},
     middleware,
     response::IntoResponse,
     routing::{IntoMakeService, get},
 };
+use tower_http::cors::{CorsLayer, Any};
 
 use crate::{DeploymentImpl, middleware as app_middleware};
 
@@ -84,9 +85,25 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(admin_routes)
         .with_state(deployment);
 
+    // CORS configuration for external embeds (e.g., Jungleverse iframe)
+    let allowed_origins = std::env::var("ALLOWED_ORIGINS")
+        .unwrap_or_else(|_| "http://localhost:3001".to_string());
+
+    let cors = CorsLayer::new()
+        .allow_origin(
+            allowed_origins
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect::<Vec<_>>()
+        )
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
+        .allow_credentials(true);
+
     Router::new()
         .route("/", get(frontend::serve_frontend_root))
         .route("/{*path}", get(frontend::serve_frontend))
         .nest("/api", base_routes)
+        .layer(cors)
         .into_make_service()
 }

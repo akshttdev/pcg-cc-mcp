@@ -367,7 +367,7 @@ impl LLMClient {
         // Add tools if provided
         if !tools.is_empty() {
             payload["tools"] = serde_json::json!(tools);
-            payload["tool_choice"] = serde_json::json!("auto");
+            payload["tool_choice"] = serde_json::json!("required");
             tracing::debug!(
                 "[LLM_API] Added {} tools to payload with tool_choice=auto",
                 tools.len()
@@ -378,6 +378,10 @@ impl LLMClient {
             "[LLM_API] Sending request to OpenAI API with {} total messages...",
             messages.len()
         );
+        eprintln!("[DEBUG] Sending to OpenAI: model={}, tools={}, tool_choice={:?}",
+            self.config.model,
+            tools.len(),
+            payload.get("tool_choice"));
 
         let client = self
             .client
@@ -413,6 +417,7 @@ impl LLMClient {
         })?;
 
         tracing::debug!("[LLM_API] Response parsed successfully");
+        eprintln!("[DEBUG] tool_calls in response: {:?}", json["choices"][0]["message"]["tool_calls"]);
 
         // Check if LLM wants to call tools
         if let Some(tool_calls) = json["choices"][0]["message"]["tool_calls"].as_array() {
@@ -679,7 +684,7 @@ impl LLMClient {
         // Add tools if provided
         if !tools.is_empty() {
             payload["tools"] = serde_json::json!(tools);
-            payload["tool_choice"] = serde_json::json!("auto");
+            payload["tool_choice"] = serde_json::json!("required");
             tracing::debug!(
                 "[LLM_API] Added {} tools to payload with tool_choice=auto",
                 tools.len()
@@ -722,6 +727,7 @@ impl LLMClient {
         })?;
 
         tracing::debug!("[LLM_API] Response parsed successfully");
+        eprintln!("[DEBUG] tool_calls in response: {:?}", json["choices"][0]["message"]["tool_calls"]);
 
         // Check if LLM wants to call tools
         if let Some(tool_calls) = json["choices"][0]["message"]["tool_calls"].as_array() {
