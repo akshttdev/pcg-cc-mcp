@@ -33,6 +33,7 @@ pub mod twilio;
 pub mod users;
 pub mod cinematics;
 pub mod webhooks;
+pub mod dropbox;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -78,6 +79,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(twilio::twilio_routes())
         .merge(comments::router())
         .merge(activity::router())
+        .merge(dropbox::router())
         .merge(webhooks::router())
         .merge(admin_routes)
         .with_state(deployment);

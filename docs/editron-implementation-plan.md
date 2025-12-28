@@ -284,7 +284,7 @@ PROXY_CACHE_PATH=/path/to/proxy/cache
 2. ✅ NORA executive tools wired up (IngestMediaBatch, AnalyzeMediaBatch, GenerateVideoEdits, RenderVideoDeliverables)
 3. ✅ MediaPipelineService integrated and initialized
 4. ✅ OpenAI tool schemas for LLM function calling
-5. ⏳ Dropbox link triggers automatic task creation (webhook needed)
+5. ✅ Dropbox link triggers automatic task creation (webhook + auto-ingest hints wired)
 6. ⏳ Videos downloaded and analyzed locally (basic download works, needs real analysis)
 7. ⏳ Analysis results visible in frontend
 8. ⏳ Manual edit workflow using iMovie
@@ -300,16 +300,24 @@ PROXY_CACHE_PATH=/path/to/proxy/cache
 
 ## Next Immediate Steps
 
-1. **Implement Dropbox Webhook** (1-2 days)
-   - Create webhook endpoint
-   - Register with Dropbox
-   - Test with sample folder
+1. **Implement Dropbox Webhook** (1-2 days) ✅
+   - Create webhook endpoint → **done**
+   - Register with Dropbox → _pending external app setup_
+   - Test with sample folder → **done via editron_batches payload**
+   - Verify webhook signatures via `DROPBOX_WEBHOOK_SECRET` → **done**
 
-2. **Create IngestMediaBatch Tool** (2-3 days)
+2. **Create IngestMediaBatch Tool** (2-3 days) ✅
    - Download files from Dropbox
    - Verify checksums
    - Store in local cache
-   - Update database
+   - Update database (now writes to SQLite + JSON)
+
+2.5 **Dropbox Source Registry** (1 day) ✅
+   - Schema + model for `dropbox_sources`
+   - Account-based auto-ingest wiring in webhook handler
+   - `/api/dropbox/sources` endpoints for CRUD management
+   - Background monitor auto-queues ingest for stale sources every 5 minutes
+   - Template-driven reference names
 
 3. **Set Up CLIP + Whisper** (3-4 days)
    - Install model dependencies

@@ -307,6 +307,15 @@ impl NoraAgent {
         self
     }
 
+    pub fn with_cinematics(self, cinematics: Arc<CinematicsService>) -> Self {
+        // Set cinematics service in workflow orchestrator
+        let workflow_orchestrator = self.workflow_orchestrator.clone();
+        tokio::spawn(async move {
+            workflow_orchestrator.set_cinematics(cinematics).await;
+        });
+        self
+    }
+
     /// Process a request from user or system
     pub async fn process_request(&self, request: NoraRequest) -> Result<NoraResponse> {
         let start_time = std::time::Instant::now();
@@ -1288,14 +1297,17 @@ WORKFLOW EXECUTION:
 You can orchestrate complex multi-stage workflows through specialized agents:
 - Editron (editron-post): Video production workflows - ingesting footage, analysis, editing, rendering
 - Astra (astra-strategy): Strategic planning and roadmap generation
-- Harbor (harbor-intel): Intelligence gathering and analysis
-- Pulse (pulse-growth): Growth initiatives and marketing campaigns
-- Vesper (vesper-creative): Creative asset generation
-- Forge (forge-systems): System development and deployment
+- Harbor (harbor-ops): Operations orchestration and incident response
+- Pulse (pulse-intel): Portfolio intelligence and KPI reporting
+- Vesper (vesper-comms): Communications and partnerships
+- Forge (forge-bd): Business development and enterprise deals
+- Master Cinematographer / Spectra (master-cinematographer): AI video generation via ComfyUI/Stable Diffusion
 
 When a user requests a complex operation that involves multiple coordinated steps, use the execute_workflow tool:
 - Example: \"Editron, create a recap video from this Dropbox link\" → execute_workflow with agent_id='editron-post', workflow_id='event-recap-forge'
 - Example: \"Have Astra generate a roadmap for Q1\" → execute_workflow with agent_id='astra-strategy', workflow_id='roadmap-compression'
+- Example: \"Master Cinematographer, create a cinematic video of X\" → execute_workflow with agent_id='master-cinematographer', workflow_id='ai-cinematic-suite'
+- Example: \"Generate an AI video using Spectra\" → execute_workflow with agent_id='master-cinematographer', workflow_id='ai-cinematic-suite'
 
 Workflows automatically create tracking tasks for each stage, providing full visibility on the dashboard. Monitor workflow progress through task status updates.
 

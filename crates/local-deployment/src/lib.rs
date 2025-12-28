@@ -29,10 +29,14 @@ use utils::{
 };
 use uuid::Uuid;
 
-use crate::container::LocalContainerService;
+use crate::{
+    container::LocalContainerService,
+    dropbox_monitor::DropboxMonitor,
+};
 
 mod command;
 pub mod container;
+mod dropbox_monitor;
 
 #[derive(Clone)]
 pub struct LocalDeployment {
@@ -138,7 +142,11 @@ impl Deployment for LocalDeployment {
         let file_search_cache = Arc::new(FileSearchCache::new());
 
         let media_pipeline_root = asset_dir().join("media_pipeline");
-        let media_pipeline = MediaPipelineService::new(media_pipeline_root)?;
+        let media_pipeline = MediaPipelineService::new_with_database(
+            media_pipeline_root,
+            db.pool.clone(),
+        )?;
+        DropboxMonitor::spawn(db.pool.clone(), media_pipeline.clone());
 
         // Try to initialize PostgreSQL connection if DATABASE_URL is set
         #[cfg(feature = "postgres")]

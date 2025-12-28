@@ -844,12 +844,12 @@ impl ExecutiveTools {
                         "properties": {
                             "agent_id": {
                                 "type": "string",
-                                "description": "The agent identifier (e.g., 'editron-post', 'astra-strategy', 'harbor-intel', 'pulse-growth', 'vesper-creative', 'forge-systems')",
-                                "enum": ["editron-post", "astra-strategy", "harbor-intel", "pulse-growth", "vesper-creative", "forge-systems"]
+                                "description": "The agent identifier (e.g., 'editron-post' for video editing, 'master-cinematographer' for AI video generation, 'astra-strategy' for roadmaps, 'harbor-ops' for operations, 'pulse-intel' for analytics, 'vesper-comms' for communications, 'forge-bd' for business development)",
+                                "enum": ["editron-post", "master-cinematographer", "astra-strategy", "harbor-ops", "pulse-intel", "vesper-comms", "forge-bd"]
                             },
                             "workflow_id": {
                                 "type": "string",
-                                "description": "The workflow identifier (e.g., 'event-recap-forge' for Editron video creation, 'roadmap-compression' for Astra planning)"
+                                "description": "The workflow identifier (e.g., 'ai-cinematic-suite' for AI video generation with Master Cinematographer, 'event-recap-forge' for Editron video editing, 'roadmap-compression' for Astra planning)"
                             },
                             "project_id": {
                                 "type": "string",
@@ -2031,11 +2031,16 @@ impl ExecutiveTools {
                         }
                     };
 
+                    let project_uuid = project_id
+                        .as_ref()
+                        .and_then(|value| Uuid::parse_str(value).ok());
+
                     let request = MediaBatchIngestRequest {
                         source_url: source_url.clone(),
                         reference_name: reference_name.clone(),
                         storage_tier: tier,
                         checksum_required,
+                        project_id: project_uuid,
                     };
 
                     match pipeline.ingest_batch(request).await {
@@ -2541,74 +2546,6 @@ impl ExecutiveTools {
             } => {
                 self.execute_check_calendar_availability(&user, start_time, end_time)
                     .await
-            }
-
-            // Media Production
-            NoraExecutiveTool::IngestMediaBatch {
-                source_url,
-                reference_name,
-                storage_tier,
-                checksum_required,
-                project_id,
-            } => {
-                self.execute_ingest_media_batch(
-                    &source_url,
-                    reference_name,
-                    &storage_tier,
-                    checksum_required,
-                    project_id,
-                )
-                .await
-            }
-            NoraExecutiveTool::AnalyzeMediaBatch {
-                batch_id,
-                brief,
-                passes,
-                deliverable_targets,
-                project_id,
-            } => {
-                self.execute_analyze_media_batch(
-                    &batch_id,
-                    &brief,
-                    passes,
-                    deliverable_targets,
-                    project_id,
-                )
-                .await
-            }
-            NoraExecutiveTool::GenerateVideoEdits {
-                batch_id,
-                deliverable_type,
-                aspect_ratios,
-                reference_style,
-                include_captions,
-                project_id,
-            } => {
-                self.execute_generate_video_edits(
-                    &batch_id,
-                    &deliverable_type,
-                    aspect_ratios,
-                    reference_style,
-                    include_captions,
-                    project_id,
-                )
-                .await
-            }
-            NoraExecutiveTool::RenderVideoDeliverables {
-                edit_session_id,
-                destinations,
-                formats,
-                priority,
-                project_id,
-            } => {
-                self.execute_render_video_deliverables(
-                    &edit_session_id,
-                    destinations,
-                    formats,
-                    priority,
-                    project_id,
-                )
-                .await
             }
 
             // Existing tools
@@ -3296,6 +3233,9 @@ impl ExecutiveTools {
             reference_name,
             storage_tier,
             checksum_required,
+            project_id: project_hint
+                .as_ref()
+                .and_then(|value| Uuid::parse_str(value).ok()),
         };
 
         let response = match pipeline.ingest_batch(request).await {

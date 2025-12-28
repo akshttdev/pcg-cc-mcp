@@ -15,6 +15,7 @@ use chrono::{DateTime, Utc};
 use db::models::project::Project;
 use deployment::Deployment;
 use futures::stream::Stream;
+use cinematics::{CinematicsConfig, CinematicsService};
 use nora::{
     NoraAgent, NoraConfig, NoraError,
     agent::{NoraRequest, NoraRequestType, NoraResponse, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority},
@@ -738,12 +739,24 @@ pub async fn initialize_nora_on_startup(state: &DeploymentImpl) -> Result<String
 
     let project_context = map_projects_to_context(projects);
 
+    // Initialize Cinematics service for Master Cinematographer agent
+    let cinematics_config = CinematicsConfig::default();
+    tracing::info!(
+        "Initializing CinematicsService with ComfyUI at {}",
+        cinematics_config.comfy_base_url
+    );
+    let cinematics = Arc::new(CinematicsService::new(
+        state.db().pool.clone(),
+        cinematics_config,
+    ));
+
     // Initialize Nora agent
     let nora_agent = nora::initialize_nora(config)
         .await
         .map_err(|e| format!("Nora initialization failed: {}", e))?
         .with_database(state.db().pool.clone())
-        .with_media_pipeline(state.media_pipeline().clone());
+        .with_media_pipeline(state.media_pipeline().clone())
+        .with_cinematics(cinematics);
 
     // Seed project context
     nora_agent

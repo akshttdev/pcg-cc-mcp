@@ -1,9 +1,17 @@
-import { Component, type ReactNode, Suspense, useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Grid, Environment, Stars, SpotLight } from '@react-three/drei';
-import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-three/postprocessing';
-import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
+import {
+  type LucideIcon,
+  ChevronDown,
+  ChevronUp,
+  Compass,
+  Cpu,
+  Gamepad2,
+  Layers,
+  Map as MapIcon,
+} from 'lucide-react';
 import { CommandCenter } from '@/components/virtual-world/CommandCenter';
 import { NoraAvatar } from '@/components/virtual-world/NoraAvatar';
 import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
@@ -12,6 +20,7 @@ import { BuildingInterior } from '@/components/virtual-world/BuildingInterior';
 import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
 import { getBuildingType } from '@/lib/virtual-world/buildingTypes';
 import { ENTRY_TRIGGER_DISTANCE } from '@/lib/virtual-world/constants';
+import { cn } from '@/lib/utils';
 
 const safeProjectList = (typeof __TOPOS_PROJECTS__ !== 'undefined'
   ? __TOPOS_PROJECTS__
@@ -29,6 +38,22 @@ interface ProjectData {
   position: [number, number, number];
   energy: number;
 }
+
+type HudPanelId = 'systems' | 'intel' | 'map' | 'controls';
+
+const HUD_NAV_ITEMS: { id: HudPanelId; label: string; description: string; icon: LucideIcon }[] = [
+  { id: 'systems', label: 'Systems', description: 'Server diagnostics', icon: Cpu },
+  { id: 'intel', label: 'Intel', description: 'Project dossiers', icon: Layers },
+  { id: 'map', label: 'Cartography', description: 'Spatial telemetry', icon: MapIcon },
+  { id: 'controls', label: 'Controls', description: 'Piloting reference', icon: Gamepad2 },
+];
+
+const HUD_PANEL_META: Record<HudPanelId, { title: string; description: string }> = {
+  systems: { title: 'Systems Console', description: 'Monitor command center throughput and structural integrity.' },
+  intel: { title: 'Intel Ledger', description: 'Active engagements ranked by signal strength.' },
+  map: { title: 'Aerial Cartography', description: 'Top-down sweep of the monumental grid.' },
+  controls: { title: 'Flight Controls', description: 'Reference for movement, chat, and interaction shortcuts.' },
+};
 
 const noraAcknowledgements = [
   'Routing orchestration energy to',
@@ -210,7 +235,8 @@ export function VirtualEnvironmentPage() {
   const [activeInterior, setActiveInterior] = useState<ProjectData | null>(null);
   const [isConsoleInputActive, setIsConsoleInputActive] = useState(false);
   const [consoleFocusVersion, setConsoleFocusVersion] = useState(0);
-  const [postProcessingEnabled, setPostProcessingEnabled] = useState(true);
+  const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+  const [activeHudPanel, setActiveHudPanel] = useState<HudPanelId | null>(null);
 
   const updateNoraLine = useCallback((line: string) => {
     setNoraLine(line);
@@ -230,6 +256,15 @@ export function VirtualEnvironmentPage() {
   const releaseConsoleInput = useCallback(() => {
     setIsConsoleInputActive(false);
   }, []);
+
+  const toggleChatCollapse = useCallback(() => {
+    setIsChatCollapsed((prev) => {
+      if (!prev) {
+        releaseConsoleInput();
+      }
+      return !prev;
+    });
+  }, [releaseConsoleInput]);
 
   const handleSelect = useCallback((project: ProjectData) => {
     setSelectedProject(project);
@@ -273,6 +308,10 @@ export function VirtualEnvironmentPage() {
     setActiveInterior(null);
   }, [activeInterior, updateNoraLine]);
 
+  const toggleHudPanel = useCallback((panel: HudPanelId) => {
+    setActiveHudPanel((prev) => (prev === panel ? null : panel));
+  }, []);
+
   useEffect(() => {
     if (!activeInterior) return undefined;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -283,6 +322,12 @@ export function VirtualEnvironmentPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeInterior, exitInterior]);
+
+  useEffect(() => {
+    if (activeInterior) {
+      setActiveHudPanel(null);
+    }
+  }, [activeInterior]);
 
   useEffect(() => {
     const handleConsoleToggle = (event: KeyboardEvent) => {
@@ -318,6 +363,34 @@ export function VirtualEnvironmentPage() {
       setIsConsoleInputActive(false);
     }
   }, [activeInterior, isConsoleInputActive]);
+
+  const hudPanelContent = useMemo(() => {
+    if (!activeHudPanel) return null;
+    switch (activeHudPanel) {
+      case 'systems':
+        return (
+          <SystemsPanel
+            projects={projects}
+            selectedProject={selectedProject}
+            userPosition={userPosition}
+          />
+        );
+      case 'intel':
+        return <IntelPanel projects={projects} />;
+      case 'map':
+        return (
+          <MapPanel
+            projects={projects}
+            selectedProject={selectedProject}
+            userPosition={userPosition}
+          />
+        );
+      case 'controls':
+        return <ControlsPanel />;
+      default:
+        return null;
+    }
+  }, [activeHudPanel, projects, selectedProject, userPosition]);
 
   return (
     <div className="relative h-full min-h-[calc(100vh-6rem)] bg-black text-white">
@@ -401,89 +474,120 @@ export function VirtualEnvironmentPage() {
             canFly
           />
 
-          {/* Post-processing effects for cyberpunk aesthetic */}
-          {postProcessingEnabled && (
-            <PostProcessingBoundary onError={() => setPostProcessingEnabled(false)}>
-              <PostProcessingEffects />
-            </PostProcessingBoundary>
-          )}
         </Suspense>
       </Canvas>
 
-      {/* UI Overlays */}
       {!activeInterior && (
-        <div className="pointer-events-none absolute top-6 left-6 bg-black/70 border border-cyan-400/40 rounded-lg p-5 max-w-lg backdrop-blur-sm">
-          <p className="text-cyan-200 text-xs uppercase tracking-[0.3em] mb-2 font-semibold">
-            PCG Virtual Environment V2
-          </p>
-          <h1 className="text-2xl font-bold text-white mb-3">Monumental Grid</h1>
-          <p className="text-sm text-cyan-100/90 leading-relaxed mb-3">
-            Explore the spatial command center. Each structure represents a project at monumental scale.
-          </p>
-          <div className="text-xs text-cyan-200/70 space-y-1">
-            <p><span className="font-semibold">WASD</span> - Move</p>
-            <p><span className="font-semibold">Shift</span> - Sprint</p>
-            <p><span className="font-semibold">Space/Ctrl</span> - Up/Down</p>
-            <p><span className="font-semibold">Mouse</span> - Look around</p>
-            <p><span className="font-semibold">Click Building</span> - Select</p>
-            <p><span className="font-semibold">E</span> - Enter nearby structure</p>
-            <p><span className="font-semibold">Enter</span> - Engage command net</p>
-            <p><span className="font-semibold">Esc</span> - Return to flight controls</p>
-          </div>
-        </div>
-      )}
-
-      {!activeInterior && (
-        <AgentChatConsole
-          className="pointer-events-auto absolute bottom-6 left-6 w-[28rem]"
-          statusLine={noraLine}
-          statusVersion={noraStatusVersion}
-          selectedProject={selectedProject}
-          isInputActive={isConsoleInputActive}
-          onRequestCloseInput={releaseConsoleInput}
-          focusToken={consoleFocusVersion}
-        />
-      )}
-
-      {!activeInterior && (
-        <div className="pointer-events-auto absolute bottom-6 right-6 w-80 bg-black/70 border border-cyan-400/30 rounded-lg p-4 backdrop-blur-sm">
-          <h2 className="text-cyan-200 text-sm uppercase tracking-[0.2em] mb-3 font-semibold">
-            System Status
-          </h2>
-          <div className="space-y-2 text-xs text-cyan-100/80">
-            <div className="flex items-center justify-between">
-              <span>Structures Deployed</span>
-              <span className="font-mono text-cyan-300">{projects.length}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Command Center</span>
-              <span className="text-green-400">● OPERATIONAL</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>NORA Status</span>
-              <span className="text-green-400">● ONLINE</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Grid Integrity</span>
-              <span className="font-mono text-cyan-300">100%</span>
+        <>
+          <div className="pointer-events-auto absolute top-4 right-4 w-[min(20rem,calc(100%-2rem))]">
+            <div className="rounded-2xl border border-amber-500/30 bg-[#050403]/90 p-3 backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+              <MiniMap
+                projects={projects}
+                selectedProject={selectedProject}
+                userPosition={userPosition}
+                size={220}
+              />
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-cyan-400/20">
-            <p className="text-[10px] text-cyan-200/60 leading-relaxed">
-              Monumental architecture prototype. Each building represents a project workspace where agents and humans collaborate.
-            </p>
-          </div>
-        </div>
-      )}
 
-      {!activeInterior && (
-        <div className="pointer-events-none absolute top-6 right-6 bg-yellow-900/20 border border-yellow-500/30 rounded px-3 py-2 text-xs text-yellow-200/80">
-          <span className="font-semibold">V2 AESTHETIC UPGRADE</span> - Scale 10x increased
-        </div>
+          <div className="pointer-events-auto absolute bottom-4 left-4 w-[min(30rem,calc(100%-2rem))]">
+            <div className="rounded-lg border border-amber-600/60 bg-[#1b1209]/90 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+              <div className="flex items-center justify-between border-b border-amber-500/40 px-3 py-1 text-[11px] uppercase tracking-[0.3em] text-amber-200">
+                <div className="flex flex-wrap items-center gap-2 font-semibold">
+                  {['All', 'Grid', 'Direct', 'System'].map((label) => (
+                    <span
+                      key={label}
+                      className="rounded border border-amber-500/50 bg-black/30 px-2 py-0.5 text-[10px] tracking-[0.2em]"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleChatCollapse}
+                  className="rounded border border-amber-600/50 bg-black/30 p-1 text-amber-200 transition hover:text-white"
+                >
+                  {isChatCollapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="border-b border-amber-500/30 px-3 py-2 text-[11px] text-amber-100/80">
+                {noraLine}
+              </div>
+              <div
+                className={cn(
+                  'overflow-hidden transition-all duration-300',
+                  isChatCollapsed
+                    ? 'pointer-events-none max-h-0 opacity-0'
+                    : 'max-h-[32rem] opacity-100'
+                )}
+              >
+                <AgentChatConsole
+                  className="rounded-none border-0 bg-[#0b0905]/90 text-[13px] text-amber-100"
+                  statusLine={noraLine}
+                  statusVersion={noraStatusVersion}
+                  selectedProject={selectedProject}
+                  isInputActive={isConsoleInputActive}
+                  onRequestCloseInput={releaseConsoleInput}
+                  focusToken={consoleFocusVersion}
+                  showHeader={false}
+                />
+              </div>
+              <div className="border-t border-amber-500/30 px-3 py-1 text-[10px] text-amber-200/80">
+                {isChatCollapsed ? 'Press Enter to reopen the command net.' : 'Enter engages the net · Esc cancels typing'}
+              </div>
+            </div>
+          </div>
+
+          <div className="pointer-events-auto absolute bottom-4 right-4 flex flex-col items-end gap-3">
+            {activeHudPanel && (
+              <div className="w-[min(34rem,calc(100%-2rem))] rounded-2xl border border-amber-500/60 bg-[#080705]/95 shadow-[0_20px_45px_rgba(0,0,0,0.65)]">
+                <div className="flex items-center justify-between border-b border-amber-500/40 px-5 py-3 text-[11px] uppercase tracking-[0.3em] text-amber-100">
+                  <div>
+                    <p className="text-sm font-semibold tracking-[0.2em]">{HUD_PANEL_META[activeHudPanel].title}</p>
+                    <p className="text-[10px] tracking-[0.15em] text-amber-200/70">
+                      {HUD_PANEL_META[activeHudPanel].description}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveHudPanel(null)}
+                    className="rounded border border-amber-500/40 px-3 py-1 text-[10px] tracking-[0.2em] text-amber-100 transition hover:bg-amber-500/20"
+                  >
+                    CLOSE
+                  </button>
+                </div>
+                <div className="p-5 text-sm text-amber-100/90">{hudPanelContent}</div>
+              </div>
+            )}
+            <div className="flex items-end gap-2 rounded-full border border-amber-600/60 bg-[#14100b]/95 px-4 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.55)]">
+              {HUD_NAV_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeHudPanel === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => toggleHudPanel(item.id)}
+                    className={cn(
+                      'flex flex-col items-center gap-1 rounded-md px-3 py-1 text-[10px] tracking-[0.2em] transition',
+                      isActive
+                        ? 'bg-amber-500/30 text-amber-50'
+                        : 'text-amber-200/80 hover:bg-amber-500/10'
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
       )}
 
       {!activeInterior && enterTarget && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-0 bottom-28 flex justify-center">
           <div className="rounded-full border border-cyan-400/40 bg-black/70 px-6 py-2 text-[11px] uppercase tracking-[0.4em] text-cyan-100">
             Press <span className="mx-1 font-semibold text-white">E</span> to enter {enterTarget.name}
           </div>
@@ -501,67 +605,248 @@ export function VirtualEnvironmentPage() {
         />
       )}
 
-      {!postProcessingEnabled && (
-        <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-yellow-400/40 bg-black/60 px-6 py-2 text-xs uppercase tracking-[0.4em] text-yellow-100">
-          Visual effects disabled — unsupported browser configuration detected
-        </div>
-      )}
     </div>
   );
 }
 
 export default VirtualEnvironmentPage;
+interface SystemsPanelProps {
+  projects: ProjectData[];
+  selectedProject: ProjectData | null;
+  userPosition: [number, number, number];
+}
 
-function PostProcessingEffects() {
+interface IntelPanelProps {
+  projects: ProjectData[];
+}
+
+type MapPanelProps = SystemsPanelProps;
+
+interface MiniMapProps {
+  projects: ProjectData[];
+  selectedProject: ProjectData | null;
+  userPosition: [number, number, number];
+  size?: number;
+}
+
+function SystemsPanel({ projects, selectedProject, userPosition }: SystemsPanelProps) {
+  const [userX, , userZ] = userPosition;
+  const averageEnergy = projects.length
+    ? projects.reduce((sum, project) => sum + project.energy, 0) / projects.length
+    : 0;
+  const topProject = projects.length
+    ? [...projects].sort((a, b) => b.energy - a.energy)[0]
+    : null;
+  const distanceFromCenter = Math.hypot(userX, userZ);
+
   return (
-    <EffectComposer multisampling={8}>
-      {/* Bloom - neon glow on emissive materials */}
-      <Bloom intensity={0.5} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur />
+    <div className="flex flex-col gap-4 lg:flex-row">
+      <div className="flex-1 space-y-3">
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-amber-500/20 bg-black/30 p-4 text-xs text-amber-100/80">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Structures</p>
+            <p className="text-2xl font-bold text-white">{projects.length}</p>
+            <p className="text-[10px] text-amber-200/60">Deployed across grid</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Average Signal</p>
+            <p className="text-2xl font-bold text-white">{(averageEnergy * 100).toFixed(0)}%</p>
+            <p className="text-[10px] text-amber-200/60">Energy distribution</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Command Center</p>
+            <p className="text-lg font-semibold text-green-300">● Operational</p>
+            <p className="text-[10px] text-amber-200/60">Core services nominal</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Pilot Position</p>
+            <p className="text-lg font-semibold text-white">{distanceFromCenter.toFixed(0)}m from core</p>
+            <p className="text-[10px] text-amber-200/60">Warden altitude stable</p>
+          </div>
+        </div>
 
-      {/* Chromatic Aberration - cyberpunk edge distortion */}
-      <ChromaticAberration
-        blendFunction={BlendFunction.NORMAL}
-        offset={[0.002, 0.002]}
-        radialModulation
-        modulationOffset={0.5}
-      />
+        <div className="rounded-lg border border-amber-500/20 bg-black/40 p-4 text-xs text-amber-100/80">
+          <p className="mb-2 text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Live status feed</p>
+          <ul className="space-y-1">
+            <li>• Grid integrity holding at 100%.</li>
+            <li>
+              • Nora channel {selectedProject ? `linked to ${selectedProject.name}.` : 'idle and awaiting directive.'}
+            </li>
+            {topProject && (
+              <li>
+                • {topProject.name} broadcasting strongest signal at {(topProject.energy * 100).toFixed(1)}%.
+              </li>
+            )}
+          </ul>
+        </div>
+      </div>
 
-      {/* Vignette - cinematic focus */}
-      <Vignette offset={0.1} darkness={0.5} eskil={false} />
-    </EffectComposer>
+      <div className="w-full shrink-0 lg:w-64">
+        <MiniMap projects={projects} selectedProject={selectedProject} userPosition={userPosition} />
+      </div>
+    </div>
   );
 }
 
-type PostProcessingBoundaryProps = {
-  children: ReactNode;
-  onError?: (error: Error) => void;
-};
-
-type PostProcessingBoundaryState = {
-  hasError: boolean;
-};
-
-class PostProcessingBoundary
-  extends Component<PostProcessingBoundaryProps, PostProcessingBoundaryState>
-{
-  constructor(props: PostProcessingBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
+function IntelPanel({ projects }: IntelPanelProps) {
+  if (!projects.length) {
+    return <p className="text-sm text-amber-200/80">No structures are synced with this environment yet.</p>;
   }
 
-  static getDerivedStateFromError(): PostProcessingBoundaryState {
-    return { hasError: true };
-  }
+  const ranked = [...projects].sort((a, b) => b.energy - a.energy).slice(0, 8);
 
-  componentDidCatch(error: Error) {
-    console.error('Disabling post-processing due to runtime error', error);
-    this.props.onError?.(error);
-  }
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {ranked.map((project, index) => (
+          <div key={project.name} className="rounded-lg border border-amber-500/20 bg-black/30 p-3">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">#{index + 1}</p>
+            <p className="text-base font-semibold text-white">{project.name}</p>
+            <p className="text-[11px] text-amber-100/70">Energy {(project.energy * 100).toFixed(1)}%</p>
+            <p className="text-[11px] text-amber-100/60">Status: {project.energy > 0.65 ? 'Prime' : 'Stable'}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-amber-200/70">
+        Rankings update live as MCP worktrees spin up or wind down.
+      </p>
+    </div>
+  );
+}
 
-  render() {
-    if (this.state.hasError) {
-      return null;
-    }
-    return this.props.children;
-  }
+function MapPanel({ projects, selectedProject, userPosition }: MapPanelProps) {
+  const [userX, , userZ] = userPosition;
+  const closestProject = useMemo(() => {
+    if (!projects.length) return null;
+    return projects.reduce<null | { project: ProjectData; distance: number }>((closest, project) => {
+      const distance = Math.hypot(project.position[0] - userX, project.position[2] - userZ);
+      if (!closest || distance < closest.distance) {
+        return { project, distance };
+      }
+      return closest;
+    }, null);
+  }, [projects, userX, userZ]);
+
+  const distanceFromCenter = Math.hypot(userX, userZ);
+
+  return (
+    <div className="flex flex-col gap-4 lg:flex-row">
+      <div className="w-full shrink-0 lg:w-80">
+        <MiniMap
+          projects={projects}
+          selectedProject={selectedProject}
+          userPosition={userPosition}
+          size={320}
+        />
+      </div>
+      <div className="flex-1 space-y-3 text-sm text-amber-100/80">
+        <div className="rounded-lg border border-amber-500/20 bg-black/30 p-4">
+          <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Navigator</p>
+          <p className="text-lg font-semibold text-white">{distanceFromCenter.toFixed(0)}m from command core</p>
+          <p className="text-[12px] text-amber-100/70">
+            Hover vector ready. Use WASD + Q/E to strafe above the ring of structures.
+          </p>
+        </div>
+        <div className="rounded-lg border border-amber-500/20 bg-black/30 p-4">
+          <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Nearest signal</p>
+          {closestProject ? (
+            <>
+              <p className="text-lg font-semibold text-white">{closestProject.project.name}</p>
+              <p className="text-[12px] text-amber-100/70">
+                {closestProject.distance.toFixed(1)}m away · Energy {(closestProject.project.energy * 100).toFixed(1)}%
+              </p>
+            </>
+          ) : (
+            <p className="text-[12px] text-amber-100/70">No structures detected on this shard yet.</p>
+          )}
+        </div>
+        <p className="text-[11px] text-amber-200/70">
+          Tip: engage the Systems tab to pin stats, then keep this map floating for quick orientation
+          during flyovers.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MiniMap({ projects, selectedProject, userPosition, size = 220 }: MiniMapProps) {
+  const [userX, , userZ] = userPosition;
+  const maxRadius = projects.reduce((max, project) => {
+    const radius = Math.hypot(project.position[0], project.position[2]);
+    return Math.max(max, radius);
+  }, 1);
+  const margin = 18;
+  const scale = (size / 2 - margin) / (maxRadius || 1);
+  const patternId = useMemo(() => `mini-map-grid-${Math.random().toString(36).slice(2)}`, []);
+
+  const toMapX = (value: number) => size / 2 + value * scale;
+  const toMapY = (value: number) => size / 2 + value * scale;
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.3em] text-amber-200">
+        <span>Mini Map</span>
+        <Compass className="h-4 w-4" />
+      </div>
+      <div className="relative rounded-lg border border-amber-500/30 bg-black/50 p-2">
+        <svg width={size} height={size} className="rounded bg-[#050403]">
+          <defs>
+            <pattern id={patternId} width="16" height="16" patternUnits="userSpaceOnUse">
+              <path d="M 16 0 L 0 0 0 16" stroke="#3f2c16" strokeWidth="0.5" fill="none" />
+            </pattern>
+          </defs>
+          <rect width={size} height={size} fill="#050403" />
+          <rect width={size} height={size} fill={`url(#${patternId})`} opacity={0.7} />
+          <circle cx={size / 2} cy={size / 2} r={4} fill="#f97316" opacity={0.8} />
+          {projects.map((project) => {
+            const x = toMapX(project.position[0]);
+            const y = toMapY(project.position[2]);
+            const isSelected = selectedProject?.name === project.name;
+            return (
+              <circle
+                key={project.name}
+                cx={x}
+                cy={y}
+                r={isSelected ? 6 : 4}
+                fill={isSelected ? '#fbbf24' : '#38bdf8'}
+                opacity={isSelected ? 0.95 : 0.7}
+              />
+            );
+          })}
+          <circle cx={toMapX(userX)} cy={toMapY(userZ)} r={5} fill="#f472b6" stroke="#ffffff" strokeWidth={1} />
+        </svg>
+        <span className="pointer-events-none absolute right-4 top-3 text-[10px] font-semibold text-amber-200">N</span>
+      </div>
+      <p className="mt-2 text-[11px] text-amber-200/70">
+        Orange dot represents the command core. Pink indicator marks your current hovercraft.
+      </p>
+    </div>
+  );
+}
+
+function ControlsPanel() {
+  const bindings = [
+    { action: 'W / A / S / D', detail: 'Strafe across the grid' },
+    { action: 'Shift', detail: 'Sprint burst' },
+    { action: 'Space / Ctrl', detail: 'Ascend / descend' },
+    { action: 'Mouse', detail: 'Look around' },
+    { action: 'E', detail: 'Enter highlighted structure' },
+    { action: 'Enter', detail: 'Toggle command net' },
+    { action: 'Esc', detail: 'Exit typing / interiors' },
+    { action: '/nora', detail: 'Direct Nora instruction' },
+  ];
+
+  return (
+    <div className="grid gap-4 text-sm text-amber-100/80 sm:grid-cols-2">
+      {bindings.map((binding) => (
+        <div key={binding.action} className="rounded-lg border border-amber-500/20 bg-black/30 p-4">
+          <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">{binding.action}</p>
+          <p className="text-base font-semibold text-white">{binding.detail}</p>
+        </div>
+      ))}
+      <p className="sm:col-span-2 text-[11px] text-amber-200/70">
+        Slash shortcuts: <span className="font-mono">/global</span>, <span className="font-mono">/help</span>, or <span className="font-mono">/agent</span> mirror MMO chat conventions.
+      </p>
+    </div>
+  );
 }

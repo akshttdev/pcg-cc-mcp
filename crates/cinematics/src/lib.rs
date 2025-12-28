@@ -31,16 +31,24 @@ pub struct CinematicsConfig {
     pub workflow_template: Option<PathBuf>,
     pub output_dir: PathBuf,
     pub default_sampler: String,
+    pub default_checkpoint: String,
+    pub sdxl_checkpoint: String,
+    pub svd_checkpoint: String,
     pub auto_render: bool,
+    pub use_high_quality: bool,
 }
 
 impl Default for CinematicsConfig {
     fn default() -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-        let comfy_root = std::env::var("COMFYUI_ROOT").unwrap_or_else(|_| format!("{home}/ComfyUI"));
+
+        // Default to topos/comfy directory (symlinked from ~/ComfyUI/output)
+        let topos_dir = Path::new(&home).join("topos");
+        let default_output = topos_dir.join("comfy");
+
         let output_dir = std::env::var("COMFYUI_OUTPUT_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| Path::new(&comfy_root).join("output"));
+            .unwrap_or(default_output);
 
         Self {
             comfy_base_url: std::env::var("COMFYUI_BASE_URL")
@@ -51,9 +59,18 @@ impl Default for CinematicsConfig {
             output_dir,
             default_sampler: std::env::var("COMFYUI_DEFAULT_SAMPLER")
                 .unwrap_or_else(|_| "euler".into()),
+            default_checkpoint: std::env::var("COMFYUI_CHECKPOINT")
+                .unwrap_or_else(|_| "v1-5-pruned-emaonly-fp16.safetensors".into()),
+            sdxl_checkpoint: std::env::var("COMFYUI_SDXL_CHECKPOINT")
+                .unwrap_or_else(|_| "sd_xl_base_1.0.safetensors".into()),
+            svd_checkpoint: std::env::var("COMFYUI_SVD_CHECKPOINT")
+                .unwrap_or_else(|_| "svd_xt.safetensors".into()),
             auto_render: std::env::var("CINEMATICS_AUTO_RENDER")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(true),
+            use_high_quality: std::env::var("CINEMATICS_HIGH_QUALITY")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(true),  // Default to high quality
         }
     }
 }
@@ -73,6 +90,22 @@ pub struct CinematicsService {
 
 impl CinematicsService {
     pub fn new(pool: SqlitePool, config: CinematicsConfig) -> Self {
+        // Ensure output directory exists
+        if !config.output_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(&config.output_dir) {
+                tracing::warn!(
+                    "Failed to create ComfyUI output directory at {}: {}",
+                    config.output_dir.display(),
+                    e
+                );
+            } else {
+                tracing::info!(
+                    "Created ComfyUI output directory at {}",
+                    config.output_dir.display()
+                );
+            }
+        }
+
         Self {
             pool,
             client: Client::new(),
@@ -93,6 +126,191 @@ impl CinematicsService {
     }
 
     fn build_default_workflow(&self, prompt: &str, negative_prompt: &str) -> Value {
+        if self.config.use_high_quality {
+            // Use SDXL + SVD for high quality video
+            self.build_sdxl_svd_workflow(prompt, negative_prompt)
+        } else {
+            // Fallback to AnimateDiff for lower VRAM systems
+            self.build_animatediff_workflow(prompt, negative_prompt)
+        }
+    }
+
+    /// High-quality workflow: SDXL generates keyframe, SVD animates to video
+    fn build_sdxl_svd_workflow(&self, prompt: &str, negative_prompt: &str) -> Value {
+        let seed = (Utc::now().timestamp_nanos_opt().unwrap_or(0) & 0xFFFF_FFFF) as i64;
+        json!({
+            // Load SDXL checkpoint
+            "1": {
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": { "ckpt_name": self.config.sdxl_checkpoint }
+            },
+            // SDXL positive prompt with quality boosters
+            "2": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {
+                    "clip": ["1", 1],
+                    "text": format!("{}, masterpiece, best quality, highly detailed, cinematic lighting, 8k", prompt)
+                }
+            },
+            // SDXL negative prompt
+            "3": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {
+                    "clip": ["1", 1],
+                    "text": format!("{}, low quality, blurry, distorted, deformed, ugly, bad anatomy", negative_prompt)
+                }
+            },
+            // SDXL latent (768x432 for 16:9 - optimized for 8GB VRAM)
+            "4": {
+                "class_type": "EmptyLatentImage",
+                "inputs": { "batch_size": 1, "height": 432, "width": 768 }
+            },
+            // SDXL KSampler
+            "5": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "cfg": 7,
+                    "denoise": 1,
+                    "latent_image": ["4", 0],
+                    "model": ["1", 0],
+                    "negative": ["3", 0],
+                    "positive": ["2", 0],
+                    "sampler_name": "dpmpp_2m",
+                    "scheduler": "karras",
+                    "seed": seed,
+                    "steps": 25
+                }
+            },
+            // Decode SDXL to image
+            "6": {
+                "class_type": "VAEDecode",
+                "inputs": { "samples": ["5", 0], "vae": ["1", 2] }
+            },
+            // Load SVD model for video
+            "7": {
+                "class_type": "ImageOnlyCheckpointLoader",
+                "inputs": { "ckpt_name": self.config.svd_checkpoint }
+            },
+            // SVD conditioning from image (768x432, 14 frames for 8GB VRAM)
+            "8": {
+                "class_type": "SVD_img2vid_Conditioning",
+                "inputs": {
+                    "clip_vision": ["7", 1],
+                    "init_image": ["6", 0],
+                    "vae": ["7", 2],
+                    "width": 768,
+                    "height": 432,
+                    "video_frames": 14,
+                    "motion_bucket_id": 127,
+                    "fps": 8,
+                    "augmentation_level": 0
+                }
+            },
+            // SVD KSampler for video
+            "9": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "cfg": 2.5,
+                    "denoise": 1,
+                    "latent_image": ["8", 2],
+                    "model": ["7", 0],
+                    "negative": ["8", 1],
+                    "positive": ["8", 0],
+                    "sampler_name": "euler",
+                    "scheduler": "karras",
+                    "seed": seed,
+                    "steps": 20
+                }
+            },
+            // Decode SVD video frames
+            "10": {
+                "class_type": "VAEDecode",
+                "inputs": { "samples": ["9", 0], "vae": ["7", 2] }
+            },
+            // Save as animated WEBP (or use VHS_VideoCombine if available)
+            "11": {
+                "class_type": "SaveAnimatedWEBP",
+                "inputs": {
+                    "images": ["10", 0],
+                    "fps": 8,
+                    "filename_prefix": "CinematicHQ",
+                    "lossless": false,
+                    "quality": 90,
+                    "method": "default"
+                }
+            }
+        })
+    }
+
+    fn build_animatediff_workflow(&self, prompt: &str, negative_prompt: &str) -> Value {
+        let seed = (Utc::now().timestamp_nanos_opt().unwrap_or(0) & 0xFFFF_FFFF) as i64;
+        json!({
+            // Load checkpoint
+            "1": {
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": { "ckpt_name": self.config.default_checkpoint }
+            },
+            // Load AnimateDiff with motion model (Gen1 loader returns MODEL type)
+            "2": {
+                "class_type": "ADE_AnimateDiffLoaderGen1",
+                "inputs": {
+                    "model_name": "mm_sd_v15_v2.ckpt",
+                    "model": ["1", 0],
+                    "beta_schedule": "sqrt_linear (AnimateDiff)"
+                }
+            },
+            // Positive prompt
+            "4": {
+                "class_type": "CLIPTextEncode",
+                "inputs": { "clip": ["1", 1], "text": prompt }
+            },
+            // Negative prompt
+            "5": {
+                "class_type": "CLIPTextEncode",
+                "inputs": { "clip": ["1", 1], "text": negative_prompt }
+            },
+            // Empty latent for 16 frames (video)
+            "6": {
+                "class_type": "EmptyLatentImage",
+                "inputs": { "batch_size": 16, "height": 512, "width": 512 }
+            },
+            // KSampler with AnimateDiff model
+            "7": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "cfg": 7.5,
+                    "denoise": 1,
+                    "latent_image": ["6", 0],
+                    "model": ["2", 0],
+                    "negative": ["5", 0],
+                    "positive": ["4", 0],
+                    "sampler_name": self.config.default_sampler,
+                    "scheduler": "normal",
+                    "seed": seed,
+                    "steps": 20
+                }
+            },
+            // Decode latents to images
+            "8": {
+                "class_type": "VAEDecode",
+                "inputs": { "samples": ["7", 0], "vae": ["1", 2] }
+            },
+            // Save as animated WEBP
+            "9": {
+                "class_type": "SaveAnimatedWEBP",
+                "inputs": {
+                    "filename_prefix": "CinematicVideo",
+                    "fps": 8,
+                    "lossless": false,
+                    "quality": 85,
+                    "method": "default",
+                    "images": ["8", 0]
+                }
+            }
+        })
+    }
+
+    fn build_image_workflow(&self, prompt: &str, negative_prompt: &str) -> Value {
         json!({
             "3": {
                 "class_type": "KSampler",
@@ -109,8 +327,8 @@ impl CinematicsService {
                     "steps": 22
                 }
             },
-            "4": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" } },
-            "5": { "class_type": "EmptyLatentImage", "inputs": { "batch_size": 1, "height": 832, "width": 512 } },
+            "4": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": self.config.default_checkpoint } },
+            "5": { "class_type": "EmptyLatentImage", "inputs": { "batch_size": 1, "height": 512, "width": 512 } },
             "6": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["4", 1], "text": prompt } },
             "7": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["4", 1], "text": negative_prompt } },
             "8": { "class_type": "VAEDecode", "inputs": { "samples": ["3", 0], "vae": ["4", 2] } },
@@ -236,7 +454,7 @@ impl CinematicsService {
                     project_id: brief.project_id,
                     pod_id: None,
                     board_id: None,
-                    category: Some("ai_short".into()),
+                    category: Some("file".into()),
                     scope: Some("team".into()),
                     name: img.filename.clone(),
                     storage_path,
@@ -303,7 +521,7 @@ impl CinematicsService {
                 .json::<HistoryResponse>()
                 .await?;
 
-            if let Some(entry) = history.history.get(prompt_id) {
+            if let Some(entry) = history.get(prompt_id) {
                 if let Some(outputs) = entry.outputs.values().next() {
                     if let Some(images) = &outputs.images {
                         return Ok(images.clone());
@@ -311,7 +529,8 @@ impl CinematicsService {
                 }
             }
 
-            if attempts > 90 {
+            // AnimateDiff needs ~2-3 mins for 16 frames, allow up to 5 mins
+            if attempts > 300 {
                 return Err(anyhow!("Timed out waiting for ComfyUI render"));
             }
 
@@ -414,11 +633,8 @@ struct QueueResponse {
     prompt_id: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct HistoryResponse {
-    #[serde(default)]
-    history: HashMap<String, PromptHistoryEntry>,
-}
+// ComfyUI returns history as { "prompt_id": { ... } } without a wrapper
+type HistoryResponse = HashMap<String, PromptHistoryEntry>;
 
 #[derive(Debug, Deserialize)]
 struct PromptHistoryEntry {

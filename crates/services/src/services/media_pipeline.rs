@@ -6,7 +6,9 @@ use std::{
 use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
+use sqlx::SqlitePool;
 use thiserror::Error;
 use tokio::{
     fs,
@@ -23,6 +25,8 @@ pub enum MediaPipelineError {
     Http(#[from] reqwest::Error),
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
+    #[error(transparent)]
+    Database(#[from] sqlx::Error),
     #[error("Batch not found: {0}")]
     BatchNotFound(Uuid),
     #[error("Edit session not found: {0}")]
@@ -43,10 +47,19 @@ pub struct MediaPipelineService {
 struct MediaPipelineInner {
     root: PathBuf,
     client: reqwest::Client,
+    db_pool: Option<SqlitePool>,
 }
 
 impl MediaPipelineService {
     pub fn new<P: AsRef<Path>>(root: P) -> Result<Self, MediaPipelineError> {
+        Self::new_with_options(root, None)
+    }
+
+    pub fn new_with_database<P: AsRef<Path>>(root: P, db_pool: SqlitePool) -> Result<Self, MediaPipelineError> {
+        Self::new_with_options(root, Some(db_pool))
+    }
+
+    fn new_with_options<P: AsRef<Path>>(root: P, db_pool: Option<SqlitePool>) -> Result<Self, MediaPipelineError> {
         let root = root.as_ref().to_path_buf();
         std::fs::create_dir_all(root.join("batches"))?;
         std::fs::create_dir_all(root.join("sessions"))?;
@@ -55,8 +68,13 @@ impl MediaPipelineService {
             inner: Arc::new(MediaPipelineInner {
                 root,
                 client: reqwest::Client::new(),
+                db_pool,
             }),
         })
+    }
+
+    fn db_pool(&self) -> Option<&SqlitePool> {
+        self.inner.db_pool.as_ref()
     }
 
     pub fn root(&self) -> PathBuf {
@@ -70,6 +88,7 @@ impl MediaPipelineService {
         let now = Utc::now();
         let batch = MediaBatch {
             id: Uuid::new_v4(),
+            project_id: request.project_id.clone(),
             reference_name: request.reference_name.clone(),
             source_url: request.source_url.clone(),
             storage_tier: request.storage_tier,
@@ -120,6 +139,7 @@ impl MediaPipelineService {
         let analysis = MediaBatchAnalysis {
             id: Uuid::new_v4(),
             batch_id: batch.id,
+            brief: request.brief.clone(),
             summary: format!(
                 "Analyzed {} assets for brief '{}', identified {} hero moments",
                 batch.files.len(),
@@ -165,6 +185,7 @@ impl MediaPipelineService {
             })
             .collect();
 
+        let now = Utc::now();
         let session = EditSession {
             id: Uuid::new_v4(),
             batch_id: batch.id,
@@ -175,7 +196,8 @@ impl MediaPipelineService {
             imovie_project: format!("Editron_{}", &batch.id.to_string()[..8]),
             timelines,
             status: EditSessionStatus::Assembling,
-            created_at: Utc::now(),
+            created_at: now,
+            updated_at: now,
         };
 
         self.persist_session(&session).await?;
@@ -189,6 +211,7 @@ impl MediaPipelineService {
     ) -> Result<RenderJob, MediaPipelineError> {
         let session = self.load_session(request.edit_session_id).await?;
 
+        let now = Utc::now();
         let job = RenderJob {
             id: Uuid::new_v4(),
             edit_session_id: session.id,
@@ -196,7 +219,8 @@ impl MediaPipelineService {
             formats: request.formats,
             priority: request.priority,
             status: RenderJobStatus::Queued,
-            created_at: Utc::now(),
+            created_at: now,
+            updated_at: now,
         };
 
         self.persist_render_job(&job).await?;
@@ -250,6 +274,9 @@ impl MediaPipelineService {
                 batch.status = MediaBatchStatus::Ready;
                 batch.updated_at = Utc::now();
                 batch.last_error = None;
+                if let Some(pool) = self.db_pool() {
+                    self.persist_media_files(pool, batch.id, &batch.files).await?;
+                }
                 self.persist_batch(&batch).await?;
             }
             Err(err) => {
@@ -309,7 +336,11 @@ impl MediaPipelineService {
 
     async fn persist_batch(&self, batch: &MediaBatch) -> Result<(), MediaPipelineError> {
         let path = self.batch_dir(batch.id).join("batch.json");
-        self.persist_json(&path, batch).await
+        self.persist_json(&path, batch).await?;
+        if let Some(pool) = self.db_pool() {
+            self.persist_batch_to_db(pool, batch).await?;
+        }
+        Ok(())
     }
 
     async fn persist_analysis(
@@ -317,17 +348,29 @@ impl MediaPipelineService {
         analysis: &MediaBatchAnalysis,
     ) -> Result<(), MediaPipelineError> {
         fs::create_dir_all(self.analysis_path(analysis.batch_id)).await?;
-        self.persist_json(&analysis.insights_path, analysis).await
+        self.persist_json(&analysis.insights_path, analysis).await?;
+        if let Some(pool) = self.db_pool() {
+            self.persist_analysis_db(pool, analysis).await?;
+        }
+        Ok(())
     }
 
     async fn persist_session(&self, session: &EditSession) -> Result<(), MediaPipelineError> {
         let path = self.sessions_dir().join(format!("{}.json", session.id));
-        self.persist_json(&path, session).await
+        self.persist_json(&path, session).await?;
+        if let Some(pool) = self.db_pool() {
+            self.persist_session_db(pool, session).await?;
+        }
+        Ok(())
     }
 
     async fn persist_render_job(&self, job: &RenderJob) -> Result<(), MediaPipelineError> {
         let path = self.renders_dir().join(format!("{}.json", job.id));
-        self.persist_json(&path, job).await
+        self.persist_json(&path, job).await?;
+        if let Some(pool) = self.db_pool() {
+            self.persist_render_job_db(pool, job).await?;
+        }
+        Ok(())
     }
 
     async fn update_batch_status(
@@ -350,6 +393,7 @@ impl MediaPipelineService {
     ) -> Result<(), MediaPipelineError> {
         let mut job = self.load_render_job(job_id).await?;
         job.status = status;
+        job.updated_at = Utc::now();
         self.persist_render_job(&job).await
     }
 
@@ -393,6 +437,248 @@ impl MediaPipelineService {
         Ok(())
     }
 
+    async fn persist_batch_to_db(
+        &self,
+        pool: &SqlitePool,
+        batch: &MediaBatch,
+    ) -> Result<(), MediaPipelineError> {
+        let file_count = batch.files.len() as i64;
+        let total_size: i64 = batch
+            .files
+            .iter()
+            .map(|file| file.size_bytes as i64)
+            .sum();
+        let relative_paths: Vec<&str> = batch
+            .files
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect();
+        let metadata = json!({
+            "referenceName": batch.reference_name,
+            "relativePaths": relative_paths,
+        })
+        .to_string();
+        let storage_tier = batch.storage_tier.as_str();
+        let status = batch.status.as_str();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO media_batches (
+                id, project_id, reference_name, source_url, storage_tier,
+                checksum_required, status, file_count, total_size_bytes,
+                last_error, metadata, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                project_id=excluded.project_id,
+                reference_name=excluded.reference_name,
+                source_url=excluded.source_url,
+                storage_tier=excluded.storage_tier,
+                checksum_required=excluded.checksum_required,
+                status=excluded.status,
+                file_count=excluded.file_count,
+                total_size_bytes=excluded.total_size_bytes,
+                last_error=excluded.last_error,
+                metadata=excluded.metadata,
+                updated_at=excluded.updated_at
+            "#,
+            batch.id,
+            batch.project_id,
+            batch.reference_name,
+            batch.source_url,
+            storage_tier,
+            batch.checksum_required,
+            status,
+            file_count,
+            total_size,
+            batch.last_error,
+            metadata,
+            batch.created_at,
+            batch.updated_at,
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn persist_media_files(
+        &self,
+        pool: &SqlitePool,
+        batch_id: Uuid,
+        files: &[MediaAsset],
+    ) -> Result<(), MediaPipelineError> {
+        sqlx::query!("DELETE FROM media_files WHERE batch_id = ?", batch_id)
+            .execute(pool)
+            .await?;
+
+        for asset in files {
+            let metadata = json!({
+                "relativePath": asset.relative_path,
+            })
+            .to_string();
+            let file_id = Uuid::new_v4();
+            let size_bytes = asset.size_bytes as i64;
+            let created_at = Utc::now();
+
+            sqlx::query!(
+                r#"
+                INSERT INTO media_files (
+                    id, batch_id, filename, file_path, size_bytes, checksum_sha256,
+                    duration_seconds, resolution, codec, fps, metadata, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+                file_id,
+                batch_id,
+                asset.filename,
+                asset.relative_path,
+                size_bytes,
+                asset.checksum_sha256,
+                None::<f64>,
+                None::<String>,
+                None::<String>,
+                None::<f64>,
+                metadata,
+                created_at,
+            )
+            .execute(pool)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn persist_analysis_db(
+        &self,
+        pool: &SqlitePool,
+        analysis: &MediaBatchAnalysis,
+    ) -> Result<(), MediaPipelineError> {
+        let deliverable_targets = serde_json::to_string(&analysis.recommended_deliverables)?;
+        let hero_moments = serde_json::to_string(&analysis.hero_moments)?;
+        let insights = json!({
+            "insightsPath": analysis.insights_path.to_string_lossy(),
+        })
+        .to_string();
+        let passes_completed = analysis.passes_completed as i64;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO media_batch_analyses (
+                id, batch_id, brief, summary, passes_completed,
+                deliverable_targets, hero_moments, insights, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                brief=excluded.brief,
+                summary=excluded.summary,
+                passes_completed=excluded.passes_completed,
+                deliverable_targets=excluded.deliverable_targets,
+                hero_moments=excluded.hero_moments,
+                insights=excluded.insights,
+                created_at=excluded.created_at
+            "#,
+            analysis.id,
+            analysis.batch_id,
+            analysis.brief,
+            analysis.summary,
+            passes_completed,
+            deliverable_targets,
+            hero_moments,
+            insights,
+            analysis.created_at,
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn persist_session_db(
+        &self,
+        pool: &SqlitePool,
+        session: &EditSession,
+    ) -> Result<(), MediaPipelineError> {
+        let aspect_ratios = serde_json::to_string(&session.aspect_ratios)?;
+        let timelines = serde_json::to_string(&session.timelines)?;
+        let status = session.status.as_str();
+        let created_at = session.created_at;
+        let updated_at = session.updated_at;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO edit_sessions (
+                id, batch_id, deliverable_type, aspect_ratios, reference_style,
+                include_captions, imovie_project, status, timelines, metadata,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                deliverable_type=excluded.deliverable_type,
+                aspect_ratios=excluded.aspect_ratios,
+                reference_style=excluded.reference_style,
+                include_captions=excluded.include_captions,
+                imovie_project=excluded.imovie_project,
+                status=excluded.status,
+                timelines=excluded.timelines,
+                metadata=excluded.metadata,
+                updated_at=excluded.updated_at
+            "#,
+            session.id,
+            session.batch_id,
+            session.deliverable_type,
+            aspect_ratios,
+            session.reference_style,
+            session.include_captions,
+            session.imovie_project,
+            status,
+            timelines,
+            created_at,
+            updated_at,
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn persist_render_job_db(
+        &self,
+        pool: &SqlitePool,
+        job: &RenderJob,
+    ) -> Result<(), MediaPipelineError> {
+        let destinations = serde_json::to_string(&job.destinations)?;
+        let formats = serde_json::to_string(&job.formats)?;
+        let priority = job.priority.as_str();
+        let status = job.status.as_str();
+        let created_at = job.created_at;
+        let updated_at = job.updated_at;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO render_jobs (
+                id, edit_session_id, destinations, formats, priority,
+                status, progress_percent, last_error, output_urls, metadata,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, '[]', '{}', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                destinations=excluded.destinations,
+                formats=excluded.formats,
+                priority=excluded.priority,
+                status=excluded.status,
+                updated_at=excluded.updated_at
+            "#,
+            job.id,
+            job.edit_session_id,
+            destinations,
+            formats,
+            priority,
+            status,
+            created_at,
+            updated_at,
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
     fn batches_dir(&self) -> PathBuf {
         self.inner.root.join("batches")
     }
@@ -430,6 +716,7 @@ pub struct MediaBatchIngestRequest {
     pub reference_name: Option<String>,
     pub storage_tier: MediaStorageTier,
     pub checksum_required: bool,
+    pub project_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Eq)]
@@ -449,6 +736,14 @@ impl MediaStorageTier {
             other => Err(MediaPipelineError::UnknownStorageTier(other.to_string())),
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MediaStorageTier::Hot => "hot",
+            MediaStorageTier::Warm => "warm",
+            MediaStorageTier::Cold => "cold",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -457,12 +752,28 @@ pub enum MediaBatchStatus {
     Queued,
     Downloading,
     Ready,
+    Analyzing,
+    Analyzed,
     Failed,
+}
+
+impl MediaBatchStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MediaBatchStatus::Queued => "queued",
+            MediaBatchStatus::Downloading => "downloading",
+            MediaBatchStatus::Ready => "ready",
+            MediaBatchStatus::Analyzing => "analyzing",
+            MediaBatchStatus::Analyzed => "analyzed",
+            MediaBatchStatus::Failed => "failed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaBatch {
     pub id: Uuid,
+    pub project_id: Option<Uuid>,
     pub reference_name: Option<String>,
     pub source_url: String,
     pub storage_tier: MediaStorageTier,
@@ -494,6 +805,7 @@ pub struct MediaBatchAnalysisRequest {
 pub struct MediaBatchAnalysis {
     pub id: Uuid,
     pub batch_id: Uuid,
+    pub brief: String,
     pub summary: String,
     pub hero_moments: Vec<HeroMoment>,
     pub recommended_deliverables: Vec<String>,
@@ -530,6 +842,7 @@ pub struct EditSession {
     pub timelines: Vec<RenderTimeline>,
     pub status: EditSessionStatus,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -544,6 +857,22 @@ pub enum EditSessionStatus {
     Assembling,
     NeedsReview,
     Approved,
+    Rendering,
+    Complete,
+    Failed,
+}
+
+impl EditSessionStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EditSessionStatus::Assembling => "assembling",
+            EditSessionStatus::NeedsReview => "needsreview",
+            EditSessionStatus::Approved => "approved",
+            EditSessionStatus::Rendering => "rendering",
+            EditSessionStatus::Complete => "complete",
+            EditSessionStatus::Failed => "failed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -563,6 +892,7 @@ pub struct RenderJob {
     pub priority: VideoRenderPriority,
     pub status: RenderJobStatus,
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Eq)]
@@ -573,6 +903,16 @@ pub enum VideoRenderPriority {
     Rush,
 }
 
+impl VideoRenderPriority {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VideoRenderPriority::Low => "low",
+            VideoRenderPriority::Standard => "standard",
+            VideoRenderPriority::Rush => "rush",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Copy, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum RenderJobStatus {
@@ -580,4 +920,15 @@ pub enum RenderJobStatus {
     Rendering,
     Complete,
     Failed,
+}
+
+impl RenderJobStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RenderJobStatus::Queued => "queued",
+            RenderJobStatus::Rendering => "rendering",
+            RenderJobStatus::Complete => "complete",
+            RenderJobStatus::Failed => "failed",
+        }
+    }
 }

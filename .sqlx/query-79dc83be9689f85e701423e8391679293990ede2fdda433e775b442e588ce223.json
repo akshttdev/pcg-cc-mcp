@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO media_batch_analyses (\n                id, batch_id, brief, summary, passes_completed,\n                deliverable_targets, hero_moments, insights, created_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n            ON CONFLICT(id) DO UPDATE SET\n                brief=excluded.brief,\n                summary=excluded.summary,\n                passes_completed=excluded.passes_completed,\n                deliverable_targets=excluded.deliverable_targets,\n                hero_moments=excluded.hero_moments,\n                insights=excluded.insights,\n                created_at=excluded.created_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "79dc83be9689f85e701423e8391679293990ede2fdda433e775b442e588ce223"
+}

@@ -8,6 +8,7 @@ pub mod execution_process_logs;
 pub mod executor_session;
 pub mod follow_up_draft;
 pub mod image;
+pub mod dropbox_source;
 pub mod media_batch;
 pub mod merge;
 pub mod nora_config;
