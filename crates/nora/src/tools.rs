@@ -2042,33 +2042,32 @@ impl ExecutiveTools {
 
                     if let Some(ref agent_filter) = agent_id {
                         // Get workflows for specific agent
-                        match orchestrator.get_workflows_for_agent(agent_filter) {
-                            Some(workflows) => {
-                                let workflow_list: Vec<serde_json::Value> = workflows
-                                    .iter()
-                                    .map(|(workflow_id, name, objective)| {
-                                        serde_json::json!({
-                                            "workflow_id": workflow_id,
-                                            "workflow_name": name,
-                                            "objective": objective,
-                                            "agent_id": agent_filter,
-                                        })
-                                    })
-                                    .collect();
+                        let workflows = orchestrator.get_workflows_for_agent(agent_filter);
 
-                                Ok(serde_json::json!({
-                                    "success": true,
-                                    "agent_id": agent_filter,
-                                    "workflows": workflow_list,
-                                    "count": workflow_list.len(),
-                                }))
-                            }
-                            None => {
-                                Ok(serde_json::json!({
-                                    "success": false,
-                                    "error": format!("Agent '{}' not found", agent_filter),
-                                }))
-                            }
+                        if workflows.is_empty() {
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Agent '{}' not found or has no workflows", agent_filter),
+                            }))
+                        } else {
+                            let workflow_list: Vec<serde_json::Value> = workflows
+                                .iter()
+                                .map(|(workflow_id, name, objective)| {
+                                    serde_json::json!({
+                                        "workflow_id": workflow_id,
+                                        "workflow_name": name,
+                                        "objective": objective,
+                                        "agent_id": agent_filter,
+                                    })
+                                })
+                                .collect();
+
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "agent_id": agent_filter,
+                                "workflows": workflow_list,
+                                "count": workflow_list.len(),
+                            }))
                         }
                     } else {
                         // Get all workflows for all agents

@@ -2371,30 +2371,11 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                                 stage.name
                             );
 
-                            // Store stage output in context for next stages
-                            workflow_instance.context.set_stage_output(stage.name.clone(), output);
-
-                            // Advance to next stage
-                            workflow_instance.current_stage += 1;
-                            workflow_instance.updated_at = chrono::Utc::now();
-
-                            // Check if workflow is complete
-                            if workflow_instance.current_stage >= workflow_instance.workflow.stages.len() {
-                                tracing::info!(
-                                    "[NORA_WORKFLOW_MONITOR] Workflow {} completed successfully",
-                                    workflow_instance.id
-                                );
-                                workflow_instance.completed_at = Some(chrono::Utc::now());
-                                workflow_instance.state = crate::workflow::WorkflowState::Completed {
-                                    total_stages: workflow_instance.workflow.stages.len(),
-                                    execution_time_ms: (chrono::Utc::now() - workflow_instance.started_at)
-                                        .num_milliseconds() as u64,
-                                };
-                            } else {
-                                tracing::info!(
-                                    "[NORA_WORKFLOW_MONITOR] Advanced to stage {}/{}",
-                                    workflow_instance.current_stage + 1,
-                                    workflow_instance.workflow.stages.len()
+                            // Advance workflow in the orchestrator
+                            if let Err(e) = orchestrator.advance_workflow_stage(workflow_instance.id, output).await {
+                                tracing::error!(
+                                    "[NORA_WORKFLOW_MONITOR] Failed to advance workflow: {}",
+                                    e
                                 );
                             }
                         }
@@ -2405,13 +2386,13 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                                 e
                             );
 
-                            // Mark workflow as failed
-                            workflow_instance.state = crate::workflow::WorkflowState::Failed {
-                                error: e.to_string(),
-                                stage: workflow_instance.current_stage,
-                                stage_name: stage.name.clone(),
-                            };
-                            workflow_instance.updated_at = chrono::Utc::now();
+                            // Mark workflow as failed in the orchestrator
+                            if let Err(err) = orchestrator.fail_workflow_stage(workflow_instance.id, e.to_string()).await {
+                                tracing::error!(
+                                    "[NORA_WORKFLOW_MONITOR] Failed to mark workflow as failed: {}",
+                                    err
+                                );
+                            }
                         }
                     }
                 }
