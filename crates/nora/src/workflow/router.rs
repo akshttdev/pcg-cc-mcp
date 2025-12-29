@@ -15,6 +15,19 @@ impl WorkflowRouter {
         Self { agents }
     }
 
+    /// Get all agent profiles
+    pub fn get_agents(&self) -> &[AgentProfile] {
+        &self.agents
+    }
+
+    /// Get workflows for a specific agent
+    pub fn get_agent_workflows(&self, agent_id: &str) -> Option<&Vec<AgentWorkflow>> {
+        self.agents
+            .iter()
+            .find(|a| a.agent_id == agent_id)
+            .map(|a| &a.workflows)
+    }
+
     /// Find the best matching agent and workflow for a user request
     pub fn route_request(
         &self,

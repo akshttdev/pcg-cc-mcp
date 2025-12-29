@@ -97,6 +97,34 @@ impl WorkflowOrchestrator {
         *self.db.write().await = Some(db);
     }
 
+    /// Get all agent profiles with their workflows
+    pub fn get_all_agent_workflows(&self) -> Vec<(String, String, Vec<(String, String, String)>)> {
+        self.router
+            .get_agents()
+            .iter()
+            .map(|agent| {
+                let workflows = agent
+                    .workflows
+                    .iter()
+                    .map(|w| (w.workflow_id.clone(), w.name.clone(), w.objective.clone()))
+                    .collect();
+                (agent.agent_id.clone(), agent.codename.clone(), workflows)
+            })
+            .collect()
+    }
+
+    /// Get workflows for a specific agent
+    pub fn get_workflows_for_agent(&self, agent_id: &str) -> Option<Vec<(String, String, String)>> {
+        self.router
+            .get_agent_workflows(agent_id)
+            .map(|workflows| {
+                workflows
+                    .iter()
+                    .map(|w| (w.workflow_id.clone(), w.name.clone(), w.objective.clone()))
+                    .collect()
+            })
+    }
+
     /// Start a workflow execution by agent and workflow ID
     pub async fn start_workflow(
         &self,

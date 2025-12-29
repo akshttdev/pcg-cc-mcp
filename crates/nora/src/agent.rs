@@ -1254,9 +1254,22 @@ You can orchestrate complex multi-stage workflows through specialized agents:
 - Vesper (vesper-creative): Creative asset generation
 - Forge (forge-systems): System development and deployment
 
-When a user requests a complex operation that involves multiple coordinated steps, use the execute_workflow tool:
-- Example: \"Editron, create a recap video from this Dropbox link\" → execute_workflow with agent_id='editron-post', workflow_id='event-recap-forge'
-- Example: \"Have Astra generate a roadmap for Q1\" → execute_workflow with agent_id='astra-strategy', workflow_id='roadmap-compression'
+When a user requests a complex operation that involves multiple coordinated steps, use workflows:
+1. First, use list_available_workflows to discover which workflows exist for the relevant agent
+2. Then, use execute_workflow with the correct agent_id and workflow_id
+
+Example workflow:
+- User: \"Create a recap video from this Dropbox link\"
+  1. Call list_available_workflows with agent_id='editron-post'
+  2. Find workflow_id='event-recap-forge'
+  3. Call execute_workflow with agent_id='editron-post', workflow_id='event-recap-forge', inputs={'source_url': '...'}
+
+- User: \"Use the master cinematographer to create a video about cats\"
+  1. Call list_available_workflows with agent_id='master-cinematographer'
+  2. Find workflow_id='ai-cinematic-suite'
+  3. Call execute_workflow with agent_id='master-cinematographer', workflow_id='ai-cinematic-suite', inputs={'brief': 'cats playing'}
+
+CRITICAL: Always use list_available_workflows FIRST to get the correct workflow_id. Never guess workflow IDs.
 
 Workflows automatically create tracking tasks for each stage, providing full visibility on the dashboard. Monitor workflow progress through task status updates.
 

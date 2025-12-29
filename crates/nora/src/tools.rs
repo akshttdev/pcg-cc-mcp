@@ -146,6 +146,10 @@ pub enum NoraExecutiveTool {
     },
     /// List all active workflow executions
     ListActiveWorkflows,
+    /// List available workflows for all agents or a specific agent
+    ListAvailableWorkflows {
+        agent_id: Option<String>,
+    },
 
     /// Team Coordination
     CoordinateTeamMeeting {
@@ -902,6 +906,22 @@ impl ExecutiveTools {
             serde_json::json!({
                 "type": "function",
                 "function": {
+                    "name": "list_available_workflows",
+                    "description": "List all available workflow templates that can be executed. Use this to discover which workflows exist for each agent before calling execute_workflow. Optionally filter by agent_id to see workflows for a specific agent.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "agent_id": {
+                                "type": "string",
+                                "description": "Optional agent ID to filter workflows (e.g., 'master-cinematographer', 'editron-post')"
+                            }
+                        }
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
                     "name": "send_email",
                     "description": "Send an email to one or more recipients. Use this when the user wants to send, compose, or draft an email.",
                     "parameters": {
@@ -1069,6 +1089,10 @@ impl ExecutiveTools {
             }
             "list_active_workflows" => {
                 Some(NoraExecutiveTool::ListActiveWorkflows)
+            }
+            "list_available_workflows" => {
+                let agent_id = arguments.get("agent_id").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::ListAvailableWorkflows { agent_id })
             }
             "send_email" => {
                 let recipients: Vec<String> = arguments
@@ -1680,6 +1704,7 @@ impl ExecutiveTools {
             NoraExecutiveTool::ExecuteWorkflow { .. } => "execute_workflow".to_string(),
             NoraExecutiveTool::CancelWorkflow { .. } => "cancel_workflow".to_string(),
             NoraExecutiveTool::ListActiveWorkflows => "list_active_workflows".to_string(),
+            NoraExecutiveTool::ListAvailableWorkflows { .. } => "list_available_workflows".to_string(),
 
             // Coordination
             NoraExecutiveTool::CoordinateTeamMeeting { .. } => {
@@ -2003,6 +2028,80 @@ impl ExecutiveTools {
                         "workflows": workflow_list,
                         "count": workflow_list.len(),
                     }))
+                } else {
+                    tracing::warn!("[TOOL] Workflow orchestrator not available");
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Workflow orchestrator not available",
+                    }))
+                }
+            }
+            NoraExecutiveTool::ListAvailableWorkflows { agent_id } => {
+                if let Some(orchestrator) = &self.workflow_orchestrator {
+                    tracing::info!("[TOOL] Listing available workflows - filter: {:?}", agent_id);
+
+                    if let Some(ref agent_filter) = agent_id {
+                        // Get workflows for specific agent
+                        match orchestrator.get_workflows_for_agent(agent_filter) {
+                            Some(workflows) => {
+                                let workflow_list: Vec<serde_json::Value> = workflows
+                                    .iter()
+                                    .map(|(workflow_id, name, objective)| {
+                                        serde_json::json!({
+                                            "workflow_id": workflow_id,
+                                            "workflow_name": name,
+                                            "objective": objective,
+                                            "agent_id": agent_filter,
+                                        })
+                                    })
+                                    .collect();
+
+                                Ok(serde_json::json!({
+                                    "success": true,
+                                    "agent_id": agent_filter,
+                                    "workflows": workflow_list,
+                                    "count": workflow_list.len(),
+                                }))
+                            }
+                            None => {
+                                Ok(serde_json::json!({
+                                    "success": false,
+                                    "error": format!("Agent '{}' not found", agent_filter),
+                                }))
+                            }
+                        }
+                    } else {
+                        // Get all workflows for all agents
+                        let all_workflows = orchestrator.get_all_agent_workflows();
+                        let agents_list: Vec<serde_json::Value> = all_workflows
+                            .iter()
+                            .map(|(agent_id, codename, workflows)| {
+                                let workflow_list: Vec<serde_json::Value> = workflows
+                                    .iter()
+                                    .map(|(workflow_id, name, objective)| {
+                                        serde_json::json!({
+                                            "workflow_id": workflow_id,
+                                            "workflow_name": name,
+                                            "objective": objective,
+                                        })
+                                    })
+                                    .collect();
+
+                                serde_json::json!({
+                                    "agent_id": agent_id,
+                                    "codename": codename,
+                                    "workflows": workflow_list,
+                                    "workflow_count": workflow_list.len(),
+                                })
+                            })
+                            .collect();
+
+                        Ok(serde_json::json!({
+                            "success": true,
+                            "agents": agents_list,
+                            "total_agents": agents_list.len(),
+                        }))
+                    }
                 } else {
                     tracing::warn!("[TOOL] Workflow orchestrator not available");
                     Ok(serde_json::json!({
