@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
+use nora::agent::{NoraRequest, NoraRequestType, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority};
 use rmcp::{
     ErrorData, ServerHandler,
     handler::server::tool::{Parameters, ToolRouter},
@@ -184,6 +184,22 @@ pub struct NoraCoordinationStatsRequest {
 
     #[schemars(description = "Time range for statistics")]
     pub time_range: Option<String>,
+}
+
+/// MCP request for rapid prototyping playbook
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NoraRapidPlaybookRequest {
+    #[schemars(description = "Name of the project or initiative")]
+    pub project_name: String,
+
+    #[schemars(description = "Objectives to accomplish in this prototype")]
+    pub objectives: Option<Vec<String>>,
+
+    #[schemars(description = "Optional repo or workspace hint")]
+    pub repo_hint: Option<String>,
+
+    #[schemars(description = "Additional notes or context")]
+    pub notes: Option<String>,
 }
 
 /// Nora MCP Server
@@ -608,6 +624,53 @@ impl NoraServer {
             }
         }
     }
+
+    #[tool(
+        description = "Run Nora's rapid prototyping playbook. She syncs live context, ensures the project exists, and produces an executive summary of next steps."
+    )]
+    async fn nora_rapid_playbook(
+        &self,
+        Parameters(NoraRapidPlaybookRequest {
+            project_name,
+            objectives,
+            repo_hint,
+            notes,
+        }): Parameters<NoraRapidPlaybookRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let payload = RapidPlaybookRequest {
+            project_name,
+            objectives: objectives.unwrap_or_default(),
+            repo_hint,
+            notes,
+        };
+
+        match self.nora_manager.run_rapid_playbook(payload).await {
+            Ok(result) => {
+                let formatted = format_rapid_playbook(&result);
+                Ok(CallToolResult::success(vec![Content::text(formatted)]))
+            }
+            Err(err) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Playbook failed: {}",
+                err
+            ))])),
+        }
+    }
+}
+
+fn format_rapid_playbook(result: &RapidPlaybookResult) -> String {
+    let mut sections = Vec::new();
+    sections.push("### Nora Rapid Prototyping Playbook".to_string());
+    sections.push(format!(
+        "Projects synced: {} | Created project: {}",
+        result.projects_synced,
+        if result.created_project { "yes" } else { "no" }
+    ));
+    if let Some(message) = &result.created_message {
+        sections.push(format!("New project notes: {}", message));
+    }
+    sections.push("---".to_string());
+    sections.push(result.summary.clone());
+    sections.join("\n")
 }
 
 #[tool_handler]

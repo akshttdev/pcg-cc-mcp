@@ -1,12 +1,88 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { NoraAssistant, NoraCoordinationPanel, NoraVoiceControls } from '@/components/nora';
-import { Crown, Users, Mic, Settings, MessageSquare, Activity } from 'lucide-react';
+import { NoraAssistant, NoraCoordinationPanel, NoraVoiceControls, NoraPlansPanel } from '@/components/nora';
+import { Crown, Users, Mic, Settings, MessageSquare, Activity, RefreshCw, Zap, Shuffle } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  applyNoraMode,
+  fetchNoraModes,
+  NoraModeSummary,
+  runRapidPlaybook,
+  syncNoraContext,
+} from '@/lib/api';
 
 export function NoraPage() {
   const [activeTab, setActiveTab] = useState('assistant');
+  const [modes, setModes] = useState<NoraModeSummary[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isPlaybookRunning, setIsPlaybookRunning] = useState(false);
+  const [isApplyingMode, setIsApplyingMode] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await fetchNoraModes();
+        setModes(data);
+      } catch (error) {
+        console.warn('Unable to preload Nora modes', error);
+      }
+    })();
+  }, []);
+
+  const handleSyncContext = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const result = await syncNoraContext();
+      toast.success(`Synced ${result.projects_refreshed} projects into Nora's context`);
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to sync Nora context');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  const handleApplyMode = useCallback(async () => {
+    const selection = window.prompt(
+      `Enter mode id to apply (${modes.map((mode) => mode.id).join(', ') || 'rapid-builder/boardroom'})`
+    );
+    if (!selection) return;
+    setIsApplyingMode(true);
+    try {
+      const response = await applyNoraMode(selection.trim(), true);
+      toast.success(`Nora switched to ${response.active_mode}`);
+    } catch (error) {
+      console.error(error);
+      toast.error('Unable to apply mode');
+    } finally {
+      setIsApplyingMode(false);
+    }
+  }, [modes]);
+
+  const handleRapidPlaybook = useCallback(async () => {
+    const project = window.prompt('Project or initiative name?');
+    if (!project) return;
+    const objectives = window.prompt('Comma separated objectives?') || '';
+    setIsPlaybookRunning(true);
+    try {
+      const result = await runRapidPlaybook({
+        project_name: project,
+        objectives: objectives
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      });
+      toast.success('Rapid playbook ready');
+      window.alert(result.summary);
+    } catch (error) {
+      console.error(error);
+      toast.error('Playbook failed to run');
+    } finally {
+      setIsPlaybookRunning(false);
+    }
+  }, []);
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -40,7 +116,7 @@ export function NoraPage() {
       {/* Main Content */}
       <div className="flex-1 p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6">
+          <TabsList className="grid w-full grid-cols-5 mb-6">
             <TabsTrigger value="assistant" className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" />
               Chat Assistant
@@ -56,6 +132,10 @@ export function NoraPage() {
             <TabsTrigger value="analytics" className="flex items-center gap-2">
               <Activity className="w-4 h-4" />
               Analytics
+            </TabsTrigger>
+            <TabsTrigger value="plans" className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Orchestration
             </TabsTrigger>
           </TabsList>
 
@@ -73,21 +153,36 @@ export function NoraPage() {
                     <CardTitle className="text-lg">Quick Executive Actions</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <Button variant="outline" className="w-full justify-start">
-                      <Crown className="w-4 h-4 mr-2" />
-                      Strategic Planning Session
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={handleSyncContext}
+                      disabled={isSyncing}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      {isSyncing ? 'Syncing live context…' : 'Sync Live Context'}
                     </Button>
-                    <Button variant="outline" className="w-full justify-start">
-                      <Users className="w-4 h-4 mr-2" />
-                      Team Performance Review
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={handleRapidPlaybook}
+                      disabled={isPlaybookRunning}
+                    >
+                      <Zap className="w-4 h-4 mr-2 text-amber-600" />
+                      {isPlaybookRunning ? 'Running playbook…' : 'Rapid Prototype Playbook'}
                     </Button>
-                    <Button variant="outline" className="w-full justify-start">
-                      <Activity className="w-4 h-4 mr-2" />
-                      Project Status Update
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={handleApplyMode}
+                      disabled={isApplyingMode}
+                    >
+                      <Shuffle className="w-4 h-4 mr-2" />
+                      {isApplyingMode ? 'Switching mode…' : 'Switch Nora Mode'}
                     </Button>
                     <Button variant="outline" className="w-full justify-start">
                       <Settings className="w-4 h-4 mr-2" />
-                      Resource Allocation
+                      Resource Allocation Brief
                     </Button>
                   </CardContent>
                 </Card>
@@ -264,6 +359,10 @@ export function NoraPage() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="plans" className="h-full">
+            <NoraPlansPanel />
           </TabsContent>
         </Tabs>
       </div>

@@ -158,6 +158,12 @@ fn generate_types_content() -> String {
         server::routes::permissions::UpdateMemberRoleRequest::decl(),
         server::routes::permissions::ProjectAccessResponse::decl(),
         server::routes::permissions::MyProjectItem::decl(),
+        nora::graph::GraphPlan::decl(),
+        nora::graph::GraphPlanSummary::decl(),
+        nora::graph::GraphPlanStatus::decl(),
+        nora::graph::GraphNode::decl(),
+        nora::graph::GraphNodeStatus::decl(),
+        nora::graph::GraphEdge::decl(),
         serde_json::Value::decl(),
     ];
 

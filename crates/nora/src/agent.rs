@@ -26,10 +26,11 @@ use crate::{
     brain::LLMClient,
     coordination::CoordinationManager,
     executor::{TaskDefinition, TaskExecutor},
+    graph::{GraphOrchestrator, GraphPlan, GraphPlanSummary, GraphNodeStatus},
     memory::{
         BudgetStatus, ConversationMemory, ExecutiveContext, ExecutivePriority, Milestone,
         MilestoneStatus, PriorityImpact, PriorityStatus, PriorityUrgency, ProjectContext,
-        ProjectStatus,
+        ProjectStatus, Risk,
     },
     personality::BritishPersonality,
     profiles::default_agent_profiles,
@@ -37,6 +38,9 @@ use crate::{
     voice::VoiceEngine,
     NoraConfig, NoraError, Result,
 };
+use cinematics::{CinematicsConfig, CinematicsService, Cinematographer};
+use db::models::cinematic_brief::CreateCinematicBrief;
+use serde_json::{json, Value};
 
 /// Main Nora agent structure
 pub struct NoraAgent {
@@ -45,6 +49,7 @@ pub struct NoraAgent {
     pub voice_engine: Arc<VoiceEngine>,
     pub coordination_manager: Arc<CoordinationManager>,
     pub workflow_orchestrator: Arc<crate::workflow::WorkflowOrchestrator>,
+    pub graph_orchestrator: Arc<GraphOrchestrator>,
     pub memory: Arc<RwLock<ConversationMemory>>,
     pub personality: BritishPersonality,
     pub executive_tools: Arc<ExecutiveTools>,
@@ -92,6 +97,8 @@ pub enum NoraRequestType {
     DecisionSupport,
     /// Proactive notification/alert
     ProactiveNotification,
+    /// Create cinematic brief for Stable Diffusion pipeline (reference for Editron)
+    CinematicBrief,
 }
 
 /// Request priority levels
@@ -133,6 +140,29 @@ pub enum NoraResponseType {
     DecisionSupport,
     CoordinationAction,
     ProactiveAlert,
+}
+
+/// Rapid prototyping playbook request
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct RapidPlaybookRequest {
+    pub project_name: String,
+    #[serde(default)]
+    pub objectives: Vec<String>,
+    #[serde(default)]
+    pub repo_hint: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+/// Result returned by the rapid prototyping playbook
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct RapidPlaybookResult {
+    pub summary: String,
+    pub created_project: bool,
+    pub created_message: Option<String>,
+    pub projects_synced: usize,
 }
 
 /// Executive actions Nora can perform
@@ -192,6 +222,9 @@ impl NoraAgent {
             coordination_manager.clone(),
         ));
 
+        // Initialize graph orchestrator for task dependencies
+        let graph_orchestrator = Arc::new(GraphOrchestrator::new());
+
         // Initialize executive context
         let context = Arc::new(RwLock::new(ExecutiveContext::new()));
         {
@@ -226,6 +259,7 @@ impl NoraAgent {
             voice_engine,
             coordination_manager,
             workflow_orchestrator,
+            graph_orchestrator,
             memory,
             personality,
             executive_tools,
@@ -270,6 +304,15 @@ impl NoraAgent {
         if let Some(tools) = Arc::get_mut(&mut self.executive_tools) {
             tools.set_media_pipeline(pipeline);
         }
+        self
+    }
+
+    pub fn with_cinematics(self, cinematics: Arc<CinematicsService>) -> Self {
+        // Set cinematics service in workflow orchestrator
+        let workflow_orchestrator = self.workflow_orchestrator.clone();
+        tokio::spawn(async move {
+            workflow_orchestrator.set_cinematics(cinematics).await;
+        });
         self
     }
 
@@ -325,6 +368,11 @@ impl NoraAgent {
                 Vec::new(),
                 NoraResponseType::ProactiveAlert,
             ),
+            NoraRequestType::CinematicBrief => {
+                // Placeholder for cinematics - serves as reference for Editron implementation
+                let content = "CinematicBrief request type is a reference implementation. Editron will use a similar pattern with the workflow orchestrator for video editing tasks.".to_string();
+                (content, Vec::new(), NoraResponseType::DirectResponse)
+            }
         };
 
         // Personality layer disabled - causes repetitive broken phrases
@@ -1228,7 +1276,13 @@ impl NoraAgent {
             .as_ref()
             .map(|cfg| cfg.system_prompt.clone())
             .unwrap_or_else(|| {
-                "You are Nora, an operational super-intelligence and executive assistant for PowerClub Global.
+                r#"You are Nora, an operational super-intelligence and executive assistant for PowerClub Global.
+
+CRITICAL: When the user mentions Maci, Master Cinematographer, Spectra, Editron, Astra, Harbor, Pulse, Vesper, Forge, or requests image/video/cinematic/AI content creation, you MUST call the execute_workflow tool. Do NOT respond with text about 'initiating' or 'processing' - actually CALL THE TOOL.
+
+AGENT NAME MAPPINGS:
+- Maci = Master Cinematographer = Spectra → agent_id='master-cinematographer'
+- When user says "tell Maci to generate an image" → call execute_workflow immediately
 
 You have LIVE DATABASE ACCESS to the entire PCG ecosystem. When the user asks about a specific project, you are provided with REAL-TIME data including:
 - All current tasks with their status, priority, and descriptions
@@ -1249,33 +1303,32 @@ WORKFLOW EXECUTION:
 You can orchestrate complex multi-stage workflows through specialized agents:
 - Editron (editron-post): Video production workflows - ingesting footage, analysis, editing, rendering
 - Astra (astra-strategy): Strategic planning and roadmap generation
-- Harbor (harbor-intel): Intelligence gathering and analysis
-- Pulse (pulse-growth): Growth initiatives and marketing campaigns
-- Vesper (vesper-creative): Creative asset generation
-- Forge (forge-systems): System development and deployment
+- Harbor (harbor-ops): Operations orchestration and incident response
+- Pulse (pulse-intel): Portfolio intelligence and KPI reporting
+- Vesper (vesper-comms): Communications and partnerships
+- Forge (forge-bd): Business development and enterprise deals
+- Maci / Master Cinematographer / Spectra (master-cinematographer): AI image and video generation via ComfyUI/Stable Diffusion
 
 When a user requests a complex operation that involves multiple coordinated steps, use workflows:
 1. First, use list_available_workflows to discover which workflows exist for the relevant agent
 2. Then, use execute_workflow with the correct agent_id and workflow_id
 
 Example workflow:
-- User: \"Create a recap video from this Dropbox link\"
+- User: "Create a recap video from this Dropbox link"
   1. Call list_available_workflows with agent_id='editron-post'
   2. Find workflow_id='event-recap-forge'
   3. Call execute_workflow with agent_id='editron-post', workflow_id='event-recap-forge', inputs={'source_url': '...'}
 
-- User: \"Use the master cinematographer to create a video about cats\"
+- User: "Use the master cinematographer to create a video about cats"
   1. Call list_available_workflows with agent_id='master-cinematographer'
   2. Find workflow_id='ai-cinematic-suite'
   3. Call execute_workflow with agent_id='master-cinematographer', workflow_id='ai-cinematic-suite', inputs={'brief': 'cats playing'}
 
 CRITICAL: Always use list_available_workflows FIRST to get the correct workflow_id. Never guess workflow IDs.
 
-Workflows automatically create tracking tasks for each stage, providing full visibility on the dashboard. Monitor workflow progress through task status updates.
-
 When presented with LIVE DATA, use it as your primary source of truth. Answer questions with specific, data-driven insights based on the actual current state of projects.
 
-Provide concise, insight-driven British executive responses. Surface actionable next steps and be proactive about identifying risks or opportunities.".to_string()
+Provide concise, insight-driven British executive responses. Surface actionable next steps and be proactive about identifying risks or opportunities."#.to_string()
             })
     }
 
@@ -2460,6 +2513,46 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             "output": stage.output,
             "status": "completed"
         }))
+    }
+
+    /// Sync live context from database
+    pub async fn sync_live_context(&self) -> Result<usize> {
+        // Stub implementation - will be implemented when needed
+        Ok(0)
+    }
+
+    /// Run rapid playbook
+    pub async fn run_rapid_playbook(&self, _request: RapidPlaybookRequest) -> Result<RapidPlaybookResult> {
+        // Stub implementation - will be implemented when needed
+        Ok(RapidPlaybookResult {
+            summary: "Rapid playbook functionality not yet implemented".to_string(),
+            created_project: false,
+            created_message: None,
+            projects_synced: 0,
+        })
+    }
+
+    /// Get graph plan summaries
+    pub async fn graph_plan_summaries(&self) -> Vec<GraphPlanSummary> {
+        self.graph_orchestrator.list_plans().await
+    }
+
+    /// Get graph plan detail
+    pub async fn graph_plan_detail(&self, plan_id: &str) -> Option<GraphPlan> {
+        self.graph_orchestrator.get_plan(plan_id).await
+    }
+
+    /// Update graph node status
+    pub async fn update_graph_node_status(
+        &self,
+        plan_id: &str,
+        node_id: &str,
+        status: GraphNodeStatus,
+    ) -> Result<GraphPlan> {
+        self.graph_orchestrator
+            .update_node_status(plan_id, node_id, status)
+            .await
+            .map_err(|e| NoraError::CoordinationError(e.to_string()))
     }
 }
 

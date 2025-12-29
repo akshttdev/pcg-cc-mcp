@@ -16,6 +16,7 @@ use crate::{
     profiles::{AgentProfile, AgentWorkflow},
     Result,
 };
+use cinematics::CinematicsService;
 
 use super::{
     router::WorkflowRouter,
@@ -70,6 +71,7 @@ pub struct WorkflowOrchestrator {
     event_sender: broadcast::Sender<WorkflowEvent>,
     task_executor: RwLock<Option<Arc<TaskExecutor>>>,
     db: RwLock<Option<SqlitePool>>,
+    cinematics: RwLock<Option<Arc<CinematicsService>>>,
 }
 
 impl WorkflowOrchestrator {
@@ -86,6 +88,7 @@ impl WorkflowOrchestrator {
             event_sender,
             task_executor: RwLock::new(None),
             db: RwLock::new(None),
+            cinematics: RwLock::new(None),
         }
     }
 
@@ -120,6 +123,10 @@ impl WorkflowOrchestrator {
             .iter()
             .map(|w| (w.workflow_id.clone(), w.name.clone(), w.objective.clone()))
             .collect()
+    }
+
+    pub async fn set_cinematics(&self, cinematics: Arc<CinematicsService>) {
+        *self.cinematics.write().await = Some(cinematics);
     }
 
     /// Start a workflow execution by agent and workflow ID

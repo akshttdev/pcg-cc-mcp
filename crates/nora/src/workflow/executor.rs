@@ -13,6 +13,9 @@ use crate::{
     tools::ExecutiveTools,
     NoraError, Result,
 };
+use cinematics::{CinematicsService, Cinematographer};
+use db::models::cinematic_brief::CreateCinematicBrief;
+use serde_json::json;
 
 use super::types::{WorkflowContext, WorkflowStageResult};
 
@@ -23,6 +26,7 @@ pub struct AgentWorkflowExecutor {
     tools: Arc<ExecutiveTools>,
     task_executor: Option<Arc<TaskExecutor>>,
     db: Option<SqlitePool>,
+    cinematics: Option<Arc<CinematicsService>>,
 }
 
 impl AgentWorkflowExecutor {
@@ -37,6 +41,7 @@ impl AgentWorkflowExecutor {
             tools,
             task_executor: None,
             db: None,
+            cinematics: None,
         }
     }
 
@@ -47,6 +52,11 @@ impl AgentWorkflowExecutor {
 
     pub fn with_database(mut self, db: SqlitePool) -> Self {
         self.db = Some(db);
+        self
+    }
+
+    pub fn with_cinematics(mut self, cinematics: Arc<CinematicsService>) -> Self {
+        self.cinematics = Some(cinematics);
         self
     }
 
@@ -164,7 +174,20 @@ impl AgentWorkflowExecutor {
         let stage_lower = stage.name.to_lowercase();
         let desc_lower = stage.description.to_lowercase();
 
-        // Editron-specific stage mappings
+        // Master Cinematographer-specific stage mappings (separate from Editron)
+        if desc_lower.contains("prompt blocking") || desc_lower.contains("creative brief") || desc_lower.contains("camera/lens/palette prompts") {
+            return self.execute_cinematics_prompt_blocking(context).await;
+        }
+
+        if desc_lower.contains("render pass") && (desc_lower.contains("stable diffusion") || desc_lower.contains("runway") || desc_lower.contains("comfyui")) {
+            return self.execute_cinematics_render_pass(context).await;
+        }
+
+        if desc_lower.contains("prep for editron") || (desc_lower.contains("upscale") && desc_lower.contains("denoise")) {
+            return self.execute_cinematics_prep_for_editron(context).await;
+        }
+
+        // Editron-specific stage mappings (separate from Master Cinematographer)
         if desc_lower.contains("ingest") || desc_lower.contains("download") || desc_lower.contains("batch intake") {
             return self.execute_ingest_stage(context).await;
         }
@@ -365,5 +388,140 @@ impl AgentWorkflowExecutor {
         if let Err(e) = executor.update_task_status(task_id, TaskStatus::Done).await {
             tracing::warn!("[WORKFLOW] Failed to complete task {}: {}", task_id, e);
         }
+    }
+
+    // ============================================================================
+    // Master Cinematographer Stage Handlers (separate from Editron)
+    // ============================================================================
+
+    /// Stage 1: Prompt Blocking - Create cinematic brief and generate shot plans
+    async fn execute_cinematics_prompt_blocking(&self, context: &WorkflowContext) -> Result<serde_json::Value> {
+        let cinematics = self.cinematics.as_ref().ok_or_else(||
+            NoraError::ToolExecutionError("CinematicsService not available".to_string())
+        )?;
+
+        let project_id = context.project_id.ok_or_else(||
+            NoraError::ConfigError("Project ID required for cinematics".to_string())
+        )?;
+
+        // Extract brief details from workflow inputs
+        let title = context.inputs.get("title")
+            .or_else(|| context.inputs.get("theme"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("AI Cinematic Short")
+            .to_string();
+
+        let summary = context.inputs.get("summary")
+            .or_else(|| context.inputs.get("description"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("AI-generated cinematic content")
+            .to_string();
+
+        let duration = context.inputs.get("duration")
+            .and_then(|v| v.as_str())
+            .and_then(|s| {
+                if s.contains("min") {
+                    s.split_whitespace().next()?.parse::<i64>().ok().map(|m| m * 60)
+                } else {
+                    s.parse::<i64>().ok()
+                }
+            })
+            .unwrap_or(30); // Default 30 seconds
+
+        let style_tags = context.inputs.get("visual_style")
+            .or_else(|| context.inputs.get("style"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.split(',').map(|tag| tag.trim().to_string()).collect::<Vec<_>>())
+            .unwrap_or_else(|| vec!["cinematic".to_string(), "modern".to_string(), "vibrant".to_string()]);
+
+        tracing::info!("[CINEMATICS] Creating brief: {}", title);
+
+        // Create the cinematic brief
+        let brief = cinematics.create_brief(CreateCinematicBrief {
+            project_id,
+            requester_id: "master-cinematographer".to_string(),
+            nora_session_id: None,
+            title,
+            summary,
+            script: None,
+            asset_ids: Vec::new(),
+            duration_seconds: Some(duration),
+            fps: Some(24),
+            style_tags,
+            metadata: Some(json!({
+                "workflow": "ai-cinematic-suite",
+                "agent": "master-cinematographer"
+            })),
+        }).await.map_err(|e| NoraError::ToolExecutionError(format!("Failed to create brief: {}", e)))?;
+
+        tracing::info!("[CINEMATICS] Brief created: {} with {} shot plans", brief.id, brief.id);
+
+        Ok(json!({
+            "brief_id": brief.id.to_string(),
+            "title": brief.title,
+            "shots_planned": 4, // Auto-generated in create_brief
+            "duration": brief.duration_seconds,
+            "status": "Planning complete"
+        }))
+    }
+
+    /// Stage 2: Render Pass - Trigger ComfyUI rendering for all shots
+    async fn execute_cinematics_render_pass(&self, context: &WorkflowContext) -> Result<serde_json::Value> {
+        let cinematics = self.cinematics.as_ref().ok_or_else(||
+            NoraError::ToolExecutionError("CinematicsService not available".to_string())
+        )?;
+
+        // Get brief_id from previous stage
+        let brief_id = context.get_stage_output("Prompt Blocking")
+            .and_then(|v| v.get("brief_id"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| NoraError::ToolExecutionError("No brief_id from Prompt Blocking stage".to_string()))?;
+
+        let brief_uuid = Uuid::parse_str(brief_id).map_err(|e|
+            NoraError::ToolExecutionError(format!("Invalid brief_id: {}", e))
+        )?;
+
+        tracing::info!("[CINEMATICS] Starting ComfyUI render for brief: {}", brief_id);
+
+        // Trigger the render
+        let rendered_brief = cinematics.trigger_render(brief_uuid).await
+            .map_err(|e| NoraError::ToolExecutionError(format!("Failed to render: {}", e)))?;
+
+        let asset_count = rendered_brief.output_assets.0.as_array()
+            .map(|arr| arr.len())
+            .unwrap_or(0);
+
+        tracing::info!("[CINEMATICS] Render complete: {} assets generated", asset_count);
+
+        Ok(json!({
+            "brief_id": rendered_brief.id.to_string(),
+            "status": format!("{:?}", rendered_brief.status),
+            "assets": rendered_brief.output_assets.0.clone(),
+            "render_complete": true
+        }))
+    }
+
+    /// Stage 3: Prep for Editron - Assets already registered, just package metadata
+    async fn execute_cinematics_prep_for_editron(&self, context: &WorkflowContext) -> Result<serde_json::Value> {
+        // Get render results from previous stage
+        let render_output = context.get_stage_output("Render Pass")
+            .ok_or_else(|| NoraError::ToolExecutionError("No output from Render Pass stage".to_string()))?;
+
+        let assets = render_output.get("assets")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.len())
+            .unwrap_or(0);
+
+        tracing::info!("[CINEMATICS] Preparing {} assets for Editron pickup", assets);
+
+        // Assets are already registered in the database with category "ai_short"
+        // Editron can query for them using the project_id and category
+        Ok(json!({
+            "status": "Ready for Editron",
+            "assets_count": assets,
+            "category": "ai_short",
+            "notes": "AI motion plates ready for timeline integration",
+            "prep_complete": true
+        }))
     }
 }

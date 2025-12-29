@@ -859,7 +859,7 @@ impl ExecutiveTools {
                             },
                             "workflow_id": {
                                 "type": "string",
-                                "description": "The workflow identifier (e.g., 'event-recap-forge' for Editron video creation, 'roadmap-compression' for Astra planning)"
+                                "description": "The workflow identifier (e.g., 'ai-cinematic-suite' for AI video generation with Master Cinematographer, 'event-recap-forge' for Editron video editing, 'roadmap-compression' for Astra planning)"
                             },
                             "project_id": {
                                 "type": "string",
@@ -998,6 +998,137 @@ impl ExecutiveTools {
                             }
                         },
                         "required": ["title", "start_time", "end_time"]
+                    }
+                }
+            }),
+            // Editron / Media Pipeline Tools
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "ingest_media_batch",
+                    "description": "Ingest a batch of media files from a URL (e.g., Dropbox). Use this when the user provides video content or asks to analyze/edit videos from a link.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "source_url": {
+                                "type": "string",
+                                "description": "URL to the media source (Dropbox link, etc.)"
+                            },
+                            "reference_name": {
+                                "type": "string",
+                                "description": "Optional reference name for this batch (e.g., 'Jan 25 Event Footage')"
+                            },
+                            "storage_tier": {
+                                "type": "string",
+                                "enum": ["hot", "warm", "cold"],
+                                "description": "Storage tier for the media (hot=active, warm=archive, cold=deep archive)"
+                            },
+                            "checksum_required": {
+                                "type": "boolean",
+                                "description": "Whether to verify file checksums during download"
+                            },
+                            "project_id": {
+                                "type": "string",
+                                "description": "Optional project ID to associate this batch with and create a task"
+                            }
+                        },
+                        "required": ["source_url", "storage_tier", "checksum_required"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "analyze_media_batch",
+                    "description": "Analyze a media batch for video editing. Identifies hero moments, suggests cuts, and prepares for editing.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "batch_id": {
+                                "type": "string",
+                                "description": "UUID of the media batch to analyze"
+                            },
+                            "brief": {
+                                "type": "string",
+                                "description": "Creative brief or editing instructions (e.g., 'Create a highlight reel showcasing the best moments')"
+                            },
+                            "deliverable_targets": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Target deliverables (e.g., ['recap', 'highlight', 'social'])"
+                            },
+                            "passes": {
+                                "type": "integer",
+                                "description": "Number of analysis passes to perform (1-3)"
+                            }
+                        },
+                        "required": ["batch_id", "brief", "deliverable_targets", "passes"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "generate_video_edits",
+                    "description": "Generate video edits from analyzed media. Creates edit sessions with timeline structures.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "batch_id": {
+                                "type": "string",
+                                "description": "UUID of the analyzed media batch"
+                            },
+                            "deliverable_type": {
+                                "type": "string",
+                                "description": "Type of deliverable (e.g., 'recap', 'highlight', 'social')"
+                            },
+                            "aspect_ratios": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Target aspect ratios (e.g., ['16:9', '9:16', '1:1'])"
+                            },
+                            "reference_style": {
+                                "type": "string",
+                                "description": "Optional reference style or template to follow"
+                            },
+                            "include_captions": {
+                                "type": "boolean",
+                                "description": "Whether to include automatic captions"
+                            }
+                        },
+                        "required": ["batch_id", "deliverable_type", "aspect_ratios", "include_captions"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "render_video_deliverables",
+                    "description": "Render final video deliverables from an edit session. Creates render jobs for export.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "edit_session_id": {
+                                "type": "string",
+                                "description": "UUID of the edit session to render"
+                            },
+                            "destinations": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Export destinations (e.g., ['local', 'youtube', 'instagram'])"
+                            },
+                            "formats": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Output formats (e.g., ['mp4', 'mov'])"
+                            },
+                            "priority": {
+                                "type": "string",
+                                "enum": ["low", "standard", "rush"],
+                                "description": "Render priority"
+                            }
+                        },
+                        "required": ["edit_session_id", "destinations", "formats", "priority"]
                     }
                 }
             }),
@@ -2109,6 +2240,297 @@ impl ExecutiveTools {
                     }))
                 }
             }
+
+            // Media Pipeline - Editron Tools
+            NoraExecutiveTool::IngestMediaBatch {
+                source_url,
+                reference_name,
+                storage_tier,
+                checksum_required,
+                project_id,
+            } => {
+                if let Some(pipeline) = &self.media_pipeline {
+                    tracing::info!(
+                        "[TOOL] Ingesting media batch from: {}",
+                        source_url
+                    );
+
+                    let tier = match MediaStorageTier::from_str(&storage_tier) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Invalid storage tier '{}': {}", storage_tier, e),
+                            }));
+                        }
+                    };
+
+                    let project_uuid = project_id
+                        .as_ref()
+                        .and_then(|value| Uuid::parse_str(value).ok());
+
+                    let request = MediaBatchIngestRequest {
+                        source_url: source_url.clone(),
+                        reference_name: reference_name.clone(),
+                        storage_tier: tier,
+                        checksum_required,
+                        project_id: project_uuid,
+                    };
+
+                    match pipeline.ingest_batch(request).await {
+                        Ok(batch) => {
+                            tracing::info!(
+                                "[TOOL] Media batch created successfully: batch_id={}",
+                                batch.id
+                            );
+
+                            // If project_id provided, create a task
+                            if let (Some(project_id_str), Some(executor)) = (&project_id, &self.task_executor) {
+                                let task_title = format!(
+                                    "Editron: Process media batch - {}",
+                                    reference_name.as_ref().unwrap_or(&"Unnamed".to_string())
+                                );
+                                let task_desc = Some(format!(
+                                    "Media batch ingestion started.\nBatch ID: {}\nSource: {}\nStatus: {:?}",
+                                    batch.id, source_url, batch.status
+                                ));
+
+                                if let Ok(_task) = executor
+                                    .create_task_in_project(
+                                        project_id_str,
+                                        task_title,
+                                        task_desc,
+                                        Some(Priority::High),
+                                    )
+                                    .await
+                                {
+                                    tracing::info!("[TOOL] Created task for batch {}", batch.id);
+                                }
+                            }
+
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": format!("Media batch ingest started: {}", batch.id),
+                                "batch_id": batch.id.to_string(),
+                                "reference_name": batch.reference_name,
+                                "status": format!("{:?}", batch.status),
+                                "storage_tier": format!("{:?}", batch.storage_tier),
+                                "created_at": batch.created_at.to_string(),
+                            }))
+                        }
+                        Err(e) => {
+                            tracing::error!("[TOOL] Failed to ingest media batch: {}", e);
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to ingest media batch: {}", e),
+                            }))
+                        }
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Media pipeline not available. Editron functionality requires media pipeline service.",
+                    }))
+                }
+            }
+
+            NoraExecutiveTool::AnalyzeMediaBatch {
+                batch_id,
+                brief,
+                deliverable_targets,
+                passes,
+                project_id: _,
+            } => {
+                if let Some(pipeline) = &self.media_pipeline {
+                    tracing::info!("[TOOL] Analyzing media batch: {}", batch_id);
+
+                    let batch_uuid = match Uuid::parse_str(&batch_id) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": "Invalid batch_id format. Must be a valid UUID."
+                            }));
+                        }
+                    };
+
+                    let request = MediaBatchAnalysisRequest {
+                        batch_id: batch_uuid,
+                        brief: brief.clone(),
+                        passes,
+                        deliverable_targets: deliverable_targets.clone(),
+                    };
+
+                    match pipeline.analyze_batch(request).await {
+                        Ok(analysis) => {
+                            tracing::info!(
+                                "[TOOL] Media batch analyzed: analysis_id={}",
+                                analysis.id
+                            );
+
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": "Media batch analyzed successfully",
+                                "analysis_id": analysis.id.to_string(),
+                                "batch_id": analysis.batch_id.to_string(),
+                                "summary": analysis.summary,
+                                "hero_moments_count": analysis.hero_moments.len(),
+                                "hero_moments": analysis.hero_moments,
+                                "recommended_deliverables": analysis.recommended_deliverables,
+                                "passes_completed": analysis.passes_completed,
+                                "created_at": analysis.created_at.to_string(),
+                            }))
+                        }
+                        Err(e) => {
+                            tracing::error!("[TOOL] Failed to analyze media batch: {}", e);
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to analyze media batch: {}", e),
+                            }))
+                        }
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Media pipeline not available",
+                    }))
+                }
+            }
+
+            NoraExecutiveTool::GenerateVideoEdits {
+                batch_id,
+                deliverable_type,
+                aspect_ratios,
+                reference_style,
+                include_captions,
+                project_id: _,
+            } => {
+                if let Some(pipeline) = &self.media_pipeline {
+                    tracing::info!("[TOOL] Generating video edits for batch: {}", batch_id);
+
+                    let batch_uuid = match Uuid::parse_str(&batch_id) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": "Invalid batch_id format. Must be a valid UUID."
+                            }));
+                        }
+                    };
+
+                    let request = EditSessionRequest {
+                        batch_id: batch_uuid,
+                        deliverable_type: deliverable_type.clone(),
+                        aspect_ratios: aspect_ratios.clone(),
+                        reference_style: reference_style.clone(),
+                        include_captions,
+                    };
+
+                    match pipeline.generate_edits(request).await {
+                        Ok(session) => {
+                            tracing::info!(
+                                "[TOOL] Edit session created: session_id={}",
+                                session.id
+                            );
+
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": "Edit session created successfully",
+                                "session_id": session.id.to_string(),
+                                "batch_id": session.batch_id.to_string(),
+                                "deliverable_type": session.deliverable_type,
+                                "aspect_ratios": session.aspect_ratios,
+                                "imovie_project": session.imovie_project,
+                                "timelines": session.timelines,
+                                "status": format!("{:?}", session.status),
+                                "created_at": session.created_at.to_string(),
+                            }))
+                        }
+                        Err(e) => {
+                            tracing::error!("[TOOL] Failed to generate video edits: {}", e);
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to generate video edits: {}", e),
+                            }))
+                        }
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Media pipeline not available",
+                    }))
+                }
+            }
+
+            NoraExecutiveTool::RenderVideoDeliverables {
+                edit_session_id,
+                destinations,
+                formats,
+                priority,
+                project_id: _,
+            } => {
+                if let Some(pipeline) = &self.media_pipeline {
+                    tracing::info!("[TOOL] Rendering video deliverables for session: {}", edit_session_id);
+
+                    let session_uuid = match Uuid::parse_str(&edit_session_id) {
+                        Ok(uuid) => uuid,
+                        Err(_) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": "Invalid edit_session_id format. Must be a valid UUID."
+                            }));
+                        }
+                    };
+
+                    // Convert VideoRenderPriority to the pipeline's priority enum
+                    let priority_enum = match priority {
+                        VideoRenderPriority::Low => PipelineRenderPriority::Low,
+                        VideoRenderPriority::Standard => PipelineRenderPriority::Standard,
+                        VideoRenderPriority::Rush => PipelineRenderPriority::Rush,
+                    };
+
+                    let request = RenderJobRequest {
+                        edit_session_id: session_uuid,
+                        destinations: destinations.clone(),
+                        formats: formats.clone(),
+                        priority: priority_enum,
+                    };
+
+                    match pipeline.render_deliverables(request).await {
+                        Ok(job) => {
+                            tracing::info!(
+                                "[TOOL] Render job created: job_id={}",
+                                job.id
+                            );
+
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": "Render job created successfully",
+                                "job_id": job.id.to_string(),
+                                "edit_session_id": job.edit_session_id.to_string(),
+                                "destinations": job.destinations,
+                                "formats": job.formats,
+                                "priority": format!("{:?}", job.priority),
+                                "status": format!("{:?}", job.status),
+                                "created_at": job.created_at.to_string(),
+                            }))
+                        }
+                        Err(e) => {
+                            tracing::error!("[TOOL] Failed to render video deliverables: {}", e);
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Failed to render video deliverables: {}", e),
+                            }))
+                        }
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Media pipeline not available",
+                    }))
+                }
+            }
+
             NoraExecutiveTool::CreateTaskOnBoard {
                 project_id,
                 board_id,
@@ -2358,74 +2780,6 @@ impl ExecutiveTools {
             } => {
                 self.execute_check_calendar_availability(&user, start_time, end_time)
                     .await
-            }
-
-            // Media Production
-            NoraExecutiveTool::IngestMediaBatch {
-                source_url,
-                reference_name,
-                storage_tier,
-                checksum_required,
-                project_id,
-            } => {
-                self.execute_ingest_media_batch(
-                    &source_url,
-                    reference_name,
-                    &storage_tier,
-                    checksum_required,
-                    project_id,
-                )
-                .await
-            }
-            NoraExecutiveTool::AnalyzeMediaBatch {
-                batch_id,
-                brief,
-                passes,
-                deliverable_targets,
-                project_id,
-            } => {
-                self.execute_analyze_media_batch(
-                    &batch_id,
-                    &brief,
-                    passes,
-                    deliverable_targets,
-                    project_id,
-                )
-                .await
-            }
-            NoraExecutiveTool::GenerateVideoEdits {
-                batch_id,
-                deliverable_type,
-                aspect_ratios,
-                reference_style,
-                include_captions,
-                project_id,
-            } => {
-                self.execute_generate_video_edits(
-                    &batch_id,
-                    &deliverable_type,
-                    aspect_ratios,
-                    reference_style,
-                    include_captions,
-                    project_id,
-                )
-                .await
-            }
-            NoraExecutiveTool::RenderVideoDeliverables {
-                edit_session_id,
-                destinations,
-                formats,
-                priority,
-                project_id,
-            } => {
-                self.execute_render_video_deliverables(
-                    &edit_session_id,
-                    destinations,
-                    formats,
-                    priority,
-                    project_id,
-                )
-                .await
             }
 
             // Existing tools
@@ -3113,6 +3467,9 @@ impl ExecutiveTools {
             reference_name,
             storage_tier,
             checksum_required,
+            project_id: project_hint
+                .as_ref()
+                .and_then(|value| Uuid::parse_str(value).ok()),
         };
 
         let response = match pipeline.ingest_batch(request).await {

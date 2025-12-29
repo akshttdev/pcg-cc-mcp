@@ -1,0 +1,119 @@
+Category,Subcategory,Item,Measurement,Amount,Notes,Source
+Baseline Ops,Team,Team salaries,Monthly USD,60000,"Role mix: 1 backend, 1 frontend, 1 DevOps, 1 AI/ML, 0.5 PM, 0.5 technical writer (90-day plan)",pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1096-1111
+Baseline Ops,Team,Team salaries,90-day USD,180000,Covers the same staffing plan over a quarter,pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1096-1111
+Baseline Ops,Infrastructure,AWS/DO infrastructure,Monthly USD,2000,Cloud hosting budget for core services,pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1105-1111
+Baseline Ops,Infrastructure,AWS/DO infrastructure,90-day USD,6000,Quarterly allocation for compute + storage,pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1105-1111
+Baseline Ops,External APIs,OpenAI and other APIs,Monthly USD,1000,Budget for LLM usage outside of per-unit tracking,pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1105-1111
+Baseline Ops,External APIs,OpenAI and other APIs,90-day USD,3000,Quarterly allocation for API consumption,pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1105-1111
+Baseline Ops,Tooling,Grafana Cloud and supporting tools,Monthly USD,500,"Monitoring, logging, collaboration subscriptions",pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1105-1111
+Baseline Ops,Tooling,Grafana Cloud and supporting tools,90-day USD,1500,Quarterly tooling allocation,pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1105-1111
+Baseline Ops,Total,Run-rate total,Monthly USD,63500,"Sum of salaries, infrastructure, APIs, and tools",pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1105-1111
+Baseline Ops,Total,Run-rate total,90-day USD,190500,Quarterly sum of baseline expenses,pcg-cc-mcp/PHASE_V_PRIORITY_RELEASE_PLAN.md:1105-1111
+Voice Stack,Production voice,ElevenLabs TTS + OpenAI Whisper STT,Monthly USD (estimated),5-30,British executive voice pairing for production usage,pcg-cc-mcp/NORA_VOICE_STATUS_REPORT.md:465-472
+Voice Stack,Enterprise voice,Azure Speech services,Usage-based,Pay-as-you-go,"Enterprise SLAs, GDPR compliance, includes free tier (5h STT / 0.5M TTS characters)",pcg-cc-mcp/NORA_VOICE_STATUS_REPORT.md:474-500
+Voice Stack,OpenAI,OpenAI text-to-speech,Per 1M characters (USD),15,Applies to GPT-4o-TTS endpoints,pcg-cc-mcp/NORA_VOICE_STATUS_REPORT.md:492-495
+Voice Stack,OpenAI,OpenAI speech-to-text,Per audio minute USD,0.006,Whisper STT cost per minute,pcg-cc-mcp/NORA_VOICE_STATUS_REPORT.md:492-495
+Networking,Cloudflare Tunnel,Zero Trust free tier,Monthly USD,0,Supports 50 users with unlimited traffic,pcg-cc-mcp/CLOUDFLARE_TUNNEL.md:170-175
+Networking,Cloudflare Tunnel,Zero Trust paid tier,Monthly USD,Variable,Adds more seats and device posture checks,pcg-cc-mcp/CLOUDFLARE_TUNNEL.md:170-175
+Model APIs,OpenAI,GPT-4o input,Per 1M input tokens USD,5.00,Pay-per-token cost as of Sept 2025,duck-rs/commercial-platforms-analysis.md:13-16
+Model APIs,OpenAI,GPT-4o output,Per 1M output tokens USD,15.00,Pay-per-token cost as of Sept 2025,duck-rs/commercial-platforms-analysis.md:13-16
+Model APIs,OpenAI,GPT-4o-mini input,Per 1M input tokens USD,0.15,Lower-cost model for high-volume usage,duck-rs/commercial-platforms-analysis.md:13-16
+Model APIs,OpenAI,GPT-4o-mini output,Per 1M output tokens USD,0.60,Lower-cost model for high-volume usage,duck-rs/commercial-platforms-analysis.md:13-16
+Model APIs,OpenAI,Function calling overhead,Additional tokens (%),10-15,Token overhead typical when enabling tool calls,duck-rs/commercial-platforms-analysis.md:13-16
+Model APIs,Azure OpenAI,Enterprise support tier,Monthly USD,29-300,Azure support plans layered on top of OpenAI token costs,duck-rs/commercial-platforms-analysis.md:41-45
+Model APIs,Anthropic,Claude-3.5 Sonnet input,Per 1M input tokens USD,3.00,Premium reasoning tier,duck-rs/commercial-platforms-analysis.md:64-68
+Model APIs,Anthropic,Claude-3.5 Sonnet output,Per 1M output tokens USD,15.00,Premium reasoning tier,duck-rs/commercial-platforms-analysis.md:64-68
+Model APIs,Anthropic,Claude-3 Haiku input,Per 1M input tokens USD,0.25,Lower-cost Claude tier,duck-rs/commercial-platforms-analysis.md:64-68
+Model APIs,Anthropic,Claude-3 Haiku output,Per 1M output tokens USD,1.25,Lower-cost Claude tier,duck-rs/commercial-platforms-analysis.md:64-68
+Model APIs,Anthropic,Claude-3 Opus input,Per 1M input tokens USD,15.00,Flagship Anthropic model,duck-rs/commercial-platforms-analysis.md:64-68
+Model APIs,Anthropic,Claude-3 Opus output,Per 1M output tokens USD,75.00,Flagship Anthropic model,duck-rs/commercial-platforms-analysis.md:64-68
+Model APIs,Google Vertex,Gemini Pro input,Per 1M input tokens USD,0.50,Google Vertex AI pricing,duck-rs/commercial-platforms-analysis.md:92-95
+Model APIs,Google Vertex,Gemini Pro output,Per 1M output tokens USD,1.50,Google Vertex AI pricing,duck-rs/commercial-platforms-analysis.md:92-95
+Model APIs,Google Vertex,Gemini Flash input,Per 1M input tokens USD,0.075,Latency-optimized Gemini tier,duck-rs/commercial-platforms-analysis.md:92-95
+Model APIs,Google Vertex,Gemini Flash output,Per 1M output tokens USD,0.30,Latency-optimized Gemini tier,duck-rs/commercial-platforms-analysis.md:92-95
+Model APIs,Google Vertex,Gemini Ultra input,Per 1M input tokens USD,10.00,Highest-capability Gemini tier,duck-rs/commercial-platforms-analysis.md:92-95
+Model APIs,Google Vertex,Gemini Ultra output,Per 1M output tokens USD,30.00,Highest-capability Gemini tier,duck-rs/commercial-platforms-analysis.md:92-95
+Model APIs,AWS Bedrock,Claude-3 on Bedrock,Per 1M tokens USD,2.40-60.00,Range covers Haiku through Opus tiers,duck-rs/commercial-platforms-analysis.md:121-125
+Model APIs,AWS Bedrock,Command input,Per 1M input tokens USD,1.50,Cohere Command hosted via Bedrock,duck-rs/commercial-platforms-analysis.md:121-125
+Model APIs,AWS Bedrock,Command output,Per 1M output tokens USD,2.00,Cohere Command hosted via Bedrock,duck-rs/commercial-platforms-analysis.md:121-125
+Model APIs,AWS Bedrock,Llama 2 input,Per 1M input tokens USD,0.75,Meta Llama 2 pricing via Bedrock,duck-rs/commercial-platforms-analysis.md:121-125
+Model APIs,AWS Bedrock,Llama 2 output,Per 1M output tokens USD,1.00,Meta Llama 2 pricing via Bedrock,duck-rs/commercial-platforms-analysis.md:121-125
+Model APIs,AWS Bedrock,Amazon Titan input,Per 1M input tokens USD,0.50,Titan text generation pricing,duck-rs/commercial-platforms-analysis.md:121-125
+Model APIs,AWS Bedrock,Amazon Titan output,Per 1M output tokens USD,0.70,Titan text generation pricing,duck-rs/commercial-platforms-analysis.md:121-125
+Model APIs,Cohere,Starter plan base,Monthly USD,20,"Includes 1,000 API calls then usage-based pricing",duck-rs/commercial-platforms-analysis.md:151-155
+Model APIs,Hugging Face,Inference API Pro subscription,Monthly USD,9,Base subscription before GPU runtime,duck-rs/commercial-platforms-analysis.md:175-184
+Model APIs,Hugging Face,Inference API GPU runtime,Per GPU hour USD,0.06,Usage add-on for Pro tier,duck-rs/commercial-platforms-analysis.md:175-184
+Model APIs,Hugging Face,Dedicated endpoints,Per endpoint hour USD,0.40-4.00,Depends on selected hardware tier,duck-rs/commercial-platforms-analysis.md:175-184
+Model APIs,Mistral,Mistral Small input,Per 1M input tokens USD,1.00,Direct Mistral API,duck-rs/commercial-platforms-analysis.md:207-210
+Model APIs,Mistral,Mistral Small output,Per 1M output tokens USD,3.00,Direct Mistral API,duck-rs/commercial-platforms-analysis.md:207-210
+Model APIs,Mistral,Mistral Medium input,Per 1M input tokens USD,2.70,Direct Mistral API,duck-rs/commercial-platforms-analysis.md:207-210
+Model APIs,Mistral,Mistral Medium output,Per 1M output tokens USD,8.10,Direct Mistral API,duck-rs/commercial-platforms-analysis.md:207-210
+Model APIs,Mistral,Mistral Large input,Per 1M input tokens USD,4.00,Direct Mistral API,duck-rs/commercial-platforms-analysis.md:207-210
+Model APIs,Mistral,Mistral Large output,Per 1M output tokens USD,12.00,Direct Mistral API,duck-rs/commercial-platforms-analysis.md:207-210
+Model APIs,Blended cost,OpenAI GPT-4o,Per 1M tokens USD,20.00,Comparison matrix normalized view,duck-rs/tool-calling-comparison-matrix.md:11-21
+Model APIs,Blended cost,OpenAI GPT-4o-mini,Per 1M tokens USD,0.75,Comparison matrix normalized view,duck-rs/tool-calling-comparison-matrix.md:11-21
+Model APIs,Blended cost,Anthropic Claude-3.5,Per 1M tokens USD,18.00,Comparison matrix normalized view,duck-rs/tool-calling-comparison-matrix.md:11-21
+Model APIs,Blended cost,Azure OpenAI,Per 1M tokens USD,20.00,Includes Azure premium vs direct OpenAI,duck-rs/tool-calling-comparison-matrix.md:11-21
+Model APIs,Blended cost,Google Gemini Pro,Per 1M tokens USD,2.00,Normalized in comparison matrix,duck-rs/tool-calling-comparison-matrix.md:11-21
+Model APIs,Blended cost,AWS Bedrock Claude,Per 1M tokens USD,3.60,Normalized in comparison matrix,duck-rs/tool-calling-comparison-matrix.md:11-21
+Model APIs,Blended cost,Cohere Command,Per 1M tokens USD,2.00,Normalized in comparison matrix,duck-rs/tool-calling-comparison-matrix.md:11-21
+Model APIs,Blended cost,Mistral Large,Per 1M tokens USD,16.00,Normalized in comparison matrix,duck-rs/tool-calling-comparison-matrix.md:11-21
+Execution,Per 1000 tool calls,Local (Ollama),Per 1000 tool calls USD,0.00,Hardware amortized,duck-rs/CODEX_TOOL_CALLING_INTEGRATION_GUIDE.md:487-491
+Execution,Per 1000 tool calls,OpenAI GPT-4o-mini,Per 1000 tool calls USD,18.75,Cloud inference costs from benchmarks,duck-rs/CODEX_TOOL_CALLING_INTEGRATION_GUIDE.md:487-491
+Execution,Per 1000 tool calls,Claude-3.5 Sonnet,Per 1000 tool calls USD,45.00,Cloud inference costs from benchmarks,duck-rs/CODEX_TOOL_CALLING_INTEGRATION_GUIDE.md:487-491
+Execution,Per 1000 tool calls,Azure OpenAI,Per 1000 tool calls USD,18.75,Azure-hosted GPT-4o-mini via benchmarks,duck-rs/CODEX_TOOL_CALLING_INTEGRATION_GUIDE.md:487-491
+TCO (Small Scale),OpenAI API Direct,Setup,Setup USD,0,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),OpenAI API Direct,Monthly,Monthly USD,750,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),OpenAI API Direct,Maintenance,Maintenance USD,0,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),OpenAI API Direct,12-month total,Annual USD,9000,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),LangChain + OpenAI,Setup,Setup USD,5000,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),LangChain + OpenAI,Monthly,Monthly USD,800,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),LangChain + OpenAI,Maintenance,Maintenance USD,2000,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),LangChain + OpenAI,12-month total,Annual USD,19600,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Azure OpenAI,Setup,Setup USD,2000,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Azure OpenAI,Monthly,Monthly USD,750,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Azure OpenAI,Maintenance,Maintenance USD,1000,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Azure OpenAI,12-month total,Annual USD,21000,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Local Ollama,Setup,Setup USD,8000,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Local Ollama,Monthly,Monthly USD,200,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Local Ollama,Maintenance,Maintenance USD,3000,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Local Ollama,12-month total,Annual USD,44400,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Anthropic Claude,Setup,Setup USD,0,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Anthropic Claude,Monthly,Monthly USD,900,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Anthropic Claude,Maintenance,Maintenance USD,0,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Small Scale),Anthropic Claude,12-month total,Annual USD,10800,<1M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:65-72
+TCO (Enterprise),Azure OpenAI Enterprise,Setup,Setup USD,50000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Azure OpenAI Enterprise,Monthly,Monthly USD,150000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Azure OpenAI Enterprise,Maintenance,Maintenance USD,20000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Azure OpenAI Enterprise,12-month total,Annual USD,1890000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),AWS Bedrock,Setup,Setup USD,75000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),AWS Bedrock,Monthly,Monthly USD,120000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),AWS Bedrock,Maintenance,Maintenance USD,25000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),AWS Bedrock,12-month total,Annual USD,1515000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Local Deployment,Setup,Setup USD,200000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Local Deployment,Monthly,Monthly USD,15000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Local Deployment,Maintenance,Maintenance USD,50000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Local Deployment,12-month total,Annual USD,980000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Hybrid Local + Cloud,Setup,Setup USD,150000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Hybrid Local + Cloud,Monthly,Monthly USD,50000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Hybrid Local + Cloud,Maintenance,Maintenance USD,40000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Hybrid Local + Cloud,12-month total,Annual USD,1230000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Multi-Provider,Setup,Setup USD,100000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Multi-Provider,Monthly,Monthly USD,80000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Multi-Provider,Maintenance,Maintenance USD,30000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+TCO (Enterprise),Multi-Provider,12-month total,Annual USD,1320000,>100M tokens/month scenario,duck-rs/tool-calling-comparison-matrix.md:75-82
+Scaling Benchmarks,Startup,Monthly infrastructure + API spend,Monthly USD,100-1000,"<100 users, <10K requests/day",duck-rs/tool-calling-comparison-matrix.md:193-198
+Scaling Benchmarks,SMB,Monthly infrastructure + API spend,Monthly USD,1000-10000,"<1K users, <100K requests/day",duck-rs/tool-calling-comparison-matrix.md:193-198
+Scaling Benchmarks,Enterprise,Monthly infrastructure + API spend,Monthly USD,10000-100000,"<10K users, <1M requests/day",duck-rs/tool-calling-comparison-matrix.md:193-198
+Scaling Benchmarks,Hyperscale,Monthly infrastructure + API spend,Monthly USD,100000+,">10K users, >1M requests/day",duck-rs/tool-calling-comparison-matrix.md:193-198
+Budget Bands,Entry tier,Preferred solutions,Monthly USD,<1000,"OpenAI API direct, Ollama local",duck-rs/tool-calling-comparison-matrix.md:274-277
+Budget Bands,Growth tier,Preferred solutions,Monthly USD,1000-10000,"Azure OpenAI, LangChain + cloud APIs",duck-rs/tool-calling-comparison-matrix.md:274-277
+Budget Bands,Scale tier,Preferred solutions,Monthly USD,10000-100000,"Multi-provider setup, custom framework",duck-rs/tool-calling-comparison-matrix.md:274-277
+Budget Bands,Enterprise tier,Preferred solutions,Monthly USD,>100000,"Enterprise platforms, hybrid deployments",duck-rs/tool-calling-comparison-matrix.md:274-277
+Industry Benchmarks,Financial Services,Average AI tool spend,Annual USD,50000-500000,Risk analysis + compliance automation,duck-rs/commercial-platforms-analysis.md:283-288
+Industry Benchmarks,Healthcare,Average AI tool spend,Annual USD,25000-200000,"Clinical decision support, documentation",duck-rs/commercial-platforms-analysis.md:289-294
+Industry Benchmarks,Technology,Average AI tool spend,Annual USD,100000-1000000,Code generation + developer productivity,duck-rs/commercial-platforms-analysis.md:295-299
+Industry Benchmarks,Manufacturing,Average AI tool spend,Annual USD,75000-300000,Process optimization + quality control,duck-rs/commercial-platforms-analysis.md:301-304
+Planning Benchmarks,Small business,Recommended AI engine budget,Annual USD,10000-50000,Budget range referenced for SMB adoption,duck-rs/commercial-platforms-analysis.md:325-329
+Planning Benchmarks,Mid-market,Recommended AI engine budget,Annual USD,50000-250000,Supports multi-provider abstraction layer,duck-rs/commercial-platforms-analysis.md:331-335
+Planning Benchmarks,Enterprise,Recommended AI engine budget,Annual USD,>250000,Multi-provider (Azure OpenAI + AWS Bedrock),duck-rs/commercial-platforms-analysis.md:337-340

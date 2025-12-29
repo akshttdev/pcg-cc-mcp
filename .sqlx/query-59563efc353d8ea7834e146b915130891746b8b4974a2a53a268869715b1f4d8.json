@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO render_jobs (\n                id, edit_session_id, destinations, formats, priority,\n                status, progress_percent, last_error, output_urls, metadata,\n                created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, '[]', '{}', ?, ?)\n            ON CONFLICT(id) DO UPDATE SET\n                destinations=excluded.destinations,\n                formats=excluded.formats,\n                priority=excluded.priority,\n                status=excluded.status,\n                updated_at=excluded.updated_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "59563efc353d8ea7834e146b915130891746b8b4974a2a53a268869715b1f4d8"
+}

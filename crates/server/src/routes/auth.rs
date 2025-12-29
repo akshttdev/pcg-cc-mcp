@@ -27,6 +27,8 @@ use crate::{DeploymentImpl, error::ApiError};
 
 // Import SQLite auth handlers
 mod auth_sqlite;
+// Import external auth handlers (for federated SSO)
+pub mod external_auth;
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let mut router = Router::new()
@@ -51,6 +53,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             .route("/auth/me", get(auth_sqlite::get_current_user))
             .route("/auth/logout", post(auth_sqlite::logout));
     }
+
+    // Add external auth routes (always available)
+    router = router
+        .route("/auth/external/validate", post(external_auth::validate_external_token));
 
     router.layer(from_fn_with_state(
         deployment.clone(),

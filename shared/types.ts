@@ -398,4 +398,16 @@ export type ProjectAccessResponse = { has_access: boolean, role: string | null, 
 
 export type MyProjectItem = { project_id: string, project_name: string, role: string, granted_at: string, };
 
+export type GraphPlan = { id: string, title: string, requestId: string, sessionId: string, createdAt: string, status: GraphPlanStatus, nodes: Array<GraphNode>, edges: Array<GraphEdge>, };
+
+export type GraphPlanSummary = { id: string, title: string, createdAt: string, status: GraphPlanStatus, nodeCount: number, };
+
+export type GraphPlanStatus = "pending" | "inProgress" | "completed" | "failed";
+
+export type GraphNode = { id: string, label: string, agent: string | null, description: string | null, status: GraphNodeStatus, metadata: JsonValue, };
+
+export type GraphNodeStatus = "pending" | "running" | "completed" | "failed";
+
+export type GraphEdge = { fromNode: string, toNode: string, };
+
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]?: JsonValue } | null;

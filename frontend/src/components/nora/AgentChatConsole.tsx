@@ -18,6 +18,9 @@ interface AgentChatConsoleProps {
   isInputActive: boolean;
   onRequestCloseInput: () => void;
   focusToken: number;
+  showHeader?: boolean;
+  extraSystemMessage?: string | null;
+  extraSystemMessageVersion?: number;
 }
 
 interface ConsoleMessage {
@@ -67,6 +70,9 @@ export function AgentChatConsole({
   isInputActive,
   onRequestCloseInput,
   focusToken,
+  showHeader = true,
+  extraSystemMessage,
+  extraSystemMessageVersion,
 }: AgentChatConsoleProps) {
   const { agents, socketConnected, lastEvent } = useAgentDirectory();
   const [messages, setMessages] = useState<ConsoleMessage[]>(() => [
@@ -222,6 +228,12 @@ export function AgentChatConsole({
       pushSystemMessage(statusLine);
     }
   }, [statusLine, statusVersion, pushSystemMessage]);
+
+  useEffect(() => {
+    if (extraSystemMessage && extraSystemMessageVersion) {
+      pushSystemMessage(extraSystemMessage);
+    }
+  }, [extraSystemMessage, extraSystemMessageVersion, pushSystemMessage]);
 
   const ensureNoraReady = useCallback(async () => {
     if (noraReadyRef.current) return true;
@@ -494,25 +506,27 @@ export function AgentChatConsole({
 
   return (
     <Card className={cn('bg-slate-900/80 border-cyan-500/30 text-sm text-slate-100', className)}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Crown className="h-4 w-4 text-cyan-300" />
-            Command Net
-          </CardTitle>
-          <Badge variant={socketConnected ? 'default' : 'secondary'} className="flex items-center gap-1 text-[10px]">
-            <Radio className="h-3 w-3" />
-            {socketConnected ? 'LIVE LINK' : 'RECONNECTING'}
-          </Badge>
-        </div>
-        {statusLine && (
-          <p className="text-xs text-cyan-200/80 mt-1 flex items-center gap-2">
-            <Activity className="h-3 w-3" />
-            {statusLine}
-          </p>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-3">
+      {showHeader && (
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Crown className="h-4 w-4 text-cyan-300" />
+              Command Net
+            </CardTitle>
+            <Badge variant={socketConnected ? 'default' : 'secondary'} className="flex items-center gap-1 text-[10px]">
+              <Radio className="h-3 w-3" />
+              {socketConnected ? 'LIVE LINK' : 'RECONNECTING'}
+            </Badge>
+          </div>
+          {statusLine && (
+            <p className="text-xs text-cyan-200/80 mt-1 flex items-center gap-2">
+              <Activity className="h-3 w-3" />
+              {statusLine}
+            </p>
+          )}
+        </CardHeader>
+      )}
+      <CardContent className={cn('space-y-3', !showHeader && 'pt-4')}>
         <ScrollArea className="h-56 rounded border border-cyan-500/10 bg-black/30">
           <div className="p-3 space-y-2" ref={listRef}>
             {messages.map((message) => (
@@ -539,6 +553,8 @@ export function AgentChatConsole({
               onKeyDown={handleKeyDown}
               placeholder={isInputActive ? 'Type /nora or talk to the grid...' : 'Press Enter to engage the command net'}
               disabled={isSending || !isInputActive}
+              id="command-net-input"
+              name="command-net-input"
               className="bg-black/60 border-cyan-500/30 text-sm"
             />
             <Button size="icon" onClick={handleButtonSend} disabled={isSending || !isInputActive}>

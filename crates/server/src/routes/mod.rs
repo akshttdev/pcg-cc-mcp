@@ -1,10 +1,11 @@
 use axum::{
     Router,
-    http::StatusCode,
+    http::{StatusCode, Method, header},
     middleware,
     response::IntoResponse,
     routing::{IntoMakeService, get},
 };
+use tower_http::cors::{CorsLayer, Any};
 
 use crate::{DeploymentImpl, middleware as app_middleware};
 
@@ -31,6 +32,9 @@ pub mod task_templates;
 pub mod tasks;
 pub mod twilio;
 pub mod users;
+pub mod cinematics;
+pub mod webhooks;
+pub mod dropbox;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -72,15 +76,34 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .nest("/permissions", permissions::router(&deployment))
         .nest("/images", images::routes())
         .merge(nora::nora_routes())
+        .merge(cinematics::router(&deployment))
         .merge(twilio::twilio_routes())
         .merge(comments::router())
         .merge(activity::router())
+        .merge(dropbox::router())
+        .merge(webhooks::router())
         .merge(admin_routes)
         .with_state(deployment);
+
+    // CORS configuration for external embeds (e.g., Jungleverse iframe)
+    let allowed_origins = std::env::var("ALLOWED_ORIGINS")
+        .unwrap_or_else(|_| "http://localhost:3001".to_string());
+
+    let cors = CorsLayer::new()
+        .allow_origin(
+            allowed_origins
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect::<Vec<_>>()
+        )
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
+        .allow_credentials(true);
 
     Router::new()
         .route("/", get(frontend::serve_frontend_root))
         .route("/{*path}", get(frontend::serve_frontend))
         .nest("/api", base_routes)
+        .layer(cors)
         .into_make_service()
 }

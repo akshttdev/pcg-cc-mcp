@@ -15,6 +15,7 @@ pub mod profiles;
 pub mod tools;
 pub mod twilio;
 pub mod voice;
+pub mod graph;
 pub mod workflow;
 
 #[cfg(test)]
@@ -33,6 +34,10 @@ pub use coordination::{CoordinationEvent, CoordinationManager};
 pub use executor::{
     BoardInfo, PodInfo, ProjectDetails, ProjectInfo, ProjectStats, TaskDefinition, TaskExecutor,
     TaskInfo,
+};
+pub use graph::{
+    GraphEdge, GraphNode, GraphNodeStatus, GraphPlan, GraphPlanStatus, GraphPlanSummary,
+    GraphOrchestrator,
 };
 pub use memory::{ConversationMemory, ExecutiveContext};
 pub use personality::{BritishPersonality, PersonalityConfig};

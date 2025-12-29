@@ -1,0 +1,1648 @@
+
+> pcg-dashboard-mcp@0.0.96 dev
+> export FRONTEND_PORT=$(node scripts/setup-dev-environment.js frontend) && export BACKEND_PORT=$(node scripts/setup-dev-environment.js backend) && concurrently "npm run backend:dev:watch" "npm run frontend:dev"
+
+[0] 
+[0] > pcg-dashboard-mcp@0.0.96 backend:dev:watch
+[0] > SQLX_OFFLINE=1 DISABLE_WORKTREE_ORPHAN_CLEANUP=1 RUST_LOG=debug cargo watch --env DATABASE_URL=${DATABASE_URL:-sqlite://dev_assets/db.sqlite} -w crates -x 'run --bin server'
+[0] 
+[1] 
+[1] > pcg-dashboard-mcp@0.0.96 frontend:dev
+[1] > cd frontend && npm run dev -- --port ${FRONTEND_PORT:-3000} --host
+[1] 
+[1] 
+[1] > pcg-dashboard@0.0.55 dev
+[1] > VITE_OPEN=${VITE_OPEN:-false} vite --port 3011 --host
+[1] 
+[1] Skipping Sentry Vite plugin (set DISABLE_SENTRY=false and provide SENTRY_* env vars to enable).
+[1] 
+[1]   VITE v5.4.21  ready in 364 ms
+[1] 
+[1]   ➜  Local:   http://localhost:3011/
+[1]   ➜  Network: http://192.168.0.210:3011/
+[0] [Running 'cargo run --bin server']
+[0] warning: use of deprecated method `chrono::DateTime::<Tz>::timestamp_nanos`: use `timestamp_nanos_opt()` instead
+[0]    --> crates/cinematics/src/lib.rs:108:41
+[0]     |
+[0] 108 |                     "seed": (Utc::now().timestamp_nanos() & 0xFFFF_FFFF) as i64,
+[0]     |                                         ^^^^^^^^^^^^^^^
+[0]     |
+[0]     = note: `#[warn(deprecated)]` on by default
+[0] 
+[0] warning: `cinematics` (lib) generated 1 warning
+[0]     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.25s
+[0]      Running `target/debug/server`
+[0] [2m2025-12-22T19:24:16.252934Z[0m [32m INFO[0m [2mexecutors::profile[0m[2m:[0m No user profiles.json found, using defaults only
+[0] [2m2025-12-22T19:24:16.259541Z[0m [32m INFO[0m [2mlocal_deployment[0m[2m:[0m Starting orphaned image cleanup...
+[0] [2m2025-12-22T19:24:16.259578Z[0m [34mDEBUG[0m [2mlocal_deployment::container[0m[2m:[0m Orphan worktree cleanup is disabled via DISABLE_WORKTREE_ORPHAN_CLEANUP environment variable
+[0] [2m2025-12-22T19:24:16.259893Z[0m [34mDEBUG[0m [2mservices::services::image[0m[2m:[0m No orphaned images found during cleanup
+[0] [2m2025-12-22T19:24:16.260780Z[0m [32m INFO[0m [2mlocal_deployment::container[0m[2m:[0m Starting periodic worktree cleanup...
+[0] [2m2025-12-22T19:24:16.261058Z[0m [34mDEBUG[0m [2mlocal_deployment::container[0m[2m:[0m Checking 0 active worktrees for external deletion...
+[0] [2m2025-12-22T19:24:16.262305Z[0m [32m INFO[0m [2mservices::services::pr_monitor[0m[2m:[0m Starting PR monitoring service with interval 60s
+[0] [2m2025-12-22T19:24:16.262354Z[0m [32m INFO[0m [2mservices::services::file_search_cache[0m[2m:[0m Starting file search cache warming...
+[0] [2m2025-12-22T19:24:16.262850Z[0m [32m INFO[0m [2mservices::services::file_search_cache[0m[2m:[0m No active projects found, skipping cache warming
+[0] [2m2025-12-22T19:24:16.262882Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:24:16.263471Z[0m [34mDEBUG[0m [2mlocal_deployment::container[0m[2m:[0m No expired worktrees found
+[0] [2m2025-12-22T19:24:16.270544Z[0m [34mDEBUG[0m [2mutils::port_file[0m[2m:[0m Writing port 3012 to "/tmp/duck-kanban/duck-kanban.port"
+[0] [2m2025-12-22T19:24:16.270786Z[0m [32m INFO[0m [2mserver[0m[2m:[0m Server running on http://127.0.0.1:3012
+[0] [2m2025-12-22T19:24:16.623205Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:20.687906Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:21.642759Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:26.679138Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:26.692033Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:31.698105Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:32.687999Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:36.725149Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:38.667749Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:41.751334Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:44.667682Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:46.760442Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:50.667838Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:51.769434Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:57.545404Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:24:58.459300Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[1] 12:24:58 PM [vite] ws proxy error:
+[1] Error: This socket has been ended by the other party
+[1]     at genericNodeError (node:internal/errors:983:15)
+[1]     at wrappedFn (node:internal/errors:537:14)
+[1]     at Socket.writeAfterFIN [as write] (node:net:580:14)
+[1]     at Socket.ondata (node:internal/streams/readable:1009:22)
+[1]     at Socket.emit (node:events:518:28)
+[1]     at addChunk (node:internal/streams/readable:561:12)
+[1]     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+[1]     at Readable.push (node:internal/streams/readable:392:5)
+[1]     at TCP.onStreamRead (node:internal/stream_base_commons:189:23)
+[0] [2m2025-12-22T19:25:00.491333Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:25:00.503021Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[1] 12:25:00 PM [vite] ws proxy socket error:
+[1] Error: read ECONNRESET
+[1]     at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[0] [2m2025-12-22T19:25:03.669820Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12[1] 12:29:12 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:12 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:18 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:18 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:24 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:24 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:30 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:30 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:36 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:36 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:42 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:42 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:48 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:48 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:54 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:29:54 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:00 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:00 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:06 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:06 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:12 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:12 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:18 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:18 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:24 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:24 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:30 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:30 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:36 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:36 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:42 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:42 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:48 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:48 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:54 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:30:54 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:00 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:01 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:07 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:07 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:13 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:14 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:20 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:22 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:27 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:30 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:36 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:40 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:44 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:49 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:49 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:55 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:58 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:01 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:05 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:07 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:13 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:14 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:19 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:37 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:38 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:43 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:44 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:49 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:50 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:55 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:56 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] npm run frontend:dev exited with code 143
+mit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:22 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:27 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:30 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:36 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:40 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:44 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:49 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:49 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:55 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:31:58 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:01 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:05 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:07 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:13 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:14 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:32:19 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:37 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:38 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:43 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:44 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:49 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:50 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:55 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] 12:35:56 PM [vite] ws proxy error:
+[1] Error: socket hang up
+[1]     at Socket.socketOnEnd (node:_http_client:542:25)
+[1]     at Socket.emit (node:events:530:35)
+[1]     at endReadableNT (node:internal/streams/readable:1698:12)
+[1]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[1] npm run frontend:dev exited with code 143
+ite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:15 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0] [Running 'cargo run --bin server']
+[0] warning: use of deprecated method `chrono::DateTime::<Tz>::timestamp_nanos`: use `timestamp_nanos_opt()` instead
+[0]    --> crates/cinematics/src/lib.rs:108:41
+[0]     |
+[0] 108 |                     "seed": (Utc::now().timestamp_nanos() & 0xFFFF_FFFF) as i64,
+[0]     |                                         ^^^^^^^^^^^^^^^
+[0]     |
+[0]     = note: `#[warn(deprecated)]` on by default
+[0] 
+[0] warning: `cinematics` (lib) generated 1 warning
+[0]    Compiling nora v0.0.96 (/home/spaceterminal/topos/pcg-cc-mcp/crates/nora)
+[1] 12:31:20 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0]    Compiling server v0.0.96 (/home/spaceterminal/topos/pcg-cc-mcp/crates/server)
+[1] 12:31:21 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:22 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:24 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:27 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:27 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0] [Running 'cargo run --bin server']
+[0] warning: use of deprecated method `chrono::DateTime::<Tz>::timestamp_nanos`: use `timestamp_nanos_opt()` instead
+[0]    --> crates/cinematics/src/lib.rs:108:41
+[0]     |
+[0] 108 |                     "seed": (Utc::now().timestamp_nanos() & 0xFFFF_FFFF) as i64,
+[0]     |                                         ^^^^^^^^^^^^^^^
+[0]     |
+[0]     = note: `#[warn(deprecated)]` on by default
+[0] 
+[0] warning: `cinematics` (lib) generated 1 warning
+[0]    Compiling nora v0.0.96 (/home/spaceterminal/topos/pcg-cc-mcp/crates/nora)
+[1] 12:31:30 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:31 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0]    Compiling server v0.0.96 (/home/spaceterminal/topos/pcg-cc-mcp/crates/server)
+[1] 12:31:35 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:36 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0] [Running 'cargo run --bin server']
+[0] warning: use of deprecated method `chrono::DateTime::<Tz>::timestamp_nanos`: use `timestamp_nanos_opt()` instead
+[0]    --> crates/cinematics/src/lib.rs:108:41
+[0]     |
+[0] 108 |                     "seed": (Utc::now().timestamp_nanos() & 0xFFFF_FFFF) as i64,
+[0]     |                                         ^^^^^^^^^^^^^^^
+[0]     |
+[0]     = note: `#[warn(deprecated)]` on by default
+[0] 
+[0] warning: `cinematics` (lib) generated 1 warning
+[0]    Compiling nora v0.0.96 (/home/spaceterminal/topos/pcg-cc-mcp/crates/nora)
+[0] error: unknown start of token: \
+[0]     --> crates/nora/src/agent.rs:1554:131
+[0]      |
+[0] 1554 |                 r"(?ix)(?:start|create|spin\s+up|launch|open)\s+(?:a\s+)?(?:new\s+)?project(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?)"
+[0]      |                                                                                                                                   ^
+[0] 
+[0] error: unknown start of token: \
+[0]     --> crates/nora/src/agent.rs:1560:109
+[0]      |
+[0] 1560 | ...   r"(?ix)(?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([...
+[0]      |                                                                                                   ^
+[0] 
+[0] error: unknown character escape: `s`
+[0]     --> crates/nora/src/agent.rs:1560:120
+[0]      |
+[0] 1560 | ...task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                                          ^ unknown character escape
+[0]      |
+[0]      = help: for more information, visit <https://doc.rust-lang.org/reference/tokens.html#literals>
+[0] help: if you meant to write a literal backslash (perhaps escaping in a regular expression), consider a raw string literal
+[0]      |
+[0] 1560 |                 r"(?ix)(?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)r"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                                                                                                  +
+[0] 
+[0] error: unknown character escape: `s`
+[0]     --> crates/nora/src/agent.rs:1560:126
+[0]      |
+[0] 1560 | ...:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                                          ^ unknown character escape
+[0]      |
+[0]      = help: for more information, visit <https://doc.rust-lang.org/reference/tokens.html#literals>
+[0] help: if you meant to write a literal backslash (perhaps escaping in a regular expression), consider a raw string literal
+[0]      |
+[0] 1560 |                 r"(?ix)(?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)r"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                                                                                                  +
+[0] 
+[0] error: unknown character escape: `s`
+[0]     --> crates/nora/src/agent.rs:1560:139
+     |
+[0] 1560 | ...|named))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                                          ^ unknown character escape
+[0]      |
+[0]      = help: for more information, visit <https://doc.rust-lang.org/reference/tokens.html#literals>
+[0] help: if you meant to write a literal backslash (perhaps escaping in a regular expression), consider a raw string literal
+[0]      |
+[0] 1560 |                 r"(?ix)(?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)r"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                                                                                                  +
+[0] 
+[0] error: unknown start of token: \
+[0]     --> crates/nora/src/agent.rs:1560:156
+[0]      |
+[0] 1560 | ...d))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                                                      ^
+[0] 
+[0] error: expected one of `,`, `.`, `;`, `?`, `]`, or an operator, found reserved identifier `_`
+[0]     --> crates/nora/src/agent.rs:1554:130
+[0]      |
+[0] 1554 |                 r"(?ix)(?:start|create|spin\s+up|launch|open)\s+(?:a\s+)?(?:new\s+)?project(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?)"
+[0]      |                                                                                                                                  ^ expected one of `,`, `.`, `;`, `?`, `]`, or an operator
+[0] 
+[0] error: expected one of `)`, `,`, `.`, `?`, or an operator, found `"?)"`
+[0]     --> crates/nora/src/agent.rs:1554:136
+[0]      |
+[0] 1554 |                 r"(?ix)(?:start|create|spin\s+up|launch|open)\s+(?:a\s+)?(?:new\s+)?project(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?)"
+[0]      |                                                                                                                                        -^^^
+[0]      |                                                                                                                                        |
+[0]      |                                                                                                                                        expected one of `)`, `,`, `.`, `?`, or an operator
+[0]      |                                                                                                                                        help: missing `,`
+[0] 
+[0] error: expected one of `,`, `.`, `;`, `?`, `]`, or an operator, found reserved identifier `_`
+[0]     --> crates/nora/src/agent.rs:1560:108
+[0]      |
+[0] 1560 | ...(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                          ^ expected one of `,`, `.`, `;`, `?`, `]`, or an operator
+[0] 
+[0] error: expected one of `,`, `.`, `;`, `?`, `]`, or an operator, found reserved identifier `_`
+[0]     --> crates/nora/src/agent.rs:1560:155
+[0]      |
+[0] 1560 | ...?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                          ^ expected one of `,`, `.`, `;`, `?`, `]`, or an operator
+[0] 
+[0] error: expected one of `)`, `,`, `.`, `?`, or an operator, found `"?(?:\s+for\s+(?:project\s+)??"`
+[0]     --> crates/nora/src/agent.rs:1560:114
+[0]      |
+[0] 1560 | ...med))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                              -^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[0]      |                              |
+[0]      |                              expected one of `)`, `,`, `.`, `?`, or an operator
+[0]      |                              help: missing `,`
+[0] 
+[0] error: expected one of `)`, `,`, `.`, `?`, or an operator, found `"?)?)"`
+[0]     --> crates/nora/src/agent.rs:1560:161
+[0]      |
+[0] 1560 | ...or\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                          -^^^^^
+[0]      |                                          |
+[0]      |                                          expected one of `)`, `,`, `.`, `?`, or an operator
+[0]      |                                          help: missing `,`
+[0] 
+[1] 12:31:39 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0] error[E0061]: this function takes 1 argument but 2 arguments were supplied
+[0]     --> crates/nora/src/agent.rs:1553:13
+[0]      |
+[0] 1553 |             Regex::new(
+[0]      |             ^^^^^^^^^^
+[0] 1554 |                 r"(?ix)(?:start|create|spin\s+up|launch|open)\s+(?:a\s+)?(?:new\s+)?project(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?)"
+[0]      |                 ----------------------------------------------------------------------------------------------------------------------- unexpected argument #1
+[0]      |
+[0] note: associated function defined here
+[0]     --> /home/spaceterminal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/regex-1.12.2/src/regex/string.rs:180:12
+[0]      |
+[0]  180 |     pub fn new(re: &str) -> Result<Regex, Error> {
+[0]      |            ^^^
+[0] help: remove the extra argument
+[0]      |
+[0] 1554 -                 r"(?ix)(?:start|create|spin\s+up|launch|open)\s+(?:a\s+)?(?:new\s+)?project(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?)"
+[0] 1554 +                 "?)"
+[0]      |
+[0] 
+[0] error[E0061]: this function takes 1 argument but 3 arguments were supplied
+[0]     --> crates/nora/src/agent.rs:1559:13
+[0]      |
+[0] 1559 | ...   Regex::new(
+[0]      |       ^^^^^^^^^^
+[0] 1560 | ...       r"(?ix)(?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0]      |                                                                                                            ----------------------------------------------------- unexpected argument #3 of type `&'static str`
+[0]      |                                                                                                            |
+     |                                                                                                            unexpected argument #2
+[0]      |
+[0] note: associated function defined here
+[0]     --> /home/spaceterminal/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/regex-1.12.2/src/regex/string.rs:180:12
+[0]      |
+[0]  180 |     pub fn new(re: &str) -> Result<Regex, Error> {
+[0]      |            ^^^
+[0] help: remove the extra arguments
+[0]      |
+[0] 1560 -                 r"(?ix)(?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"
+[0] 1560 +                 r"(?ix)(?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)
+[0]      |
+[0] 
+[0] For more information about this error, try `rustc --explain E0061`.
+[0] error: could not compile `nora` (lib) due to 14 previous errors
+[0] [Finished running. Exit status: 101]
+[1] 12:31:40 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:42 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:44 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:46 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:49 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:49 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:51 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:53 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0] [Running 'cargo run --bin server']
+[0] warning: use of deprecated method `chrono::DateTime::<Tz>::timestamp_nanos`: use `timestamp_nanos_opt()` instead
+[0]    --> crates/cinematics/src/lib.rs:108:41
+[0]     |
+[0] 108 |                     "seed": (Utc::now().timestamp_nanos() & 0xFFFF_FFFF) as i64,
+[0]     |                                         ^^^^^^^^^^^^^^^
+[0]     |
+[0]     = note: `#[warn(deprecated)]` on by default
+[0] 
+[0] warning: `cinematics` (lib) generated 1 warning
+[0]    Compiling nora v0.0.96 (/home/spaceterminal/topos/pcg-cc-mcp/crates/nora)
+[1] 12:31:55 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0]    Compiling server v0.0.96 (/home/spaceterminal/topos/pcg-cc-mcp/crates/server)
+[1] 12:31:58 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:31:58 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:01 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:02 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:04 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:05 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:07 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:11 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:13 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:14 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:14 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:18 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:32:19 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0]     Finished `dev` profile [unoptimized + debuginfo] target(s) in 25.84s
+[0]      Running `target/debug/server`
+[0] [2m2025-12-22T19:32:20.519007Z[0m [32m INFO[0m [2mexecutors::profile[0m[2m:[0m No user profiles.json found, using defaults only
+[0] [2m2025-12-22T19:32:20.548499Z[0m [32m INFO[0m [2mlocal_deployment[0m[2m:[0m Starting orphaned image cleanup...
+[0] [2m2025-12-22T19:32:20.550953Z[0m [34mDEBUG[0m [2mservices::services::image[0m[2m:[0m No orphaned images found during cleanup
+[0] [2m2025-12-22T19:32:20.551382Z[0m [34mDEBUG[0m [2mlocal_deployment::container[0m[2m:[0m Orphan worktree cleanup is disabled via DISABLE_WORKTREE_ORPHAN_CLEANUP environment variable
+[0] [2m2025-12-22T19:32:20.552567Z[0m [32m INFO[0m [2mlocal_deployment::container[0m[2m:[0m Starting periodic worktree cleanup...
+[0] [2m2025-12-22T19:32:20.552861Z[0m [34mDEBUG[0m [2mlocal_deployment::container[0m[2m:[0m Checking 0 active worktrees for external deletion...
+[0] [2m2025-12-22T19:32:20.555136Z[0m [34mDEBUG[0m [2mlocal_deployment::container[0m[2m:[0m No expired worktrees found
+[0] [2m2025-12-22T19:32:20.558640Z[0m [32m INFO[0m [2mservices::services::pr_monitor[0m[2m:[0m Starting PR monitoring service with interval 60s
+[0] [2m2025-12-22T19:32:20.560033Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:32:20.561325Z[0m [32m INFO[0m [2mservices::services::file_search_cache[0m[2m:[0m Starting file search cache warming...
+[0] [2m2025-12-22T19:32:20.566857Z[0m [32m INFO[0m [2mservices::services::file_search_cache[0m[2m:[0m No active projects found, skipping cache warming
+[0] [2m2025-12-22T19:32:20.582768Z[0m [34mDEBUG[0m [2mutils::port_file[0m[2m:[0m Writing port 3012 to "/tmp/duck-kanban/duck-kanban.port"
+[0] [2m2025-12-22T19:32:20.583158Z[0m [32m INFO[0m [2mserver[0m[2m:[0m Server running on http://127.0.0.1:3012
+[0] [2m2025-12-22T19:32:20.819479Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:21.156628Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:25.672976Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:26.197010Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:26.949511Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:29.486766Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:31.322787Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:31.666426Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:32.671361Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:34.501838Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:36.342600Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:37.667335Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:38.670598Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:39.515722Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:41.354160Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:43.676013Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:44.525283Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:44.670836Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:46.360769Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:49.534374Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:49.687384Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:50.671411Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:51.391464Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:54.564020Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:55.670810Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:56.413708Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:56.669143Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:32:59.574250Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:01.439009Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:01.668992Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:02.668045Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:04.593714Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:06.448779Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:07.667704Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:08.669052Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:09.606565Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:11.487193Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:13.668346Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:14.618512Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:14.668283Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:16.494717Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:19.626015Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:19.668178Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:20.564082Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:33:20.668699Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:21.504029Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:24.632733Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:25.668358Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:26.511196Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:26.668428Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:29.641264Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:31.522341Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:31.667691Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:32.669223Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:34.647677Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:36.529482Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:37.668097Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:38.670080Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:39.654264Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:41.539870Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:43.666967Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:44.660960Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:44.667628Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:46.549932Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:49.668328Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:49.668328Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:50.667735Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:51.557355Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:54.678292Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:55.668374Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:56.564220Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:56.667401Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:33:59.685112Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:01.570922Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:01.668284Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:02.667496Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:04.692793Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:06.578043Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:07.667243Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:08.667799Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:09.700697Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:11.586733Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:13.668500Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:14.671304Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:14.718468Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:16.595519Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:19.676655Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:19.738151Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:20.563321Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:34:20.671688Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:21.609161Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:24.750549Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:25.671091Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:26.626758Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:26.669839Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:29.760035Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:31.637933Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:31.667756Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:32.670273Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:34.768731Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:36.645453Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:37.669558Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:38.670033Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:39.777470Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:41.656236Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:43.668073Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:44.672136Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:44.788345Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:46.669926Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:49.670260Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:49.806889Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:50.669867Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:51.679780Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:54.818346Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:55.668798Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:56.668539Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:56.691678Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:34:59.829348Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:01.671509Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:01.706561Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:02.668924Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:04.841726Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:06.724711Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:07.671540Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:08.668590Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:09.854977Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:11.744911Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:13.666869Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:14.668068Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:14.864562Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:16.755562Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:19.668099Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:19.871496Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:20.560914Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:35:20.666784Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:21.765067Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:24.879132Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:25.667256Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:26.667145Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:26.771717Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:29.885925Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:31.666319Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:31.780404Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:35:32.669481Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [Running 'cargo run --bin server']
+[0]    Compiling cinematics v0.1.0 (/home/spaceterminal/topos/pcg-cc-mcp/crates/cinematics)
+[1] 12:35:34 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0]    Compiling nora v0.0.96 (/home/spaceterminal/topos/pcg-cc-mcp/crates/nora)
+[1] 12:35:36 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0]    Compiling server v0.0.96 (/home/spaceterminal/topos/pcg-cc-mcp/crates/server)
+[1] 12:35:37 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:38 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:39 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:41 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:43 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:44 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:44 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:46 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:49 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:49 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:50 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:51 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:54 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:55 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:56 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[1] 12:35:56 PM [vite] ws proxy error:
+[1] AggregateError [ECONNREFUSED]: 
+[1]     at internalConnectMultiple (node:net:1139:18)
+[1]     at afterConnectMultiple (node:net:1714:7)
+[0]     Finished `dev` profile [unoptimized + debuginfo] target(s) in 26.17s
+[0]      Running `target/debug/server`
+[0] [2m2025-12-22T19:35:59.888913Z[0m [32m INFO[0m [2mexecutors::profile[0m[2m:[0m No user profiles.json found, using defaults only
+[0] [2m2025-12-22T19:35:59.895709Z[0m [32m INFO[0m [2mlocal_deployment[0m[2m:[0m Starting orphaned image cleanup...
+[0] [2m2025-12-22T19:35:59.895777Z[0m [34mDEBUG[0m [2mlocal_deployment::container[0m[2m:[0m Orphan worktree cleanup is disabled via DISABLE_WORKTREE_ORPHAN_CLEANUP environment variable
+[0] [2m2025-12-22T19:35:59.896196Z[0m [34mDEBUG[0m [2mservices::services::image[0m[2m:[0m No orphaned images found during cleanup
+[0] [2m2025-12-22T19:35:59.896976Z[0m [32m INFO[0m [2mlocal_deployment::container[0m[2m:[0m Starting periodic worktree cleanup...
+[0] [2m2025-12-22T19:35:59.897365Z[0m [34mDEBUG[0m [2mlocal_deployment::container[0m[2m:[0m Checking 0 active worktrees for external deletion...
+[0] [2m2025-12-22T19:35:59.898945Z[0m [32m INFO[0m [2mservices::services::pr_monitor[0m[2m:[0m Starting PR monitoring service with interval 60s
+[0] [2m2025-12-22T19:35:59.899033Z[0m [32m INFO[0m [2mservices::services::file_search_cache[0m[2m:[0m Starting file search cache warming...
+[0] [2m2025-12-22T19:35:59.899670Z[0m [32m INFO[0m [2mservices::services::file_search_cache[0m[2m:[0m No active projects found, skipping cache warming
+[0] [2m2025-12-22T19:35:59.900036Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:35:59.900047Z[0m [34mDEBUG[0m [2mlocal_deployment::container[0m[2m:[0m No expired worktrees found
+[0] [2m2025-12-22T19:35:59.908122Z[0m [34mDEBUG[0m [2mutils::port_file[0m[2m:[0m Writing port 3012 to "/tmp/duck-kanban/duck-kanban.port"
+[0] [2m2025-12-22T19:35:59.908966Z[0m [32m INFO[0m [2mserver[0m[2m:[0m Server running on http://127.0.0.1:3012
+[0] [2m2025-12-22T19:35:59.912458Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:01.688352Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:01.809905Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:02.681181Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:04.925193Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:06.859400Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:07.676232Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:08.681959Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:09.981456Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:11.872682Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:13.682749Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:14.683612Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:15.063734Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:16.893436Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:19.688996Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:20.093301Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:20.687384Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:21.908444Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:25.119072Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:25.668226Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:26.672873Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:26.934517Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:30.133020Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:31.667305Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:31.945873Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:32.671521Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:35.148018Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:36.957659Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:37.670372Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:38.670410Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:40.169656Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:41.985150Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:43.667475Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:44.667536Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:45.179329Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:46.994080Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:49.667665Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:50.186506Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:50.669128Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:52.001492Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:55.195748Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:55.668063Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:56.667824Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:57.013606Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:36:59.901060Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:37:00.205065Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:01.666583Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:02.021666Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:02.667029Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:05.218804Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:07.028574Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:07.666230Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:08.667133Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:10.225331Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:12.036715Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:13.666608Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:14.667689Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:15.233930Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:17.043631Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:19.666528Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:20.240817Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:20.666772Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:22.052208Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:25.250407Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:25.666492Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:26.667503Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:27.058860Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:30.257520Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:31.666646Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:32.067649Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:32.667865Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:35.266145Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:37.074151Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:37.666539Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:38.667828Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:40.272811Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:42.080817Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:43.667970Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:44.667140Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:45.281956Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:47.089568Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:49.668030Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:50.288776Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:50.667713Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:52.100605Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:55.301842Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:55.667893Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:56.670921Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:57.108948Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:37:59.901273Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:38:00.315893Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:01.671934Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:02.124160Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:02.670786Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:05.329921Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:07.144349Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:07.678828Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:08.673778Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:10.342055Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:12.156246Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:13.667363Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:14.668440Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:15.350737Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:17.167237Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:19.675584Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:20.366206Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:20.673459Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:22.180935Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:25.382901Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:25.688349Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:26.680955Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:27.194474Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:30.405584Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:31.682062Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:32.209352Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:32.683088Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:35.422732Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:37.237697Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:37.677268Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:38.684876Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:40.449839Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:42.262384Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:43.681608Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:44.675647Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:45.464737Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:47.276749Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:49.680277Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:50.490757Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:50.682520Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:52.289431Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:55.505066Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:55.668303Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:56.668413Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:57.300339Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:38:59.901917Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:39:00.514941Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:01.667822Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:02.307463Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:02.668139Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:05.521793Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:07.317739Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:07.669875Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:08.670959Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:10.529377Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:12.329481Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:13.672509Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:14.672475Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:15.540178Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:17.346555Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:19.678946Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:20.551480Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:20.672944Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:22.365100Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:25.562568Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:25.668556Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:26.669467Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:27.384943Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:30.571725Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:31.667579Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:32.394735Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:32.667184Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:35.588319Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:37.403931Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:37.674120Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:38.678256Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:40.609289Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:42.448297Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:43.674001Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:44.674377Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:45.629054Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:47.476854Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:49.675349Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:50.648834Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:50.678554Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:52.502057Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:55.668200Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:55.680373Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:56.679399Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:57.519698Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:39:59.900571Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:40:00.700715Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:01.668034Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:02.530439Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:02.66750[1] npm run frontend:dev exited with code 143
+[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:05.708748Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:07.538221Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:07.667999Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:08.668362Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:10.718530Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:12.544874Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:13.668846Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:14.669272Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:15.727371Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:17.558104Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:19.681605Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:20.678202Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:20.739191Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:22.582917Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:25.678663Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:25.761269Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:26.677690Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:27.595817Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:30.777144Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:31.677782Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:32.623885Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:32.681605Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:35.797997Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:37.644052Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:37.667154Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:38.670862Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:40.806904Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:42.651347Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:43.667135Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:44.668862Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:45.814893Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:47.659597Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:49.668421Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:50.668019Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:50.822517Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:52.672144Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:55.666983Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:55.830120Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:56.667713Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:57.678812Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:40:59.901149Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:41:00.838179Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:01.666632Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:02.667834Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:02.686076Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:05.845560Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:07.666782Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:07.692661Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:08.667131Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:10.853617Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:12.702253Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:13.666633Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:14.666773Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:15.860609Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:17.708814Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:19.666725Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:20.667809Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:20.869132Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:22.718620Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:25.666681Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:25.876233Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:26.667508Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:27.725419Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:30.884593Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:31.666540Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:32.666902Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:32.732308Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:35.892098Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:37.666697Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:37.739629Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:38.668617Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:40.900637Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:42.749046Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:43.666783Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:44.667534Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:45.911532Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:47.755641Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:49.666737Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:50.667999Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:50.919348Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:52.763461Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:55.667791Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:55.927846Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:56.667203Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:57.771338Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:41:59.900354Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:42:00.934635Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:01.666686Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:02.667369Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:02.780052Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:05.944845Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:07.667127Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:07.787913Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:08.668103Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:10.952470Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:12.795641Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:13.667063Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:14.667422Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:15.959462Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:17.802338Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:19.666850Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:20.667747Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:20.965960Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:22.809473Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:25.667316Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:25.976051Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:26.668478Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:27.816767Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:30.983006Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:31.665989Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:32.667224Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:32.823464Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:35.990984Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:37.666909Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:37.831070Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:38.667906Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:40.997650Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:42.837467Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:43.667911Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:44.668003Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:46.007092Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:47.844462Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:49.665994Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:50.666834Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:51.014260Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:52.851889Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:55.667274Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:56.021565Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:56.667517Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:57.860821Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:42:59.900327Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:43:01.033431Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:01.671336Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:02.666655Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:02.867381Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:06.040908Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:07.666954Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:07.876453Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:08.666924Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:11.049146Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:12.883083Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:13.666508Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:14.666836Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:16.057407Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:17.891471Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:19.668082Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:20.666863Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:21.066240Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:22.898821Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:25.666735Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:26.073029Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:26.667744Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:27.908309Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:31.079607Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:31.666284Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:32.667632Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:32.915006Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:36.086334Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:37.666594Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:37.923005Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:38.667293Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:41.095489Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:42.930004Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:43.666899Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:44.667156Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:46.102393Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:47.939844Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:49.666593Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:50.667200Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:51.110848Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:52.946928Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:55.666772Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:56.117783Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:56.667472Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:57.954568Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:43:59.900771Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:44:01.126778Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:01.666367Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:02.667163Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:02.962431Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:06.133431Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:07.666472Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:07.969839Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:08.666865Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:11.142074Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:12.976611Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:13.666522Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:14.667527Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:16.148946Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:17.985129Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:19.667339Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:20.666851Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:21.157429Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:22.992477Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:25.666471Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:26.164135Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:26.667298Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:28.001983Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:31.173242Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:31.666480Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:32.667497Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:33.008651Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:36.179982Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:37.666808Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:38.017051Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:38.666966Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:41.189459Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:43.023995Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:43.666550Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:44.667495Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:46.195852Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:48.032374Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:49.666285Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:50.667316Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:51.204425Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:53.038880Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:55.666494Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:56.210589Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:56.667034Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:58.047551Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:44:59.900916Z[0m [34mDEBUG[0m [2mservices::services::pr_monitor[0m[2m:[0m No open PRs to check
+[0] [2m2025-12-22T19:45:01.219446Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:01.666667Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:02.667086Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:03.053925Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:06.226289Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:07.666089Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:08.060562Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:08.667042Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:11.237040Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:13.066951Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[1] 12:45:13 PM [vite] ws proxy error:
+[1] Error: This socket has been ended by the other party
+[1]     at genericNodeError (node:internal/errors:983:15)
+[1]     at wrappedFn (node:internal/errors:537:14)
+[1]     at Socket.writeAfterFIN [as write] (node:net:580:14)
+[1]     at Socket.ondata (node:internal/streams/readable:1009:22)
+[1]     at Socket.emit (node:events:518:28)
+[1]     at addChunk (node:internal/streams/readable:561:12)
+[1]     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+[1]     at Readable.push (node:internal/streams/readable:392:5)
+[1]     at TCP.onStreamRead (node:internal/stream_base_commons:189:23)
+[0] [2m2025-12-22T19:45:13.666321Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:14.666932Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:16.244433Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:18.073682Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:19.667902Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:20.668125Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] [2m2025-12-22T19:45:21.252261Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[0] Terminated
+[0] [2m2025-12-22T19:45:23.082842Z[0m [32m INFO[0m [2mserver::routes::nora[0m[2m:[0m Coordination events WebSocket connection established
+[1] Terminated
+[1] npm run frontend:dev exited with code 143

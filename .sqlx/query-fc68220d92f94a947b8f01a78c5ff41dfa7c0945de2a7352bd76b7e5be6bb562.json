@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                requester_id as \"requester_id!: String\",\n                nora_session_id,\n                title as \"title!: String\",\n                summary as \"summary!: String\",\n                script as \"script!: String\",\n                asset_ids as \"asset_ids: Json<Value>\",\n                duration_seconds as \"duration_seconds!: i64\",\n                fps as \"fps!: i64\",\n                style_tags as \"style_tags: Json<Value>\",\n                status as \"status!: CinematicBriefStatus\",\n                llm_notes as \"llm_notes!: String\",\n                render_payload as \"render_payload: Json<Value>\",\n                output_assets as \"output_assets: Json<Value>\",\n                metadata as \"metadata: Json<Value>\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            FROM cinematic_briefs\n            WHERE project_id = $1\n            ORDER BY created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "requester_id!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "nora_session_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "title!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "summary!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "script!: String",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "asset_ids: Json<Value>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "duration_seconds!: i64",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "fps!: i64",
+        "ordinal": 9,
+        "type_info": "Integer"
+      },
+      {
+        "name": "style_tags: Json<Value>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: CinematicBriefStatus",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "llm_notes!: String",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "render_payload: Json<Value>",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "output_assets: Json<Value>",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata: Json<Value>",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 16,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 17,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fc68220d92f94a947b8f01a78c5ff41dfa7c0945de2a7352bd76b7e5be6bb562"
+}
