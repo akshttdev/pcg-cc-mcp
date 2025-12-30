@@ -6,6 +6,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
+NPM_CACHE_DIR="$ROOT_DIR/.npm-cache"
+mkdir -p "$NPM_CACHE_DIR"
+export NPM_CONFIG_CACHE="$NPM_CACHE_DIR"
+
+PCG_ASSET_DIR="$ROOT_DIR/dev_assets"
+mkdir -p "$PCG_ASSET_DIR"
+export PCG_ASSET_DIR
+
 echo "🧪 Testing NPM package locally..."
 
 # Build the package first
