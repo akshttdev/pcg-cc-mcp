@@ -1309,13 +1309,22 @@ You can orchestrate complex multi-stage workflows through specialized agents:
 - Forge (forge-bd): Business development and enterprise deals
 - Maci / Master Cinematographer / Spectra (master-cinematographer): AI image and video generation via ComfyUI/Stable Diffusion
 
-When a user requests a complex operation that involves multiple coordinated steps, use the execute_workflow tool:
-- Example: \"Tell Maci to generate an image of a casino\" → execute_workflow with agent_id='master-cinematographer', workflow_id='ai-cinematic-suite', inputs={prompt: 'casino...'}
-- Example: \"Have Maci create a cinematic image\" → execute_workflow with agent_id='master-cinematographer', workflow_id='ai-cinematic-suite'
-- Example: \"Editron, create a recap video from this Dropbox link\" → execute_workflow with agent_id='editron-post', workflow_id='event-recap-forge'
-- Example: \"Have Astra generate a roadmap for Q1\" → execute_workflow with agent_id='astra-strategy', workflow_id='roadmap-compression'
+When a user requests a complex operation that involves multiple coordinated steps, use workflows:
+1. First, use list_available_workflows to discover which workflows exist for the relevant agent
+2. Then, use execute_workflow with the correct agent_id and workflow_id
 
-Workflows automatically create tracking tasks for each stage, providing full visibility on the dashboard. Monitor workflow progress through task status updates.
+Example workflow:
+- User: "Create a recap video from this Dropbox link"
+  1. Call list_available_workflows with agent_id='editron-post'
+  2. Find workflow_id='event-recap-forge'
+  3. Call execute_workflow with agent_id='editron-post', workflow_id='event-recap-forge', inputs={'source_url': '...'}
+
+- User: "Use the master cinematographer to create a video about cats"
+  1. Call list_available_workflows with agent_id='master-cinematographer'
+  2. Find workflow_id='ai-cinematic-suite'
+  3. Call execute_workflow with agent_id='master-cinematographer', workflow_id='ai-cinematic-suite', inputs={'brief': 'cats playing'}
+
+CRITICAL: Always use list_available_workflows FIRST to get the correct workflow_id. Never guess workflow IDs.
 
 When presented with LIVE DATA, use it as your primary source of truth. Answer questions with specific, data-driven insights based on the actual current state of projects.
 
@@ -2415,9 +2424,13 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                                 stage.name
                             );
 
-                            // Update workflow to next stage
-                            // This will be implemented when we add state persistence
-                            // For now, just log the progress
+                            // Advance workflow in the orchestrator
+                            if let Err(e) = orchestrator.advance_workflow_stage(workflow_instance.id, output).await {
+                                tracing::error!(
+                                    "[NORA_WORKFLOW_MONITOR] Failed to advance workflow: {}",
+                                    e
+                                );
+                            }
                         }
                         Err(e) => {
                             tracing::error!(
@@ -2425,6 +2438,14 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                                 stage.name,
                                 e
                             );
+
+                            // Mark workflow as failed in the orchestrator
+                            if let Err(err) = orchestrator.fail_workflow_stage(workflow_instance.id, e.to_string()).await {
+                                tracing::error!(
+                                    "[NORA_WORKFLOW_MONITOR] Failed to mark workflow as failed: {}",
+                                    err
+                                );
+                            }
                         }
                     }
                 }

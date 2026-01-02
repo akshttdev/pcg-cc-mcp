@@ -15,6 +15,11 @@ impl WorkflowRouter {
         Self { agents }
     }
 
+    /// Get all agent profiles
+    pub fn get_agents(&self) -> &[AgentProfile] {
+        &self.agents
+    }
+
     /// Find the best matching agent and workflow for a user request
     pub fn route_request(
         &self,

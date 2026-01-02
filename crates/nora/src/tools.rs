@@ -140,6 +140,16 @@ pub enum NoraExecutiveTool {
         project_id: Option<String>,
         inputs: HashMap<String, serde_json::Value>,
     },
+    /// Cancel a running workflow
+    CancelWorkflow {
+        workflow_instance_id: String,
+    },
+    /// List all active workflow executions
+    ListActiveWorkflows,
+    /// List available workflows for all agents or a specific agent
+    ListAvailableWorkflows {
+        agent_id: Option<String>,
+    },
 
     /// Team Coordination
     CoordinateTeamMeeting {
@@ -844,7 +854,7 @@ impl ExecutiveTools {
                         "properties": {
                             "agent_id": {
                                 "type": "string",
-                                "description": "The agent identifier (e.g., 'editron-post' for video editing, 'master-cinematographer' for AI video generation, 'astra-strategy' for roadmaps, 'harbor-ops' for operations, 'pulse-intel' for analytics, 'vesper-comms' for communications, 'forge-bd' for business development)",
+                                "description": "The agent identifier (e.g., 'editron-post', 'master-cinematographer', 'astra-strategy', 'harbor-ops', 'pulse-intel', 'vesper-comms', 'forge-bd')",
                                 "enum": ["editron-post", "master-cinematographer", "astra-strategy", "harbor-ops", "pulse-intel", "vesper-comms", "forge-bd"]
                             },
                             "workflow_id": {
@@ -862,6 +872,50 @@ impl ExecutiveTools {
                             }
                         },
                         "required": ["agent_id", "workflow_id"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "cancel_workflow",
+                    "description": "Cancel a running workflow execution. Use this when a workflow is stuck, failing repeatedly, or needs to be stopped.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "workflow_instance_id": {
+                                "type": "string",
+                                "description": "The UUID of the workflow instance to cancel"
+                            }
+                        },
+                        "required": ["workflow_instance_id"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "list_active_workflows",
+                    "description": "List all currently running workflow executions with their status, agent, and instance IDs.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "list_available_workflows",
+                    "description": "List all available workflow templates that can be executed. Use this to discover which workflows exist for each agent before calling execute_workflow. Optionally filter by agent_id to see workflows for a specific agent.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "agent_id": {
+                                "type": "string",
+                                "description": "Optional agent ID to filter workflows (e.g., 'master-cinematographer', 'editron-post')"
+                            }
+                        }
                     }
                 }
             }),
@@ -1157,6 +1211,19 @@ impl ExecutiveTools {
                     project_id,
                     inputs,
                 })
+            }
+            "cancel_workflow" => {
+                let workflow_instance_id = arguments.get("workflow_instance_id")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::CancelWorkflow {
+                    workflow_instance_id,
+                })
+            }
+            "list_active_workflows" => {
+                Some(NoraExecutiveTool::ListActiveWorkflows)
+            }
+            "list_available_workflows" => {
+                let agent_id = arguments.get("agent_id").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::ListAvailableWorkflows { agent_id })
             }
             "send_email" => {
                 let recipients: Vec<String> = arguments
@@ -1766,6 +1833,9 @@ impl ExecutiveTools {
             NoraExecutiveTool::CreateTaskOnBoard { .. } => "create_task_on_board".to_string(),
             NoraExecutiveTool::AddTaskToBoard { .. } => "add_task_to_board".to_string(),
             NoraExecutiveTool::ExecuteWorkflow { .. } => "execute_workflow".to_string(),
+            NoraExecutiveTool::CancelWorkflow { .. } => "cancel_workflow".to_string(),
+            NoraExecutiveTool::ListActiveWorkflows => "list_active_workflows".to_string(),
+            NoraExecutiveTool::ListAvailableWorkflows { .. } => "list_available_workflows".to_string(),
 
             // Coordination
             NoraExecutiveTool::CoordinateTeamMeeting { .. } => {
@@ -2003,6 +2073,170 @@ impl ExecutiveTools {
                         "error": "Workflow orchestrator not available. Nora needs to be initialized with workflow support.",
                         "agent_id": agent_id,
                         "workflow_id": workflow_id,
+                    }))
+                }
+            }
+            NoraExecutiveTool::CancelWorkflow {
+                workflow_instance_id,
+            } => {
+                if let Some(orchestrator) = &self.workflow_orchestrator {
+                    tracing::info!(
+                        "[TOOL] Cancelling workflow instance: {}",
+                        workflow_instance_id
+                    );
+
+                    match Uuid::parse_str(&workflow_instance_id) {
+                        Ok(workflow_uuid) => {
+                            match orchestrator.cancel_workflow(workflow_uuid).await {
+                                Ok(_) => {
+                                    tracing::info!(
+                                        "[TOOL] Workflow cancelled successfully: {}",
+                                        workflow_instance_id
+                                    );
+                                    Ok(serde_json::json!({
+                                        "success": true,
+                                        "message": format!("Workflow instance {} has been cancelled", workflow_instance_id),
+                                        "workflow_instance_id": workflow_instance_id,
+                                    }))
+                                }
+                                Err(e) => {
+                                    tracing::error!("[TOOL] Failed to cancel workflow: {}", e);
+                                    Ok(serde_json::json!({
+                                        "success": false,
+                                        "error": format!("Failed to cancel workflow: {}", e),
+                                        "workflow_instance_id": workflow_instance_id,
+                                    }))
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("[TOOL] Invalid workflow instance ID: {}", e);
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Invalid workflow instance ID: {}", e),
+                                "workflow_instance_id": workflow_instance_id,
+                            }))
+                        }
+                    }
+                } else {
+                    tracing::warn!("[TOOL] Workflow orchestrator not available");
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Workflow orchestrator not available",
+                        "workflow_instance_id": workflow_instance_id,
+                    }))
+                }
+            }
+            NoraExecutiveTool::ListActiveWorkflows => {
+                if let Some(orchestrator) = &self.workflow_orchestrator {
+                    tracing::info!("[TOOL] Listing active workflows");
+
+                    let workflows = orchestrator.get_active_workflows().await;
+                    let workflow_list: Vec<serde_json::Value> = workflows
+                        .iter()
+                        .map(|w| {
+                            serde_json::json!({
+                                "workflow_instance_id": w.id.to_string(),
+                                "agent_id": w.agent_id,
+                                "workflow_id": w.workflow_id,
+                                "workflow_name": w.workflow.name,
+                                "current_stage": w.current_stage,
+                                "total_stages": w.workflow.stages.len(),
+                                "state": match &w.state {
+                                    crate::workflow::WorkflowState::Queued => "queued",
+                                    crate::workflow::WorkflowState::Running { .. } => "running",
+                                    crate::workflow::WorkflowState::Paused { .. } => "paused",
+                                    crate::workflow::WorkflowState::Failed { .. } => "failed",
+                                    crate::workflow::WorkflowState::Completed { .. } => "completed",
+                                },
+                                "started_at": w.started_at.to_rfc3339(),
+                            })
+                        })
+                        .collect();
+
+                    Ok(serde_json::json!({
+                        "success": true,
+                        "workflows": workflow_list,
+                        "count": workflow_list.len(),
+                    }))
+                } else {
+                    tracing::warn!("[TOOL] Workflow orchestrator not available");
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Workflow orchestrator not available",
+                    }))
+                }
+            }
+            NoraExecutiveTool::ListAvailableWorkflows { agent_id } => {
+                if let Some(orchestrator) = &self.workflow_orchestrator {
+                    tracing::info!("[TOOL] Listing available workflows - filter: {:?}", agent_id);
+
+                    if let Some(ref agent_filter) = agent_id {
+                        // Get workflows for specific agent
+                        let workflows = orchestrator.get_workflows_for_agent(agent_filter);
+
+                        if workflows.is_empty() {
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Agent '{}' not found or has no workflows", agent_filter),
+                            }))
+                        } else {
+                            let workflow_list: Vec<serde_json::Value> = workflows
+                                .iter()
+                                .map(|(workflow_id, name, objective)| {
+                                    serde_json::json!({
+                                        "workflow_id": workflow_id,
+                                        "workflow_name": name,
+                                        "objective": objective,
+                                        "agent_id": agent_filter,
+                                    })
+                                })
+                                .collect();
+
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "agent_id": agent_filter,
+                                "workflows": workflow_list,
+                                "count": workflow_list.len(),
+                            }))
+                        }
+                    } else {
+                        // Get all workflows for all agents
+                        let all_workflows = orchestrator.get_all_agent_workflows();
+                        let agents_list: Vec<serde_json::Value> = all_workflows
+                            .iter()
+                            .map(|(agent_id, codename, workflows)| {
+                                let workflow_list: Vec<serde_json::Value> = workflows
+                                    .iter()
+                                    .map(|(workflow_id, name, objective)| {
+                                        serde_json::json!({
+                                            "workflow_id": workflow_id,
+                                            "workflow_name": name,
+                                            "objective": objective,
+                                        })
+                                    })
+                                    .collect();
+
+                                serde_json::json!({
+                                    "agent_id": agent_id,
+                                    "codename": codename,
+                                    "workflows": workflow_list,
+                                    "workflow_count": workflow_list.len(),
+                                })
+                            })
+                            .collect();
+
+                        Ok(serde_json::json!({
+                            "success": true,
+                            "agents": agents_list,
+                            "total_agents": agents_list.len(),
+                        }))
+                    }
+                } else {
+                    tracing::warn!("[TOOL] Workflow orchestrator not available");
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Workflow orchestrator not available",
                     }))
                 }
             }

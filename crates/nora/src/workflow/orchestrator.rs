@@ -100,6 +100,31 @@ impl WorkflowOrchestrator {
         *self.db.write().await = Some(db);
     }
 
+    /// Get all agent profiles with their workflows
+    pub fn get_all_agent_workflows(&self) -> Vec<(String, String, Vec<(String, String, String)>)> {
+        self.router
+            .get_agents()
+            .iter()
+            .map(|agent| {
+                let workflows = agent
+                    .workflows
+                    .iter()
+                    .map(|w| (w.workflow_id.clone(), w.name.clone(), w.objective.clone()))
+                    .collect();
+                (agent.agent_id.clone(), agent.codename.clone(), workflows)
+            })
+            .collect()
+    }
+
+    /// Get workflows for a specific agent
+    pub fn get_workflows_for_agent(&self, agent_id: &str) -> Vec<(String, String, String)> {
+        let workflows = self.router.get_agent_workflows(agent_id);
+        workflows
+            .iter()
+            .map(|w| (w.workflow_id.clone(), w.name.clone(), w.objective.clone()))
+            .collect()
+    }
+
     pub async fn set_cinematics(&self, cinematics: Arc<CinematicsService>) {
         *self.cinematics.write().await = Some(cinematics);
     }
@@ -265,6 +290,77 @@ impl WorkflowOrchestrator {
             instance.updated_at = Utc::now();
 
             tracing::info!("[WORKFLOW_ORCHESTRATOR] Workflow {} cancelled", workflow_id);
+        }
+
+        Ok(())
+    }
+
+    /// Update workflow stage progress
+    pub async fn advance_workflow_stage(
+        &self,
+        workflow_id: Uuid,
+        stage_output: serde_json::Value,
+    ) -> Result<()> {
+        let mut workflows = self.active_workflows.write().await;
+
+        if let Some(instance) = workflows.get_mut(&workflow_id) {
+            let stage_name = instance.workflow.stages[instance.current_stage].name.clone();
+
+            // Store stage output
+            instance.context.set_stage_output(stage_name, stage_output);
+
+            // Advance to next stage
+            instance.current_stage += 1;
+            instance.updated_at = Utc::now();
+
+            // Check if workflow is complete
+            if instance.current_stage >= instance.workflow.stages.len() {
+                tracing::info!(
+                    "[WORKFLOW_ORCHESTRATOR] Workflow {} completed successfully",
+                    workflow_id
+                );
+                instance.completed_at = Some(Utc::now());
+                instance.state = WorkflowState::Completed {
+                    total_stages: instance.workflow.stages.len(),
+                    execution_time_ms: (Utc::now() - instance.started_at).num_milliseconds() as u64,
+                };
+            } else {
+                tracing::info!(
+                    "[WORKFLOW_ORCHESTRATOR] Workflow {} advanced to stage {}/{}",
+                    workflow_id,
+                    instance.current_stage + 1,
+                    instance.workflow.stages.len()
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Mark workflow stage as failed
+    pub async fn fail_workflow_stage(
+        &self,
+        workflow_id: Uuid,
+        error: String,
+    ) -> Result<()> {
+        let mut workflows = self.active_workflows.write().await;
+
+        if let Some(instance) = workflows.get_mut(&workflow_id) {
+            let stage_name = instance.workflow.stages[instance.current_stage].name.clone();
+
+            instance.state = WorkflowState::Failed {
+                error: error.clone(),
+                stage: instance.current_stage,
+                stage_name,
+            };
+            instance.updated_at = Utc::now();
+
+            tracing::error!(
+                "[WORKFLOW_ORCHESTRATOR] Workflow {} failed at stage {}: {}",
+                workflow_id,
+                instance.current_stage,
+                error
+            );
         }
 
         Ok(())
