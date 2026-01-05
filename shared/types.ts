@@ -20,7 +20,7 @@ export type CreateProjectPod = { project_id: string, title: string, description?
 
 export type UpdateProjectPod = { title?: string, description?: string, status?: string, lead?: string, };
 
-export type ProjectBoardType = "executive_assets" | "brand_assets" | "dev_assets" | "social_assets" | "custom" | "agent_flows" | "artifact_gallery" | "approval_queue" | "research_hub";
+export type ProjectBoardType = "default" | "custom";
 
 export type ProjectBoard = { id: string, project_id: string, name: string, slug: string, board_type: ProjectBoardType, description?: string | null, metadata?: string | null, created_at: string, updated_at: string, };
 
@@ -484,70 +484,6 @@ export type GraphEdge = { fromNode: string, toNode: string, };
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]?: JsonValue } | null;
 
-export type TrelloBoard = { id: string, project_id: string, trello_board_id: string, trello_board_name: string | null, sync_enabled: boolean, default_list_id: string | null, last_synced_at: string | null, created_at: string, updated_at: string, };
-
-export type CreateTrelloBoard = { project_id: string, trello_board_id: string, trello_board_name: string | null, default_list_id: string | null, };
-
-export type UpdateTrelloBoard = { trello_board_name: string | null, sync_enabled: boolean | null, default_list_id: string | null, };
-
-export type TrelloTaskLink = { id: string, task_id: string, trello_card_id: string, trello_board_id: string, trello_list_id: string | null, origin: string, sync_status: string, last_sync_error: string | null, trello_card_url: string | null, last_synced_at: string | null, created_at: string, updated_at: string, };
-
-export type CreateTrelloTaskLink = { task_id: string, trello_card_id: string, trello_board_id: string, trello_list_id: string | null, origin: TrelloOrigin, trello_card_url: string | null, };
-
-export type TrelloOrigin = "trello" | "pcg";
-
-export type TrelloSyncStatus = "synced" | "pending_push" | "pending_pull" | "error";
-
-export type TrelloBoardInfo = { id: string, name: string, desc: string | null, url: string, closed: boolean, };
-
-export type TrelloList = { id: string, name: string, closed: boolean, idBoard: string, pos: number | null, };
-
-export type TrelloCard = { id: string, name: string, desc: string | null, url: string, closed: boolean, idList: string, idBoard: string, labels: Array<TrelloLabel>, due: string | null, dueComplete: boolean | null, pos: number | null, };
-
-export type TrelloLabel = { id: string, name: string, color: string | null, };
-
-export type TrelloMember = { id: string, username: string, fullName: string | null, email: string | null, };
-
-export type TrelloCardUpdate = { name: string | null, desc: string | null, idList: string | null, closed: boolean | null, due: string | null, dueComplete: boolean | null, };
-
-export type TrelloServiceError = "NOT_CONFIGURED" | "AUTH_FAILED" | "RATE_LIMITED" | { "BOARD_NOT_FOUND": string } | { "CARD_NOT_FOUND": string } | { "LIST_NOT_FOUND": string } | { "API_ERROR": string };
-
-export type TrelloConfig = { 
-/**
- * Trello API key (from https://trello.com/app-key)
- */
-api_key: string | null, 
-/**
- * Trello token (OAuth token for user access)
- */
-token: string | null, 
-/**
- * Cached Trello username for display
- */
-username: string | null, 
-/**
- * Sync deliverables as comments on Trello cards
- */
-sync_deliverables_as_comments: boolean, 
-/**
- * Auto-import new cards when syncing
- */
-auto_import_new_cards: boolean, };
-
-export type VerifyCredentialsRequest = { api_key: string, token: string, };
-
-export type VerifyCredentialsResponse = { username: string, full_name: string | null, valid: boolean, };
-
-export type ImportCardsRequest = { list_id: string, project_id: string, board_id: string | null, };
-
-export type ImportResult = { imported_count: number, skipped_count: number, tasks: Array<TaskWithLink>, };
-
-export type TaskWithLink = { task: Task, trello_link: TrelloTaskLink, };
-
-export type PushTaskRequest = { list_id: string, board_id: string, };
-
-export type TrelloConnectionWithBoard = { connection: TrelloBoard, board_info: TrelloBoardInfo | null, };
-
 export type AirtableBase = { id: string, project_id: string, airtable_base_id: string, airtable_base_name: string | null, sync_enabled: boolean, default_table_id: string | null, last_synced_at: string | null, created_at: string, updated_at: string, };
 
 export type CreateAirtableBase = { project_id: string, airtable_base_id: string, airtable_base_name: string | null, default_table_id: string | null, };
@@ -599,6 +535,9 @@ sync_deliverables_as_comments: boolean,
  * Auto-import new records when syncing
  */
 auto_import_new_records: boolean, };
+
+// Stub type for backwards compatibility - Trello integration removed
+export type TrelloConfig = { api_key: string | null, api_token: string | null, };
 
 export type AirtableVerifyRequest = { token: string, };
 

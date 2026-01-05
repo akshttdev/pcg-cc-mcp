@@ -59,15 +59,12 @@ import {
   Loader2,
   Mail,
   Folder,
-  Users,
   Trash2,
   Plus,
   LayoutGrid,
-  Briefcase,
   CreditCard,
   Sparkles,
   Code2,
-  Megaphone,
   Palette,
   Share2,
   Shapes,
@@ -207,29 +204,13 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   } | null>(null);
   const assetCategoryOptions = ['file', 'transcript', 'link', 'note'] as const;
   const assetScopeOptions = ['owner', 'client', 'team', 'public'] as const;
-  const boardTypeOptions: ProjectBoard['board_type'][] = [
-    'executive_assets',
-    'brand_assets',
-    'dev_assets',
-    'social_assets',
-    'agent_flows',
-    'artifact_gallery',
-    'approval_queue',
-    'research_hub',
-    'custom',
-  ];
+  // Simplified board types - just default (auto-created) and custom (user-created)
+  const boardTypeOptions: ProjectBoard['board_type'][] = ['default', 'custom'];
   const airtableSectionRef = useRef<HTMLDivElement | null>(null);
 
   const boardTypeLabels = useMemo<Record<ProjectBoard['board_type'], string>>(
     () => ({
-      executive_assets: 'Executive Assets',
-      brand_assets: 'Brand Assets',
-      dev_assets: 'Dev Assets',
-      social_assets: 'Social Assets',
-      agent_flows: 'Agent Flows',
-      artifact_gallery: 'Artifact Gallery',
-      approval_queue: 'Approval Queue',
-      research_hub: 'Research Hub',
+      default: 'Main Board',
       custom: 'Custom',
     }),
     []
@@ -245,115 +226,20 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     prompts: string[];
   };
 
+  // Simplified board metadata - just default and custom
   const boardTemplateMeta = useMemo<Record<ProjectBoard['board_type'], BoardMeta>>(
     () => ({
-      executive_assets: {
-        icon: Briefcase,
-        accentBorder: 'border-amber-300/70',
-        accentBackground: 'bg-gradient-to-br from-amber-200/30 via-amber-100/10 to-transparent',
-        iconBg: 'bg-amber-100',
-        iconColor: 'text-amber-600',
-        tagline:
-          'Align leadership rituals, investor updates, and financial guardrails in one lane.',
-        prompts: [
-          'Weekly leadership brief & run-rate snapshots',
-          'Investor update drafts and milestone narratives',
-          'Budget approvals, risk register, and decision logs',
-        ],
-      },
-      brand_assets: {
-        icon: Sparkles,
-        accentBorder: 'border-rose-300/70',
-        accentBackground: 'bg-gradient-to-br from-rose-200/30 via-rose-100/10 to-transparent',
-        iconBg: 'bg-rose-100',
-        iconColor: 'text-rose-600',
-        tagline: 'Keep brand voice, research, and storytelling artefacts stitched together.',
-        prompts: [
-          'Messaging pillars, voice & tone guardrails',
-          'Customer research, transcripts, and highlights',
-          'Campaign briefs, creative direction, and approvals',
-        ],
-      },
-      dev_assets: {
-        icon: Code2,
-        accentBorder: 'border-sky-300/70',
-        accentBackground: 'bg-gradient-to-br from-sky-200/30 via-sky-100/10 to-transparent',
-        iconBg: 'bg-sky-100',
-        iconColor: 'text-sky-600',
-        tagline: 'Map repositories, architecture decisions, and release pipelines.',
-        prompts: [
-          'Repository map, CI/CD links, and runbooks',
-          'Architecture decisions, ADRs, and RFC drafts',
-          'Sprint goals, QA checklists, and launch readiness',
-        ],
-      },
-      social_assets: {
-        icon: Megaphone,
-        accentBorder: 'border-emerald-300/70',
-        accentBackground: 'bg-gradient-to-br from-emerald-200/30 via-emerald-100/10 to-transparent',
-        iconBg: 'bg-emerald-100',
-        iconColor: 'text-emerald-600',
-        tagline: 'Run campaign calendars, automation flows, and performance loops.',
-        prompts: [
-          'Editorial calendar and content pipeline',
-          'Automation recipes, tooling configs, and workflows',
-          'Engagement learnings and performance retrospectives',
-        ],
-      },
-      agent_flows: {
+      default: {
         icon: LayoutGrid,
         accentBorder: 'border-blue-300/70',
-        accentBackground:
-          'bg-gradient-to-br from-blue-200/30 via-blue-100/10 to-transparent',
+        accentBackground: 'bg-gradient-to-br from-blue-200/30 via-blue-100/10 to-transparent',
         iconBg: 'bg-blue-100',
         iconColor: 'text-blue-600',
-        tagline: 'Track planning, execution, and verification phases for every agent.',
+        tagline: 'Central hub for all project tasks, agent flows, and artifacts.',
         prompts: [
-          'What mission should this agent run next?',
-          'Which flows are blocked awaiting approvals?',
-          'Drop in artifacts produced at each phase.',
-        ],
-      },
-      artifact_gallery: {
-        icon: Folder,
-        accentBorder: 'border-fuchsia-300/70',
-        accentBackground:
-          'bg-gradient-to-br from-fuchsia-200/30 via-fuchsia-100/10 to-transparent',
-        iconBg: 'bg-fuchsia-100',
-        iconColor: 'text-fuchsia-600',
-        tagline: 'Showcase execution artifacts, research packets, and deliverables.',
-        prompts: [
-          'Pin the latest diffs, screenshots, and walkthroughs',
-          'Group artifacts by phase or campaign',
-          'Highlight compliance or QA-ready assets',
-        ],
-      },
-      approval_queue: {
-        icon: ClipboardCheck,
-        accentBorder: 'border-orange-300/70',
-        accentBackground:
-          'bg-gradient-to-br from-orange-200/30 via-orange-100/10 to-transparent',
-        iconBg: 'bg-orange-100',
-        iconColor: 'text-orange-600',
-        tagline: 'Coordinate human approvals, revision requests, and QA passes.',
-        prompts: [
-          'What artifacts need a final sign-off?',
-          'Capture reviewer notes and revision loops',
-          'Surface compliance and quality audits',
-        ],
-      },
-      research_hub: {
-        icon: Users,
-        accentBorder: 'border-indigo-300/70',
-        accentBackground:
-          'bg-gradient-to-br from-indigo-200/30 via-indigo-100/10 to-transparent',
-        iconBg: 'bg-indigo-100',
-        iconColor: 'text-indigo-600',
-        tagline: 'Spin up wide research missions and aggregate the findings.',
-        prompts: [
-          'Define targets for each research sub-agent',
-          'Monitor progress and failures in parallel',
-          'Link synthesized artifacts back to flows',
+          'Track all tasks in one unified view',
+          'Monitor agent execution and approvals',
+          'Review artifacts and deliverables',
         ],
       },
       custom: {
@@ -362,7 +248,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
         accentBackground: 'bg-gradient-to-br from-slate-200/30 via-slate-100/10 to-transparent',
         iconBg: 'bg-slate-100',
         iconColor: 'text-slate-600',
-        tagline: 'Spin up a bespoke lane for experiments, partners, or local initiatives.',
+        tagline: 'Create a focused workspace for specific teams or initiatives.',
         prompts: [
           'Name the focus and success criteria',
           'Link supporting assets and rituals',
@@ -376,7 +262,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   const resetBoardForm = useCallback(() => {
     setBoardForm({
       name: '',
-      boardType: 'brand_assets',
+      boardType: 'custom',
       description: '',
     });
     setBoardFormError('');
@@ -754,14 +640,9 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     });
   }, [boards, boardById]);
 
-  const coreBoardTypeSet = useMemo(
-    () =>
-      new Set<ProjectBoard['board_type']>([
-        'executive_assets',
-        'brand_assets',
-        'dev_assets',
-        'social_assets',
-      ]),
+  // Prevent deletion of the default board
+  const isDefaultBoard = useCallback(
+    (boardType: ProjectBoard['board_type']) => boardType === 'default',
     []
   );
 
@@ -1697,7 +1578,7 @@ const brandTagline = useMemo(() => {
                               </p>
                             </div>
                           </div>
-                          {!coreBoardTypeSet.has(board.board_type) && (
+                          {!isDefaultBoard(board.board_type) && (
                             <Button
                               type="button"
                               variant="ghost"

@@ -244,8 +244,9 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
         return;
       }
 
+      // Prefer the default board, fallback to first available
       const preferred =
-        boards.find((board) => board.board_type === 'brand_assets') || boards[0];
+        boards.find((board) => board.board_type === 'default') || boards[0];
       if (preferred) {
         setSelectedBoardId(preferred.id);
       }

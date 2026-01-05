@@ -1630,15 +1630,13 @@ pub async fn nora_create_board(
     let project_id = Uuid::parse_str(&request.project_id)
         .map_err(|e| ApiError::BadRequest(format!("Invalid project ID: {}", e)))?;
 
+    // Simplified board types: only Default and Custom
     let board_type = match request.board_type.as_deref() {
-        Some("custom") => Some(db::models::project_board::ProjectBoardType::Custom),
-        Some("executive_assets") => {
-            Some(db::models::project_board::ProjectBoardType::ExecutiveAssets)
+        Some("default") | Some("main") => {
+            Some(db::models::project_board::ProjectBoardType::Default)
         }
-        Some("brand_assets") => Some(db::models::project_board::ProjectBoardType::BrandAssets),
-        Some("dev_assets") => Some(db::models::project_board::ProjectBoardType::DevAssets),
-        Some("social_assets") => Some(db::models::project_board::ProjectBoardType::SocialAssets),
-        _ => None,
+        Some("custom") | Some(_) => Some(db::models::project_board::ProjectBoardType::Custom),
+        None => None,
     };
 
     let board = nora

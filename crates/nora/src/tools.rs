@@ -2042,15 +2042,12 @@ impl ExecutiveTools {
 
                     // Map board type string to enum
                     let board_type_enum =
+                        // Simplified board types: only Default and Custom
                         board_type
                             .as_ref()
                             .and_then(|bt| match bt.to_lowercase().as_str() {
-                                "custom" => Some(ProjectBoardType::Custom),
-                                "executive_assets" => Some(ProjectBoardType::ExecutiveAssets),
-                                "brand_assets" => Some(ProjectBoardType::BrandAssets),
-                                "dev_assets" => Some(ProjectBoardType::DevAssets),
-                                "social_assets" => Some(ProjectBoardType::SocialAssets),
-                                _ => None,
+                                "default" | "main" => Some(ProjectBoardType::Default),
+                                "custom" | _ => Some(ProjectBoardType::Custom),
                             });
 
                     match executor
