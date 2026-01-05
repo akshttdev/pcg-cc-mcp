@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO trello_task_links (\n                id, task_id, trello_card_id, trello_board_id, trello_list_id,\n                origin, sync_status, trello_card_url, last_synced_at, created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": []
+  },
+  "hash": "12a6500bd0f596ff39a505e0a51ac65002fa1c9432fcc39677fb9fb0f1193fad"
+}

@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import NiceModal from '@ebay/nice-modal-react';
 import { useNavigate } from 'react-router-dom';
+import { useUserSystem } from '@/components/config-provider';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -28,31 +30,46 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import {
+  AirtableBase,
+  BrandProfile,
   Project,
-  ProjectPod,
   ProjectAsset,
   ProjectBoard,
   TaskWithAttemptStatus,
 } from 'shared/types';
 import { showProjectForm } from '@/lib/modals';
-import { projectsApi, tasksApi } from '@/lib/api';
+import {
+  projectsApi,
+  tasksApi,
+  emailApi,
+  socialApi,
+  type EmailAccountRecord,
+  type SocialAccountRecord,
+} from '@/lib/api';
+import { AirtableBaseConnect } from './AirtableBaseConnect';
 import { cn } from '@/lib/utils';
 import {
   AlertCircle,
   ArrowLeft,
+  BarChart3,
   Calendar,
   Clock,
+  ClipboardCheck,
   Edit,
   Loader2,
+  Mail,
   Folder,
   Users,
   Trash2,
   Plus,
   LayoutGrid,
   Briefcase,
+  CreditCard,
   Sparkles,
   Code2,
   Megaphone,
+  Palette,
+  Share2,
   Shapes,
 } from 'lucide-react';
 import {
@@ -65,6 +82,70 @@ import {
 } from '@/components/ui/table';
 import { toast } from 'sonner';
 
+type ProviderConnectionState = 'connected' | 'manual' | 'missing';
+
+type ProviderStatus = {
+  key: string;
+  label: string;
+  status: ProviderConnectionState;
+  detail: string;
+  meta?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+type IntegrationCategory = {
+  key: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  accent: string;
+  connectors: ProviderStatus[];
+};
+
+const integrationStatusStyles: Record<ProviderConnectionState, string> = {
+  connected: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  manual: 'bg-amber-100 text-amber-700 border-amber-200',
+  missing: 'bg-rose-100 text-rose-700 border-rose-200',
+};
+
+const BRAND_PALETTES = [
+  {
+    primary: '#2563EB',
+    secondary: '#EC4899',
+    accent: 'from-sky-50 via-white to-indigo-100',
+  },
+  {
+    primary: '#0EA5E9',
+    secondary: '#10B981',
+    accent: 'from-cyan-50 via-white to-emerald-100',
+  },
+  {
+    primary: '#F97316',
+    secondary: '#8B5CF6',
+    accent: 'from-orange-50 via-white to-violet-100',
+  },
+  {
+    primary: '#F43F5E',
+    secondary: '#6366F1',
+    accent: 'from-rose-50 via-white to-indigo-100',
+  },
+] as const;
+
+// Legacy localStorage key for migration
+const BRAND_PROFILE_STORAGE_PREFIX = 'brand-profile:';
+
+function hexToRgba(hex: string, alpha: number) {
+  const sanitized = hex.replace('#', '');
+  if (sanitized.length !== 6) {
+    return `rgba(0, 0, 0, ${alpha})`;
+  }
+  const value = Number.parseInt(sanitized, 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 interface ProjectDetailProps {
   projectId: string;
   onBack: () => void;
@@ -72,12 +153,10 @@ interface ProjectDetailProps {
 
 export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   const navigate = useNavigate();
+  const { config } = useUserSystem();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [pods, setPods] = useState<ProjectPod[]>([]);
-  const [podsLoading, setPodsLoading] = useState(false);
-  const [podsError, setPodsError] = useState('');
   const [boards, setBoards] = useState<ProjectBoard[]>([]);
   const [boardsLoading, setBoardsLoading] = useState(false);
   const [boardsError, setBoardsError] = useState('');
@@ -87,15 +166,14 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   const [tasks, setTasks] = useState<TaskWithAttemptStatus[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState('');
-  const [isCreatePodOpen, setIsCreatePodOpen] = useState(false);
-  const [podForm, setPodForm] = useState({
-    title: '',
-    description: '',
-    status: 'active',
-    lead: '',
-  });
-  const [podFormSubmitting, setPodFormSubmitting] = useState(false);
-  const [podFormError, setPodFormError] = useState('');
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccountRecord[]>([]);
+  const [emailAccountsLoading, setEmailAccountsLoading] = useState(true);
+  const [emailIntegrationError, setEmailIntegrationError] = useState('');
+  const [socialAccounts, setSocialAccounts] = useState<SocialAccountRecord[]>([]);
+  const [socialAccountsLoading, setSocialAccountsLoading] = useState(true);
+  const [socialIntegrationError, setSocialIntegrationError] = useState('');
+  const [airtableConnections, setAirtableConnections] = useState<AirtableBase[]>([]);
+  const [integrationsRefreshing, setIntegrationsRefreshing] = useState(false);
   const [isCreateBoardOpen, setIsCreateBoardOpen] = useState(false);
   const [boardForm, setBoardForm] = useState({
     name: '',
@@ -110,7 +188,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     storagePath: '',
     category: 'file',
     scope: 'team',
-    podId: 'none',
     boardId: 'none',
     checksum: '',
     mimeType: '',
@@ -120,7 +197,14 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   });
   const [assetFormSubmitting, setAssetFormSubmitting] = useState(false);
   const [assetFormError, setAssetFormError] = useState('');
-  const podStatusOptions = ['active', 'paused', 'completed', 'archived'] as const;
+  const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
+  const [isBrandProfileDialogOpen, setIsBrandProfileDialogOpen] = useState(false);
+  const [brandProfileDraft, setBrandProfileDraft] = useState<{
+    tagline: string;
+    industry: string;
+    primaryColor: string;
+    secondaryColor: string;
+  } | null>(null);
   const assetCategoryOptions = ['file', 'transcript', 'link', 'note'] as const;
   const assetScopeOptions = ['owner', 'client', 'team', 'public'] as const;
   const boardTypeOptions: ProjectBoard['board_type'][] = [
@@ -128,8 +212,13 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     'brand_assets',
     'dev_assets',
     'social_assets',
+    'agent_flows',
+    'artifact_gallery',
+    'approval_queue',
+    'research_hub',
     'custom',
   ];
+  const airtableSectionRef = useRef<HTMLDivElement | null>(null);
 
   const boardTypeLabels = useMemo<Record<ProjectBoard['board_type'], string>>(
     () => ({
@@ -137,6 +226,10 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
       brand_assets: 'Brand Assets',
       dev_assets: 'Dev Assets',
       social_assets: 'Social Assets',
+      agent_flows: 'Agent Flows',
+      artifact_gallery: 'Artifact Gallery',
+      approval_queue: 'Approval Queue',
+      research_hub: 'Research Hub',
       custom: 'Custom',
     }),
     []
@@ -207,6 +300,62 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
           'Engagement learnings and performance retrospectives',
         ],
       },
+      agent_flows: {
+        icon: LayoutGrid,
+        accentBorder: 'border-blue-300/70',
+        accentBackground:
+          'bg-gradient-to-br from-blue-200/30 via-blue-100/10 to-transparent',
+        iconBg: 'bg-blue-100',
+        iconColor: 'text-blue-600',
+        tagline: 'Track planning, execution, and verification phases for every agent.',
+        prompts: [
+          'What mission should this agent run next?',
+          'Which flows are blocked awaiting approvals?',
+          'Drop in artifacts produced at each phase.',
+        ],
+      },
+      artifact_gallery: {
+        icon: Folder,
+        accentBorder: 'border-fuchsia-300/70',
+        accentBackground:
+          'bg-gradient-to-br from-fuchsia-200/30 via-fuchsia-100/10 to-transparent',
+        iconBg: 'bg-fuchsia-100',
+        iconColor: 'text-fuchsia-600',
+        tagline: 'Showcase execution artifacts, research packets, and deliverables.',
+        prompts: [
+          'Pin the latest diffs, screenshots, and walkthroughs',
+          'Group artifacts by phase or campaign',
+          'Highlight compliance or QA-ready assets',
+        ],
+      },
+      approval_queue: {
+        icon: ClipboardCheck,
+        accentBorder: 'border-orange-300/70',
+        accentBackground:
+          'bg-gradient-to-br from-orange-200/30 via-orange-100/10 to-transparent',
+        iconBg: 'bg-orange-100',
+        iconColor: 'text-orange-600',
+        tagline: 'Coordinate human approvals, revision requests, and QA passes.',
+        prompts: [
+          'What artifacts need a final sign-off?',
+          'Capture reviewer notes and revision loops',
+          'Surface compliance and quality audits',
+        ],
+      },
+      research_hub: {
+        icon: Users,
+        accentBorder: 'border-indigo-300/70',
+        accentBackground:
+          'bg-gradient-to-br from-indigo-200/30 via-indigo-100/10 to-transparent',
+        iconBg: 'bg-indigo-100',
+        iconColor: 'text-indigo-600',
+        tagline: 'Spin up wide research missions and aggregate the findings.',
+        prompts: [
+          'Define targets for each research sub-agent',
+          'Monitor progress and failures in parallel',
+          'Link synthesized artifacts back to flows',
+        ],
+      },
       custom: {
         icon: Shapes,
         accentBorder: 'border-slate-300/60',
@@ -216,23 +365,13 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
         tagline: 'Spin up a bespoke lane for experiments, partners, or local initiatives.',
         prompts: [
           'Name the focus and success criteria',
-          'Link supporting pods, assets, and rituals',
+          'Link supporting assets and rituals',
           'Assign owners and recurring cadences',
         ],
       },
     }),
     []
   );
-
-  const resetPodForm = useCallback(() => {
-    setPodForm({
-      title: '',
-      description: '',
-      status: 'active',
-      lead: '',
-    });
-    setPodFormError('');
-  }, []);
 
   const resetBoardForm = useCallback(() => {
     setBoardForm({
@@ -249,7 +388,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
       storagePath: '',
       category: 'file',
       scope: 'team',
-      podId: 'none',
       boardId: 'none',
       checksum: '',
       mimeType: '',
@@ -259,6 +397,34 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     });
     setAssetFormError('');
   }, []);
+
+  const loadEmailAccounts = useCallback(async () => {
+    setEmailIntegrationError('');
+    setEmailAccountsLoading(true);
+    try {
+      const result = await emailApi.listAccounts(projectId);
+      setEmailAccounts(result);
+    } catch (err) {
+      console.error('Failed to load email accounts:', err);
+      setEmailIntegrationError('Unable to load email integrations right now.');
+    } finally {
+      setEmailAccountsLoading(false);
+    }
+  }, [projectId]);
+
+  const loadSocialAccounts = useCallback(async () => {
+    setSocialIntegrationError('');
+    setSocialAccountsLoading(true);
+    try {
+      const result = await socialApi.listAccounts(projectId);
+      setSocialAccounts(result);
+    } catch (err) {
+      console.error('Failed to load social accounts:', err);
+      setSocialIntegrationError('Unable to load social integrations right now.');
+    } finally {
+      setSocialAccountsLoading(false);
+    }
+  }, [projectId]);
 
   const fetchProject = useCallback(async () => {
     setLoading(true);
@@ -274,22 +440,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     }
 
     setLoading(false);
-  }, [projectId]);
-
-  const fetchPods = useCallback(async () => {
-    setPodsLoading(true);
-    setPodsError('');
-
-    try {
-      const result = await projectsApi.listPods(projectId);
-      setPods(result);
-    } catch (error) {
-      console.error('Failed to fetch project pods:', error);
-      // @ts-expect-error it is type ApiError
-      setPodsError(error.message || 'Failed to load team pods');
-    }
-
-    setPodsLoading(false);
   }, [projectId]);
 
   const fetchBoards = useCallback(async () => {
@@ -343,62 +493,57 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     setTasksLoading(false);
   }, [projectId]);
 
-  const handleCreatePod = useCallback(async () => {
-    if (!podForm.title.trim()) {
-      setPodFormError('Title is required.');
-      return;
-    }
-
-    setPodFormSubmitting(true);
-    setPodFormError('');
+  const refreshIntegrationStatuses = useCallback(async () => {
+    setIntegrationsRefreshing(true);
     try {
-      await projectsApi.createPod(projectId, {
-        title: podForm.title.trim(),
-        description: podForm.description.trim() || undefined,
-        status: podForm.status as (typeof podStatusOptions)[number],
-        lead: podForm.lead.trim() || undefined,
-      });
-      toast.success('Pod created');
-      setIsCreatePodOpen(false);
-      resetPodForm();
-      fetchPods();
-      fetchAssets();
-      fetchTasks();
-    } catch (error) {
-      console.error('Failed to create pod:', error);
-      setPodFormError(
-        error instanceof Error ? error.message : 'Failed to create pod'
-      );
+      await Promise.all([loadEmailAccounts(), loadSocialAccounts()]);
     } finally {
-      setPodFormSubmitting(false);
+      setIntegrationsRefreshing(false);
     }
-  }, [podForm, projectId, fetchPods, fetchAssets, fetchTasks, resetPodForm]);
+  }, [loadEmailAccounts, loadSocialAccounts]);
 
-  const handleDeletePod = useCallback(
-    async (podId: string) => {
-      if (
-        !confirm(
-          'Delete this pod? Tasks linked to it will become unassigned.'
-        )
-      ) {
-        return;
-      }
-
-      try {
-        await projectsApi.deletePod(projectId, podId);
-        toast.success('Pod deleted');
-        fetchPods();
-        fetchAssets();
-        fetchTasks();
-      } catch (error) {
-        console.error('Failed to delete pod:', error);
-        toast.error(
-          error instanceof Error ? error.message : 'Failed to delete pod'
-        );
-      }
+  const openCrmTab = useCallback(
+    (tab: 'contacts' | 'email' = 'contacts') => {
+      const params = new URLSearchParams();
+      params.set('projectId', projectId);
+      params.set('tab', tab);
+      navigate({ pathname: '/crm', search: params.toString() });
     },
-    [projectId, fetchPods, fetchAssets, fetchTasks]
+    [navigate, projectId]
   );
+
+  const openCrmEmailTab = useCallback(() => openCrmTab('email'), [openCrmTab]);
+
+  const openSocialCommand = useCallback(() => {
+    const params = new URLSearchParams();
+    params.set('projectId', projectId);
+    navigate({ pathname: '/social-command', search: params.toString() });
+  }, [navigate, projectId]);
+
+  const openStripeDashboard = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.open('https://dashboard.stripe.com/', '_blank', 'noopener,noreferrer');
+  }, []);
+
+  const openAnalyticsDashboard = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.open('https://analytics.google.com/', '_blank', 'noopener,noreferrer');
+  }, []);
+
+  const openVercelDashboard = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.open('https://vercel.com/dashboard', '_blank', 'noopener,noreferrer');
+  }, []);
+
+  const openGithubAuth = useCallback(() => {
+    void NiceModal.show('github-login').finally(() => {
+      NiceModal.hide('github-login').catch(() => {});
+    });
+  }, []);
+
+  const scrollToAirtable = useCallback(() => {
+    airtableSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const handleCreateAsset = useCallback(async () => {
     if (!assetForm.name.trim() || !assetForm.storagePath.trim()) {
@@ -425,7 +570,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
         storage_path: assetForm.storagePath.trim(),
         category: assetForm.category as (typeof assetCategoryOptions)[number],
         scope: assetForm.scope as (typeof assetScopeOptions)[number],
-        pod_id: assetForm.podId !== 'none' ? assetForm.podId : undefined,
         board_id: assetForm.boardId !== 'none' ? assetForm.boardId : undefined,
         checksum: assetForm.checksum.trim() || undefined,
         mime_type: assetForm.mimeType.trim() || undefined,
@@ -568,19 +712,15 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   }, [fetchProject]);
 
   useEffect(() => {
-    fetchPods();
     fetchBoards();
     fetchAssets();
     fetchTasks();
-  }, [fetchPods, fetchBoards, fetchAssets, fetchTasks]);
+  }, [fetchBoards, fetchAssets, fetchTasks]);
 
-  const podTitleById = useMemo(() => {
-    const map = new Map<string, string>();
-    pods.forEach((pod) => {
-      map.set(pod.id, pod.title);
-    });
-    return map;
-  }, [pods]);
+  useEffect(() => {
+    loadEmailAccounts();
+    loadSocialAccounts();
+  }, [loadEmailAccounts, loadSocialAccounts]);
 
   const boardById = useMemo(() => {
     const map = new Map<string, ProjectBoard>();
@@ -650,6 +790,447 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     return `${formatted.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
   }, []);
 
+  const formatRelativeTime = useCallback((dateString?: string | null) => {
+    if (!dateString) return '—';
+    const timestamp = new Date(dateString).getTime();
+    if (Number.isNaN(timestamp)) return '—';
+    const diffMs = Date.now() - timestamp;
+    const diffMinutes = Math.floor(diffMs / 60000);
+    if (diffMinutes < 1) return 'just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 30) return `${diffDays}d ago`;
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) return `${diffMonths}mo ago`;
+    const diffYears = Math.floor(diffMonths / 12);
+    return `${diffYears}y ago`;
+  }, []);
+
+  const brandPalette = useMemo(() => {
+    if (!project) return BRAND_PALETTES[0];
+    const source = (project.id || project.name || '').split('');
+    const sum = source.reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return BRAND_PALETTES[sum % BRAND_PALETTES.length];
+  }, [project]);
+
+  const brandInitials = useMemo(() => {
+    if (!project?.name) return 'PR';
+    const parts = project.name.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return 'PR';
+    if (parts.length === 1) {
+      const [first] = parts;
+      return first.slice(0, 2).toUpperCase();
+    }
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }, [project?.name]);
+
+const brandTagline = useMemo(() => {
+  if (!project) return 'Centralized brand + ops workspace.';
+  if (project.git_repo_path) {
+    return `Source of truth: ${project.git_repo_path}`;
+  }
+  if (project.dev_script) {
+    return `Runs ${project.dev_script} with live previews.`;
+  }
+  return 'Orchestrate brand systems, deliverables, and agents in one view.';
+}, [project]);
+
+  const brandProfileKey = project?.id
+    ? `${BRAND_PROFILE_STORAGE_PREFIX}${project.id}`
+    : null;
+
+  // Default values for brand profile display
+  const defaultBrandProfileValues = useMemo(
+    () => ({
+      tagline: brandTagline,
+      industry: 'Brand Studio',
+      primaryColor: brandPalette.primary,
+      secondaryColor: brandPalette.secondary,
+    }),
+    [brandPalette.primary, brandPalette.secondary, brandTagline]
+  );
+
+  // Load brand profile from database, with localStorage migration
+  useEffect(() => {
+    if (!project?.id) {
+      setBrandProfile(null);
+      return;
+    }
+
+    const loadBrandProfile = async () => {
+      try {
+        // First try to load from database
+        const dbProfile = await projectsApi.getBrandProfile(project.id);
+
+        if (dbProfile) {
+          setBrandProfile(dbProfile);
+          // Clear localStorage if we have DB data (migration complete)
+          if (brandProfileKey && typeof window !== 'undefined') {
+            window.localStorage.removeItem(brandProfileKey);
+          }
+          return;
+        }
+
+        // Check localStorage for legacy data to migrate
+        if (brandProfileKey && typeof window !== 'undefined') {
+          const stored = window.localStorage.getItem(brandProfileKey);
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              // Migrate to database
+              const migrated = await projectsApi.upsertBrandProfile(project.id, {
+                tagline: parsed.tagline ?? null,
+                industry: parsed.industry ?? null,
+                primaryColor: parsed.primaryColor ?? defaultBrandProfileValues.primaryColor,
+                secondaryColor: parsed.secondaryColor ?? defaultBrandProfileValues.secondaryColor,
+                brandVoice: null,
+                targetAudience: null,
+                logoAssetId: null,
+                guidelinesAssetId: null,
+              });
+              setBrandProfile(migrated);
+              // Clear localStorage after successful migration
+              window.localStorage.removeItem(brandProfileKey);
+              console.log('[BrandProfile] Migrated from localStorage to database');
+              return;
+            } catch (err) {
+              console.error('Failed to migrate brand profile:', err);
+            }
+          }
+        }
+
+        // No existing data - profile will be null until user saves
+        setBrandProfile(null);
+      } catch (err) {
+        console.error('Failed to load brand profile:', err);
+        setBrandProfile(null);
+      }
+    };
+
+    loadBrandProfile();
+  }, [project?.id, brandProfileKey, defaultBrandProfileValues]);
+
+  const persistBrandProfile = useCallback(
+    async (profileData: {
+      tagline: string;
+      industry: string;
+      primaryColor: string;
+      secondaryColor: string;
+    }) => {
+      if (!project?.id) return;
+      try {
+        const saved = await projectsApi.upsertBrandProfile(project.id, {
+          tagline: profileData.tagline || null,
+          industry: profileData.industry || null,
+          primaryColor: profileData.primaryColor,
+          secondaryColor: profileData.secondaryColor,
+          brandVoice: null,
+          targetAudience: null,
+          logoAssetId: null,
+          guidelinesAssetId: null,
+        });
+        setBrandProfile(saved);
+      } catch (err) {
+        console.error('Failed to save brand profile:', err);
+      }
+    },
+    [project?.id]
+  );
+
+  // Create effective brand profile for display, merging DB data with defaults
+  const effectiveBrandProfile = useMemo(() => ({
+    tagline: brandProfile?.tagline ?? defaultBrandProfileValues.tagline,
+    industry: brandProfile?.industry ?? defaultBrandProfileValues.industry,
+    primaryColor: brandProfile?.primaryColor ?? defaultBrandProfileValues.primaryColor,
+    secondaryColor: brandProfile?.secondaryColor ?? defaultBrandProfileValues.secondaryColor,
+  }), [brandProfile, defaultBrandProfileValues]);
+
+  const brandHeroGradient = useMemo(
+    () => ({
+      backgroundImage: `linear-gradient(135deg, ${hexToRgba(
+        effectiveBrandProfile.primaryColor,
+        0.18
+      )}, ${hexToRgba(effectiveBrandProfile.secondaryColor, 0.18)})`,
+    }),
+    [effectiveBrandProfile]
+  );
+
+  const handleBrandProfileSave = useCallback(() => {
+    if (!brandProfileDraft) return;
+    persistBrandProfile(brandProfileDraft);
+    setIsBrandProfileDialogOpen(false);
+    setBrandProfileDraft(null);
+  }, [brandProfileDraft, persistBrandProfile]);
+
+  const handleBrandProfileDialogOpen = useCallback(() => {
+    setBrandProfileDraft(effectiveBrandProfile);
+    setIsBrandProfileDialogOpen(true);
+  }, [effectiveBrandProfile]);
+
+  const repoLabel = useMemo(() => {
+    if (!project?.git_repo_path) return 'Not linked';
+    const normalized = project.git_repo_path.replace(/\.git$/, '');
+    const segments = normalized.split('/');
+    if (segments.length >= 2) {
+      return segments.slice(-2).join('/');
+    }
+    return normalized;
+  }, [project?.git_repo_path]);
+
+  const totalBoards = boards.length;
+  const totalAssets = assets.length;
+  const totalTasks = tasks.length;
+  const activeTasks = useMemo(
+    () =>
+      tasks.filter(
+        (task) => task.status !== 'done' && task.status !== 'cancelled'
+      ).length,
+    [tasks]
+  );
+
+  const integrationCategories = useMemo<IntegrationCategory[]>(() => {
+    const hasGithub = Boolean(config?.github?.pat || config?.github?.oauth_token);
+    const githubDetail = hasGithub
+      ? config?.github?.username
+        ? `@${config.github.username}`
+        : 'Authenticated via Settings → GitHub'
+      : 'Connect via Settings → GitHub';
+    const githubMeta = hasGithub
+      ? config?.github?.primary_email || project?.git_repo_path || undefined
+      : undefined;
+
+    const buildEmailProvider = (
+      provider: 'gmail' | 'zoho',
+      label: string
+    ): ProviderStatus => {
+      if (emailAccountsLoading) {
+        return {
+          key: provider,
+          label,
+          status: 'manual',
+          detail: 'Checking connection…',
+          actionLabel: 'Open CRM',
+          onAction: openCrmEmailTab,
+        };
+      }
+      const account = emailAccounts.find(
+        (entry) => entry.provider?.toLowerCase() === provider
+      );
+      if (!account) {
+        return {
+          key: provider,
+          label,
+          status: 'missing',
+          detail: 'Connect via CRM → Email Accounts',
+          actionLabel: 'Connect account',
+          onAction: openCrmEmailTab,
+        };
+      }
+      const normalizedStatus = (account.status || '').toLowerCase();
+      const isHealthy = normalizedStatus === 'active';
+      return {
+        key: provider,
+        label,
+        status: isHealthy ? 'connected' : 'manual',
+        detail: account.email_address,
+        meta: isHealthy
+          ? account.updated_at
+            ? `Synced ${formatRelativeTime(account.updated_at)}`
+            : undefined
+          : `Status: ${formatStatusLabel(account.status || 'inactive')}`,
+        actionLabel: isHealthy ? 'Manage mail' : 'Connect account',
+        onAction: openCrmEmailTab,
+      };
+    };
+
+    const buildSocialProvider = (platformKey: string, label: string): ProviderStatus => {
+      if (socialAccountsLoading) {
+        return {
+          key: platformKey,
+          label,
+          status: 'manual',
+          detail: 'Checking connection…',
+          actionLabel: 'Open Social Command',
+          onAction: openSocialCommand,
+        };
+      }
+      const normalized =
+        platformKey === 'x'
+          ? 'twitter'
+          : platformKey;
+      const account = socialAccounts.find(
+        (entry) => entry.platform?.toLowerCase() === normalized
+      );
+      if (!account) {
+        return {
+          key: platformKey,
+          label,
+          status: 'missing',
+          detail: 'Connect via Social Command → Accounts',
+          actionLabel: 'Connect account',
+          onAction: openSocialCommand,
+        };
+      }
+      const normalizedStatus = (account.status || '').toLowerCase();
+      const isHealthy = normalizedStatus === 'active';
+      const summary =
+        account.username ||
+        account.display_name ||
+        account.profile_url ||
+        'Connected';
+      return {
+        key: platformKey,
+        label,
+        status: isHealthy ? 'connected' : 'manual',
+        detail: summary,
+        meta: isHealthy
+          ? account.last_sync_at
+            ? `Synced ${formatRelativeTime(account.last_sync_at)}`
+            : undefined
+          : `Status: ${formatStatusLabel(account.status || 'pending')}`,
+        actionLabel: isHealthy ? 'Manage social' : 'Connect account',
+        onAction: openSocialCommand,
+      };
+    };
+
+    const firstConnection = airtableConnections[0];
+    const airtableStatus: ProviderStatus = {
+      key: 'airtable',
+      label: 'Airtable',
+      status:
+        airtableConnections.length > 0
+          ? 'connected'
+          : config?.airtable?.token
+          ? 'manual'
+          : 'missing',
+      detail:
+        airtableConnections.length === 0
+          ? config?.airtable?.token
+            ? 'Token saved. Connect a base for this project.'
+            : 'Add an Airtable token in Settings → Integrations'
+          : airtableConnections.length === 1
+          ? firstConnection.airtable_base_name || 'Base connected'
+          : `${airtableConnections.length} bases connected`,
+      meta:
+        firstConnection?.last_synced_at
+          ? `Synced ${formatRelativeTime(firstConnection.last_synced_at)}`
+          : undefined,
+      actionLabel:
+        airtableConnections.length === 0 ? 'Connect base' : 'Manage bases',
+      onAction: scrollToAirtable,
+    };
+
+    const commerceStatus: ProviderStatus = {
+      key: 'stripe',
+      label: 'Stripe',
+      status: 'manual',
+      detail: 'Billing reconciled via Stripe exports today.',
+      actionLabel: 'Open Stripe',
+      onAction: openStripeDashboard,
+    };
+
+    const analyticsStatus: ProviderStatus = {
+      key: 'ga',
+      label: 'Google Analytics',
+      status: 'manual',
+      detail: 'Reporting handled via shared GA dashboards for now.',
+      actionLabel: 'Open GA',
+      onAction: openAnalyticsDashboard,
+    };
+
+    return [
+      {
+        key: 'development',
+        label: 'Development',
+        icon: Code2,
+        accent: 'from-sky-50 via-white to-indigo-100',
+        connectors: [
+          {
+            key: 'github',
+            label: 'GitHub',
+            status: hasGithub ? 'connected' : 'missing',
+            detail: githubDetail,
+            meta: githubMeta,
+            actionLabel: hasGithub ? 'Manage auth' : 'Sign in',
+            onAction: openGithubAuth,
+          },
+          {
+            key: 'vercel',
+            label: 'Vercel',
+            status: 'manual',
+            detail: 'Deploy previews run via GitHub workflows.',
+            actionLabel: 'Open Vercel',
+            onAction: openVercelDashboard,
+          },
+        ],
+      },
+      {
+        key: 'communications',
+        label: 'Communications',
+        icon: Mail,
+        accent: 'from-rose-50 via-white to-amber-100',
+        connectors: [
+          buildEmailProvider('gmail', 'Gmail'),
+          buildEmailProvider('zoho', 'Zoho Mail'),
+        ],
+      },
+      {
+        key: 'social',
+        label: 'Social',
+        icon: Share2,
+        accent: 'from-emerald-50 via-white to-blue-100',
+        connectors: [
+          buildSocialProvider('instagram', 'Instagram'),
+          buildSocialProvider('facebook', 'Facebook'),
+          buildSocialProvider('linkedin', 'LinkedIn'),
+          buildSocialProvider('x', 'X (Twitter)'),
+          buildSocialProvider('youtube', 'YouTube'),
+          buildSocialProvider('tiktok', 'TikTok'),
+        ],
+      },
+      {
+        key: 'productivity',
+        label: 'Productivity',
+        icon: ClipboardCheck,
+        accent: 'from-slate-50 via-white to-lime-100',
+        connectors: [airtableStatus],
+      },
+      {
+        key: 'commerce',
+        label: 'Commerce',
+        icon: CreditCard,
+        accent: 'from-orange-50 via-white to-amber-100',
+        connectors: [commerceStatus],
+      },
+      {
+        key: 'analytics',
+        label: 'Analytics',
+        icon: BarChart3,
+        accent: 'from-indigo-50 via-white to-slate-100',
+        connectors: [analyticsStatus],
+      },
+    ];
+  }, [
+    airtableConnections,
+    config,
+    emailAccounts,
+    emailAccountsLoading,
+    formatRelativeTime,
+    formatStatusLabel,
+    openAnalyticsDashboard,
+    openCrmEmailTab,
+    openGithubAuth,
+    openSocialCommand,
+    openStripeDashboard,
+    openVercelDashboard,
+    project?.git_repo_path,
+    scrollToAirtable,
+    socialAccounts,
+    socialAccountsLoading,
+  ]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -688,113 +1269,327 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   return (
     <>
       <div className="space-y-6 py-12 px-4">
-      <div className="flex justify-between items-start">
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Projects
-          </Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{project.name}</h1>
+        <div className="flex flex-col gap-4 border-b border-border/60 pb-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <Button variant="outline" onClick={onBack} className="w-fit">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Projects
+            </Button>
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-bold">{project.name}</h1>
+                <Badge variant="secondary">Active</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Brand identity, integrations, and delivery health
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Project details and settings
-            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleEditClick}>
+              <Edit className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleDelete}
+              className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </Button>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleEditClick}>
-            <Edit className="mr-2 h-4 w-4" />
-            Edit
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleDelete}
-            className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10"
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Card
+            className="relative overflow-hidden border p-0 lg:col-span-2"
+            style={brandHeroGradient}
           >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete
-          </Button>
+            <CardContent className="relative space-y-6 p-6">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs uppercase text-muted-foreground">
+                    <span>
+                      Updated {new Date(project.updated_at).toLocaleDateString()}
+                    </span>
+                    <span className="text-muted-foreground/60">•</span>
+                    <span>
+                      {totalBoards} board{totalBoards === 1 ? '' : 's'} · {totalTasks}{' '}
+                      task{totalTasks === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={handleBrandProfileDialogOpen}>
+                    Adjust brand profile
+                  </Button>
+                </div>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/70 bg-white/80 text-2xl font-semibold text-foreground shadow-sm">
+                      {brandInitials}
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Brand Identity
+                      </p>
+                      <p className="text-3xl font-bold leading-tight text-foreground">
+                        {project.name}
+                      </p>
+                      <p className="text-base text-muted-foreground">
+                        {effectiveBrandProfile.tagline}
+                      </p>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground/80">
+                        Industry
+                      </p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {effectiveBrandProfile.industry || 'Brand Studio'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid w-full gap-3 sm:grid-cols-3 lg:w-auto">
+                    <div className="rounded-2xl bg-white/80 p-4 text-center shadow-sm">
+                      <p className="text-xs uppercase text-muted-foreground">Boards</p>
+                      <p className="text-2xl font-semibold text-foreground">
+                        {totalBoards}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Active lanes</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/80 p-4 text-center shadow-sm">
+                      <p className="text-xs uppercase text-muted-foreground">Active Tasks</p>
+                      <p className="text-2xl font-semibold text-foreground">
+                        {activeTasks}
+                      </p>
+                      <p className="text-xs text-muted-foreground">In flight</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/80 p-4 text-center shadow-sm">
+                      <p className="text-xs uppercase text-muted-foreground">Assets</p>
+                      <p className="text-2xl font-semibold text-foreground">
+                        {totalAssets}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Catalogued</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                  <Palette className="h-3.5 w-3.5" />
+                  Brand palette
+                </div>
+                <div className="flex flex-wrap gap-6">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="h-10 w-10 rounded-xl shadow-inner"
+                      style={{ background: effectiveBrandProfile.primaryColor }}
+                    />
+                    <div>
+                      <p className="text-xs uppercase text-muted-foreground">Primary</p>
+                      <p className="font-mono text-sm">{effectiveBrandProfile.primaryColor}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="h-10 w-10 rounded-xl shadow-inner"
+                      style={{ background: effectiveBrandProfile.secondaryColor }}
+                    />
+                    <div>
+                      <p className="text-xs uppercase text-muted-foreground">Secondary</p>
+                      <p className="font-mono text-sm">{effectiveBrandProfile.secondaryColor}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Operational Snapshot</CardTitle>
+              <CardDescription>
+                Metadata, repo link, and automation hooks for this workspace.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div>
+                <p className="text-xs uppercase text-muted-foreground">Project ID</p>
+                <code className="mt-1 block rounded bg-muted px-2 py-1 font-mono text-xs">
+                  {project.id}
+                </code>
+              </div>
+              <div className="grid gap-3">
+                <div className="flex items-center text-sm">
+                  <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Created {new Date(project.created_at).toLocaleDateString()}
+                </div>
+                <div className="flex items-center text-sm">
+                  <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Updated {new Date(project.updated_at).toLocaleDateString()}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-muted-foreground">Repository</p>
+                <p className="text-sm font-medium text-foreground">{repoLabel}</p>
+                <p className="text-xs text-muted-foreground">
+                  {project.git_repo_path
+                    ? 'Synced automatically from GitHub.'
+                    : 'Link a repository to enable automated PRs.'}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase text-muted-foreground">
+                    Dev Script
+                  </span>
+                  <span className="font-medium text-foreground">
+                    {project.dev_script || 'pnpm run dev'}
+                  </span>
+                </div>
+                {project.setup_script && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase text-muted-foreground">
+                      Setup
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {project.setup_script}
+                    </span>
+                  </div>
+                )}
+                {project.cleanup_script && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase text-muted-foreground">
+                      Cleanup
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {project.cleanup_script}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </div>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="grid gap-6 md:grid-cols-2">
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Calendar className="mr-2 h-5 w-5" />
-              Project Information
-            </CardTitle>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                Integrations Hub
+              </CardTitle>
+              <CardDescription>
+                Central view of the systems powering this project.
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refreshIntegrationStatuses}
+              disabled={integrationsRefreshing}
+            >
+              {integrationsRefreshing && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Refresh status
+            </Button>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-muted-foreground">
-                Status
-              </span>
-              <Badge variant="secondary">Active</Badge>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center text-sm">
-                <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Created:</span>
-                <span className="ml-2">
-                  {new Date(project.created_at).toLocaleDateString()}
-                </span>
-              </div>
-              <div className="flex items-center text-sm">
-                <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Last Updated:</span>
-                <span className="ml-2">
-                  {new Date(project.updated_at).toLocaleDateString()}
-                </span>
-              </div>
+            {(emailIntegrationError || socialIntegrationError) && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {emailIntegrationError && <p>{emailIntegrationError}</p>}
+                  {socialIntegrationError && <p>{socialIntegrationError}</p>}
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="grid gap-4 lg:grid-cols-2">
+              {integrationCategories.map((category) => {
+                const Icon = category.icon;
+                const connectedCount = category.connectors.filter(
+                  (connector) => connector.status === 'connected'
+                ).length;
+                return (
+                  <div
+                    key={category.key}
+                    className="rounded-2xl border bg-background/80 p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={cn(
+                            'flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br text-primary',
+                            category.accent
+                          )}
+                        >
+                          <Icon className="h-5 w-5" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            {category.label}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {connectedCount}/{category.connectors.length} connected
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {category.connectors.map((connector) => (
+                        <div
+                          key={connector.key}
+                          className="rounded-xl border bg-background/70 p-3 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-foreground">
+                              {connector.label}
+                            </p>
+                            <span
+                              className={cn(
+                                'rounded-full border px-2.5 py-0.5 text-xs font-medium',
+                                integrationStatusStyles[connector.status]
+                              )}
+                            >
+                              {formatStatusLabel(connector.status)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {connector.detail}
+                          </p>
+                          {connector.meta && (
+                            <p className="text-[11px] text-muted-foreground/80">
+                              {connector.meta}
+                            </p>
+                          )}
+                          {connector.onAction && (
+                            <div className="pt-3">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  connector.onAction?.();
+                                }}
+                              >
+                                {connector.actionLabel ?? 'Manage'}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Project Details</CardTitle>
-            <CardDescription>
-              Technical information about this project
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Project ID
-              </h4>
-              <code className="mt-1 block text-xs bg-muted p-2 rounded font-mono">
-                {project.id}
-              </code>
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Created At
-              </h4>
-              <p className="mt-1 text-sm">
-                {new Date(project.created_at).toLocaleString()}
-              </p>
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-muted-foreground">
-                Last Modified
-              </h4>
-              <p className="mt-1 text-sm">
-                {new Date(project.updated_at).toLocaleString()}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        <div ref={airtableSectionRef}>
+          <AirtableBaseConnect
+            projectId={project.id}
+            projectName={project.name}
+            onConnectionsChange={setAirtableConnections}
+          />
+        </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="h-full">
@@ -802,10 +1597,10 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <LayoutGrid className="h-5 w-5" />
-                Project Boards
+                Workstreams & Boards
               </CardTitle>
               <CardDescription>
-                Buckets for executive, brand, dev, and social workstreams.
+                Activate and monitor each delivery lane across the brand.
               </CardDescription>
             </div>
             <Button
@@ -1055,96 +1850,8 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Team Pods
-              </CardTitle>
-              <CardDescription>
-                Sub-projects grouped by goals or delivery teams.
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                resetPodForm();
-                setIsCreatePodOpen(true);
-              }}
-            >
-              <Plus className="mr-1 h-4 w-4" /> Create Pod
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {podsLoading ? (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading pods…
-              </div>
-            ) : podsError ? (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{podsError}</AlertDescription>
-              </Alert>
-            ) : pods.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No pods yet — create mission threads to track goals and
-                owners within this brand.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {pods.map((pod) => (
-                  <div
-                    key={pod.id}
-                    className="rounded-lg border bg-background p-3 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-medium">{pod.title}</p>
-                        {pod.description && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {pod.description}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">
-                          {formatStatusLabel(pod.status)}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDeletePod(pod.id)}
-                          aria-label={`Delete pod ${pod.title}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span>
-                        Lead:{' '}
-                        <span className="font-medium text-foreground">
-                          {pod.lead || 'Unassigned'}
-                        </span>
-                      </span>
-                      <span>
-                        Updated{' '}
-                        {new Date(pod.updated_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="h-full">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
                 <Folder className="h-5 w-5" />
-                Brand Assets
+                Asset Vault
               </CardTitle>
               <CardDescription>
                 Logos, guides, transcripts, and collateral linked to this brand.
@@ -1190,9 +1897,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
                         Board
                       </TableHead>
                       <TableHead className="hidden xl:table-cell">
-                        Linked Pod
-                      </TableHead>
-                      <TableHead className="hidden xl:table-cell">
                         Size
                       </TableHead>
                       <TableHead className="text-right">
@@ -1227,9 +1931,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
                             : '—'}
                         </TableCell>
                         <TableCell className="hidden xl:table-cell text-sm text-muted-foreground">
-                          {asset.pod_id ? podTitleById.get(asset.pod_id) || '—' : '—'}
-                        </TableCell>
-                        <TableCell className="hidden xl:table-cell text-sm text-muted-foreground">
                           {formatByteSize(asset.byte_size)}
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">
@@ -1258,99 +1959,116 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     </div>
 
     <Dialog
-      open={isCreatePodOpen}
+      open={isBrandProfileDialogOpen}
       onOpenChange={(open) => {
-        setIsCreatePodOpen(open);
+        setIsBrandProfileDialogOpen(open);
         if (!open) {
-          resetPodForm();
+          setBrandProfileDraft(null);
         }
       }}
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Create Pod</DialogTitle>
+          <DialogTitle>Adjust Brand Profile</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Define a pod to organise workstreams for this engagement.
+            Tune the tagline, industry, and palette for this project overview.
           </p>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="pod-title">Title</Label>
+            <Label htmlFor="brand-tagline">Tagline</Label>
             <Input
-              id="pod-title"
-              value={podForm.title}
-              onChange={(e) =>
-                setPodForm((prev) => ({ ...prev, title: e.target.value }))
+              id="brand-tagline"
+              value={brandProfileDraft?.tagline ?? ''}
+              onChange={(event) =>
+                setBrandProfileDraft((prev) => ({
+                  ...(prev ?? defaultBrandProfileValues),
+                  tagline: event.target.value,
+                }))
               }
-              disabled={podFormSubmitting}
-              placeholder="e.g. Website launch"
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="pod-description">Description</Label>
-            <Textarea
-              id="pod-description"
-              value={podForm.description}
-              onChange={(e) =>
-                setPodForm((prev) => ({ ...prev, description: e.target.value }))
+            <Label htmlFor="brand-industry">Industry</Label>
+            <Input
+              id="brand-industry"
+              value={brandProfileDraft?.industry ?? ''}
+              onChange={(event) =>
+                setBrandProfileDraft((prev) => ({
+                  ...(prev ?? defaultBrandProfileValues),
+                  industry: event.target.value,
+                }))
               }
-              disabled={podFormSubmitting}
-              rows={3}
-              placeholder="What is this pod responsible for?"
+              placeholder="e.g. SaaS, Agency, E-commerce"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Status</Label>
-              <Select
-                value={podForm.status}
-                onValueChange={(value) =>
-                  setPodForm((prev) => ({ ...prev, status: value }))
-                }
-                disabled={podFormSubmitting}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {podStatusOptions.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {formatStatusLabel(status)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="brand-primary">Primary Color</Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  id="brand-primary"
+                  type="color"
+                  value={brandProfileDraft?.primaryColor ?? defaultBrandProfileValues.primaryColor}
+                  onChange={(event) =>
+                    setBrandProfileDraft((prev) => ({
+                      ...(prev ?? defaultBrandProfileValues),
+                      primaryColor: event.target.value,
+                    }))
+                  }
+                  className="h-10 w-16 cursor-pointer"
+                />
+                <Input
+                  value={brandProfileDraft?.primaryColor ?? defaultBrandProfileValues.primaryColor}
+                  onChange={(event) =>
+                    setBrandProfileDraft((prev) => ({
+                      ...(prev ?? defaultBrandProfileValues),
+                      primaryColor: event.target.value,
+                    }))
+                  }
+                />
+              </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pod-lead">Lead (optional)</Label>
-              <Input
-                id="pod-lead"
-                value={podForm.lead}
-                onChange={(e) =>
-                  setPodForm((prev) => ({ ...prev, lead: e.target.value }))
-                }
-                disabled={podFormSubmitting}
-                placeholder="Primary owner"
-              />
+              <Label htmlFor="brand-secondary">Secondary Color</Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  id="brand-secondary"
+                  type="color"
+                  value={brandProfileDraft?.secondaryColor ?? defaultBrandProfileValues.secondaryColor}
+                  onChange={(event) =>
+                    setBrandProfileDraft((prev) => ({
+                      ...(prev ?? defaultBrandProfileValues),
+                      secondaryColor: event.target.value,
+                    }))
+                  }
+                  className="h-10 w-16 cursor-pointer"
+                />
+                <Input
+                  value={brandProfileDraft?.secondaryColor ?? defaultBrandProfileValues.secondaryColor}
+                  onChange={(event) =>
+                    setBrandProfileDraft((prev) => ({
+                      ...(prev ?? defaultBrandProfileValues),
+                      secondaryColor: event.target.value,
+                    }))
+                  }
+                />
+              </div>
             </div>
           </div>
-          {podFormError && (
-            <p className="text-sm text-destructive">{podFormError}</p>
-          )}
         </div>
         <DialogFooter>
           <Button
             variant="ghost"
             onClick={() => {
-              setIsCreatePodOpen(false);
-              resetPodForm();
+              setIsBrandProfileDialogOpen(false);
+              setBrandProfileDraft(null);
             }}
-            disabled={podFormSubmitting}
           >
             Cancel
           </Button>
-          <Button onClick={handleCreatePod} disabled={podFormSubmitting}>
-            {podFormSubmitting ? 'Creating…' : 'Create Pod'}
+          <Button onClick={handleBrandProfileSave} disabled={!brandProfileDraft}>
+            Save profile
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1558,28 +2276,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
                   {boards.map((board) => (
                     <SelectItem key={board.id} value={board.id}>
                       {board.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Linked pod</Label>
-              <Select
-                value={assetForm.podId}
-                onValueChange={(value) =>
-                  setAssetForm((prev) => ({ ...prev, podId: value }))
-                }
-                disabled={assetFormSubmitting || podsLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Unassigned" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No pod</SelectItem>
-                  {pods.map((pod) => (
-                    <SelectItem key={pod.id} value={pod.id}>
-                      {pod.title}
                     </SelectItem>
                   ))}
                 </SelectContent>

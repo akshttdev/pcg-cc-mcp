@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM trello_task_links WHERE task_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "b1ca44c54ede02ee02973e792a7c4c26d5fdec6f6ded6f483c3d915e5d5ea549"
+}

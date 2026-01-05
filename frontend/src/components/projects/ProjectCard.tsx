@@ -44,6 +44,10 @@ const CORE_BOARD_LABELS: Record<ProjectBoard['board_type'], string> = {
   brand_assets: 'Brand',
   dev_assets: 'Dev',
   social_assets: 'Social',
+  agent_flows: 'Flows',
+  artifact_gallery: 'Artifacts',
+  approval_queue: 'Approvals',
+  research_hub: 'Research',
   custom: 'Custom',
 };
 
@@ -52,6 +56,10 @@ const CORE_BOARD_TYPES: ProjectBoard['board_type'][] = [
   'brand_assets',
   'dev_assets',
   'social_assets',
+  'agent_flows',
+  'artifact_gallery',
+  'approval_queue',
+  'research_hub',
 ];
 
 type Props = {

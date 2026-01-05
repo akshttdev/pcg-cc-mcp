@@ -209,12 +209,31 @@ impl WorkflowOrchestrator {
             workflows.insert(workflow_instance_id, instance);
         }
 
-        // Emit start event
+        // Emit start event (internal broadcast)
         let _ = self.event_sender.send(WorkflowEvent::WorkflowStarted {
             workflow_id: workflow_instance_id,
             agent_id: agent.agent_id.clone(),
             workflow_name: workflow.name.clone(),
         });
+
+        // Emit coordination event for Mission Control visibility
+        let first_stage_name = workflow.stages.first()
+            .map(|s| s.name.clone())
+            .unwrap_or_else(|| "Starting".to_string());
+        let _ = self.coordination.emit_event(
+            crate::coordination::CoordinationEvent::WorkflowProgress {
+                workflow_instance_id: workflow_instance_id.to_string(),
+                agent_id: agent.agent_id.clone(),
+                agent_codename: agent.codename.clone(),
+                workflow_name: workflow.name.clone(),
+                current_stage: 1,
+                total_stages: workflow.stages.len() as u32,
+                stage_name: first_stage_name,
+                status: "running".to_string(),
+                project_id: context.project_id.map(|id| id.to_string()),
+                timestamp: now,
+            }
+        ).await;
 
         // Create tracking tasks for each workflow stage (Nora will execute the tools)
         let task_ids = if let Some(task_executor) = self.task_executor.read().await.as_ref() {
@@ -307,14 +326,14 @@ impl WorkflowOrchestrator {
             let stage_name = instance.workflow.stages[instance.current_stage].name.clone();
 
             // Store stage output
-            instance.context.set_stage_output(stage_name, stage_output);
+            instance.context.set_stage_output(stage_name.clone(), stage_output);
 
             // Advance to next stage
             instance.current_stage += 1;
             instance.updated_at = Utc::now();
 
             // Check if workflow is complete
-            if instance.current_stage >= instance.workflow.stages.len() {
+            let status = if instance.current_stage >= instance.workflow.stages.len() {
                 tracing::info!(
                     "[WORKFLOW_ORCHESTRATOR] Workflow {} completed successfully",
                     workflow_id
@@ -324,6 +343,7 @@ impl WorkflowOrchestrator {
                     total_stages: instance.workflow.stages.len(),
                     execution_time_ms: (Utc::now() - instance.started_at).num_milliseconds() as u64,
                 };
+                "completed"
             } else {
                 tracing::info!(
                     "[WORKFLOW_ORCHESTRATOR] Workflow {} advanced to stage {}/{}",
@@ -331,10 +351,39 @@ impl WorkflowOrchestrator {
                     instance.current_stage + 1,
                     instance.workflow.stages.len()
                 );
-            }
+                "running"
+            };
+
+            // Emit coordination event for Mission Control visibility
+            let agent_codename = self.get_agent_codename_sync(&instance.agent_id);
+            let _ = self.coordination.emit_event(
+                crate::coordination::CoordinationEvent::WorkflowProgress {
+                    workflow_instance_id: workflow_id.to_string(),
+                    agent_id: instance.agent_id.clone(),
+                    agent_codename,
+                    workflow_name: instance.workflow.name.clone(),
+                    current_stage: instance.current_stage as u32,
+                    total_stages: instance.workflow.stages.len() as u32,
+                    stage_name,
+                    status: status.to_string(),
+                    project_id: instance.context.project_id.map(|id| id.to_string()),
+                    timestamp: Utc::now(),
+                }
+            ).await;
         }
 
         Ok(())
+    }
+
+    /// Helper to get agent codename from agent_id
+    fn get_agent_codename_sync(&self, agent_id: &str) -> String {
+        // Try to find the agent in the router
+        for agent in self.router.get_agents() {
+            if agent.agent_id == agent_id {
+                return agent.codename.clone();
+            }
+        }
+        agent_id.to_string()
     }
 
     /// Mark workflow stage as failed

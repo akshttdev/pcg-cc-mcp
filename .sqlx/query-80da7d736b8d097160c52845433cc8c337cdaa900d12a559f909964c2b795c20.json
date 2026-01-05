@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO trello_boards (\n                id, project_id, trello_board_id, trello_board_name,\n                default_list_id, created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "80da7d736b8d097160c52845433cc8c337cdaa900d12a559f909964c2b795c20"
+}

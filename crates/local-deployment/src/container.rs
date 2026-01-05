@@ -18,9 +18,12 @@ use command_group::AsyncGroupChild;
 use db::{
     DBService,
     models::{
+        activity::{ActivityLog, ActorType, CreateActivityLog},
         execution_process::{
             ExecutionContext, ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus,
         },
+        execution_slot::ExecutionSlot,
+        execution_summary::ExecutionSummary,
         executor_session::ExecutorSession,
         follow_up_draft::FollowUpDraft,
         image::TaskImage,
@@ -48,12 +51,14 @@ use services::services::{
     analytics::AnalyticsContext,
     config::Config,
     container::{ContainerError, ContainerRef, ContainerService},
+    execution_summary::{DiffStats, ExecutionSummaryService},
     filesystem_watcher,
     git::{Commit, DiffTarget, GitService},
     image::ImageService,
     notification::NotificationService,
     worktree_manager::WorktreeManager,
 };
+use utils::diff::DiffChangeKind;
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_util::io::ReaderStream;
 use utils::{
@@ -190,6 +195,86 @@ impl LocalContainerService {
         }
         let notify_cfg = config.read().await.notifications.clone();
         NotificationService::notify_execution_halted(notify_cfg, ctx).await;
+    }
+
+    /// Generate an execution summary for a completed execution process
+    async fn generate_execution_summary(
+        &self,
+        ctx: &ExecutionContext,
+    ) -> Result<ExecutionSummary, anyhow::Error> {
+        // Get diff stats from git
+        let diff_stats = self.compute_diff_stats(ctx).await.unwrap_or_default();
+
+        // Get executor name from the task attempt
+        let executor_name = Some(ctx.task_attempt.executor.as_str());
+
+        // Create the execution summary
+        let summary = ExecutionSummaryService::create_summary(
+            &self.db.pool,
+            ctx.task_attempt.id,
+            Some(ctx.execution_process.id),
+            Some(&ctx.execution_process),
+            diff_stats,
+            executor_name,
+        )
+        .await?;
+
+        tracing::info!(
+            "Generated execution summary {} for attempt {}: {} files modified, status {:?}",
+            summary.id,
+            ctx.task_attempt.id,
+            summary.files_modified + summary.files_created,
+            summary.completion_status
+        );
+
+        Ok(summary)
+    }
+
+    /// Compute diff statistics for an execution context
+    async fn compute_diff_stats(&self, ctx: &ExecutionContext) -> Result<DiffStats, anyhow::Error> {
+        let worktree_dir = self.task_attempt_to_current_dir(&ctx.task_attempt);
+        let project_repo_path = self.get_project_repo_path(&ctx.task_attempt).await?;
+
+        // Get the base commit to compare against
+        let task_branch = ctx.task_attempt.branch.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Task attempt {} has no branch", ctx.task_attempt.id)
+        })?;
+
+        let base_commit = self.git().get_base_commit(
+            &project_repo_path,
+            task_branch,
+            &ctx.task_attempt.base_branch,
+        )?;
+
+        // Get diffs from worktree
+        let diffs = self.git().get_diffs(
+            DiffTarget::Worktree {
+                worktree_path: &worktree_dir,
+                base_commit: &base_commit,
+            },
+            None,
+        )?;
+
+        // Count file changes by type
+        let mut stats = DiffStats::default();
+        for diff in &diffs {
+            match diff.change {
+                DiffChangeKind::Added => stats.files_created += 1,
+                DiffChangeKind::Deleted => stats.files_deleted += 1,
+                DiffChangeKind::Modified | DiffChangeKind::Renamed | DiffChangeKind::Copied => {
+                    stats.files_modified += 1
+                }
+                DiffChangeKind::PermissionChange => {} // Don't count permission changes
+            }
+            if let Some(adds) = diff.additions {
+                stats.additions += adds as i32;
+            }
+            if let Some(dels) = diff.deletions {
+                stats.deletions += dels as i32;
+            }
+        }
+
+        Ok(stats)
     }
 
     /// Defensively check for externally deleted worktrees and mark them as deleted in the database
@@ -468,6 +553,64 @@ impl LocalContainerService {
                     }
                 }
 
+                // Generate execution summary for CodingAgent executions
+                if matches!(
+                    ctx.execution_process.run_reason,
+                    ExecutionProcessRunReason::CodingAgent
+                ) {
+                    if let Err(e) = container.generate_execution_summary(&ctx).await {
+                        tracing::warn!(
+                            "Failed to generate execution summary for process {}: {}",
+                            ctx.execution_process.id,
+                            e
+                        );
+                    }
+
+                    // Log activity: execution completed
+                    let completion_status = match ctx.execution_process.status {
+                        ExecutionProcessStatus::Completed => "completed",
+                        ExecutionProcessStatus::Failed => "failed",
+                        ExecutionProcessStatus::Killed => "killed",
+                        _ => "unknown",
+                    };
+                    if let Err(e) = ActivityLog::create(
+                        &db.pool,
+                        &CreateActivityLog {
+                            task_id: ctx.task.id,
+                            actor_id: ctx.task_attempt.executor.clone(),
+                            actor_type: ActorType::Agent,
+                            action: "execution_completed".to_string(),
+                            previous_state: None,
+                            new_state: Some(json!({
+                                "status": completion_status,
+                                "exit_code": exit_code,
+                            })),
+                            metadata: Some(json!({
+                                "execution_process_id": ctx.execution_process.id.to_string(),
+                                "attempt_id": ctx.task_attempt.id.to_string(),
+                                "executor": ctx.task_attempt.executor,
+                            })),
+                        },
+                    )
+                    .await
+                    {
+                        tracing::warn!("Failed to log execution_completed activity: {}", e);
+                    }
+
+                    // Update task collaborators
+                    if let Err(e) = Task::update_collaborator(
+                        &db.pool,
+                        ctx.task.id,
+                        &ctx.task_attempt.executor,
+                        "agent",
+                        completion_status,
+                    )
+                    .await
+                    {
+                        tracing::warn!("Failed to update task collaborators: {}", e);
+                    }
+                }
+
                 // Fire analytics event when CodingAgent execution has finished
                 if config.read().await.analytics_enabled == Some(true)
                     && matches!(
@@ -496,6 +639,27 @@ impl LocalContainerService {
                             .await
                 {
                     tracing::warn!("Failed to update after_head_commit for {}: {}", exec_id, e);
+                }
+
+                // Release execution slots for this task attempt when execution finalizes
+                if Self::should_finalize(&ctx) {
+                    if let Err(e) = ExecutionSlot::release_all_for_task_attempt(
+                        &db.pool,
+                        ctx.task_attempt.id,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            "Failed to release slots for task attempt {}: {}",
+                            ctx.task_attempt.id,
+                            e
+                        );
+                    } else {
+                        tracing::debug!(
+                            "Released execution slots for task attempt {}",
+                            ctx.task_attempt.id
+                        );
+                    }
                 }
             }
 
@@ -1077,6 +1241,44 @@ impl ContainerService for LocalContainerService {
 
         // Spawn unified exit monitor: watches OS exit and optional executor signal
         let _hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
+
+        // Log activity: execution started
+        if let Err(e) = ActivityLog::create(
+            &self.db.pool,
+            &CreateActivityLog {
+                task_id: task_attempt.task_id,
+                actor_id: task_attempt.executor.clone(),
+                actor_type: ActorType::Agent,
+                action: "execution_started".to_string(),
+                previous_state: None,
+                new_state: Some(json!({
+                    "execution_process_id": execution_process.id.to_string(),
+                    "attempt_id": task_attempt.id.to_string(),
+                    "run_reason": format!("{:?}", execution_process.run_reason),
+                })),
+                metadata: Some(json!({
+                    "executor": task_attempt.executor,
+                    "branch": task_attempt.branch,
+                })),
+            },
+        )
+        .await
+        {
+            tracing::warn!("Failed to log execution_started activity: {}", e);
+        }
+
+        // Update task collaborators
+        if let Err(e) = Task::update_collaborator(
+            &self.db.pool,
+            task_attempt.task_id,
+            &task_attempt.executor,
+            "agent",
+            "execution_started",
+        )
+        .await
+        {
+            tracing::warn!("Failed to update task collaborators: {}", e);
+        }
 
         Ok(())
     }

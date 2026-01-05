@@ -8,6 +8,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import {
+  Activity,
   ChevronDown,
   ChevronRight,
   FolderOpen,
@@ -20,6 +21,10 @@ import {
   Crown,
   Star,
   Box,
+  Share2,
+  Megaphone,
+  Users,
+  Workflow,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -36,6 +41,10 @@ interface SidebarProps {
 
 const NAVIGATION_ITEMS = [
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
+  { label: 'Mission Control', icon: Activity, to: '/mission-control', id: 'mission-control' },
+  { label: 'Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
+  { label: 'Social Command', icon: Megaphone, to: '/social-command', id: 'social-command' },
+  { label: 'CRM & Email', icon: Users, to: '/crm', id: 'crm' },
   { label: 'Virtual Environment', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'Nora Assistant', icon: Crown, to: '/nora', id: 'nora' },
   { label: 'Settings', icon: Settings, to: '/settings', id: 'settings' },
@@ -213,6 +222,19 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
               </div>
             </Link>
           )}
+
+          {/* Social Media Link */}
+          <Link
+            to={`/projects/${project.id}/social`}
+            className={cn(
+              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-1',
+              location.pathname === `/projects/${project.id}/social` &&
+                'bg-accent text-accent-foreground'
+            )}
+          >
+            <Share2 className="h-3 w-3 text-muted-foreground" />
+            <span>Social Media</span>
+          </Link>
         </div>
       </CollapsibleContent>
     </Collapsible>

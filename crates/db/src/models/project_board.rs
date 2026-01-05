@@ -43,11 +43,18 @@ const DEFAULT_BOARD_TEMPLATES: &[BoardTemplate] = &[
 #[sqlx(type_name = "project_board_type", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectBoardType {
+    // Original board types
     ExecutiveAssets,
     BrandAssets,
     DevAssets,
     SocialAssets,
     Custom,
+
+    // New agent-centric board types
+    AgentFlows,       // Kanban by agent phase (Planning/Executing/Verifying)
+    ArtifactGallery,  // Visual gallery of all artifacts
+    ApprovalQueue,    // Human collaboration queue for pending approvals
+    ResearchHub,      // Wide Research sessions and results
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]

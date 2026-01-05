@@ -8,7 +8,7 @@ mod tests {
     fn test_llm_config_default() {
         let config = LLMConfig::default();
 
-        assert_eq!(config.model, "gpt-4o-mini");
+        assert_eq!(config.model, "gpt-4o");
         assert_eq!(config.temperature, 0.2);
         assert_eq!(config.max_tokens, 600);
         assert!(matches!(config.provider, LLMProvider::OpenAI));

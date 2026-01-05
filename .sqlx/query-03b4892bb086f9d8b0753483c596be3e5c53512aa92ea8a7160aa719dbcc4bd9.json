@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE trello_task_links SET trello_list_id = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "03b4892bb086f9d8b0753483c596be3e5c53512aa92ea8a7160aa719dbcc4bd9"
+}

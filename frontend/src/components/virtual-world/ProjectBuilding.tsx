@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { BUILDING_THEMES, getBuildingType } from '@/lib/virtual-world/buildingTypes';
-import { ENTRY_PROMPT_HEIGHT } from '@/lib/virtual-world/constants';
+import { ENTRY_PROMPT_HEIGHT, DOOR_WIDTH, DOOR_HEIGHT } from '@/lib/virtual-world/constants';
 
 const CONTAINER_WIDTH = 50;
 const CONTAINER_LENGTH = 100;
@@ -356,28 +356,87 @@ export function ProjectBuilding({
         </mesh>
       )}
 
-      {/* Entry portal */}
-      <mesh position={doorPosition} rotation={[0, doorRotation, 0]}>
-        <planeGeometry args={[4, 8]} />
-        <meshStandardMaterial
-          color={theme.doorColor}
-          emissive={isEnterTarget ? theme.hologramColor : '#00121d'}
-          emissiveIntensity={isEnterTarget ? 1.2 : 0.2}
-          transparent
-          opacity={0.85}
-          metalness={0.2}
-          roughness={0.3}
+      {/* Entry door with 3D frame */}
+      <group position={doorPosition} rotation={[0, doorRotation, 0]}>
+        {/* Door frame - left pillar */}
+        <mesh position={[-(DOOR_WIDTH / 2 + 0.5), 0, 0]}>
+          <boxGeometry args={[1, DOOR_HEIGHT + 2, 1.5]} />
+          <meshStandardMaterial
+            color={theme.accentColor}
+            metalness={0.8}
+            roughness={0.2}
+            emissive={theme.hologramColor}
+            emissiveIntensity={isEnterTarget ? 0.8 : 0.2}
+          />
+        </mesh>
+
+        {/* Door frame - right pillar */}
+        <mesh position={[(DOOR_WIDTH / 2 + 0.5), 0, 0]}>
+          <boxGeometry args={[1, DOOR_HEIGHT + 2, 1.5]} />
+          <meshStandardMaterial
+            color={theme.accentColor}
+            metalness={0.8}
+            roughness={0.2}
+            emissive={theme.hologramColor}
+            emissiveIntensity={isEnterTarget ? 0.8 : 0.2}
+          />
+        </mesh>
+
+        {/* Door frame - top beam */}
+        <mesh position={[0, DOOR_HEIGHT / 2 + 0.5, 0]}>
+          <boxGeometry args={[DOOR_WIDTH + 2, 1, 1.5]} />
+          <meshStandardMaterial
+            color={theme.accentColor}
+            metalness={0.8}
+            roughness={0.2}
+            emissive={theme.hologramColor}
+            emissiveIntensity={isEnterTarget ? 0.8 : 0.2}
+          />
+        </mesh>
+
+        {/* Door surface - glowing portal effect */}
+        <mesh position={[0, 0, 0.2]}>
+          <planeGeometry args={[DOOR_WIDTH, DOOR_HEIGHT]} />
+          <meshStandardMaterial
+            color={theme.doorColor}
+            emissive={isEnterTarget ? theme.hologramColor : '#00121d'}
+            emissiveIntensity={isEnterTarget ? 1.5 : 0.3}
+            transparent
+            opacity={isEnterTarget ? 0.9 : 0.7}
+            metalness={0.1}
+            roughness={0.4}
+          />
+        </mesh>
+
+        {/* Inner glow ring when active */}
+        {isEnterTarget && (
+          <mesh position={[0, 0, 0.3]}>
+            <ringGeometry args={[DOOR_WIDTH / 2 - 0.5, DOOR_WIDTH / 2 + 0.5, 32]} />
+            <meshBasicMaterial
+              color={theme.hologramColor}
+              transparent
+              opacity={0.6}
+            />
+          </mesh>
+        )}
+
+        {/* Door indicator light */}
+        <pointLight
+          position={[0, DOOR_HEIGHT / 2 + 1.5, 1]}
+          intensity={isEnterTarget ? 2 : 0.5}
+          color={theme.hologramColor}
+          distance={15}
         />
-      </mesh>
+      </group>
 
       {showEnterPrompt && (
         <Text
           position={[doorPosition[0], doorPosition[1] + ENTRY_PROMPT_HEIGHT, doorPosition[2]]}
-          fontSize={1.2}
+          fontSize={1.5}
           color={theme.hologramColor}
           anchorX="center"
           anchorY="bottom"
-          outlineWidth={0.05}
+          outlineWidth={0.08}
           outlineColor="#000a10"
         >
           Press {entryHotkey} to enter

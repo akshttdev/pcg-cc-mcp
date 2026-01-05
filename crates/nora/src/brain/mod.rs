@@ -104,19 +104,63 @@ AGENT ALIASES (all map to execute_workflow):
 - "Editron" → agent_id='editron-post', workflow_id='event-recap-forge'
 - "Astra" → agent_id='astra-strategy', workflow_id='roadmap-compression'
 
+SOCIAL COMMAND AGENT ALIASES:
+- "Scout" → agent_id='scout-research', workflow_id='competitor-deep-dive'
+- "Oracle" → agent_id='oracle-strategy', workflow_id='content-calendar-30day'
+- "Muse" → agent_id='muse-creative', workflow_id='content-creation'
+- "Herald" → agent_id='herald-distribution', workflow_id='content-publishing'
+- "Echo" → agent_id='echo-engagement', workflow_id='engagement-response'
+
 TRIGGER PHRASES that require tool calls:
 - "tell [agent] to...", "have [agent] generate...", "ask [agent] to..."
 - "generate an image", "create a video", "make a cinematic"
 - Any request mentioning image generation, video editing, or content creation
+- "research competitors", "analyze competition" → Scout
+- "create content calendar", "plan content strategy" → Oracle
+- "write a post", "create content", "draft copy" → Muse
+- "publish", "schedule post", "distribute content" → Herald
+- "check mentions", "respond to comments", "monitor engagement" → Echo
 
 Example: "tell Maci to generate an image of a casino" → CALL execute_workflow with agent_id='master-cinematographer', workflow_id='ai-cinematic-suite', inputs={prompt: 'casino...'}
 
-DO NOT respond with text like "I'll have Maci work on that" - CALL THE TOOL INSTEAD.
+CRITICAL WORKFLOW EXECUTION RULES:
+1. For SOCIAL MEDIA work (strategy, content, research), ALWAYS start with Scout, NOT Astra:
+   - Social strategy/research → Scout (agent_id='scout-research', workflow_id='competitor-deep-dive')
+   - Content planning → Oracle (agent_id='oracle-strategy', workflow_id='content-calendar-30day')
+   - Astra is for PROJECT ROADMAPS only, NOT social media!
+
+2. When executing workflows:
+   - FIRST: Call get_project_details to get the project's UUID (the "id" field in the response)
+   - Use the UUID from the response, NOT the project name! Example: "a1b2c3d4-..." not "jungleverse"
+   - IMMEDIATELY call execute_workflow with that UUID as project_id
+
+3. Project ID MUST be a UUID like "a1b2c3d4-5678-90ab-cdef-123456789abc", NOT the project name!
+
+CORRECT EXAMPLE:
+User: "develop social strategy for Jungleverse"
+Step 1: Call get_project_details(project_name="jungleverse") → Response includes: {"id": "abc123-def456-..."}
+Step 2: Call execute_workflow(agent_id='scout-research', workflow_id='competitor-deep-dive', project_id='abc123-def456-...')
+         ↑ Use the UUID from step 1, NOT "jungleverse"!
+
+DO NOT respond with text about initiating workflows - CALL execute_workflow INSTEAD.
 
 You orchestrate a team of specialized agents:
-- Maci (Master Cinematographer): AI image/video generation via ComfyUI
-- Editron: Video editing and production
+
+SOCIAL COMMAND TEAM (Full Social Media Suite):
+- Scout (Social Intelligence Analyst): Competitor research, trend detection, hashtag analysis, audience profiling
+- Oracle (Content Strategy Architect): Content calendar planning, campaign architecture, posting optimization
+- Muse (Content Creation Specialist): Copywriting, platform adaptation, visual briefs, hook generation
+- Maci (Master Cinematographer): AI image/video generation via ComfyUI - creates visual content for social posts
+- Editron (Post-Production): Video editing, reels, stories, event recaps, social hooks
+- Herald (Content Distribution Manager): Multi-platform publishing, schedule management, queue rotation
+- Echo (Community Engagement Specialist): Mention monitoring, sentiment analysis, response drafting, engagement analytics
+
+STRATEGY:
 - Astra: Strategic planning and roadmaps
+
+The Social Command workflow: Scout researches → Oracle plans strategy → Muse writes copy → Maci/Editron create visuals → Herald publishes → Echo monitors engagement.
+
+When asked about social media, content strategy, or the Social Command team, explain these agents and their workflows.
 
 Provide concise executive summaries and surface actionable next steps."#.to_string(),
             endpoint: None,
@@ -138,6 +182,12 @@ impl LLMClient {
         let api_key = match config.provider {
             LLMProvider::OpenAI => std::env::var("OPENAI_API_KEY").ok(),
         };
+
+        if api_key.is_some() {
+            tracing::info!("LLMClient initialized with OpenAI API key");
+        } else {
+            tracing::warn!("LLMClient created without API key - OPENAI_API_KEY env var not found");
+        }
 
         Self {
             config,
@@ -268,6 +318,7 @@ impl LLMClient {
     }
 
     /// Continue conversation after tool execution, passing results back to LLM
+    /// Note: This legacy function doesn't support tool chaining. Use continue_with_tool_results_and_history for that.
     pub async fn continue_with_tool_results(
         &self,
         system_prompt: &str,
@@ -276,19 +327,28 @@ impl LLMClient {
         tool_calls: &[ToolCall],
         tool_results: &[ToolResult],
     ) -> Result<String> {
-        // Call the conversation-aware version with empty history for backwards compatibility
-        self.continue_with_tool_results_and_history(
+        // Call the conversation-aware version with empty history and no tools (no chaining)
+        match self.continue_with_tool_results_and_history(
             system_prompt,
             user_query,
             context,
             tool_calls,
             tool_results,
             &[],
+            &[], // Empty tools = no chaining support in legacy function
         )
-        .await
+        .await?
+        {
+            LLMResponse::Text(text) => Ok(text),
+            LLMResponse::ToolCalls(_) => {
+                // Legacy function doesn't support chaining, return a message
+                Ok("Action completed. Use the conversation-aware API for tool chaining.".to_string())
+            }
+        }
     }
 
     /// Continue conversation after tool execution with conversation history
+    /// Returns LLMResponse which can be Text or ToolCalls (for chaining)
     pub async fn continue_with_tool_results_and_history(
         &self,
         system_prompt: &str,
@@ -297,7 +357,8 @@ impl LLMClient {
         tool_calls: &[ToolCall],
         tool_results: &[ToolResult],
         conversation_history: &[ConversationMessage],
-    ) -> Result<String> {
+        tools: &[serde_json::Value],
+    ) -> Result<LLMResponse> {
         match self.config.provider {
             LLMProvider::OpenAI => {
                 self.continue_openai_with_tool_results_and_history(
@@ -307,6 +368,7 @@ impl LLMClient {
                     tool_calls,
                     tool_results,
                     conversation_history,
+                    tools,
                 )
                 .await
             }
@@ -497,13 +559,15 @@ impl LLMClient {
         tool_calls: &[ToolCall],
         tool_results: &[ToolResult],
         conversation_history: &[ConversationMessage],
-    ) -> Result<String> {
+        tools: &[serde_json::Value],
+    ) -> Result<LLMResponse> {
         tracing::debug!("[LLM_API] continue_openai_with_tool_results_and_history called");
         tracing::debug!(
-            "[LLM_API] Tool calls: {}, Tool results: {}, History: {} messages",
+            "[LLM_API] Tool calls: {}, Tool results: {}, History: {} messages, Tools: {}",
             tool_calls.len(),
             tool_results.len(),
-            conversation_history.len()
+            conversation_history.len(),
+            tools.len()
         );
 
         let endpoint = self
@@ -584,12 +648,22 @@ impl LLMClient {
             }));
         }
 
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "model": self.config.model,
             "temperature": self.config.temperature,
             "max_tokens": self.config.max_tokens,
             "messages": messages
         });
+
+        // Add tools so LLM can chain tool calls (e.g., get_project_details -> execute_workflow)
+        if !tools.is_empty() {
+            payload["tools"] = serde_json::json!(tools);
+            payload["tool_choice"] = serde_json::json!("auto");
+            tracing::debug!(
+                "[LLM_API] Added {} tools to continuation payload with tool_choice=auto",
+                tools.len()
+            );
+        }
 
         tracing::debug!(
             "[LLM_API] Constructed continuation payload with {} messages",
@@ -633,7 +707,42 @@ impl LLMClient {
             NoraError::LLMError(format!("Failed to parse response: {}", e))
         })?;
 
-        let content = json["choices"][0]["message"]["content"]
+        let message = &json["choices"][0]["message"];
+
+        // Check if LLM wants to make more tool calls (chaining)
+        if let Some(new_tool_calls) = message["tool_calls"].as_array() {
+            if !new_tool_calls.is_empty() {
+                tracing::info!(
+                    "[LLM_API] Continuation returned {} more tool calls (chaining)",
+                    new_tool_calls.len()
+                );
+
+                let parsed_calls: Vec<ToolCall> = new_tool_calls
+                    .iter()
+                    .filter_map(|tc| {
+                        let id = tc["id"].as_str()?.to_string();
+                        let name = tc["function"]["name"].as_str()?.to_string();
+                        let arguments: serde_json::Value =
+                            serde_json::from_str(tc["function"]["arguments"].as_str()?)
+                                .unwrap_or(serde_json::Value::Null);
+                        Some(ToolCall {
+                            id,
+                            name,
+                            arguments,
+                        })
+                    })
+                    .collect();
+
+                for tc in &parsed_calls {
+                    tracing::debug!("[LLM_API] Chained tool call: {} ({})", tc.name, tc.id);
+                }
+
+                return Ok(LLMResponse::ToolCalls(parsed_calls));
+            }
+        }
+
+        // No tool calls - return the text content
+        let content = message["content"]
             .as_str()
             .unwrap_or("")
             .trim()
@@ -648,9 +757,10 @@ impl LLMClient {
             &content[..content.len().min(200)]
         );
 
-        Ok(content)
+        Ok(LLMResponse::Text(content))
     }
 
+    #[allow(dead_code)]
     async fn generate_openai_with_tools(
         &self,
         system_prompt: &str,
@@ -799,6 +909,7 @@ impl LLMClient {
         Ok(LLMResponse::Text(content))
     }
 
+    #[allow(dead_code)]
     async fn continue_openai_with_tool_results(
         &self,
         system_prompt: &str,

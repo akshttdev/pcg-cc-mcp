@@ -81,4 +81,73 @@ export type CoordinationEvent =
       content: string;
       priority: string | null;
       timestamp: string;
+    }
+  | {
+      type: 'WorkflowProgress';
+      workflowInstanceId: string;
+      agentId: string;
+      agentCodename: string;
+      workflowName: string;
+      currentStage: number;
+      totalStages: number;
+      stageName: string;
+      status: 'running' | 'completed' | 'failed';
+      projectId: string | null;
+      timestamp: string;
+    }
+  | {
+      type: 'ExecutionStarted';
+      executionId: string;
+      projectId: string | null;
+      agentCodename: string;
+      workflowName: string | null;
+      timestamp: string;
+    }
+  | {
+      type: 'ExecutionStageStarted';
+      executionId: string;
+      stageIndex: number;
+      stageName: string;
+      agentCodename: string;
+      timestamp: string;
+    }
+  | {
+      type: 'ExecutionStageCompleted';
+      executionId: string;
+      stageIndex: number;
+      stageName: string;
+      outputSummary: string | null;
+      timestamp: string;
+    }
+  | {
+      type: 'ExecutionCompleted';
+      executionId: string;
+      projectId: string | null;
+      tasksCreated: number;
+      artifactsCount: number;
+      durationMs: number;
+      timestamp: string;
+    }
+  | {
+      type: 'ExecutionFailed';
+      executionId: string;
+      error: string;
+      stage: number | null;
+      timestamp: string;
+    }
+  | {
+      type: 'ExecutionTaskCreated';
+      executionId: string;
+      taskId: string;
+      taskTitle: string;
+      boardId: string;
+      timestamp: string;
+    }
+  | {
+      type: 'ExecutionArtifactProduced';
+      executionId: string;
+      artifactType: string;
+      title: string;
+      stage: number | null;
+      timestamp: string;
     };

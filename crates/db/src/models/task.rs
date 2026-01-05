@@ -5,7 +5,7 @@ use sqlx::{FromRow, SqlitePool, Type, types::Json};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use super::{project::Project, task_attempt::TaskAttempt};
+use super::{execution_summary::CompletionStatus, project::Project, task_attempt::TaskAttempt};
 
 #[derive(Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS)]
 #[sqlx(type_name = "task_status", rename_all = "lowercase")]
@@ -54,8 +54,9 @@ pub struct Task {
     // Phase A: Core Collaboration Fields
     pub priority: Priority,
     pub assignee_id: Option<String>,
-    pub assigned_agent: Option<String>,
-    pub assigned_mcps: Option<String>, // JSON array of strings
+    pub assigned_agent: Option<String>,  // Legacy: agent name (e.g., "Nora")
+    pub agent_id: Option<Uuid>,           // New: foreign key to agents table
+    pub assigned_mcps: Option<String>,    // JSON array of strings
     pub created_by: String,
     pub requires_approval: bool,
     pub approval_status: Option<ApprovalStatus>,
@@ -69,6 +70,27 @@ pub struct Task {
     pub scheduled_end: Option<DateTime<Utc>>,
 }
 
+/// Brief execution summary for task card display
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Default)]
+pub struct ExecutionSummaryBrief {
+    pub files_modified: i32,
+    pub files_created: i32,
+    pub commands_failed: i32,
+    pub completion_status: CompletionStatus,
+    pub tools_used: Option<Vec<String>>,
+    pub human_rating: Option<i32>,
+    pub execution_time_ms: i64,
+}
+
+/// Collaborator information for task display
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TaskCollaborator {
+    pub actor_id: String,
+    pub actor_type: String, // "human", "agent", "mcp", "system"
+    pub last_action: String,
+    pub last_action_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct TaskWithAttemptStatus {
     #[serde(flatten)]
@@ -78,6 +100,12 @@ pub struct TaskWithAttemptStatus {
     pub has_merged_attempt: bool,
     pub last_attempt_failed: bool,
     pub executor: String,
+    /// Latest execution summary for the task (populated from most recent attempt)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_execution_summary: Option<ExecutionSummaryBrief>,
+    /// Collaborators who have worked on this task
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collaborators: Option<Vec<TaskCollaborator>>,
 }
 
 impl std::ops::Deref for TaskWithAttemptStatus {
@@ -115,7 +143,8 @@ pub struct CreateTask {
     // Phase A: Core Collaboration Fields
     pub priority: Option<Priority>,
     pub assignee_id: Option<String>,
-    pub assigned_agent: Option<String>,
+    pub assigned_agent: Option<String>,  // Legacy: agent name
+    pub agent_id: Option<Uuid>,           // New: foreign key to agents table
     pub assigned_mcps: Option<Vec<String>>,
     pub created_by: String,
     pub requires_approval: Option<bool>,
@@ -144,7 +173,8 @@ pub struct UpdateTask {
     // Phase A: Core Collaboration Fields
     pub priority: Option<Priority>,
     pub assignee_id: Option<String>,
-    pub assigned_agent: Option<String>,
+    pub assigned_agent: Option<String>,  // Legacy: agent name
+    pub agent_id: Option<Option<Uuid>>,   // New: foreign key to agents table
     pub assigned_mcps: Option<Vec<String>>,
     pub requires_approval: Option<bool>,
     pub approval_status: Option<ApprovalStatus>,
@@ -194,6 +224,7 @@ impl Task {
   t.priority                      AS "priority!: Priority",
   t.assignee_id                   AS "assignee_id: String",
   t.assigned_agent                AS "assigned_agent: String",
+  t.agent_id                      AS "agent_id: Uuid",
   t.assigned_mcps                 AS "assigned_mcps: String",
   t.created_by                    AS "created_by!",
   t.requires_approval             AS "requires_approval!: bool",
@@ -233,7 +264,9 @@ impl Task {
       WHERE ta.task_id = t.id
      ORDER BY ta.created_at DESC
       LIMIT 1
-    )                               AS "executor!: String"
+    )                               AS "executor!: String",
+
+  t.collaborators                   AS "collaborators: String"
 
 FROM tasks t
 WHERE t.project_id = $1
@@ -259,6 +292,7 @@ ORDER BY t.created_at DESC"#,
                     priority: rec.priority,
                     assignee_id: rec.assignee_id,
                     assigned_agent: rec.assigned_agent,
+                    agent_id: rec.agent_id,
                     assigned_mcps: rec.assigned_mcps,
                     created_by: rec.created_by,
                     requires_approval: rec.requires_approval,
@@ -275,6 +309,10 @@ ORDER BY t.created_at DESC"#,
                 has_merged_attempt: false, // TODO use merges table
                 last_attempt_failed: rec.last_attempt_failed != 0,
                 executor: rec.executor,
+                last_execution_summary: None, // Loaded separately via API when needed
+                collaborators: rec.collaborators
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok()),
             })
             .collect();
 
@@ -298,6 +336,7 @@ ORDER BY t.created_at DESC"#,
                 priority as "priority!: Priority",
                 assignee_id,
                 assigned_agent,
+                agent_id as "agent_id: Uuid",
                 assigned_mcps,
                 created_by,
                 requires_approval as "requires_approval!: bool",
@@ -333,6 +372,7 @@ ORDER BY t.created_at DESC"#,
                 priority as "priority!: Priority",
                 assignee_id,
                 assigned_agent,
+                agent_id as "agent_id: Uuid",
                 assigned_mcps,
                 created_by,
                 requires_approval as "requires_approval!: bool",
@@ -372,6 +412,7 @@ ORDER BY t.created_at DESC"#,
                 priority as "priority!: Priority",
                 assignee_id,
                 assigned_agent,
+                agent_id as "agent_id: Uuid",
                 assigned_mcps,
                 created_by,
                 requires_approval as "requires_approval!: bool",
@@ -406,11 +447,11 @@ ORDER BY t.created_at DESC"#,
             Task,
             r#"INSERT INTO tasks (
                 id, project_id, pod_id, board_id, title, description, status, parent_task_attempt,
-                priority, assignee_id, assigned_agent, assigned_mcps, created_by,
+                priority, assignee_id, assigned_agent, agent_id, assigned_mcps, created_by,
                 requires_approval, parent_task_id, tags, due_date,
                 custom_properties, scheduled_start, scheduled_end
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
                RETURNING
                 id as "id!: Uuid",
                 project_id as "project_id!: Uuid",
@@ -425,6 +466,7 @@ ORDER BY t.created_at DESC"#,
                 priority as "priority!: Priority",
                 assignee_id,
                 assigned_agent,
+                agent_id as "agent_id: Uuid",
                 assigned_mcps,
                 created_by,
                 requires_approval as "requires_approval!: bool",
@@ -446,6 +488,7 @@ ORDER BY t.created_at DESC"#,
             priority,
             data.assignee_id,
             data.assigned_agent,
+            data.agent_id,
             assigned_mcps_json,
             data.created_by,
             requires_approval,
@@ -511,6 +554,7 @@ ORDER BY t.created_at DESC"#,
                 priority as "priority!: Priority",
                 assignee_id,
                 assigned_agent,
+                agent_id as "agent_id: Uuid",
                 assigned_mcps,
                 created_by,
                 requires_approval as "requires_approval!: bool",
@@ -568,6 +612,64 @@ ORDER BY t.created_at DESC"#,
         Ok(result.rows_affected())
     }
 
+    /// Update collaborators on a task, adding or updating a collaborator entry
+    pub async fn update_collaborator(
+        pool: &SqlitePool,
+        task_id: Uuid,
+        actor_id: &str,
+        actor_type: &str,
+        action: &str,
+    ) -> Result<(), sqlx::Error> {
+        // Get existing collaborators
+        let record = sqlx::query!(
+            r#"SELECT collaborators FROM tasks WHERE id = $1"#,
+            task_id
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        let mut collaborators: Vec<TaskCollaborator> = match record {
+            Some(rec) => rec
+                .collaborators
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default(),
+            None => return Ok(()), // Task doesn't exist
+        };
+
+        let now = Utc::now();
+
+        // Update existing or add new collaborator
+        if let Some(existing) = collaborators
+            .iter_mut()
+            .find(|c| c.actor_id == actor_id && c.actor_type == actor_type)
+        {
+            existing.last_action = action.to_string();
+            existing.last_action_at = now;
+        } else {
+            collaborators.push(TaskCollaborator {
+                actor_id: actor_id.to_string(),
+                actor_type: actor_type.to_string(),
+                last_action: action.to_string(),
+                last_action_at: now,
+            });
+        }
+
+        // Update the task
+        let collaborators_json = serde_json::to_string(&collaborators)
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+        sqlx::query!(
+            "UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+            task_id,
+            collaborators_json
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn exists(
         pool: &SqlitePool,
         id: Uuid,
@@ -604,6 +706,7 @@ ORDER BY t.created_at DESC"#,
                 priority as "priority!: Priority",
                 assignee_id,
                 assigned_agent,
+                agent_id as "agent_id: Uuid",
                 assigned_mcps,
                 created_by,
                 requires_approval as "requires_approval!: bool",

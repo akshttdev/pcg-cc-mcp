@@ -52,6 +52,7 @@ import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
+import { useTaskAgentFlowMap } from '@/hooks/useAgentFlows';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import NiceModal from '@ebay/nice-modal-react';
 import { useHotkeysContext } from 'react-hotkeys-hook';
@@ -162,6 +163,10 @@ export function ProjectTasks() {
     isLoading,
     error: streamError,
   } = useProjectTasks(projectId || '');
+
+  // Fetch agent flows for all tasks to display on cards
+  const taskIds = useMemo(() => tasks.map(t => t.id), [tasks]);
+  const { flowMap: agentFlowMap } = useTaskAgentFlowMap(taskIds);
 
   // Sync selectedTask with URL params and live task updates
   useEffect(() => {
@@ -730,6 +735,7 @@ export function ProjectTasks() {
                     selectTask(taskId);
                   }
                 }}
+                agentFlowMap={agentFlowMap}
               />
             </div>
           )}

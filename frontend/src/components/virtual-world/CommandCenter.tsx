@@ -1,17 +1,22 @@
-import { useRef } from 'react';
+import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
+import {
+  STAIRWELL_START_ANGLE,
+  STAIRWELL_OUTER_RADIUS,
+  WORKSPACE_OUTER_RADIUS,
+  HOLOGRAM_RAILING_RADIUS,
+} from '@/lib/virtual-world/spatialSystem';
 
-const BASE_RADIUS = 40;
-const FLOOR_ELEVATION = 8;
-const WALL_HEIGHT = 24;
-const GLASS_SEGMENTS = 12;
-const DOORWAYS = [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2];
+const FLOOR_ELEVATION = 80;
+const SPIRE_HEIGHT = 20;
+
+// Hologram hole - matches the floor below
+const HOLOGRAM_HOLE_RADIUS = HOLOGRAM_RAILING_RADIUS - 0.5; // R = 9.5
 
 export function CommandCenter() {
   const spireRef = useRef<THREE.Mesh>(null);
-  const ringRef = useRef<THREE.Mesh>(null);
 
   useFrame((state) => {
     if (spireRef.current) {
@@ -19,32 +24,113 @@ export function CommandCenter() {
       const material = spireRef.current.material as THREE.MeshStandardMaterial;
       material.emissiveIntensity = pulse * 1.6;
     }
-    if (ringRef.current) {
-      ringRef.current.rotation.z += 0.001;
-    }
   });
+
+  // Floor geometry - solid circle with hologram hole and stair hole
+  const floorGeometry = useMemo(() => {
+    const shape = new THREE.Shape();
+    const outerR = WORKSPACE_OUTER_RADIUS - 0.5;
+
+    // Main floor circle
+    shape.absarc(0, 0, outerR, 0, Math.PI * 2, false);
+
+    // Hologram hole in center (matching the floor below)
+    const hologramHole = new THREE.Path();
+    hologramHole.absarc(0, 0, HOLOGRAM_HOLE_RADIUS, 0, Math.PI * 2, true);
+    shape.holes.push(hologramHole);
+
+    // Stair hole - arc shape where stairs arrive at command center
+    // NOTE: Shape coordinates are flipped when rotated to world coords (Y becomes -Z)
+    // So we negate the angle to place the hole at the correct world position
+    const holeInnerR = HOLOGRAM_HOLE_RADIUS + 0.5; // R = 10 (lines up with inner railing)
+    const holeOuterR = STAIRWELL_OUTER_RADIUS;      // R = 14 (lines up with outer railing)
+    // Negate angles: shape angle -π/2 appears at world South (+Z)
+    // Hole from 6:00 (S) to 9:00 (W) - full quarter arc
+    const holeStartAngle = -STAIRWELL_START_ANGLE + 0.1; // Just past 6:00 (towards E)
+    const holeEndAngle = -Math.PI;  // 9:00 position (West)
+
+    const stairHole = new THREE.Path();
+    stairHole.moveTo(
+      Math.cos(holeStartAngle) * holeInnerR,
+      Math.sin(holeStartAngle) * holeInnerR
+    );
+    // Arc directions swapped because start > end numerically
+    stairHole.absarc(0, 0, holeInnerR, holeStartAngle, holeEndAngle, true);  // clockwise (short way)
+    stairHole.lineTo(
+      Math.cos(holeEndAngle) * holeOuterR,
+      Math.sin(holeEndAngle) * holeOuterR
+    );
+    stairHole.absarc(0, 0, holeOuterR, holeEndAngle, holeStartAngle, false); // counterclockwise back
+    stairHole.lineTo(
+      Math.cos(holeStartAngle) * holeInnerR,
+      Math.sin(holeStartAngle) * holeInnerR
+    );
+
+    shape.holes.push(stairHole);
+
+    return new THREE.ExtrudeGeometry(shape, { depth: 0.5, bevelEnabled: false });
+  }, []);
+
+  // Compass radial lines
+  const compassLines = useMemo(() => {
+    const lines: JSX.Element[] = [];
+    const innerR = HOLOGRAM_HOLE_RADIUS + 1;
+    const outerR = WORKSPACE_OUTER_RADIUS - 5;
+
+    // 8 main radial lines (N, NE, E, SE, S, SW, W, NW)
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const isCardinal = i % 2 === 0;
+      const lineWidth = isCardinal ? 0.3 : 0.15;
+      const lineLength = outerR - innerR;
+      const midR = (innerR + outerR) / 2;
+
+      lines.push(
+        <mesh
+          key={`radial-${i}`}
+          position={[
+            Math.cos(angle) * midR,
+            0.3,
+            Math.sin(angle) * midR
+          ]}
+          rotation={[0, -angle + Math.PI / 2, 0]}
+        >
+          <boxGeometry args={[lineWidth, 0.1, lineLength]} />
+          <meshStandardMaterial
+            color="#00ffff"
+            emissive="#00ffff"
+            emissiveIntensity={0.3}
+            transparent
+            opacity={isCardinal ? 0.6 : 0.3}
+          />
+        </mesh>
+      );
+    }
+
+    // Concentric rings
+    const ringRadii = [15, 25, 35];
+    ringRadii.forEach((r, idx) => {
+      lines.push(
+        <mesh key={`ring-${idx}`} position={[0, 0.25, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[r - 0.1, r + 0.1, 64]} />
+          <meshStandardMaterial
+            color="#00ffff"
+            emissive="#00ffff"
+            emissiveIntensity={0.2}
+            transparent
+            opacity={0.3}
+          />
+        </mesh>
+      );
+    });
+
+    return lines;
+  }, []);
 
   return (
     <group>
-      <mesh position={[0, FLOOR_ELEVATION / 2, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[BASE_RADIUS, BASE_RADIUS + 2, FLOOR_ELEVATION, 24]} />
-        <meshStandardMaterial
-          color="#08121f"
-          metalness={0.85}
-          roughness={0.25}
-          emissive="#003d5c"
-          emissiveIntensity={0.35}
-        />
-      </mesh>
-
-      <mesh ref={ringRef} position={[0, FLOOR_ELEVATION + 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[BASE_RADIUS + 1, BASE_RADIUS + 3, 48]} />
-        <meshBasicMaterial color="#00ffff" transparent opacity={0.5} side={THREE.DoubleSide} />
-      </mesh>
-
-      {/* Interior floor */}
-      <mesh position={[0, FLOOR_ELEVATION, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <circleGeometry args={[BASE_RADIUS - 4, 48]} />
+      {/* Floor - solid with hologram hole and stair hole */}
+      <mesh geometry={floorGeometry} position={[0, FLOOR_ELEVATION - 0.25, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <meshStandardMaterial
           color="#0a1f35"
           metalness={0.8}
@@ -54,109 +140,51 @@ export function CommandCenter() {
         />
       </mesh>
 
-      {/* Glass curtain walls */}
-      {Array.from({ length: GLASS_SEGMENTS }).map((_, idx) => {
-        const angle = (idx / GLASS_SEGMENTS) * Math.PI * 2;
-        const doorway = DOORWAYS.some((door) => {
-          const diff = Math.atan2(Math.sin(angle - door), Math.cos(angle - door));
-          return Math.abs(diff) < 0.25;
-        });
-        if (doorway) return null;
-        const x = Math.cos(angle) * (BASE_RADIUS - 2);
-        const z = Math.sin(angle) * (BASE_RADIUS - 2);
-        return (
-          <mesh key={idx} position={[x, FLOOR_ELEVATION + WALL_HEIGHT / 2, z]} rotation={[0, angle, 0]}>
-            <boxGeometry args={[12, WALL_HEIGHT, 0.8]} />
-            <meshPhysicalMaterial
-              color="#0a4a6e"
-              transmission={0.95}
-              thickness={0.6}
-              roughness={0.05}
-              metalness={0.1}
-              transparent
-              opacity={0.3}
-            />
-          </mesh>
-        );
-      })}
+      {/* Compass design on floor */}
+      <group position={[0, FLOOR_ELEVATION, 0]}>
+        {compassLines}
 
-      {/* Ceiling glass */}
-      <mesh position={[0, FLOOR_ELEVATION + WALL_HEIGHT, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[BASE_RADIUS - 2, 48]} />
-        <meshPhysicalMaterial
-          color="#0a4a6e"
-          transmission={0.95}
-          thickness={0.4}
-          roughness={0.04}
-          metalness={0.15}
-          transparent
-          opacity={0.25}
-        />
-      </mesh>
+        {/* Cardinal direction markers - N is +Z, E is +X, S is -Z, W is -X */}
+        <Text position={[0, 0.5, -38]} rotation={[-Math.PI / 2, 0, 0]} fontSize={3} color="#00ffff" anchorX="center" anchorY="middle">
+          N
+        </Text>
+        <Text position={[0, 0.5, 38]} rotation={[-Math.PI / 2, 0, Math.PI]} fontSize={3} color="#00ffff" anchorX="center" anchorY="middle">
+          S
+        </Text>
+        <Text position={[38, 0.5, 0]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]} fontSize={3} color="#00ffff" anchorX="center" anchorY="middle">
+          E
+        </Text>
+        <Text position={[-38, 0.5, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]} fontSize={3} color="#00ffff" anchorX="center" anchorY="middle">
+          W
+        </Text>
 
-      {/* Interior skybridge ring */}
-      <mesh position={[0, FLOOR_ELEVATION + 2, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <ringGeometry args={[BASE_RADIUS - 10, BASE_RADIUS - 6, 40]} />
-        <meshStandardMaterial color="#052c38" metalness={0.6} roughness={0.4} />
-      </mesh>
+        {/* Compass center marker */}
+        <mesh position={[0, 0.3, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[HOLOGRAM_HOLE_RADIUS + 0.5, HOLOGRAM_HOLE_RADIUS + 1, 32]} />
+          <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.5} />
+        </mesh>
+      </group>
 
-      {/* NORA dais */}
-      <mesh position={[0, FLOOR_ELEVATION + 1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[6, 32]} />
-        <meshBasicMaterial color="#00ffff" transparent opacity={0.35} />
-      </mesh>
-
-      {/* Command-center bridges */}
-      {DOORWAYS.map((angle, idx) => {
-        const x = Math.cos(angle) * (BASE_RADIUS - 2);
-        const z = Math.sin(angle) * (BASE_RADIUS - 2);
-        return (
-          <mesh key={idx} position={[x, FLOOR_ELEVATION, z]} rotation={[0, angle, 0]}>
-            <boxGeometry args={[20, 0.6, 6]} />
-            <meshStandardMaterial
-              color="#0a2f4a"
-              metalness={0.8}
-              roughness={0.3}
-              emissive="#004080"
-              emissiveIntensity={0.4}
-            />
-          </mesh>
-        );
-      })}
-
-      {/* Central spire */}
-      <mesh ref={spireRef} position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 10, 0]} castShadow>
-        <cylinderGeometry args={[6, 8, 50, 16]} />
-        <meshStandardMaterial
-          color="#0b2035"
-          emissive="#00c1ff"
-          emissiveIntensity={1.2}
-          transparent
-          opacity={0.8}
-          metalness={0.95}
-          roughness={0.08}
-        />
-      </mesh>
-
+      {/* Lights and signage */}
       <pointLight
-        position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 35, 0]}
+        position={[0, FLOOR_ELEVATION + SPIRE_HEIGHT + 35, 0]}
         intensity={3}
         color="#00ffff"
         distance={160}
         decay={2}
       />
 
-      <mesh position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 35, 0]}>
+      <mesh ref={spireRef} position={[0, FLOOR_ELEVATION + SPIRE_HEIGHT + 35, 0]}>
         <sphereGeometry args={[3, 24, 24]} />
         <meshBasicMaterial color="#00ffff" />
       </mesh>
 
-      <Text position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 45, 0]} fontSize={3.5} color="#baf4ff" anchorX="center" anchorY="middle">
+      <Text position={[0, FLOOR_ELEVATION + SPIRE_HEIGHT + 45, 0]} fontSize={3.5} color="#baf4ff" anchorX="center" anchorY="middle">
         PCG COMMAND CENTER
       </Text>
 
       <spotLight
-        position={[0, FLOOR_ELEVATION + WALL_HEIGHT + 40, 0]}
+        position={[0, FLOOR_ELEVATION + SPIRE_HEIGHT + 40, 0]}
         angle={Math.PI / 4}
         penumbra={0.5}
         intensity={2}

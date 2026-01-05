@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/shadcn-io/kanban';
 import { TaskCard } from './TaskCard';
 import type { TaskStatus, TaskWithAttemptStatus } from 'shared/types';
-// import { useParams } from 'react-router-dom';
+import type { AgentFlow } from '@/lib/api';
 
 import { statusBoardColors, statusLabels } from '@/utils/status-labels';
 
@@ -25,6 +25,7 @@ interface TaskKanbanBoardProps {
   selectionMode?: boolean;
   isSelected?: (taskId: string) => boolean;
   onToggleSelection?: (taskId: string) => void;
+  agentFlowMap?: Map<string, AgentFlow>;
 }
 
 function TaskKanbanBoard({
@@ -38,6 +39,7 @@ function TaskKanbanBoard({
   selectionMode,
   isSelected,
   onToggleSelection,
+  agentFlowMap,
 }: TaskKanbanBoardProps) {
   return (
     <KanbanProvider onDragEnd={onDragEnd}>
@@ -62,6 +64,7 @@ function TaskKanbanBoard({
                 selectionMode={selectionMode}
                 isSelected={isSelected?.(task.id)}
                 onToggleSelection={onToggleSelection}
+                agentFlow={agentFlowMap?.get(task.id)}
               />
             ))}
           </KanbanCards>

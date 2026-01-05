@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE trello_boards SET\n                trello_board_name = ?,\n                sync_enabled = ?,\n                default_list_id = ?,\n                updated_at = ?\n            WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "03395ca502c3d1640579c8228bf46c450254990bd1469cf2abe96d5631e47797"
+}

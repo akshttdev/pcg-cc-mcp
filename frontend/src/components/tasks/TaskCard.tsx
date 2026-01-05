@@ -16,9 +16,14 @@ import {
   MoreHorizontal,
   Trash2,
   XCircle,
+  Bot,
+  User,
 } from 'lucide-react';
 import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget';
+import { AgentFlowBadges } from './AgentFlowBadges';
+import { ExecutionSummaryInline } from './ExecutionSummaryInline';
 import type { TaskWithAttemptStatus } from 'shared/types';
+import type { AgentFlow } from '@/lib/api';
 
 type Task = TaskWithAttemptStatus;
 
@@ -34,6 +39,7 @@ interface TaskCardProps {
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelection?: (taskId: string) => void;
+  agentFlow?: AgentFlow;
 }
 
 export function TaskCard({
@@ -48,6 +54,7 @@ export function TaskCard({
   selectionMode,
   isSelected,
   onToggleSelection,
+  agentFlow,
 }: TaskCardProps) {
   const handleClick = useCallback(() => {
     if (selectionMode && onToggleSelection) {
@@ -112,6 +119,39 @@ export function TaskCard({
           {/* Failed Indicator */}
           {task.last_attempt_failed && !task.has_merged_attempt && (
             <XCircle className="h-3 w-3 text-destructive" />
+          )}
+          {/* Agent Flow Status - compact */}
+          {agentFlow && (
+            <AgentFlowBadges flow={agentFlow} compact />
+          )}
+          {/* Execution Summary - compact */}
+          {task.last_execution_summary && (
+            <ExecutionSummaryInline summary={task.last_execution_summary} compact />
+          )}
+          {/* Collaborator Avatars */}
+          {task.collaborators && task.collaborators.length > 0 && (
+            <div className="flex -space-x-1" title={task.collaborators.map(c => `${c.actor_id} (${c.actor_type})`).join(', ')}>
+              {task.collaborators.slice(0, 3).map((collaborator, idx) => (
+                <div
+                  key={`${collaborator.actor_id}-${idx}`}
+                  className={`h-4 w-4 rounded-full flex items-center justify-center text-[8px] font-medium border border-background ${
+                    collaborator.actor_type === 'agent'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                      : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                  }`}
+                >
+                  {collaborator.actor_type === 'agent'
+                    ? <Bot className="h-2.5 w-2.5" />
+                    : <User className="h-2.5 w-2.5" />
+                  }
+                </div>
+              ))}
+              {task.collaborators.length > 3 && (
+                <div className="h-4 w-4 rounded-full flex items-center justify-center text-[8px] font-medium border border-background bg-muted text-muted-foreground">
+                  +{task.collaborators.length - 3}
+                </div>
+              )}
+            </div>
           )}
           {/* Actions Menu */}
           <div

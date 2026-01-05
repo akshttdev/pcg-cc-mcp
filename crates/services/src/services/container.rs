@@ -15,6 +15,7 @@ use db::{
             ExecutionProcessStatus,
         },
         execution_process_logs::ExecutionProcessLogs,
+        execution_slot::{ExecutionSlot, ProjectCapacity, SlotType},
         executor_session::{CreateExecutorSession, ExecutorSession},
         task::{Task, TaskStatus},
         task_attempt::{TaskAttempt, TaskAttemptError},
@@ -94,6 +95,10 @@ pub enum ContainerError {
     KillFailed(std::io::Error),
     #[error(transparent)]
     TaskAttemptError(#[from] TaskAttemptError),
+    #[error("No available slots for {slot_type} in project")]
+    NoAvailableSlots { slot_type: String },
+    #[error("Slot error: {0}")]
+    SlotError(String),
     #[error(transparent)]
     Other(#[from] AnyhowError), // Catches any unclassified errors
 }
@@ -751,5 +756,69 @@ pub trait ContainerService {
             )
             .await?;
         Ok(())
+    }
+
+    // ========== Parallel Execution / Slot Management Methods ==========
+
+    /// Check if a new parallel execution can be started for the given slot type
+    async fn can_start_parallel(
+        &self,
+        project_id: Uuid,
+        slot_type: SlotType,
+    ) -> Result<bool, ContainerError> {
+        ExecutionSlot::can_acquire(&self.db().pool, project_id, slot_type)
+            .await
+            .map_err(|e| ContainerError::SlotError(e.to_string()))
+    }
+
+    /// Get current project capacity information
+    async fn get_project_capacity(
+        &self,
+        project_id: Uuid,
+    ) -> Result<ProjectCapacity, ContainerError> {
+        ExecutionSlot::get_project_capacity(&self.db().pool, project_id)
+            .await
+            .map_err(|e| ContainerError::SlotError(e.to_string()))
+    }
+
+    /// Get all active execution slots for a project
+    async fn get_active_slots(
+        &self,
+        project_id: Uuid,
+    ) -> Result<Vec<ExecutionSlot>, ContainerError> {
+        ExecutionSlot::find_active_by_project(&self.db().pool, project_id)
+            .await
+            .map_err(|e| ContainerError::SlotError(e.to_string()))
+    }
+
+    /// Release all slots for a task attempt (called when execution completes)
+    async fn release_slots_for_attempt(
+        &self,
+        task_attempt_id: Uuid,
+    ) -> Result<u64, ContainerError> {
+        ExecutionSlot::release_all_for_task_attempt(&self.db().pool, task_attempt_id)
+            .await
+            .map_err(|e| ContainerError::SlotError(e.to_string()))
+    }
+
+    /// Count active executions across all projects
+    async fn count_active_executions(&self) -> Result<i64, ContainerError> {
+        let count: (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*) as count
+            FROM execution_processes
+            WHERE status = 'running'
+            "#,
+        )
+        .fetch_one(&self.db().pool)
+        .await?;
+
+        Ok(count.0)
+    }
+
+    /// Get all running execution processes
+    async fn get_running_executions(&self) -> Result<Vec<ExecutionProcess>, ContainerError> {
+        let processes = ExecutionProcess::find_running(&self.db().pool).await?;
+        Ok(processes)
     }
 }

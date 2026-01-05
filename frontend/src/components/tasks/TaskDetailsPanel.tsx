@@ -10,13 +10,19 @@ import { CustomPropertiesPanel } from '@/components/custom-properties/CustomProp
 import { TaskCommentThread } from './TaskCommentThread';
 import { ActivityTimeline } from './ActivityTimeline';
 import { ApprovalPanel } from './ApprovalPanel';
-import type { TaskAttempt } from 'shared/types';
+import type {
+  AgentFlowEvent,
+  ArtifactType,
+  ExecutionArtifact,
+  FlowEventType,
+  TaskAttempt,
+  TaskWithAttemptStatus,
+} from 'shared/types';
 import {
   getBackdropClasses,
   getTaskPanelClasses,
   getTaskPanelInnerClasses,
 } from '@/lib/responsive-config';
-import type { TaskWithAttemptStatus } from 'shared/types';
 import type { TabType } from '@/types/tabs';
 import DiffTab from '@/components/tasks/TaskDetails/DiffTab.tsx';
 import LogsTab from '@/components/tasks/TaskDetails/LogsTab.tsx';
@@ -32,6 +38,17 @@ import { AttemptHeaderCard } from './AttemptHeaderCard';
 import { inIframe } from '@/vscode/bridge';
 import { TaskRelationshipViewer } from './TaskRelationshipViewer';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager.ts';
+import { useExecutionSummary } from '@/hooks';
+import { ExecutionSummaryCard } from './ExecutionSummaryCard';
+import { AirtableRecordLinkBadge } from './AirtableRecordLinkBadge';
+import { TaskArtifactsPanel } from './TaskArtifactsPanel';
+import { WorkflowLogViewer } from './WorkflowLogViewer';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { agentFlowsApi, taskArtifactsApi } from '@/lib/api';
+import type {
+  ExecutionArtifact as ApiExecutionArtifact,
+} from '@/lib/api';
 
 interface TaskDetailsPanelProps {
   task: TaskWithAttemptStatus | null;
@@ -79,8 +96,17 @@ export function TaskDetailsPanel({
     attempts.length -
     attempts.findIndex((attempt) => attempt.id === selectedAttempt?.id);
 
+  // Fetch execution summary for the selected attempt
+  const { data: executionSummary } = useExecutionSummary(selectedAttempt?.id);
+
   // Tab and collapsible state
   const [activeTab, setActiveTab] = useState<TabType>('logs');
+  const [artifacts, setArtifacts] = useState<ExecutionArtifact[]>([]);
+  const [artifactsLoading, setArtifactsLoading] = useState(false);
+  const [artifactsError, setArtifactsError] = useState<string | null>(null);
+  const [workflowEvents, setWorkflowEvents] = useState<AgentFlowEvent[]>([]);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [workflowError, setWorkflowError] = useState<string | null>(null);
 
   // Handler for jumping to diff tab in full screen
   const { toggleFullscreen } = useTaskViewManager();
@@ -100,6 +126,159 @@ export function TaskDetailsPanel({
       setActiveTab('logs');
     }
   }, [task?.id]);
+
+  useEffect(() => {
+    if (!task?.id) {
+      setArtifacts([]);
+      setArtifactsError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setArtifactsLoading(true);
+    setArtifactsError(null);
+
+    taskArtifactsApi
+      .list(task.id)
+      .then((data) => {
+        if (cancelled) return;
+        const executionArtifacts = data
+          .map((item) => item.artifact)
+          .filter((artifact): artifact is ApiExecutionArtifact => Boolean(artifact));
+        const normalized: ExecutionArtifact[] = executionArtifacts.map((artifact) => ({
+          id: artifact.id,
+          execution_process_id: artifact.execution_process_id ?? '',
+          artifact_type: artifact.artifact_type as ArtifactType,
+          title: artifact.title ?? 'Untitled',
+          content: artifact.content ?? null,
+          file_path: artifact.file_path ?? null,
+          metadata: artifact.metadata ?? null,
+          created_at: artifact.created_at,
+        }));
+        setArtifacts(normalized);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setArtifacts([]);
+        setArtifactsError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to load agent artifacts.'
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setArtifactsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id]);
+
+  useEffect(() => {
+    if (!task?.id) {
+      setWorkflowEvents([]);
+      setWorkflowError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setWorkflowLoading(true);
+    setWorkflowError(null);
+
+    agentFlowsApi
+      .list({ task_id: task.id })
+      .then(async (flows) => {
+        if (cancelled) return [] as AgentFlowEvent[];
+        if (!flows.length) {
+          setWorkflowEvents([]);
+          return [] as AgentFlowEvent[];
+        }
+        return agentFlowsApi.getEvents(flows[0].id);
+      })
+      .then((events) => {
+        if (!events || cancelled) return;
+        const normalized: AgentFlowEvent[] = events.map((event) => ({
+          ...event,
+          event_type: normalizeFlowEventType(event.event_type),
+          event_data: event.event_data ?? '',
+        }));
+        setWorkflowEvents(normalized);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setWorkflowEvents([]);
+        setWorkflowError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to load workflow activity.'
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setWorkflowLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id]);
+
+  const renderArtifactsBody = () => {
+    if (!task) return null;
+    if (artifactsLoading) {
+      return <Skeleton className="h-28 w-full" />;
+    }
+    if (artifactsError) {
+      return (
+        <Alert variant="destructive">
+          <AlertDescription>{artifactsError}</AlertDescription>
+        </Alert>
+      );
+    }
+    if (!artifacts.length) {
+      return <p className="text-xs text-muted-foreground">No artifacts yet.</p>;
+    }
+
+    return (
+      <TaskArtifactsPanel
+        taskId={task.id}
+        artifacts={artifacts}
+        className="shadow-none border"
+      />
+    );
+  };
+
+  const renderWorkflowBody = () => {
+    if (!task) return null;
+    if (workflowLoading) {
+      return <Skeleton className="h-40 w-full" />;
+    }
+    if (workflowError) {
+      return (
+        <Alert variant="destructive">
+          <AlertDescription>{workflowError}</AlertDescription>
+        </Alert>
+      );
+    }
+    if (!workflowEvents.length) {
+      return (
+        <p className="text-xs text-muted-foreground">
+          No workflow activity logged yet.
+        </p>
+      );
+    }
+
+    return (
+      <WorkflowLogViewer
+        events={workflowEvents}
+        className="shadow-none border"
+      />
+    );
+  };
 
   return (
     <>
@@ -144,6 +323,10 @@ export function TaskDetailsPanel({
                           {/* Fullscreen sidebar shows title and description above edit/delete */}
                           <div className="space-y-2 p-3">
                             <TaskTitleDescription task={task} />
+                            <AirtableRecordLinkBadge
+                              taskId={task.id}
+                              hasExecutionSummary={!!executionSummary}
+                            />
                           </div>
 
                           {/* Current Attempt / Actions */}
@@ -163,6 +346,13 @@ export function TaskDetailsPanel({
 
                           {/* Task Breakdown (TODOs) */}
                           <TodoPanel />
+
+                          {/* Execution Summary */}
+                          {executionSummary && (
+                            <div className="p-3">
+                              <ExecutionSummaryCard summary={executionSummary} />
+                            </div>
+                          )}
 
                           {/* Time Tracking */}
                           <div className="p-3 space-y-3">
@@ -201,6 +391,22 @@ export function TaskDetailsPanel({
                           {/* Activity Feed (legacy) */}
                           <div className="p-3">
                             <ActivityFeed taskId={task.id} />
+                          </div>
+
+                          {/* Agent artifacts */}
+                          <div className="p-3 space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Agent Artifacts
+                            </p>
+                            {renderArtifactsBody()}
+                          </div>
+
+                          {/* Workflow events */}
+                          <div className="p-3 space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Workflow Activity
+                            </p>
+                            {renderWorkflowBody()}
                           </div>
 
                           {/* Custom Properties */}
@@ -291,6 +497,23 @@ export function TaskDetailsPanel({
                               selectedAttemptId={selectedAttempt?.id}
                               jumpToLogsTab={jumpToLogsTab}
                             />
+
+                            {task && (
+                              <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                                <div className="space-y-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                    Agent Artifacts
+                                  </p>
+                                  {renderArtifactsBody()}
+                                </div>
+                                <div className="space-y-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                    Workflow Activity
+                                  </p>
+                                  {renderWorkflowBody()}
+                                </div>
+                              </div>
+                            )}
                           </>
                         )}
                       </>
@@ -304,4 +527,27 @@ export function TaskDetailsPanel({
       )}
     </>
   );
+}
+
+const FLOW_EVENT_TYPES: FlowEventType[] = [
+  'phase_started',
+  'phase_completed',
+  'artifact_created',
+  'artifact_updated',
+  'approval_requested',
+  'approval_decision',
+  'wide_research_started',
+  'subagent_progress',
+  'wide_research_completed',
+  'agent_handoff',
+  'flow_paused',
+  'flow_resumed',
+  'flow_failed',
+  'flow_completed',
+];
+
+function normalizeFlowEventType(value: string): FlowEventType {
+  return FLOW_EVENT_TYPES.includes(value as FlowEventType)
+    ? (value as FlowEventType)
+    : 'flow_completed';
 }

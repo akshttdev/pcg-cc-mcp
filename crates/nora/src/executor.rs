@@ -2,6 +2,7 @@
 //! Handles autonomous task creation and management across projects
 
 use db::models::{
+    agent::Agent,
     project::{CreateProject, Project},
     project_board::{CreateProjectBoard, ProjectBoard, ProjectBoardType},
     project_pod::{CreateProjectPod, ProjectPod},
@@ -10,12 +11,13 @@ use db::models::{
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::{NoraError, Result};
+use crate::{execution::TaskCreator, NoraError, Result};
 
 /// Task executor for creating and managing tasks
 #[derive(Debug)]
 pub struct TaskExecutor {
     pool: SqlitePool,
+    backend_url: String,
 }
 
 const DEFAULT_POD_TEMPLATES: &[(&str, &str)] = &[
@@ -32,7 +34,105 @@ const DEFAULT_POD_TEMPLATES: &[(&str, &str)] = &[
 
 impl TaskExecutor {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            backend_url: std::env::var("BACKEND_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:3002".to_string()),
+        }
+    }
+
+    pub fn with_backend_url(pool: SqlitePool, backend_url: String) -> Self {
+        Self { pool, backend_url }
+    }
+
+    /// Delegate a task to an agent and trigger execution
+    /// This is the main entry point for Nora to assign work to other agents like AURI
+    pub async fn delegate_and_execute_task(
+        &self,
+        task_id: Uuid,
+        agent_name: &str,
+        executor_type: &str, // e.g., "CLAUDE_CODE"
+    ) -> Result<DelegationResult> {
+        tracing::info!(
+            "[NORA_DELEGATE] Delegating task {} to agent {} with executor {}",
+            task_id, agent_name, executor_type
+        );
+
+        // 1. Find the agent by name
+        let agent = Agent::find_by_short_name(&self.pool, agent_name)
+            .await
+            .map_err(|e| NoraError::DatabaseError(e))?
+            .ok_or_else(|| NoraError::ToolExecutionError(format!("Agent '{}' not found", agent_name)))?;
+
+        // 2. Update the task to assign it to this agent
+        sqlx::query(
+            "UPDATE tasks SET assigned_agent = ?, agent_id = ?, updated_at = datetime('now') WHERE id = ?"
+        )
+        .bind(&agent.short_name)
+        .bind(agent.id.to_string())
+        .bind(task_id.as_bytes().to_vec())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| NoraError::DatabaseError(e))?;
+
+        tracing::info!(
+            "[NORA_DELEGATE] Task {} assigned to agent {} ({})",
+            task_id, agent.short_name, agent.id
+        );
+
+        // 3. Get the task to find its project
+        let _task = Task::find_by_id(&self.pool, task_id)
+            .await
+            .map_err(|e| NoraError::DatabaseError(e))?
+            .ok_or_else(|| NoraError::ToolExecutionError(format!("Task {} not found", task_id)))?;
+
+        // 4. Trigger execution via HTTP API
+        let client = reqwest::Client::new();
+        let url = format!("{}/api/tasks/{}/run", self.backend_url, task_id);
+
+        let payload = serde_json::json!({
+            "executor": executor_type,
+            "variant": "default"
+        });
+
+        tracing::info!("[NORA_DELEGATE] Triggering execution at {}", url);
+
+        let response = client
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| NoraError::ToolExecutionError(format!("Failed to trigger execution: {}", e)))?;
+
+        if response.status().is_success() {
+            let result: serde_json::Value = response
+                .json()
+                .await
+                .unwrap_or_else(|_| serde_json::json!({"status": "started"}));
+
+            tracing::info!(
+                "[NORA_DELEGATE] Task {} execution started successfully",
+                task_id
+            );
+
+            Ok(DelegationResult {
+                task_id,
+                agent_id: agent.id,
+                agent_name: agent.short_name,
+                executor_type: executor_type.to_string(),
+                status: "execution_started".to_string(),
+                details: Some(result),
+            })
+        } else {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            tracing::error!(
+                "[NORA_DELEGATE] Failed to start execution for task {}: {}",
+                task_id, error_text
+            );
+            Err(NoraError::ToolExecutionError(format!(
+                "Failed to start execution: {}", error_text
+            )))
+        }
     }
 
     /// Create a new task in the database
@@ -56,6 +156,7 @@ impl TaskExecutor {
             priority: definition.priority,
             assignee_id: definition.assignee_id,
             assigned_agent: Some("nora".to_string()),
+            agent_id: None,  // TODO: Look up Nora's agent_id when assigning
             assigned_mcps: None,
             created_by: "nora".to_string(),
             requires_approval: Some(false),
@@ -210,37 +311,38 @@ impl TaskExecutor {
     /// Get detailed project information including tasks, boards, and pods
     pub async fn get_project_details(&self, project_id: Uuid) -> Result<ProjectDetails> {
         // Get project basic info
-        let project: (String, String, String) =
-            sqlx::query_as("SELECT id, name, git_repo_path FROM projects WHERE id = ?")
-                .bind(project_id.to_string())
+        let project: (String, String, String) = sqlx::query_as(
+            "SELECT hex(id) as id, name, git_repo_path FROM projects WHERE id = ?",
+        )
+                .bind(project_id.as_bytes().to_vec())
                 .fetch_one(&self.pool)
                 .await
                 .map_err(|e| NoraError::DatabaseError(e))?;
 
         // Get tasks for this project
         let tasks: Vec<TaskInfo> = sqlx::query_as(
-            "SELECT id, title, description, status, priority, assignee_id, created_at, updated_at
+            "SELECT hex(id) as id, title, description, status, priority, assignee_id, created_at, updated_at
              FROM tasks WHERE project_id = ? ORDER BY created_at DESC",
         )
-        .bind(project_id.to_string())
+        .bind(project_id.as_bytes().to_vec())
         .fetch_all(&self.pool)
         .await
         .map_err(|e| NoraError::DatabaseError(e))?;
 
         // Get boards for this project
         let boards: Vec<BoardInfo> = sqlx::query_as(
-            "SELECT id, name, description FROM project_boards WHERE project_id = ? ORDER BY name",
+            "SELECT hex(id) as id, name, description FROM project_boards WHERE project_id = ? ORDER BY name",
         )
-        .bind(project_id.to_string())
+        .bind(project_id.as_bytes().to_vec())
         .fetch_all(&self.pool)
         .await
         .unwrap_or_default();
 
         // Get pods for this project
         let pods: Vec<PodInfo> = sqlx::query_as(
-            "SELECT id, name, description FROM project_pods WHERE project_id = ? ORDER BY name",
+            "SELECT hex(id) as id, name, description FROM project_pods WHERE project_id = ? ORDER BY name",
         )
-        .bind(project_id.to_string())
+        .bind(project_id.as_bytes().to_vec())
         .fetch_all(&self.pool)
         .await
         .unwrap_or_default();
@@ -260,10 +362,10 @@ impl TaskExecutor {
         let project_id = self.find_project_by_name(project_name).await?;
 
         let tasks: Vec<TaskInfo> = sqlx::query_as(
-            "SELECT id, title, description, status, priority, assignee_id, created_at, updated_at
+            "SELECT hex(id) as id, title, description, status, priority, assignee_id, created_at, updated_at
              FROM tasks WHERE project_id = ? ORDER BY created_at DESC",
         )
-        .bind(project_id.to_string())
+        .bind(project_id.as_bytes().to_vec())
         .fetch_all(&self.pool)
         .await
         .map_err(|e| NoraError::DatabaseError(e))?;
@@ -278,10 +380,10 @@ impl TaskExecutor {
         status: &str,
     ) -> Result<Vec<TaskInfo>> {
         let tasks: Vec<TaskInfo> = sqlx::query_as(
-            "SELECT id, title, description, status, priority, assignee_id, created_at, updated_at
+            "SELECT hex(id) as id, title, description, status, priority, assignee_id, created_at, updated_at
              FROM tasks WHERE project_id = ? AND status = ? ORDER BY created_at DESC",
         )
-        .bind(project_id.to_string())
+        .bind(project_id.as_bytes().to_vec())
         .bind(status)
         .fetch_all(&self.pool)
         .await
@@ -294,12 +396,12 @@ impl TaskExecutor {
     pub async fn search_tasks(&self, project_id: Uuid, keyword: &str) -> Result<Vec<TaskInfo>> {
         let pattern = format!("%{}%", keyword);
         let tasks: Vec<TaskInfo> = sqlx::query_as(
-            "SELECT id, title, description, status, priority, assignee_id, created_at, updated_at
+            "SELECT hex(id) as id, title, description, status, priority, assignee_id, created_at, updated_at
              FROM tasks
              WHERE project_id = ? AND (title LIKE ? OR description LIKE ?)
              ORDER BY created_at DESC",
         )
-        .bind(project_id.to_string())
+        .bind(project_id.as_bytes().to_vec())
         .bind(&pattern)
         .bind(&pattern)
         .fetch_all(&self.pool)
@@ -407,8 +509,8 @@ impl TaskExecutor {
         tracing::info!("Nora adding task {} to board {}", task_id, board_id);
 
         sqlx::query("UPDATE tasks SET board_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-            .bind(board_id.to_string())
-            .bind(task_id.to_string())
+            .bind(board_id.as_bytes().to_vec())
+            .bind(task_id.as_bytes().to_vec())
             .execute(&self.pool)
             .await
             .map_err(|e| NoraError::DatabaseError(e))?;
@@ -447,6 +549,7 @@ impl TaskExecutor {
             priority,
             assignee_id: None,
             assigned_agent: Some("nora".to_string()),
+            agent_id: None,
             assigned_mcps: None,
             created_by: "nora".to_string(),
             requires_approval: Some(false),
@@ -515,6 +618,7 @@ impl TaskExecutor {
             priority,
             assignee_id: None,
             assigned_agent: Some("nora".to_string()),
+            agent_id: None,
             assigned_mcps: None,
             created_by: "nora".to_string(),
             requires_approval: Some(false),
@@ -544,7 +648,7 @@ impl TaskExecutor {
     pub async fn get_project_stats(&self, project_id: Uuid) -> Result<ProjectStats> {
         let total_tasks: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE project_id = ?")
-                .bind(project_id.to_string())
+                .bind(project_id.as_bytes().to_vec())
                 .fetch_one(&self.pool)
                 .await
                 .map_err(|e| NoraError::DatabaseError(e))?;
@@ -552,7 +656,7 @@ impl TaskExecutor {
         let completed_tasks: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'completed'",
         )
-        .bind(project_id.to_string())
+        .bind(project_id.as_bytes().to_vec())
         .fetch_one(&self.pool)
         .await
         .unwrap_or(0);
@@ -560,7 +664,7 @@ impl TaskExecutor {
         let in_progress_tasks: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'in_progress'",
         )
-        .bind(project_id.to_string())
+        .bind(project_id.as_bytes().to_vec())
         .fetch_one(&self.pool)
         .await
         .unwrap_or(0);
@@ -568,7 +672,7 @@ impl TaskExecutor {
         let blocked_tasks: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'blocked'",
         )
-        .bind(project_id.to_string())
+        .bind(project_id.as_bytes().to_vec())
         .fetch_one(&self.pool)
         .await
         .unwrap_or(0);
@@ -648,4 +752,106 @@ pub struct PodInfo {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+}
+
+/// Result of delegating a task to an agent
+#[derive(Debug, Clone)]
+pub struct DelegationResult {
+    pub task_id: Uuid,
+    pub agent_id: Uuid,
+    pub agent_name: String,
+    pub executor_type: String,
+    pub status: String,
+    pub details: Option<serde_json::Value>,
+}
+
+/// Implement TaskCreator trait for ExecutionEngine integration
+/// This allows Scout and other workflow agents to create tasks on project boards
+#[async_trait::async_trait]
+impl TaskCreator for TaskExecutor {
+    async fn create_task(
+        &self,
+        project_id: Uuid,
+        title: String,
+        description: Option<String>,
+        agent_id: Option<String>,
+    ) -> std::result::Result<Uuid, String> {
+        tracing::info!(
+            "[TASK_CREATOR] Creating workflow task '{}' for project {} (agent: {:?})",
+            title,
+            project_id,
+            agent_id
+        );
+
+        // Find or create a default board for this project
+        let board_id: Option<Uuid> = sqlx::query_scalar(
+            r#"SELECT id FROM project_boards WHERE project_id = $1 ORDER BY created_at ASC LIMIT 1"#,
+        )
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to query boards: {}", e))?;
+
+        let board_id = match board_id {
+            Some(id) => id,
+            None => {
+                // Create a default "Agent Flows" board for workflow tasks
+                let board = db::models::project_board::CreateProjectBoard {
+                    project_id,
+                    name: "Agent Flows".to_string(),
+                    slug: "agent-flows".to_string(),
+                    // Use 'custom' - 'agent_flows' blocked by legacy CHECK constraint
+                    board_type: db::models::project_board::ProjectBoardType::Custom,
+                    description: Some("Tasks created by agent workflows".to_string()),
+                    metadata: None,
+                };
+                let created_board = db::models::project_board::ProjectBoard::create(&self.pool, &board)
+                    .await
+                    .map_err(|e| format!("Failed to create default board: {}", e))?;
+                tracing::info!(
+                    "[TASK_CREATOR] Created default Agent Flows board: {}",
+                    created_board.id
+                );
+                created_board.id
+            }
+        };
+
+        // Create the task
+        let task_id = Uuid::new_v4();
+        let create_task = CreateTask {
+            project_id,
+            pod_id: None,
+            board_id: Some(board_id),
+            title: title.clone(),
+            description,
+            parent_task_attempt: None,
+            image_ids: None,
+            priority: Some(Priority::Medium),
+            assignee_id: None,
+            assigned_agent: agent_id.clone(),
+            agent_id: None,
+            assigned_mcps: None,
+            created_by: agent_id.unwrap_or_else(|| "workflow".to_string()),
+            requires_approval: Some(false),
+            parent_task_id: None,
+            tags: Some(vec!["workflow".to_string(), "auto-generated".to_string()]),
+            due_date: None,
+            custom_properties: None,
+            scheduled_start: None,
+            scheduled_end: None,
+        };
+
+        Task::create(&self.pool, &create_task, task_id)
+            .await
+            .map_err(|e| format!("Failed to create task: {}", e))?;
+
+        tracing::info!(
+            "[TASK_CREATOR] Created workflow task: '{}' (ID: {}) on board {}",
+            title,
+            task_id,
+            board_id
+        );
+
+        Ok(task_id)
+    }
 }

@@ -298,6 +298,7 @@ impl TaskServer {
             priority: None,
             assignee_id: None,
             assigned_agent: None,
+            agent_id: None,
             assigned_mcps: None,
             created_by: "mcp".to_string(),
             requires_approval: None,

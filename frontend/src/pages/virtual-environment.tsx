@@ -10,33 +10,44 @@ import {
   Cpu,
   Gamepad2,
   Layers,
+  Loader2,
   Map as MapIcon,
 } from 'lucide-react';
 import { CommandCenter } from '@/components/virtual-world/CommandCenter';
 import { NoraAvatar } from '@/components/virtual-world/NoraAvatar';
+import { WanderingAgent } from '@/components/virtual-world/WanderingAgent';
 import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
-import { UserAvatar } from '@/components/virtual-world/UserAvatar';
+import { ToposDataSphere } from '@/components/virtual-world/ToposDataSphere';
+import { UserAvatar, type BuildingCollider } from '@/components/virtual-world/UserAvatar';
 import { BuildingInterior } from '@/components/virtual-world/BuildingInterior';
+import { AgentWorkspaceLevel, getAgentBayBounds } from '@/components/virtual-world/AgentWorkspaceLevel';
+import { SpiralStaircase } from '@/components/virtual-world/SpiralStaircase';
 import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
 import { getBuildingType } from '@/lib/virtual-world/buildingTypes';
 import { ENTRY_TRIGGER_DISTANCE } from '@/lib/virtual-world/constants';
 import { cn } from '@/lib/utils';
+import { useProjectList } from '@/hooks/api/useProjectList';
+import type { Project } from 'shared/types';
 
-const safeProjectList = (typeof __TOPOS_PROJECTS__ !== 'undefined'
+// Topos directory items for the Data Sphere visualization
+const toposDirectoryItems = (typeof __TOPOS_PROJECTS__ !== 'undefined'
   ? __TOPOS_PROJECTS__
   : []) as string[];
 
 const PROJECT_HALF_WIDTH = 25;
 const PROJECT_HALF_LENGTH = 50;
 const PROJECT_FOOTPRINT_RADIUS = Math.sqrt(PROJECT_HALF_WIDTH ** 2 + PROJECT_HALF_LENGTH ** 2);
-const COMMAND_CENTER_SPAWN_Y = 8;
-const BASE_PROJECT_RADIUS = 220;
+const COMMAND_CENTER_FLOOR_Y = 80; // Elevated floating platform
+// DATA_SPHERE_RADIUS moved to ToposDataSphere component
+const BASE_PROJECT_RADIUS = 180; // Projects arranged around the data sphere
 const TARGET_ARC_SPACING = PROJECT_FOOTPRINT_RADIUS * 2.2;
 
 interface ProjectData {
+  id: string;
   name: string;
   position: [number, number, number];
   energy: number;
+  project: Project; // Full project data from API
 }
 
 type HudPanelId = 'systems' | 'intel' | 'map' | 'controls';
@@ -58,7 +69,7 @@ const HUD_PANEL_META: Record<HudPanelId, { title: string; description: string }>
 const noraAcknowledgements = [
   'Routing orchestration energy to',
   'Illuminating systems for',
-  'Calibrating pods against',
+  'Calibrating systems for',
   'Summoning agents around',
   'Focusing the grid on',
   'Deploying sub-agents to',
@@ -66,7 +77,24 @@ const noraAcknowledgements = [
   'Amplifying signal for',
 ];
 
-const INITIAL_PLAYER_POSITION: [number, number, number] = [0, COMMAND_CENTER_SPAWN_Y, 0];
+// Spawn player ON the Command Center platform with Nora
+// Command Center is at y=80, add offset for avatar feet
+const PLAYER_COLOR = '#ff8800';
+// Spawn on command center floor, outside hologram railing (R > 10)
+const INITIAL_PLAYER_POSITION: [number, number, number] = [15, COMMAND_CENTER_FLOOR_Y + 1, 15];
+
+// Static demo project for Fine Art Society (always available)
+const FINE_ART_SOCIETY_PROJECT: Project = {
+  id: 'fine-art-society-demo',
+  name: 'Fine Art Society',
+  git_repo_path: '/demo/fine-art-society',
+  setup_script: null,
+  dev_script: null,
+  cleanup_script: null,
+  copy_files: null,
+  created_at: new Date(),
+  updated_at: new Date(),
+};
 
 function stringEnergy(input: string) {
   let hash = 0;
@@ -76,26 +104,27 @@ function stringEnergy(input: string) {
   return 0.35 + (hash / 1000) * 0.65;
 }
 
-function generateProjects(names: string[]): ProjectData[] {
-  const filtered = names.filter((name) => !name.startsWith('.'));
-  if (!filtered.length) return [];
+function generateProjectsFromAPI(apiProjects: Project[]): ProjectData[] {
+  if (!apiProjects.length) return [];
 
-  const radiusForSpacing = (filtered.length * TARGET_ARC_SPACING) / (Math.PI * 2);
+  const radiusForSpacing = (apiProjects.length * TARGET_ARC_SPACING) / (Math.PI * 2);
   const minVisualRadius = PROJECT_FOOTPRINT_RADIUS * 2.8;
   const radius = Math.max(BASE_PROJECT_RADIUS, minVisualRadius, radiusForSpacing);
   const y = 0; // Buildings rest on ground
 
-  return filtered.map((name, index) => {
-    const angle = (index / filtered.length) * Math.PI * 2;
+  return apiProjects.map((project, index) => {
+    const angle = (index / apiProjects.length) * Math.PI * 2;
     const position: [number, number, number] = [
       Math.cos(angle) * radius,
       y,
       Math.sin(angle) * radius,
     ];
     return {
-      name,
+      id: project.id,
+      name: project.name,
       position,
-      energy: stringEnergy(name),
+      energy: stringEnergy(project.name),
+      project,
     };
   });
 }
@@ -227,9 +256,39 @@ function EnhancedParticles() {
 }
 
 export function VirtualEnvironmentPage() {
-  const projects = useMemo(() => generateProjects(safeProjectList), []);
+  // Fetch projects from the Dashboard API
+  const { data: apiProjects = [], isLoading: projectsLoading, error: projectsError } = useProjectList();
+
+  // Combine API projects with static demo projects (Fine Art Society)
+  const allProjects = useMemo(() => {
+    // Always include Fine Art Society demo project
+    const staticProjects = [FINE_ART_SOCIETY_PROJECT];
+    // Merge with API projects (avoid duplicates by name)
+    const apiProjectNames = new Set(apiProjects.map(p => p.name));
+    const uniqueStaticProjects = staticProjects.filter(p => !apiProjectNames.has(p.name));
+    return [...apiProjects, ...uniqueStaticProjects];
+  }, [apiProjects]);
+
+  // Generate positioned project data from all projects
+  const projects = useMemo(() => generateProjectsFromAPI(allProjects), [allProjects]);
+
+  // Create building colliders for collision detection
+  const buildingColliders = useMemo<BuildingCollider[]>(() => {
+    return projects.map((project) => {
+      const dir = new THREE.Vector3(-project.position[0], 0, -project.position[2]);
+      if (dir.lengthSq() === 0) {
+        dir.set(0, 0, 1);
+      }
+      dir.normalize();
+      return {
+        position: project.position,
+        entranceDirection: dir,
+      };
+    });
+  }, [projects]);
+
   const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
-  const [noraLine, setNoraLine] = useState('Command Center online. Awaiting directive...');
+  const [noraLine, setNoraLine] = useState('Command Center online. Syncing with Dashboard...');
   const [noraStatusVersion, setNoraStatusVersion] = useState(1);
   const [userPosition, setUserPosition] = useState<[number, number, number]>(INITIAL_PLAYER_POSITION);
   const [activeInterior, setActiveInterior] = useState<ProjectData | null>(null);
@@ -242,6 +301,15 @@ export function VirtualEnvironmentPage() {
     setNoraLine(line);
     setNoraStatusVersion((prev) => prev + 1);
   }, []);
+
+  // Update Nora when projects finish loading
+  useEffect(() => {
+    if (!projectsLoading && !projectsError && apiProjects.length > 0) {
+      updateNoraLine(`Dashboard sync complete. ${apiProjects.length} projects online. Topos data sphere active.`);
+    } else if (!projectsLoading && !projectsError && apiProjects.length === 0) {
+      updateNoraLine('Dashboard offline. Demo projects available. Fine Art Society space ready to explore.');
+    }
+  }, [projectsLoading, projectsError, apiProjects.length, updateNoraLine]);
 
   const bumpConsoleFocus = useCallback(() => {
     setConsoleFocusVersion((prev) => prev + 1);
@@ -394,6 +462,26 @@ export function VirtualEnvironmentPage() {
 
   return (
     <div className="relative h-full min-h-[calc(100vh-6rem)] bg-black text-white">
+      {/* Loading overlay */}
+      {projectsLoading && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-12 w-12 animate-spin text-cyan-400" />
+            <p className="text-lg text-cyan-100">Syncing with Command Center...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error overlay */}
+      {projectsError && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <p className="text-lg text-red-400">Failed to connect to Dashboard API</p>
+            <p className="text-sm text-red-300">{projectsError.message}</p>
+          </div>
+        </div>
+      )}
+
       <Canvas
         camera={{ position: [80, 60, 80], fov: 60 }}
         shadows
@@ -444,11 +532,46 @@ export function VirtualEnvironmentPage() {
             opacity={0.15}
           />
 
-          {/* Command Center at origin */}
+          {/* Topos Data Sphere at ground level (center of map) */}
+          {/* Uses filesystem directory items for the knowledge visualization */}
+          <ToposDataSphere
+            toposItems={toposDirectoryItems}
+            commandCenterHeight={COMMAND_CENTER_FLOOR_Y}
+          />
+
+          {/* Command Center floating above */}
           <CommandCenter />
 
-          {/* NORA avatar */}
-          <NoraAvatar position={[0, COMMAND_CENTER_SPAWN_Y + 2, 0]} />
+          {/* Agent Workspace Level (below Command Center) */}
+          <AgentWorkspaceLevel />
+
+          {/* Spiral Staircase connecting Command Center to Agent Workspace */}
+          <SpiralStaircase />
+
+          {/* NORA avatar in the Command Center */}
+          <NoraAvatar position={[0, COMMAND_CENTER_FLOOR_Y + 2, 0]} />
+
+          {/* Agents in their designated workspaces on the lower level */}
+          <WanderingAgent
+            name="Maci"
+            role="cinematographer"
+            bayBounds={getAgentBayBounds('Maci') || undefined}
+          />
+          <WanderingAgent
+            name="Editron"
+            role="editor"
+            bayBounds={getAgentBayBounds('Editron') || undefined}
+          />
+          <WanderingAgent
+            name="Bowser"
+            role="browser"
+            bayBounds={getAgentBayBounds('Bowser') || undefined}
+          />
+          <WanderingAgent
+            name="Auri"
+            role="oracle"
+            bayBounds={getAgentBayBounds('Auri') || undefined}
+          />
 
           {/* Project buildings */}
           {projects.map((project) => (
@@ -467,11 +590,12 @@ export function VirtualEnvironmentPage() {
           {/* User avatar */}
           <UserAvatar
             initialPosition={INITIAL_PLAYER_POSITION}
-            color="#ff8000"
+            color={PLAYER_COLOR}
             onPositionChange={handleUserPositionChange}
             onInteract={handleAttemptEnter}
             isSuspended={Boolean(activeInterior || isConsoleInputActive)}
             canFly
+            buildings={buildingColliders}
           />
 
         </Suspense>
@@ -601,6 +725,7 @@ export function VirtualEnvironmentPage() {
             energy: activeInterior.energy,
             type: getBuildingType(activeInterior.name),
           }}
+          playerColor={PLAYER_COLOR}
           onExit={exitInterior}
         />
       )}
