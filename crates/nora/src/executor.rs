@@ -5,6 +5,7 @@ use db::models::{
     agent::Agent,
     project::{CreateProject, Project},
     project_board::{CreateProjectBoard, ProjectBoard, ProjectBoardType},
+    project_onboarding::{CreateProjectOnboarding, ProjectOnboarding},
     project_pod::{CreateProjectPod, ProjectPod},
     task::{CreateTask, Priority, Task, TaskStatus},
 };
@@ -467,6 +468,15 @@ impl TaskExecutor {
             );
         }
 
+        // Initialize onboarding workflow with default segments
+        if let Err(e) = self.start_project_onboarding(project.id).await {
+            tracing::warn!(
+                "Failed to start onboarding for project {}: {}",
+                project.id,
+                e
+            );
+        }
+
         tracing::info!(
             "Project created successfully: {} ({})",
             project.name,
@@ -474,6 +484,28 @@ impl TaskExecutor {
         );
 
         Ok(project)
+    }
+
+    /// Start the onboarding workflow for a project
+    pub async fn start_project_onboarding(&self, project_id: Uuid) -> Result<ProjectOnboarding> {
+        tracing::info!("Starting onboarding workflow for project {}", project_id);
+
+        let create = CreateProjectOnboarding {
+            project_id,
+            context_data: None,
+        };
+
+        let onboarding = ProjectOnboarding::create_with_segments(&self.pool, &create)
+            .await
+            .map_err(|e| NoraError::DatabaseError(e))?;
+
+        tracing::info!(
+            "Onboarding workflow started: {} for project {}",
+            onboarding.id,
+            project_id
+        );
+
+        Ok(onboarding)
     }
 
     /// Create a new kanban board for a project

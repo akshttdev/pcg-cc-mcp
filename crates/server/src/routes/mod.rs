@@ -55,6 +55,7 @@ pub mod social_posts;
 pub mod social_inbox;
 pub mod email_accounts;
 pub mod crm_contacts;
+pub mod onboarding;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -122,6 +123,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(social_inbox::router(&deployment))
         .merge(email_accounts::router(&deployment))
         .merge(crm_contacts::router(&deployment))
+        .merge(onboarding::router(&deployment))
         .merge(admin_routes)
         .with_state(deployment);
 

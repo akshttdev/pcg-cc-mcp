@@ -297,11 +297,14 @@ impl NoraAgent {
         // Wire up TaskCreator to ExecutionEngine so workflow stages create board tasks
         let execution_engine = self.execution_engine.clone();
         let task_creator_executor = executor.clone();
+        let db_pool_for_engine = pool.clone();
         tokio::spawn(async move {
             execution_engine
                 .set_task_creator(task_creator_executor)
                 .await;
-            tracing::info!("[NORA] TaskCreator wired to ExecutionEngine for workflow task creation");
+            // Also wire database for workflow log persistence (AgentFlow, AgentFlowEvent)
+            execution_engine.set_database(db_pool_for_engine).await;
+            tracing::info!("[NORA] TaskCreator and database wired to ExecutionEngine for workflow task creation and log persistence");
         });
 
         // Configure workflow orchestrator with database and executor

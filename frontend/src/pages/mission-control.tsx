@@ -200,7 +200,7 @@ export default function MissionControlPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="overflow-auto space-y-4">
-                    {activeExecutions.length === 0 && completedExecutions.length === 0 ? (
+                    {activeExecutions.length === 0 && completedExecutions.length === 0 && (dashboard?.active_workflows?.length ?? 0) === 0 ? (
                       <div className="text-center py-8 text-muted-foreground">
                         <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
                         <p>No workflow executions yet</p>
@@ -268,6 +268,42 @@ export default function MissionControlPage() {
                                   {exec.error && (
                                     <div className="mt-2 text-xs text-destructive">{exec.error}</div>
                                   )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {/* Database-backed workflows */}
+                        {dashboard?.active_workflows && dashboard.active_workflows.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-2">WORKFLOW HISTORY</h4>
+                            <div className="space-y-2">
+                              {dashboard.active_workflows.map((workflow) => (
+                                <div key={workflow.flow.id} className="p-3 border rounded-lg">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`h-2 w-2 rounded-full ${
+                                        workflow.flow.status === 'completed' ? 'bg-green-500' :
+                                        workflow.flow.status === 'failed' ? 'bg-red-500' :
+                                        'bg-yellow-500 animate-pulse'
+                                      }`} />
+                                      <span className="font-medium">{workflow.task_title}</span>
+                                    </div>
+                                    <Badge variant={
+                                      workflow.flow.status === 'completed' ? 'secondary' :
+                                      workflow.flow.status === 'failed' ? 'destructive' :
+                                      'outline'
+                                    }>
+                                      {workflow.flow.status}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-sm text-muted-foreground flex items-center gap-4">
+                                    {workflow.project_name && <span>{workflow.project_name}</span>}
+                                    <span className="text-xs">{workflow.events_count} events</span>
+                                    <span className="text-xs">
+                                      {new Date(workflow.flow.updated_at).toLocaleTimeString()}
+                                    </span>
+                                  </div>
                                 </div>
                               ))}
                             </div>

@@ -36,6 +36,7 @@ pub mod nora_config;
 pub mod project;
 pub mod project_asset;
 pub mod project_board;
+pub mod project_onboarding;
 pub mod project_pod;
 pub mod task;
 pub mod task_artifact;

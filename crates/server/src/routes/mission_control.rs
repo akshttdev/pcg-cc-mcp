@@ -5,10 +5,12 @@ use axum::{
     routing::get,
 };
 use db::models::{
+    agent_flow::{AgentFlow, FlowStatus},
     agent_task_plan::AgentTaskPlan,
     execution_artifact::ExecutionArtifact,
     execution_process::ExecutionProcess,
     execution_slot::ProjectCapacity,
+    task::Task,
 };
 use deployment::Deployment;
 use serde::Serialize;
@@ -32,10 +34,22 @@ pub struct ActiveExecutionInfo {
     pub artifacts_count: usize,
 }
 
+/// Active workflow info for Mission Control
+#[derive(Debug, Serialize, TS)]
+pub struct ActiveWorkflowInfo {
+    pub flow: AgentFlow,
+    pub task_id: Uuid,
+    pub task_title: String,
+    pub project_id: Option<Uuid>,
+    pub project_name: Option<String>,
+    pub events_count: usize,
+}
+
 /// Mission Control dashboard data
 #[derive(Debug, Serialize, TS)]
 pub struct MissionControlDashboard {
     pub active_executions: Vec<ActiveExecutionInfo>,
+    pub active_workflows: Vec<ActiveWorkflowInfo>,
     pub total_active: usize,
     pub by_project: Vec<ProjectExecutionSummary>,
 }
@@ -130,10 +144,47 @@ pub async fn get_dashboard(
         })
         .collect();
 
-    let total_active = active_executions.len();
+    // Get recent/active workflow agent flows
+    let mut active_workflows = Vec::new();
+
+    // Get flows that are in_progress or recently completed (last 5 minutes for "active" display)
+    let recent_flows = AgentFlow::find_recent(pool, 10).await.unwrap_or_default();
+
+    for flow in recent_flows {
+        // Get associated task
+        if let Ok(Some(task)) = Task::find_by_id(pool, flow.task_id).await {
+            // Get project info
+            let (project_id, project_name) = if let Ok(Some(project)) =
+                db::models::project::Project::find_by_id(pool, task.project_id).await {
+                (Some(project.id), Some(project.name))
+            } else {
+                (Some(task.project_id), None)
+            };
+
+            // Get events count
+            let events_count = db::models::agent_flow_event::AgentFlowEvent::find_by_flow(pool, flow.id)
+                .await
+                .map(|e| e.len())
+                .unwrap_or(0);
+
+            active_workflows.push(ActiveWorkflowInfo {
+                task_id: flow.task_id,
+                task_title: task.title,
+                project_id,
+                project_name,
+                events_count,
+                flow,
+            });
+        }
+    }
+
+    let total_active = active_executions.len() + active_workflows.iter().filter(|w| {
+        matches!(w.flow.status, FlowStatus::Planning | FlowStatus::Executing | FlowStatus::Verifying)
+    }).count();
 
     Ok(ResponseJson(ApiResponse::success(MissionControlDashboard {
         active_executions,
+        active_workflows,
         total_active,
         by_project,
     })))

@@ -42,7 +42,7 @@ import { useExecutionSummary } from '@/hooks';
 import { ExecutionSummaryCard } from './ExecutionSummaryCard';
 import { AirtableRecordLinkBadge } from './AirtableRecordLinkBadge';
 import { TaskArtifactsPanel } from './TaskArtifactsPanel';
-import { WorkflowLogViewer } from './WorkflowLogViewer';
+import { WorkflowTerminal } from './WorkflowTerminal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { agentFlowsApi, taskArtifactsApi } from '@/lib/api';
@@ -252,6 +252,43 @@ export function TaskDetailsPanel({
     );
   };
 
+  // Handler to send messages regarding workflow - routed through Nora with agent context
+  const handleSendWorkflowMessage = async (message: string, agentName?: string): Promise<string> => {
+    if (!task) throw new Error('No task selected');
+
+    // Include agent and task context in the message
+    const agentContext = agentName ? `[To ${agentName}] ` : '';
+    const contextualMessage = `${agentContext}Regarding workflow task "${task.title}": ${message}`;
+
+    const response = await fetch('/api/nora/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: contextualMessage,
+        sessionId: `task-${task.id}`,
+        requestType: 'textInteraction',
+        voiceEnabled: false,
+        priority: 'normal',
+        context: {
+          taskId: task.id,
+          taskTitle: task.title,
+          projectId,
+          executingAgent: agentName,
+          isWorkflowFollowUp: true,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to send message${agentName ? ` to ${agentName}` : ''}`);
+    }
+
+    // Parse the response to get the reply
+    const data = await response.json();
+    // NoraResponse has 'content' field (camelCase from Rust)
+    return data.content || data.message || data.response || 'Response received';
+  };
+
   const renderWorkflowBody = () => {
     if (!task) return null;
     if (workflowLoading) {
@@ -264,18 +301,14 @@ export function TaskDetailsPanel({
         </Alert>
       );
     }
-    if (!workflowEvents.length) {
-      return (
-        <p className="text-xs text-muted-foreground">
-          No workflow activity logged yet.
-        </p>
-      );
-    }
 
+    // Always show the terminal - it handles empty state internally
     return (
-      <WorkflowLogViewer
+      <WorkflowTerminal
         events={workflowEvents}
-        className="shadow-none border"
+        taskId={task.id}
+        onSendMessage={handleSendWorkflowMessage}
+        className="shadow-none"
       />
     );
   };
@@ -401,14 +434,6 @@ export function TaskDetailsPanel({
                             {renderArtifactsBody()}
                           </div>
 
-                          {/* Workflow events */}
-                          <div className="p-3 space-y-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                              Workflow Activity
-                            </p>
-                            {renderWorkflowBody()}
-                          </div>
-
                           {/* Custom Properties */}
                           <div className="p-3">
                             <CustomPropertiesPanel
@@ -428,7 +453,7 @@ export function TaskDetailsPanel({
 
                         {/* Main content */}
                         <main className="flex-1 min-h-0 min-w-0 flex flex-col">
-                          {selectedAttempt && (
+                          {selectedAttempt ? (
                             <>
                               <TabNavigation
                                 activeTab={activeTab}
@@ -454,25 +479,38 @@ export function TaskDetailsPanel({
                                 jumpToLogsTab={jumpToLogsTab}
                               />
                             </>
-                          )}
+                          ) : workflowEvents.length > 0 ? (
+                            /* Show WorkflowTerminal when no code attempts but has workflow events */
+                            <div className="flex-1 p-4 overflow-auto">
+                              {renderWorkflowBody()}
+                            </div>
+                          ) : null}
                         </main>
                       </div>
                     ) : (
                       <>
                         {attempts.length === 0 ? (
-                          <TaskDetailsToolbar
-                            task={task}
-                            projectId={projectId}
-                            projectHasDevScript={projectHasDevScript}
-                            forceCreateAttempt={forceCreateAttempt}
-                            onLeaveForceCreateAttempt={
-                              onLeaveForceCreateAttempt
-                            }
-                            attempts={attempts}
-                            selectedAttempt={selectedAttempt}
-                            setSelectedAttempt={setSelectedAttempt}
-                            // hide actions in sidebar; moved to header in fullscreen
-                          />
+                          <>
+                            <TaskDetailsToolbar
+                              task={task}
+                              projectId={projectId}
+                              projectHasDevScript={projectHasDevScript}
+                              forceCreateAttempt={forceCreateAttempt}
+                              onLeaveForceCreateAttempt={
+                                onLeaveForceCreateAttempt
+                              }
+                              attempts={attempts}
+                              selectedAttempt={selectedAttempt}
+                              setSelectedAttempt={setSelectedAttempt}
+                              // hide actions in sidebar; moved to header in fullscreen
+                            />
+                            {/* Show WorkflowTerminal as main content for workflow tasks (no code attempts) */}
+                            {workflowEvents.length > 0 && (
+                              <div className="mt-4">
+                                {renderWorkflowBody()}
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <>
                             <AttemptHeaderCard
@@ -497,23 +535,6 @@ export function TaskDetailsPanel({
                               selectedAttemptId={selectedAttempt?.id}
                               jumpToLogsTab={jumpToLogsTab}
                             />
-
-                            {task && (
-                              <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                                <div className="space-y-2">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                    Agent Artifacts
-                                  </p>
-                                  {renderArtifactsBody()}
-                                </div>
-                                <div className="space-y-2">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                    Workflow Activity
-                                  </p>
-                                  {renderWorkflowBody()}
-                                </div>
-                              </div>
-                            )}
                           </>
                         )}
                       </>

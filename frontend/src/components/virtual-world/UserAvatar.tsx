@@ -619,7 +619,7 @@ function HumanoidAvatar({ color: _color, animationRef, showJetpack = false }: Hu
       <group ref={headRef} position={[0, 2.4, 0]}>
         <mesh castShadow>
           <sphereGeometry args={[0.5, 32, 32]} />
-          <meshStandardMaterial color={mainColor} emissive={accentColor} emissiveIntensity={0.05} metalness={0.1} roughness={0.8} />
+          <meshStandardMaterial color={mainColor} metalness={0} roughness={1} />
         </mesh>
         <mesh position={[0, 0.05, 0.35]} rotation={[0.1, 0, 0]}>
           <boxGeometry args={[0.6, 0.25, 0.15]} />
@@ -634,6 +634,128 @@ function HumanoidAvatar({ color: _color, animationRef, showJetpack = false }: Hu
             <sphereGeometry args={[0.04, 12, 12]} />
             <meshBasicMaterial color={accentColor} />
             <pointLight color={accentColor} intensity={0.3} distance={2} />
+          </mesh>
+        </group>
+
+        {/* Blunt */}
+        <group position={[0.1, -0.2, 0.5]} rotation={[1.2, 0, 0.2]}>
+          {/* Blunt body */}
+          <mesh>
+            <cylinderGeometry args={[0.04, 0.035, 0.4, 12]} />
+            <meshStandardMaterial color="#5c4033" roughness={0.9} metalness={0} />
+          </mesh>
+          {/* Blunt wrap lines */}
+          <mesh position={[0, -0.08, 0]}>
+            <cylinderGeometry args={[0.042, 0.042, 0.025, 12]} />
+            <meshStandardMaterial color="#3d2817" roughness={1} metalness={0} />
+          </mesh>
+          <mesh position={[0, -0.14, 0]}>
+            <cylinderGeometry args={[0.037, 0.037, 0.02, 12]} />
+            <meshStandardMaterial color="#3d2817" roughness={1} metalness={0} />
+          </mesh>
+          {/* Cherry/lit end - now at the FAR end */}
+          <mesh position={[0, 0.2, 0]}>
+            <sphereGeometry args={[0.042, 12, 12]} />
+            <meshStandardMaterial color="#ff4500" emissive="#ff2200" emissiveIntensity={0.8} roughness={0.5} />
+          </mesh>
+          {/* Ash */}
+          <mesh position={[0, 0.24, 0]}>
+            <cylinderGeometry args={[0.02, 0.038, 0.06, 8]} />
+            <meshStandardMaterial color="#606060" roughness={1} metalness={0} />
+          </mesh>
+          {/* Smoke wisps - rising from cherry */}
+          <mesh position={[0, 0.32, 0]}>
+            <sphereGeometry args={[0.025, 8, 8]} />
+            <meshStandardMaterial color="#aaaaaa" transparent opacity={0.35} />
+          </mesh>
+          <mesh position={[0.03, 0.4, 0.02]}>
+            <sphereGeometry args={[0.03, 8, 8]} />
+            <meshStandardMaterial color="#bbbbbb" transparent opacity={0.25} />
+          </mesh>
+          <mesh position={[-0.02, 0.5, 0.03]}>
+            <sphereGeometry args={[0.035, 8, 8]} />
+            <meshStandardMaterial color="#cccccc" transparent opacity={0.15} />
+          </mesh>
+        </group>
+
+        {/* Crown */}
+        <group position={[0, 0.52, 0]}>
+          {/* Crown base band - ring/cylinder */}
+          <mesh>
+            <cylinderGeometry args={[0.38, 0.35, 0.15, 32, 1, true]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.3} metalness={0.95} roughness={0.1} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Inner band */}
+          <mesh>
+            <cylinderGeometry args={[0.30, 0.28, 0.15, 32, 1, true]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.2} metalness={0.95} roughness={0.1} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Top rim - hollow ring */}
+          <mesh position={[0, 0.075, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.30, 0.38, 32]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.3} metalness={0.95} roughness={0.1} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Bottom rim */}
+          <mesh position={[0, -0.075, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.28, 0.35, 32]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.3} metalness={0.95} roughness={0.1} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Decorative band around middle */}
+          <mesh position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.365, 0.025, 8, 32]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.5} metalness={0.95} roughness={0.05} />
+          </mesh>
+          {/* Crown points/spikes */}
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+            const angle = (i / 8) * Math.PI * 2;
+            const x = Math.sin(angle) * 0.34;
+            const z = Math.cos(angle) * 0.34;
+            const isMainSpike = i % 2 === 0;
+            const spikeHeight = isMainSpike ? 0.22 : 0.14;
+            return (
+              <group key={i} position={[x, 0.075 + spikeHeight / 2, z]}>
+                {/* Spike */}
+                <mesh>
+                  <coneGeometry args={[0.05, spikeHeight, 4]} />
+                  <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.3} metalness={0.95} roughness={0.1} />
+                </mesh>
+                {/* Diamond on main spikes */}
+                {isMainSpike && (
+                  <mesh position={[0, spikeHeight / 2 + 0.03, 0]}>
+                    <octahedronGeometry args={[0.035]} />
+                    <meshPhysicalMaterial
+                      color="#ffffff"
+                      emissive="#88ffff"
+                      emissiveIntensity={0.4}
+                      metalness={0.1}
+                      roughness={0}
+                      transmission={0.9}
+                      thickness={0.5}
+                      ior={2.4}
+                    />
+                  </mesh>
+                )}
+              </group>
+            );
+          })}
+          {/* Front center large diamond on band */}
+          <mesh position={[0, 0, 0.37]}>
+            <octahedronGeometry args={[0.06]} />
+            <meshPhysicalMaterial color="#ffffff" emissive="#aaffff" emissiveIntensity={0.6} metalness={0.1} roughness={0} transmission={0.9} thickness={0.5} ior={2.4} />
+          </mesh>
+          {/* Back diamond */}
+          <mesh position={[0, 0, -0.37]}>
+            <octahedronGeometry args={[0.05]} />
+            <meshPhysicalMaterial color="#ffffff" emissive="#aaffff" emissiveIntensity={0.5} metalness={0.1} roughness={0} transmission={0.9} thickness={0.5} ior={2.4} />
+          </mesh>
+          {/* Side diamonds */}
+          <mesh position={[0.37, 0, 0]}>
+            <octahedronGeometry args={[0.05]} />
+            <meshPhysicalMaterial color="#ffffff" emissive="#aaffff" emissiveIntensity={0.5} metalness={0.1} roughness={0} transmission={0.9} thickness={0.5} ior={2.4} />
+          </mesh>
+          <mesh position={[-0.37, 0, 0]}>
+            <octahedronGeometry args={[0.05]} />
+            <meshPhysicalMaterial color="#ffffff" emissive="#aaffff" emissiveIntensity={0.5} metalness={0.1} roughness={0} transmission={0.9} thickness={0.5} ior={2.4} />
           </mesh>
         </group>
       </group>

@@ -265,6 +265,25 @@ impl AgentFlow {
         Ok(flows)
     }
 
+    /// Find recent flows (for Mission Control dashboard)
+    pub async fn find_recent(
+        pool: &SqlitePool,
+        limit: i32,
+    ) -> Result<Vec<Self>, AgentFlowError> {
+        let flows = sqlx::query_as::<_, AgentFlow>(
+            r#"
+            SELECT * FROM agent_flows
+            ORDER BY updated_at DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(flows)
+    }
+
     /// Transition to next phase
     pub async fn transition_to_phase(
         pool: &SqlitePool,

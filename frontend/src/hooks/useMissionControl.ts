@@ -54,8 +54,26 @@ export interface ProjectExecutionSummary {
   };
 }
 
+export interface ActiveWorkflowInfo {
+  flow: {
+    id: string;
+    task_id: string;
+    flow_type: string;
+    status: string;
+    current_phase: string;
+    created_at: string;
+    updated_at: string;
+  };
+  task_id: string;
+  task_title: string;
+  project_id: string | null;
+  project_name: string | null;
+  events_count: number;
+}
+
 export interface MissionControlDashboard {
   active_executions: ActiveExecutionInfo[];
+  active_workflows: ActiveWorkflowInfo[];
   total_active: number;
   by_project: ProjectExecutionSummary[];
 }
