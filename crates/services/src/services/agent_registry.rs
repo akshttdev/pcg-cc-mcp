@@ -5,7 +5,7 @@
 //! and capabilities - separate from the models/executors they use.
 
 use db::models::agent::{
-    Agent, AgentFunction, AgentPersonality, AgentStatus, AutonomyLevel, CreateAgent,
+    Agent, AgentFunction, AgentPersonality, AgentStatus, AutonomyLevel, CreateAgent, UpdateAgent,
 };
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -111,8 +111,8 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("claude-sonnet-4".to_string()),
-            fallback_models: Some(vec!["gpt-4".to_string(), "claude-opus-4".to_string()]),
+            default_model: Some("gpt-4o".to_string()),
+            fallback_models: Some(vec!["gpt-4".to_string(), "claude-sonnet-4".to_string()]),
             model_config: Some(json!({
                 "temperature": 0.7,
                 "max_tokens": 4096,
@@ -348,8 +348,8 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("claude-sonnet-4".to_string()),
-            fallback_models: Some(vec!["gpt-4".to_string()]),
+            default_model: Some("gpt-4o".to_string()),
+            fallback_models: Some(vec!["gpt-4".to_string(), "claude-sonnet-4".to_string()]),
             model_config: Some(json!({
                 "temperature": 0.3,
                 "max_tokens": 2048,
@@ -613,8 +613,8 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("claude-sonnet-4".to_string()),
-            fallback_models: Some(vec!["gpt-4".to_string()]),
+            default_model: Some("gpt-4o".to_string()),
+            fallback_models: Some(vec!["gpt-4".to_string(), "claude-sonnet-4".to_string()]),
             model_config: Some(json!({
                 "temperature": 0.3,
                 "max_tokens": 8192,
@@ -626,6 +626,116 @@ impl AgentDefinitions {
             priority_weight: Some(85),
             parent_agent_id: None,
             team_id: Some("strategy".to_string()),
+            created_by: Some("system".to_string()),
+        }
+    }
+
+    /// Scout - Social Intelligence Analyst
+    pub fn scout() -> CreateAgent {
+        CreateAgent {
+            wallet_address: None,
+            short_name: "Scout".to_string(),
+            designation: "Social Intelligence Analyst".to_string(),
+            description: Some(
+                "Scout is a social intelligence analyst specializing in competitor research, \
+                social media analysis, and trend identification. He navigates the social landscape \
+                to uncover insights about competitors, audience sentiment, and emerging opportunities.".to_string()
+            ),
+            personality: Some(AgentPersonality {
+                traits: vec![
+                    "Observant".to_string(),
+                    "Analytical".to_string(),
+                    "Resourceful".to_string(),
+                    "Methodical".to_string(),
+                    "Insightful".to_string(),
+                ],
+                communication_style: "Clear and concise, presents findings with supporting evidence and context".to_string(),
+                problem_solving_approach: "Systematic intelligence gathering - identifies targets, collects data across platforms, analyzes patterns, and synthesizes actionable insights".to_string(),
+                interaction_preferences: vec![
+                    "Clear research objectives".to_string(),
+                    "Target accounts or topics".to_string(),
+                    "Platform preferences".to_string(),
+                    "Depth of analysis required".to_string(),
+                ],
+                backstory: Some(
+                    "Scout earned his name from his ability to navigate the vast social media landscape \
+                    and return with valuable intelligence. He believes that understanding the competition \
+                    is the first step to outpacing them, and that social signals often reveal truths \
+                    before they appear in traditional metrics.".to_string()
+                ),
+                signature_phrases: vec![
+                    "Let me scout that out for you.".to_string(),
+                    "I've identified some interesting patterns.".to_string(),
+                    "Here's what the social landscape reveals.".to_string(),
+                    "The competitor analysis shows...".to_string(),
+                    "I've gathered intelligence on this.".to_string(),
+                ],
+                emotional_baseline: "Alert and focused, with enthusiasm for uncovering insights".to_string(),
+            }),
+            voice_style: Some("Direct, informative, with analytical precision".to_string()),
+            avatar_url: Some("/avatars/scout.png".to_string()),
+            capabilities: Some(vec![
+                "social_research".to_string(),
+                "competitor_analysis".to_string(),
+                "trend_identification".to_string(),
+                "sentiment_analysis".to_string(),
+                "account_discovery".to_string(),
+                "content_analysis".to_string(),
+            ]),
+            tools: Some(vec![
+                "web_search".to_string(),
+                "web_fetch".to_string(),
+                "social_api".to_string(),
+                "data_analysis".to_string(),
+            ]),
+            functions: Some(vec![
+                AgentFunction {
+                    name: "competitor_deep_dive".to_string(),
+                    description: "Analyze competitor social presence and extract actionable insights".to_string(),
+                    parameters: json!({
+                        "competitors": "array",
+                        "platforms": "array",
+                        "analysis_depth": "string"
+                    }),
+                    required_tools: vec!["web_search".to_string(), "social_api".to_string()],
+                    example_usage: Some("competitor_deep_dive(competitors=['@competitor1', '@competitor2'], platforms=['twitter', 'linkedin'], analysis_depth='comprehensive')".to_string()),
+                },
+                AgentFunction {
+                    name: "account_discovery".to_string(),
+                    description: "Discover and catalogue relevant accounts across platforms".to_string(),
+                    parameters: json!({
+                        "industry": "string",
+                        "keywords": "array",
+                        "platforms": "array"
+                    }),
+                    required_tools: vec!["web_search".to_string(), "social_api".to_string()],
+                    example_usage: None,
+                },
+                AgentFunction {
+                    name: "content_analysis".to_string(),
+                    description: "Analyze posting patterns, content themes, and engagement metrics".to_string(),
+                    parameters: json!({
+                        "accounts": "array",
+                        "time_range": "string",
+                        "metrics": "array"
+                    }),
+                    required_tools: vec!["social_api".to_string(), "data_analysis".to_string()],
+                    example_usage: None,
+                },
+            ]),
+            default_model: Some("gpt-4o".to_string()),
+            fallback_models: Some(vec!["gpt-4".to_string(), "claude-sonnet-4".to_string()]),
+            model_config: Some(json!({
+                "temperature": 0.3,
+                "max_tokens": 8192,
+                "system_prompt_prefix": "You are Scout, Social Intelligence Analyst. Observant. Analytical. Insightful."
+            })),
+            status: Some(AgentStatus::Active),
+            autonomy_level: Some(AutonomyLevel::Supervised),
+            max_concurrent_tasks: Some(5),
+            priority_weight: Some(80),
+            parent_agent_id: None,
+            team_id: Some("research".to_string()),
             created_by: Some("system".to_string()),
         }
     }
@@ -787,14 +897,54 @@ impl AgentRegistryService {
             AgentDefinitions::editron(),
             AgentDefinitions::genesis(),
             AgentDefinitions::astra(),
+            AgentDefinitions::scout(),
             AgentDefinitions::auri(),
         ];
 
         for agent_def in core_agents {
             // Check if agent already exists
             if let Some(existing) = Agent::find_by_short_name(pool, &agent_def.short_name).await? {
-                info!("Agent '{}' already registered (ID: {})", existing.short_name, existing.id);
-                seeded_agents.push(existing);
+                // Update model config if it has changed
+                let needs_update = existing.default_model != agent_def.default_model;
+                if needs_update {
+                    let update_data = UpdateAgent {
+                        wallet_address: None,
+                        short_name: None,
+                        designation: None,
+                        description: None,
+                        personality: None,
+                        voice_style: None,
+                        avatar_url: None,
+                        capabilities: None,
+                        tools: None,
+                        functions: None,
+                        default_model: agent_def.default_model.clone(),
+                        fallback_models: agent_def.fallback_models.clone(),
+                        model_config: agent_def.model_config.clone(),
+                        status: None,
+                        autonomy_level: None,
+                        max_concurrent_tasks: None,
+                        priority_weight: None,
+                    };
+                    match Agent::update(pool, existing.id, &update_data).await {
+                        Ok(updated) => {
+                            info!(
+                                "Agent '{}' model config updated: {} -> {}",
+                                updated.short_name,
+                                existing.default_model.as_deref().unwrap_or("none"),
+                                updated.default_model.as_deref().unwrap_or("none")
+                            );
+                            seeded_agents.push(updated);
+                        }
+                        Err(e) => {
+                            warn!("Failed to update agent '{}' model config: {}", existing.short_name, e);
+                            seeded_agents.push(existing);
+                        }
+                    }
+                } else {
+                    info!("Agent '{}' already registered (ID: {})", existing.short_name, existing.id);
+                    seeded_agents.push(existing);
+                }
             } else {
                 match Agent::create(pool, &agent_def).await {
                     Ok(agent) => {

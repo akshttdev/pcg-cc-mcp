@@ -247,6 +247,10 @@ fn generate_types_content() -> String {
         db::models::brand_profile::BrandVoice::decl(),
         db::models::brand_profile::BrandProfile::decl(),
         db::models::brand_profile::UpsertBrandProfile::decl(),
+        // Agent Chat types
+        server::routes::agent_chat::AgentChatRequest::decl(),
+        server::routes::agent_chat::AgentChatResponse::decl(),
+        server::routes::agent_chat::ConversationSummary::decl(),
     ];
 
     let body = decls

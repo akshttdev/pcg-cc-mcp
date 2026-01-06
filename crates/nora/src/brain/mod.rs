@@ -10,6 +10,18 @@ use crate::{
     NoraError, Result,
 };
 
+// Multi-provider abstraction layer
+pub mod providers;
+pub use providers::{
+    AnthropicProvider, LLMProviderTrait, OpenAIProvider, ProviderError, ProviderType,
+};
+
+// Agent-specific LLM client configuration
+pub mod agent_client;
+pub use agent_client::{
+    create_client_for_agent, infer_provider_from_model, AgentModelConfig,
+};
+
 /// A message in the conversation history
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMessage {
@@ -72,6 +84,7 @@ pub enum LLMResponse {
 #[serde(rename_all = "camelCase")]
 pub enum LLMProvider {
     OpenAI,
+    Anthropic,
 }
 
 /// Configuration for Nora's reasoning engine
@@ -181,12 +194,24 @@ impl LLMClient {
     pub fn new(config: LLMConfig) -> Self {
         let api_key = match config.provider {
             LLMProvider::OpenAI => std::env::var("OPENAI_API_KEY").ok(),
+            LLMProvider::Anthropic => std::env::var("ANTHROPIC_API_KEY").ok(),
+        };
+
+        let provider_name = match config.provider {
+            LLMProvider::OpenAI => "OpenAI",
+            LLMProvider::Anthropic => "Anthropic",
         };
 
         if api_key.is_some() {
-            tracing::info!("LLMClient initialized with OpenAI API key");
+            tracing::info!("LLMClient initialized with {} API key", provider_name);
         } else {
-            tracing::warn!("LLMClient created without API key - OPENAI_API_KEY env var not found");
+            tracing::warn!(
+                "LLMClient created without API key - {} env var not found",
+                match config.provider {
+                    LLMProvider::OpenAI => "OPENAI_API_KEY",
+                    LLMProvider::Anthropic => "ANTHROPIC_API_KEY",
+                }
+            );
         }
 
         Self {
@@ -240,6 +265,10 @@ impl LLMClient {
                 self.generate_openai(system_prompt, user_query, context)
                     .await?
             }
+            LLMProvider::Anthropic => {
+                self.generate_anthropic(system_prompt, user_query, context)
+                    .await?
+            }
         };
         let duration = start.elapsed();
 
@@ -276,6 +305,10 @@ impl LLMClient {
                 self.generate_openai_stream(system_prompt, user_query, context)
                     .await
             }
+            LLMProvider::Anthropic => {
+                self.generate_anthropic_stream(system_prompt, user_query, context)
+                    .await
+            }
         }
     }
 
@@ -306,6 +339,16 @@ impl LLMClient {
         match self.config.provider {
             LLMProvider::OpenAI => {
                 self.generate_openai_with_tools_and_history(
+                    system_prompt,
+                    user_query,
+                    context,
+                    tools,
+                    conversation_history,
+                )
+                .await
+            }
+            LLMProvider::Anthropic => {
+                self.generate_anthropic_with_tools_and_history(
                     system_prompt,
                     user_query,
                     context,
@@ -362,6 +405,18 @@ impl LLMClient {
         match self.config.provider {
             LLMProvider::OpenAI => {
                 self.continue_openai_with_tool_results_and_history(
+                    system_prompt,
+                    user_query,
+                    context,
+                    tool_calls,
+                    tool_results,
+                    conversation_history,
+                    tools,
+                )
+                .await
+            }
+            LLMProvider::Anthropic => {
+                self.continue_anthropic_with_tool_results_and_history(
                     system_prompt,
                     user_query,
                     context,
@@ -1250,5 +1305,332 @@ impl LLMClient {
         });
 
         Ok(Box::pin(text_stream))
+    }
+
+    // ============================================================================
+    // ANTHROPIC CLAUDE IMPLEMENTATION METHODS
+    // ============================================================================
+
+    async fn generate_anthropic(
+        &self,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+    ) -> Result<String> {
+        use providers::{ChatConfig, ChatMessage, ChatRequest};
+
+        let provider = AnthropicProvider::new();
+        if !provider.is_configured() {
+            return Err(NoraError::ConfigError(
+                "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
+            ));
+        }
+
+        let system = if system_prompt.is_empty() {
+            self.config.system_prompt.as_str()
+        } else {
+            system_prompt
+        };
+
+        let user_content = format!(
+            "Context:\n{context}\n\nRequest:\n{user_query}",
+            context = context,
+            user_query = user_query
+        );
+
+        let request = ChatRequest {
+            messages: vec![
+                ChatMessage::system(system),
+                ChatMessage::user(user_content),
+            ],
+            tools: None,
+            config: ChatConfig {
+                model: self.config.model.clone(),
+                temperature: self.config.temperature,
+                max_tokens: self.config.max_tokens,
+                tool_choice: None,
+            },
+        };
+
+        let response = provider.chat(request).await.map_err(|e| {
+            NoraError::LLMError(format!("Anthropic API error: {}", e))
+        })?;
+
+        match response {
+            providers::ProviderResponse::Text { content, .. } => Ok(content),
+            providers::ProviderResponse::ToolCalls { .. } => {
+                Err(NoraError::LLMError("Unexpected tool calls in simple generate".to_string()))
+            }
+        }
+    }
+
+    async fn generate_anthropic_stream(
+        &self,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
+        use futures::StreamExt;
+        use providers::{ChatConfig, ChatMessage, ChatRequest};
+
+        let provider = AnthropicProvider::new();
+        if !provider.is_configured() {
+            return Err(NoraError::ConfigError(
+                "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
+            ));
+        }
+
+        let system = if system_prompt.is_empty() {
+            self.config.system_prompt.as_str()
+        } else {
+            system_prompt
+        };
+
+        let user_content = format!(
+            "Context:\n{context}\n\nRequest:\n{user_query}",
+            context = context,
+            user_query = user_query
+        );
+
+        let request = ChatRequest {
+            messages: vec![
+                ChatMessage::system(system),
+                ChatMessage::user(user_content),
+            ],
+            tools: None,
+            config: ChatConfig {
+                model: self.config.model.clone(),
+                temperature: self.config.temperature,
+                max_tokens: self.config.max_tokens,
+                tool_choice: None,
+            },
+        };
+
+        let stream = provider.chat_stream(request).await.map_err(|e| {
+            NoraError::LLMError(format!("Anthropic streaming error: {}", e))
+        })?;
+
+        // Convert provider stream to the expected format
+        let mapped_stream = stream.map(|result| {
+            result
+                .map(|chunk| chunk.content)
+                .map_err(|e| NoraError::LLMError(format!("Stream chunk error: {}", e)))
+        });
+
+        Ok(Box::pin(mapped_stream))
+    }
+
+    async fn generate_anthropic_with_tools_and_history(
+        &self,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+        tools: &[serde_json::Value],
+        conversation_history: &[ConversationMessage],
+    ) -> Result<LLMResponse> {
+        use providers::{ChatConfig, ChatMessage, ChatRequest, ToolDefinition};
+
+        let provider = AnthropicProvider::new();
+        if !provider.is_configured() {
+            return Err(NoraError::ConfigError(
+                "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
+            ));
+        }
+
+        let system = if system_prompt.is_empty() {
+            self.config.system_prompt.as_str()
+        } else {
+            system_prompt
+        };
+
+        // Build messages
+        let mut messages = vec![ChatMessage::system(system)];
+
+        // Add conversation history (limit to last 10 messages)
+        let history_limit = 10;
+        let history_start = conversation_history.len().saturating_sub(history_limit);
+        for msg in &conversation_history[history_start..] {
+            match msg.role {
+                MessageRole::User => messages.push(ChatMessage::user(&msg.content)),
+                MessageRole::Assistant => messages.push(ChatMessage::assistant(&msg.content)),
+                MessageRole::System => {} // Skip system messages in history
+            }
+        }
+
+        // Add current request with context
+        let user_content = format!(
+            "Context:\n{context}\n\nRequest:\n{user_query}",
+            context = context,
+            user_query = user_query
+        );
+        messages.push(ChatMessage::user(user_content));
+
+        // Convert tools to provider format
+        let provider_tools: Option<Vec<ToolDefinition>> = if tools.is_empty() {
+            None
+        } else {
+            Some(
+                tools
+                    .iter()
+                    .filter_map(|t| {
+                        let func = t.get("function")?;
+                        Some(ToolDefinition {
+                            name: func["name"].as_str()?.to_string(),
+                            description: func["description"].as_str().unwrap_or("").to_string(),
+                            parameters: func["parameters"].clone(),
+                        })
+                    })
+                    .collect(),
+            )
+        };
+
+        let request = ChatRequest {
+            messages,
+            tools: provider_tools,
+            config: ChatConfig {
+                model: self.config.model.clone(),
+                temperature: self.config.temperature,
+                max_tokens: self.config.max_tokens,
+                tool_choice: if tools.is_empty() { None } else { Some("auto".to_string()) },
+            },
+        };
+
+        let response = provider.chat(request).await.map_err(|e| {
+            NoraError::LLMError(format!("Anthropic API error: {}", e))
+        })?;
+
+        // Convert provider response to LLMResponse
+        match response {
+            providers::ProviderResponse::Text { content, .. } => {
+                Ok(LLMResponse::Text(content))
+            }
+            providers::ProviderResponse::ToolCalls { calls, .. } => {
+                let tool_calls: Vec<ToolCall> = calls
+                    .into_iter()
+                    .map(|c| ToolCall {
+                        id: c.id,
+                        name: c.name,
+                        arguments: c.arguments,
+                    })
+                    .collect();
+                Ok(LLMResponse::ToolCalls(tool_calls))
+            }
+        }
+    }
+
+    async fn continue_anthropic_with_tool_results_and_history(
+        &self,
+        system_prompt: &str,
+        user_query: &str,
+        context: &str,
+        tool_calls: &[ToolCall],
+        tool_results: &[ToolResult],
+        conversation_history: &[ConversationMessage],
+        tools: &[serde_json::Value],
+    ) -> Result<LLMResponse> {
+        use providers::{ChatConfig, ChatMessage, ChatRequest, ToolCallRequest, ToolDefinition};
+
+        let provider = AnthropicProvider::new();
+        if !provider.is_configured() {
+            return Err(NoraError::ConfigError(
+                "Anthropic provider not configured - ANTHROPIC_API_KEY not found".to_string(),
+            ));
+        }
+
+        let system = if system_prompt.is_empty() {
+            self.config.system_prompt.as_str()
+        } else {
+            system_prompt
+        };
+
+        // Build messages
+        let mut messages = vec![ChatMessage::system(system)];
+
+        // Add conversation history
+        let history_limit = 10;
+        let history_start = conversation_history.len().saturating_sub(history_limit);
+        for msg in &conversation_history[history_start..] {
+            match msg.role {
+                MessageRole::User => messages.push(ChatMessage::user(&msg.content)),
+                MessageRole::Assistant => messages.push(ChatMessage::assistant(&msg.content)),
+                MessageRole::System => {}
+            }
+        }
+
+        // Add the original user request
+        let user_content = format!(
+            "Context:\n{context}\n\nRequest:\n{user_query}",
+            context = context,
+            user_query = user_query
+        );
+        messages.push(ChatMessage::user(user_content));
+
+        // Add assistant message with tool calls
+        let provider_tool_calls: Vec<ToolCallRequest> = tool_calls
+            .iter()
+            .map(|tc| ToolCallRequest {
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                arguments: tc.arguments.clone(),
+            })
+            .collect();
+        messages.push(ChatMessage::assistant_with_tools(provider_tool_calls));
+
+        // Add tool results
+        for result in tool_results {
+            messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.result));
+        }
+
+        // Convert tools to provider format
+        let provider_tools: Option<Vec<ToolDefinition>> = if tools.is_empty() {
+            None
+        } else {
+            Some(
+                tools
+                    .iter()
+                    .filter_map(|t| {
+                        let func = t.get("function")?;
+                        Some(ToolDefinition {
+                            name: func["name"].as_str()?.to_string(),
+                            description: func["description"].as_str().unwrap_or("").to_string(),
+                            parameters: func["parameters"].clone(),
+                        })
+                    })
+                    .collect(),
+            )
+        };
+
+        let request = ChatRequest {
+            messages,
+            tools: provider_tools,
+            config: ChatConfig {
+                model: self.config.model.clone(),
+                temperature: self.config.temperature,
+                max_tokens: self.config.max_tokens,
+                tool_choice: if tools.is_empty() { None } else { Some("auto".to_string()) },
+            },
+        };
+
+        let response = provider.chat(request).await.map_err(|e| {
+            NoraError::LLMError(format!("Anthropic API error: {}", e))
+        })?;
+
+        // Convert provider response to LLMResponse
+        match response {
+            providers::ProviderResponse::Text { content, .. } => {
+                Ok(LLMResponse::Text(content))
+            }
+            providers::ProviderResponse::ToolCalls { calls, .. } => {
+                let tool_calls: Vec<ToolCall> = calls
+                    .into_iter()
+                    .map(|c| ToolCall {
+                        id: c.id,
+                        name: c.name,
+                        arguments: c.arguments,
+                    })
+                    .collect();
+                Ok(LLMResponse::ToolCalls(tool_calls))
+            }
+        }
     }
 }

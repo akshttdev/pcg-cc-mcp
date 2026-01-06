@@ -67,6 +67,9 @@ import {
   AgentStatus,
   CreateAgent,
   UpdateAgent,
+  AgentChatRequest,
+  AgentChatResponse,
+  ConversationSummary,
   // Airtable integration types
   AirtableBase,
   CreateAirtableBase,
@@ -91,6 +94,7 @@ export type {
 } from 'shared/types';
 export type { ProjectBoard, ProjectBoardType } from 'shared/types';
 export type { BrandProfile, UpsertBrandProfile } from 'shared/types';
+export type { AgentChatRequest, AgentChatResponse, ConversationSummary } from 'shared/types';
 
 export interface NoraModeSummary {
   id: string;
@@ -985,6 +989,93 @@ export const agentsApi = {
       body: JSON.stringify({ wallet_address: walletAddress }),
     });
     return handleApiResponse<AgentWithParsedFields>(response);
+  },
+
+  // Chat with an agent
+  chat: async (agentId: string, request: AgentChatRequest): Promise<AgentChatResponse> => {
+    const response = await makeRequest(`/api/agents/${agentId}/chat`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+    return handleApiResponse<AgentChatResponse>(response);
+  },
+
+  // Chat with an agent (streaming)
+  chatStream: async (
+    agentId: string,
+    request: AgentChatRequest,
+    onChunk: (chunk: string) => void,
+    onComplete?: (fullResponse: string) => void
+  ): Promise<void> => {
+    const response = await fetch(`/api/agents/${agentId}/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...request, stream: true }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let fullResponse = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const text = decoder.decode(value, { stream: true });
+      const lines = text.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') {
+            if (onComplete) onComplete(fullResponse);
+            return;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.content) {
+              fullResponse += parsed.content;
+              onChunk(parsed.content);
+            }
+          } catch {
+            // Ignore parse errors for incomplete chunks
+          }
+        }
+      }
+    }
+
+    if (onComplete) onComplete(fullResponse);
+  },
+
+  // List agent conversations
+  listConversations: async (
+    agentId: string,
+    projectId?: string,
+    limit?: number
+  ): Promise<ConversationSummary[]> => {
+    const params = new URLSearchParams();
+    if (projectId) params.set('projectId', projectId);
+    if (limit) params.set('limit', limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const response = await makeRequest(`/api/agents/${agentId}/conversations${query}`);
+    return handleApiResponse<ConversationSummary[]>(response);
+  },
+
+  // Get conversation messages
+  getConversationMessages: async (
+    agentId: string,
+    conversationId: string
+  ): Promise<{ id: string; role: string; content: string; createdAt: string }[]> => {
+    const response = await makeRequest(`/api/agents/${agentId}/conversations/${conversationId}/messages`);
+    return handleApiResponse(response);
   },
 };
 

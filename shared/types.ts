@@ -536,9 +536,6 @@ sync_deliverables_as_comments: boolean,
  */
 auto_import_new_records: boolean, };
 
-// Stub type for backwards compatibility - Trello integration removed
-export type TrelloConfig = { api_key: string | null, api_token: string | null, };
-
 export type AirtableVerifyRequest = { token: string, };
 
 export type AirtableVerifyResponse = { user_email: string | null, valid: boolean, };
@@ -632,3 +629,53 @@ export type BrandVoice = "formal" | "casual" | "playful" | "authoritative";
 export type BrandProfile = { id: string, projectId: string, tagline: string | null, industry: string | null, primaryColor: string, secondaryColor: string, brandVoice: string | null, targetAudience: string | null, logoAssetId: string | null, guidelinesAssetId: string | null, createdAt: Date, updatedAt: Date, };
 
 export type UpsertBrandProfile = { tagline: string | null, industry: string | null, primaryColor: string | null, secondaryColor: string | null, brandVoice: string | null, targetAudience: string | null, logoAssetId: string | null, guidelinesAssetId: string | null, };
+
+export type AgentChatRequest = { 
+/**
+ * The message content
+ */
+message: string, 
+/**
+ * Session identifier for conversation continuity
+ */
+sessionId: string, 
+/**
+ * Optional project context
+ */
+projectId: string | null, 
+/**
+ * Optional additional context
+ */
+context: JsonValue | null, 
+/**
+ * Enable streaming response
+ */
+stream: boolean, };
+
+export type AgentChatResponse = { 
+/**
+ * The agent's response content
+ */
+content: string, 
+/**
+ * Conversation ID for reference
+ */
+conversationId: string, 
+/**
+ * Agent information
+ */
+agentName: string, agentDesignation: string, 
+/**
+ * Token usage (if available)
+ */
+inputTokens: bigint | null, outputTokens: bigint | null, 
+/**
+ * Model used for this response
+ */
+model: string | null, provider: string | null, 
+/**
+ * Response latency in milliseconds
+ */
+latencyMs: bigint, };
+
+export type ConversationSummary = { id: string, title: string | null, status: string, messageCount: bigint, lastMessageAt: string | null, createdAt: string, };

@@ -14,7 +14,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { AgentFlowEvent, FlowEventType } from 'shared/types';
+import type { AgentFlowEvent } from 'shared/types';
 
 interface WorkflowTerminalProps {
   events: AgentFlowEvent[];
@@ -195,7 +195,7 @@ function StageBlock({
 
 export function WorkflowTerminal({
   events,
-  taskId,
+  taskId: _taskId,
   onSendMessage,
   className,
 }: WorkflowTerminalProps) {
@@ -420,7 +420,7 @@ export function WorkflowTerminal({
               {sending && (
                 <div className="flex items-center gap-2 ml-4 text-gray-500">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">Nora is thinking...</span>
+                  <span className="text-sm">{executingAgentName || 'Nora'} is thinking...</span>
                 </div>
               )}
             </div>

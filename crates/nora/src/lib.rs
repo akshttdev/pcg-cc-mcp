@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod brain;
 pub mod cache;
+pub mod context;
 pub mod coordination;
 pub mod execution;
 pub mod executor;
@@ -43,6 +44,9 @@ pub use executor::{
 pub use graph::{
     GraphEdge, GraphNode, GraphNodeStatus, GraphPlan, GraphPlanStatus, GraphPlanSummary,
     GraphOrchestrator,
+};
+pub use context::{
+    ProjectContextSummary, ProjectScopeBuilder, ProjectScopeError, ProjectScopedContext,
 };
 pub use memory::{ConversationMemory, ExecutiveContext};
 pub use personality::{BritishPersonality, PersonalityConfig};

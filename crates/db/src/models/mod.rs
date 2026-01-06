@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod agent;
+pub mod agent_conversation;
 pub mod agent_flow;
 pub mod brand_profile;
 pub mod agent_flow_event;

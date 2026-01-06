@@ -23,6 +23,7 @@ pub mod config;
 pub mod containers;
 pub mod filesystem;
 // pub mod github;
+pub mod agent_chat;
 pub mod agent_wallets;
 pub mod agents;
 pub mod events;
@@ -96,6 +97,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(approvals::router())
         .merge(agent_wallets::router(&deployment))
         .merge(agents::routes())
+        .merge(agent_chat::routes())
         .nest("/permissions", permissions::router(&deployment))
         .nest("/images", images::routes())
         .merge(nora::nora_routes())

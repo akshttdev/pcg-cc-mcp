@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import TaskDetailsHeader from './TaskDetailsHeader';
 import { TaskFollowUpSection } from './TaskFollowUpSection';
 import { TaskTitleDescription } from './TaskDetails/TaskTitleDescription';
@@ -45,10 +45,11 @@ import { TaskArtifactsPanel } from './TaskArtifactsPanel';
 import { WorkflowTerminal } from './WorkflowTerminal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { agentFlowsApi, taskArtifactsApi } from '@/lib/api';
+import { agentFlowsApi, taskArtifactsApi, agentsApi } from '@/lib/api';
 import type {
   ExecutionArtifact as ApiExecutionArtifact,
 } from '@/lib/api';
+import type { AgentChatRequest } from 'shared/types';
 
 interface TaskDetailsPanelProps {
   task: TaskWithAttemptStatus | null;
@@ -252,11 +253,53 @@ export function TaskDetailsPanel({
     );
   };
 
-  // Handler to send messages regarding workflow - routed through Nora with agent context
+  // Extract agent name from workflow events
+  const executingAgentName = useMemo(() => {
+    for (const event of workflowEvents) {
+      try {
+        const data = JSON.parse(event.event_data || '{}');
+        if (data.agent_name) {
+          return data.agent_name as string;
+        }
+      } catch {
+        // Skip invalid JSON
+      }
+    }
+    return null;
+  }, [workflowEvents]);
+
+  // Handler to send messages regarding workflow - routes to agent directly if available
   const handleSendWorkflowMessage = async (message: string, agentName?: string): Promise<string> => {
     if (!task) throw new Error('No task selected');
 
-    // Include agent and task context in the message
+    // Try to route to the executing agent by looking up their UUID
+    const targetAgentName = executingAgentName || agentName;
+    if (targetAgentName) {
+      try {
+        // Look up agent by name to get the real UUID
+        const agent = await agentsApi.getByName(targetAgentName);
+
+        const request: AgentChatRequest = {
+          message,
+          sessionId: `task-${task.id}`,
+          projectId: projectId || null,
+          context: {
+            taskId: task.id,
+            taskTitle: task.title,
+            isWorkflowFollowUp: true,
+          },
+          stream: false,
+        };
+
+        const response = await agentsApi.chat(agent.id, request);
+        return response.content;
+      } catch (error) {
+        // Fall back to Nora if agent lookup or chat fails
+        console.warn(`Agent chat failed for ${targetAgentName}, falling back to Nora:`, error);
+      }
+    }
+
+    // Fallback: route through Nora with agent context
     const agentContext = agentName ? `[To ${agentName}] ` : '';
     const contextualMessage = `${agentContext}Regarding workflow task "${task.title}": ${message}`;
 
