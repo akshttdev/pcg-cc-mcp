@@ -23,6 +23,7 @@ pub type EditorType = versions::v10::EditorType;
 pub type GitHubConfig = versions::v10::GitHubConfig;
 pub type UiLanguage = versions::v10::UiLanguage;
 pub type AptosWalletConfig = versions::v10::AptosWalletConfig;
+pub type TrelloConfig = versions::v10::TrelloConfig;
 pub type AirtableConfig = versions::v10::AirtableConfig;
 
 /// Will always return config, trying old schemas or eventually returning default

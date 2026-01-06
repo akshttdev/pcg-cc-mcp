@@ -200,6 +200,7 @@ fn generate_types_content() -> String {
         services::services::airtable_service::AirtableComment::decl(),
         services::services::airtable_service::AirtableCommentAuthor::decl(),
         services::services::airtable_service::AirtableServiceError::decl(),
+        services::services::config::TrelloConfig::decl(),
         services::services::config::AirtableConfig::decl(),
         server::routes::airtable::AirtableVerifyRequest::decl(),
         server::routes::airtable::AirtableVerifyResponse::decl(),

@@ -518,6 +518,28 @@ export type AirtableCommentAuthor = { id: string, email: string | null, name: st
 
 export type AirtableServiceError = "NOT_CONFIGURED" | "AUTH_FAILED" | "RATE_LIMITED" | { "BASE_NOT_FOUND": string } | { "RECORD_NOT_FOUND": string } | { "TABLE_NOT_FOUND": string } | { "API_ERROR": string };
 
+export type TrelloConfig = { 
+/**
+ * Trello API key (from https://trello.com/app-key)
+ */
+api_key: string | null, 
+/**
+ * Trello token (OAuth token for user access)
+ */
+token: string | null, 
+/**
+ * Cached Trello username for display
+ */
+username: string | null, 
+/**
+ * Sync deliverables as comments on Trello cards
+ */
+sync_deliverables_as_comments: boolean, 
+/**
+ * Auto-import new cards when syncing
+ */
+auto_import_new_cards: boolean, };
+
 export type AirtableConfig = { 
 /**
  * Airtable Personal Access Token
