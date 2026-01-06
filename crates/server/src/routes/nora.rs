@@ -1630,15 +1630,13 @@ pub async fn nora_create_board(
     let project_id = Uuid::parse_str(&request.project_id)
         .map_err(|e| ApiError::BadRequest(format!("Invalid project ID: {}", e)))?;
 
+    // Simplified board types: only Default and Custom
     let board_type = match request.board_type.as_deref() {
-        Some("custom") => Some(db::models::project_board::ProjectBoardType::Custom),
-        Some("executive_assets") => {
-            Some(db::models::project_board::ProjectBoardType::ExecutiveAssets)
+        Some("default") | Some("main") => {
+            Some(db::models::project_board::ProjectBoardType::Default)
         }
-        Some("brand_assets") => Some(db::models::project_board::ProjectBoardType::BrandAssets),
-        Some("dev_assets") => Some(db::models::project_board::ProjectBoardType::DevAssets),
-        Some("social_assets") => Some(db::models::project_board::ProjectBoardType::SocialAssets),
-        _ => None,
+        Some("custom") | Some(_) => Some(db::models::project_board::ProjectBoardType::Custom),
+        None => None,
     };
 
     let board = nora
@@ -1891,6 +1889,128 @@ fn coordination_event_payload(event: CoordinationEvent) -> serde_json::Value {
             "priority": priority,
             "timestamp": timestamp,
         }),
+        CoordinationEvent::WorkflowProgress {
+            workflow_instance_id,
+            agent_id,
+            agent_codename,
+            workflow_name,
+            current_stage,
+            total_stages,
+            stage_name,
+            status,
+            project_id,
+            timestamp,
+        } => json!({
+            "type": "WorkflowProgress",
+            "workflowInstanceId": workflow_instance_id,
+            "agentId": agent_id,
+            "agentCodename": agent_codename,
+            "workflowName": workflow_name,
+            "currentStage": current_stage,
+            "totalStages": total_stages,
+            "stageName": stage_name,
+            "status": status,
+            "projectId": project_id,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ExecutionStarted {
+            execution_id,
+            project_id,
+            agent_codename,
+            workflow_name,
+            timestamp,
+        } => json!({
+            "type": "ExecutionStarted",
+            "executionId": execution_id,
+            "projectId": project_id,
+            "agentCodename": agent_codename,
+            "workflowName": workflow_name,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ExecutionStageStarted {
+            execution_id,
+            stage_index,
+            stage_name,
+            agent_codename,
+            timestamp,
+        } => json!({
+            "type": "ExecutionStageStarted",
+            "executionId": execution_id,
+            "stageIndex": stage_index,
+            "stageName": stage_name,
+            "agentCodename": agent_codename,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ExecutionStageCompleted {
+            execution_id,
+            stage_index,
+            stage_name,
+            output_summary,
+            timestamp,
+        } => json!({
+            "type": "ExecutionStageCompleted",
+            "executionId": execution_id,
+            "stageIndex": stage_index,
+            "stageName": stage_name,
+            "outputSummary": output_summary,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ExecutionCompleted {
+            execution_id,
+            project_id,
+            tasks_created,
+            artifacts_count,
+            duration_ms,
+            timestamp,
+        } => json!({
+            "type": "ExecutionCompleted",
+            "executionId": execution_id,
+            "projectId": project_id,
+            "tasksCreated": tasks_created,
+            "artifactsCount": artifacts_count,
+            "durationMs": duration_ms,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ExecutionFailed {
+            execution_id,
+            error,
+            stage,
+            timestamp,
+        } => json!({
+            "type": "ExecutionFailed",
+            "executionId": execution_id,
+            "error": error,
+            "stage": stage,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ExecutionTaskCreated {
+            execution_id,
+            task_id,
+            task_title,
+            board_id,
+            timestamp,
+        } => json!({
+            "type": "ExecutionTaskCreated",
+            "executionId": execution_id,
+            "taskId": task_id,
+            "taskTitle": task_title,
+            "boardId": board_id,
+            "timestamp": timestamp,
+        }),
+        CoordinationEvent::ExecutionArtifactProduced {
+            execution_id,
+            artifact_type,
+            title,
+            stage,
+            timestamp,
+        } => json!({
+            "type": "ExecutionArtifactProduced",
+            "executionId": execution_id,
+            "artifactType": artifact_type,
+            "title": title,
+            "stage": stage,
+            "timestamp": timestamp,
+        }),
     }
 }
 
@@ -1918,6 +2038,13 @@ fn map_projects_to_context(projects: Vec<Project>) -> Vec<ProjectContext> {
 }
 
 fn apply_llm_overrides(config: &mut NoraConfig) {
+    // If OPENAI_API_KEY is set, ensure we have an LLM config
+    // This allows the LLM to work without requiring NORA_LLM_* env vars
+    if std::env::var("OPENAI_API_KEY").is_ok() && config.llm.is_none() {
+        config.llm = Some(LLMConfig::default());
+        tracing::info!("LLM enabled via OPENAI_API_KEY");
+    }
+
     if let Ok(model) = std::env::var("NORA_LLM_MODEL") {
         config.llm.get_or_insert_with(LLMConfig::default).model = model;
     }

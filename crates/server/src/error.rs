@@ -5,7 +5,21 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use db::models::{
-    execution_process::ExecutionProcessError, project::ProjectError, task_attempt::TaskAttemptError,
+    agent_flow::AgentFlowError,
+    agent_flow_event::AgentFlowEventError,
+    artifact_review::ArtifactReviewError,
+    crm_contact::CrmContactError,
+    email_account::EmailAccountError,
+    execution_artifact::ExecutionArtifactError,
+    execution_process::ExecutionProcessError,
+    project::ProjectError,
+    social_account::SocialAccountError,
+    social_mention::SocialMentionError,
+    social_post::SocialPostError,
+    task_artifact::TaskArtifactError,
+    task_attempt::TaskAttemptError,
+    token_usage::TokenUsageError,
+    wide_research::WideResearchError,
 };
 use deployment::DeploymentError;
 use executors::executors::ExecutorError;
@@ -46,6 +60,10 @@ pub enum ApiError {
     Config(#[from] ConfigError),
     #[error(transparent)]
     Image(#[from] ImageError),
+    #[error(transparent)]
+    EmailAccount(#[from] EmailAccountError),
+    #[error(transparent)]
+    CrmContact(#[from] CrmContactError),
     #[error("Multipart error: {0}")]
     Multipart(#[from] MultipartError),
     #[error("IO error: {0}")]
@@ -69,6 +87,101 @@ pub enum ApiError {
 impl From<Git2Error> for ApiError {
     fn from(err: Git2Error) -> Self {
         ApiError::GitService(GitServiceError::from(err))
+    }
+}
+
+impl From<AgentFlowError> for ApiError {
+    fn from(err: AgentFlowError) -> Self {
+        match err {
+            AgentFlowError::Database(e) => ApiError::Database(e),
+            AgentFlowError::NotFound => ApiError::NotFound("Agent flow not found".into()),
+            AgentFlowError::InvalidTransition(msg) => ApiError::BadRequest(msg),
+        }
+    }
+}
+
+impl From<AgentFlowEventError> for ApiError {
+    fn from(err: AgentFlowEventError) -> Self {
+        match err {
+            AgentFlowEventError::Database(e) => ApiError::Database(e),
+            AgentFlowEventError::NotFound => ApiError::NotFound("Agent flow event not found".into()),
+        }
+    }
+}
+
+impl From<ArtifactReviewError> for ApiError {
+    fn from(err: ArtifactReviewError) -> Self {
+        match err {
+            ArtifactReviewError::Database(e) => ApiError::Database(e),
+            ArtifactReviewError::NotFound => ApiError::NotFound("Artifact review not found".into()),
+        }
+    }
+}
+
+impl From<TaskArtifactError> for ApiError {
+    fn from(err: TaskArtifactError) -> Self {
+        match err {
+            TaskArtifactError::Database(e) => ApiError::Database(e),
+            TaskArtifactError::NotFound => ApiError::NotFound("Task artifact link not found".into()),
+            TaskArtifactError::AlreadyExists => ApiError::Conflict("Artifact already linked to task".into()),
+        }
+    }
+}
+
+impl From<WideResearchError> for ApiError {
+    fn from(err: WideResearchError) -> Self {
+        match err {
+            WideResearchError::Database(e) => ApiError::Database(e),
+            WideResearchError::SessionNotFound => ApiError::NotFound("Wide research session not found".into()),
+            WideResearchError::SubagentNotFound => ApiError::NotFound("Research subagent not found".into()),
+        }
+    }
+}
+
+impl From<ExecutionArtifactError> for ApiError {
+    fn from(err: ExecutionArtifactError) -> Self {
+        match err {
+            ExecutionArtifactError::Database(e) => ApiError::Database(e),
+            ExecutionArtifactError::NotFound => ApiError::NotFound("Execution artifact not found".into()),
+            ExecutionArtifactError::InvalidType(msg) => ApiError::BadRequest(msg),
+        }
+    }
+}
+
+impl From<TokenUsageError> for ApiError {
+    fn from(err: TokenUsageError) -> Self {
+        match err {
+            TokenUsageError::Database(e) => ApiError::Database(e),
+            TokenUsageError::NotFound => ApiError::NotFound("Token usage record not found".into()),
+        }
+    }
+}
+
+impl From<SocialAccountError> for ApiError {
+    fn from(err: SocialAccountError) -> Self {
+        match err {
+            SocialAccountError::Database(e) => ApiError::Database(e),
+            SocialAccountError::NotFound => ApiError::NotFound("Social account not found".into()),
+            SocialAccountError::AlreadyExists => ApiError::Conflict("Social account already exists".into()),
+        }
+    }
+}
+
+impl From<SocialPostError> for ApiError {
+    fn from(err: SocialPostError) -> Self {
+        match err {
+            SocialPostError::Database(e) => ApiError::Database(e),
+            SocialPostError::NotFound => ApiError::NotFound("Social post not found".into()),
+        }
+    }
+}
+
+impl From<SocialMentionError> for ApiError {
+    fn from(err: SocialMentionError) -> Self {
+        match err {
+            SocialMentionError::Database(e) => ApiError::Database(e),
+            SocialMentionError::NotFound => ApiError::NotFound("Social mention not found".into()),
+        }
     }
 }
 
@@ -116,6 +229,14 @@ impl IntoResponse for ApiError {
             ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "Forbidden"),
             ApiError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "TooManyRequests"),
             ApiError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "InternalError"),
+            ApiError::EmailAccount(e) => match e {
+                EmailAccountError::NotFound => (StatusCode::NOT_FOUND, "EmailAccountNotFound"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "EmailAccountError"),
+            },
+            ApiError::CrmContact(e) => match e {
+                CrmContactError::NotFound => (StatusCode::NOT_FOUND, "CrmContactNotFound"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "CrmContactError"),
+            },
         };
 
         let error_message = match &self {

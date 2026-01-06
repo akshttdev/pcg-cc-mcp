@@ -4,49 +4,14 @@ use sqlx::{FromRow, SqlitePool, Type};
 use ts_rs::TS;
 use uuid::Uuid;
 
-#[derive(Clone, Copy)]
-struct BoardTemplate {
-    board_type: ProjectBoardType,
-    name: &'static str,
-    slug: &'static str,
-    description: &'static str,
-}
-
-const DEFAULT_BOARD_TEMPLATES: &[BoardTemplate] = &[
-    BoardTemplate {
-        board_type: ProjectBoardType::ExecutiveAssets,
-        name: "Executive Assets",
-        slug: "executive-assets",
-        description: "Confidential strategy, leadership comms, budgets, investor updates.",
-    },
-    BoardTemplate {
-        board_type: ProjectBoardType::BrandAssets,
-        name: "Brand Assets",
-        slug: "brand-assets",
-        description: "Guidelines, transcripts, customer research, positioning docs.",
-    },
-    BoardTemplate {
-        board_type: ProjectBoardType::DevAssets,
-        name: "Dev Assets",
-        slug: "dev-assets",
-        description: "Repositories, engineering threads, build & deployment artifacts.",
-    },
-    BoardTemplate {
-        board_type: ProjectBoardType::SocialAssets,
-        name: "Social Assets",
-        slug: "social-assets",
-        description: "Campaign calendars, social content workflows, automation scripts.",
-    },
-];
-
+/// Simplified board types - just Default (auto-created) and Custom (user-created)
 #[derive(Debug, Clone, Copy, Type, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[sqlx(type_name = "project_board_type", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectBoardType {
-    ExecutiveAssets,
-    BrandAssets,
-    DevAssets,
-    SocialAssets,
+    /// The main board auto-created for each project
+    Default,
+    /// User-created boards for specialized working groups
     Custom,
 }
 
@@ -271,28 +236,67 @@ impl ProjectBoard {
         Ok(result.rows_affected())
     }
 
+    /// Creates a single "Main Board" for new projects
+    pub async fn ensure_default_board(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Self, sqlx::Error> {
+        // Check if default board already exists
+        let existing = sqlx::query_as!(
+            ProjectBoard,
+            r#"SELECT
+                id as "id!: Uuid",
+                project_id as "project_id!: Uuid",
+                name,
+                slug,
+                board_type as "board_type!: ProjectBoardType",
+                description,
+                metadata,
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>"
+              FROM project_boards
+             WHERE project_id = $1 AND board_type = 'default'"#,
+            project_id
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some(board) = existing {
+            return Ok(board);
+        }
+
+        // Create the default main board
+        let board_id = Uuid::new_v4();
+        let board_type = ProjectBoardType::Default;
+        sqlx::query_as!(
+            ProjectBoard,
+            r#"INSERT INTO project_boards
+                (id, project_id, name, slug, board_type, description)
+               VALUES ($1, $2, 'Main Board', 'main', $3, 'Default project board for all tasks')
+               RETURNING
+                id as "id!: Uuid",
+                project_id as "project_id!: Uuid",
+                name,
+                slug,
+                board_type as "board_type!: ProjectBoardType",
+                description,
+                metadata,
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>""#,
+            board_id,
+            project_id,
+            board_type
+        )
+        .fetch_one(pool)
+        .await
+    }
+
+    /// Legacy compatibility - returns vec with single default board
     pub async fn ensure_default_boards(
         pool: &SqlitePool,
         project_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        for template in DEFAULT_BOARD_TEMPLATES {
-            let board_id = Uuid::new_v4();
-            let board_type: ProjectBoardType = template.board_type;
-            sqlx::query!(
-                r#"INSERT OR IGNORE INTO project_boards
-                    (id, project_id, name, slug, board_type, description)
-                    VALUES ($1, $2, $3, $4, $5, $6)"#,
-                board_id,
-                project_id,
-                template.name,
-                template.slug,
-                board_type,
-                template.description
-            )
-            .execute(pool)
-            .await?;
-        }
-
-        Self::list_by_project(pool, project_id).await
+        let board = Self::ensure_default_board(pool, project_id).await?;
+        Ok(vec![board])
     }
 }

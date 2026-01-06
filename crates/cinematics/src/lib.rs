@@ -310,6 +310,7 @@ impl CinematicsService {
         })
     }
 
+    #[allow(dead_code)]
     fn build_image_workflow(&self, prompt: &str, negative_prompt: &str) -> Value {
         json!({
             "3": {

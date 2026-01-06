@@ -19,19 +19,13 @@ const createEmptySummary = (
 ): ProjectBoardSummary => ({
   totalBoards: 0,
   corePresence: {
-    executive_assets: false,
-    brand_assets: false,
-    dev_assets: false,
-    social_assets: false,
+    default: false,
     custom: false,
   },
   customCount: 0,
   totalTasks: 0,
   tasksByType: {
-    executive_assets: 0,
-    brand_assets: 0,
-    dev_assets: 0,
-    social_assets: 0,
+    default: 0,
     custom: 0,
   },
   unassignedTasks: 0,

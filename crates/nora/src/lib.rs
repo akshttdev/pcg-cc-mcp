@@ -7,7 +7,9 @@ pub mod agent;
 pub mod brain;
 pub mod cache;
 pub mod coordination;
+pub mod execution;
 pub mod executor;
+pub mod graph;
 pub mod integrations;
 pub mod memory;
 pub mod personality;
@@ -15,7 +17,6 @@ pub mod profiles;
 pub mod tools;
 pub mod twilio;
 pub mod voice;
-pub mod graph;
 pub mod workflow;
 
 #[cfg(test)]
@@ -31,6 +32,10 @@ pub use agent::NoraAgent;
 pub use brain::{LLMConfig, LLMProvider};
 pub use cache::{CacheKey, CachedResponse, LlmCache, ResponseMetadata};
 pub use coordination::{CoordinationEvent, CoordinationManager};
+pub use execution::{
+    Artifact, ArtifactStore, ArtifactType, ExecutionEngine, ExecutionEvent, ExecutionRequest,
+    ExecutionResult, ExecutionRouter, ExecutionStatus, EventBroadcaster,
+};
 pub use executor::{
     BoardInfo, PodInfo, ProjectDetails, ProjectInfo, ProjectStats, TaskDefinition, TaskExecutor,
     TaskInfo,

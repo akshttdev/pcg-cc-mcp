@@ -27,6 +27,7 @@ enum TwimlElement {
         speech_model: String,
         language: String,
         hints: Option<String>,
+        #[allow(dead_code)]
         partial_result_callback: Option<String>,
         children: Vec<TwimlElement>,
     },

@@ -16,74 +16,18 @@ export function NoraAvatar({ position = [0, 6, 0], mood = 'neutral', speaking = 
   const headRef = useRef<THREE.Mesh>(null);
   const bodyRef = useRef<THREE.Group>(null);
   const particlesRef = useRef<THREE.Points>(null);
-  const leftArmRef = useRef<THREE.Mesh>(null);
-  const rightArmRef = useRef<THREE.Mesh>(null);
-
-  // Hologram shader material
-  const hologramMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        time: { value: 0 },
-        scanlineSpeed: { value: 2.0 },
-        opacity: { value: 0.7 },
-        color: { value: new THREE.Color(0x00ffff) },
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
-        varying vec3 vPosition;
-
-        void main() {
-          vUv = uv;
-          vNormal = normalize(normalMatrix * normal);
-          vPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float time;
-        uniform float scanlineSpeed;
-        uniform float opacity;
-        uniform vec3 color;
-
-        varying vec2 vUv;
-        varying vec3 vNormal;
-        varying vec3 vPosition;
-
-        void main() {
-          // Scanline effect
-          float scanline = sin(vPosition.y * 10.0 - time * scanlineSpeed) * 0.5 + 0.5;
-
-          // Fresnel effect (edge glow)
-          vec3 viewDirection = normalize(cameraPosition - vPosition);
-          float fresnel = pow(1.0 - abs(dot(viewDirection, vNormal)), 2.0);
-
-          // Flickering
-          float flicker = sin(time * 3.0) * 0.05 + 0.95;
-
-          // Vertical fade
-          float fade = smoothstep(0.0, 0.2, vUv.y) * smoothstep(1.0, 0.8, vUv.y);
-
-          // Combine effects
-          float alpha = (scanline * 0.3 + fresnel * 0.7) * opacity * flicker * fade;
-          vec3 finalColor = color * (1.0 + fresnel * 0.5);
-
-          gl_FragColor = vec4(finalColor, alpha);
-        }
-      `,
-      transparent: true,
-      side: THREE.DoubleSide,
-    });
-  }, []);
+  const leftArmRef = useRef<THREE.Group>(null);
+  const rightArmRef = useRef<THREE.Group>(null);
+  const coreRef = useRef<THREE.Mesh>(null);
 
   // Particle positions orbiting around avatar
-  const particleCount = 200;
+  const particleCount = 300;
   const particlePositions = useMemo(() => {
     const positions = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
-      const radius = 2 + Math.random() * 2;
+      const radius = 2.5 + Math.random() * 2.5;
 
       positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = radius * Math.cos(phi) + 3;
@@ -94,14 +38,6 @@ export function NoraAvatar({ position = [0, 6, 0], mood = 'neutral', speaking = 
 
   useFrame((state) => {
     const time = state.clock.elapsedTime;
-
-    // Update shader time
-    if (hologramMaterial.uniforms) {
-      hologramMaterial.uniforms.time.value = time;
-      // Adjust opacity based on mood
-      const moodOpacity = mood === 'alert' ? 0.9 : mood === 'happy' ? 0.85 : 0.7;
-      hologramMaterial.uniforms.opacity.value = moodOpacity;
-    }
 
     // Mood-based floating animation
     if (groupRef.current) {
@@ -117,17 +53,22 @@ export function NoraAvatar({ position = [0, 6, 0], mood = 'neutral', speaking = 
       groupRef.current.rotation.y = Math.sin(time * 0.2) * 0.1;
     }
 
-    // Breathing effect (scale pulse) - more pronounced when speaking
+    // Breathing effect
     if (bodyRef.current) {
       const breatheSpeed = speaking ? 2.5 : 0.8;
       const breatheAmount = speaking ? 0.05 : 0.03;
       const breathe = Math.sin(time * breatheSpeed) * breatheAmount + 1;
       bodyRef.current.scale.setScalar(breathe);
 
-      // Processing mode: spin body
       if (mood === 'processing') {
         bodyRef.current.rotation.y = time * 0.3;
       }
+    }
+
+    // Core pulsing
+    if (coreRef.current) {
+      const pulse = Math.sin(time * 2) * 0.15 + 1;
+      coreRef.current.scale.setScalar(pulse);
     }
 
     // Head animations based on mood
@@ -135,18 +76,18 @@ export function NoraAvatar({ position = [0, 6, 0], mood = 'neutral', speaking = 
       switch (mood) {
         case 'thinking':
           headRef.current.rotation.x = Math.sin(time * 0.6) * 0.15;
-          headRef.current.rotation.z = 0.15; // Tilt to side
+          headRef.current.rotation.z = 0.15;
           break;
         case 'alert':
-          headRef.current.rotation.x = 0; // Straight ahead
-          headRef.current.rotation.z = Math.cos(time * 3) * 0.05; // Quick scanning
+          headRef.current.rotation.x = 0;
+          headRef.current.rotation.z = Math.cos(time * 3) * 0.05;
           break;
         case 'happy':
-          headRef.current.rotation.x = Math.sin(time * 1.2) * 0.08; // Enthusiastic nod
+          headRef.current.rotation.x = Math.sin(time * 1.2) * 0.08;
           headRef.current.rotation.z = Math.cos(time * 0.7) * 0.05;
           break;
         case 'speaking':
-          headRef.current.rotation.x = Math.sin(time * 1.5) * 0.08; // Nod while speaking
+          headRef.current.rotation.x = Math.sin(time * 1.5) * 0.08;
           headRef.current.rotation.z = Math.cos(time * 0.9) * 0.04;
           break;
         default:
@@ -155,119 +96,144 @@ export function NoraAvatar({ position = [0, 6, 0], mood = 'neutral', speaking = 
       }
     }
 
-    // Arm gestures based on mood
+    // Arm gestures
     if (leftArmRef.current && rightArmRef.current) {
       switch (mood) {
         case 'speaking':
-          // Expressive hand movements
           leftArmRef.current.rotation.x = Math.sin(time * 2) * 0.3;
           rightArmRef.current.rotation.x = Math.sin(time * 2 + Math.PI) * 0.3;
           break;
         case 'thinking':
-          // Hand near chin
           rightArmRef.current.rotation.x = -0.8;
           leftArmRef.current.rotation.x = Math.sin(time * 0.5) * 0.1;
           break;
         case 'alert':
-          // Arms slightly raised
           leftArmRef.current.rotation.x = -0.3;
           rightArmRef.current.rotation.x = -0.3;
           break;
         case 'happy':
-          // Arms open wide (welcoming)
           leftArmRef.current.rotation.z = Math.sin(time * 1.2) * 0.2 + 0.3;
           rightArmRef.current.rotation.z = Math.sin(time * 1.2) * 0.2 - 0.3;
           leftArmRef.current.rotation.x = -0.2;
           rightArmRef.current.rotation.x = -0.2;
           break;
         default:
-          // Idle slight movement
           leftArmRef.current.rotation.x = Math.sin(time * 0.4) * 0.1;
           rightArmRef.current.rotation.x = Math.sin(time * 0.4 + Math.PI) * 0.1;
       }
     }
 
-    // Particle speed based on mood
+    // Particle rotation
     if (particlesRef.current) {
       const particleSpeed = mood === 'processing' ? 0.008 : mood === 'thinking' ? 0.004 : 0.002;
       particlesRef.current.rotation.y += particleSpeed;
     }
   });
 
+  const primaryColor = '#00ffff';
+  const secondaryColor = '#0088ff';
+  const accentColor = '#ffffff';
+
   return (
     <group ref={groupRef} position={position}>
-      {/* Holographic projection base */}
-      <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[2.5, 3, 64]} />
-        <meshBasicMaterial color="#00ffff" transparent opacity={0.5} side={THREE.DoubleSide} />
-      </mesh>
+      {/* Ground ring glow removed - Nora hovers in the hologram beam */}
 
-      {/* Base column/pedestal */}
-      <mesh position={[0, 0.5, 0]}>
-        <cylinderGeometry args={[2.5, 2.7, 1, 8]} />
-        <meshStandardMaterial
-          color="#0a2f4a"
-          emissive="#00ffff"
-          emissiveIntensity={0.3}
-          metalness={0.9}
-          roughness={0.1}
-        />
-      </mesh>
-
-      {/* Body - humanoid form */}
+      {/* Body group */}
       <group ref={bodyRef}>
-        {/* Torso */}
-        <mesh position={[0, 3.5, 0]} material={hologramMaterial}>
-          <capsuleGeometry args={[0.6, 1.5, 16, 32]} />
+        {/* Torso - solid glowing */}
+        <mesh position={[0, 3.2, 0]}>
+          <capsuleGeometry args={[0.55, 1.4, 16, 32]} />
+          <meshBasicMaterial color={primaryColor} />
+        </mesh>
+        {/* Torso inner glow */}
+        <mesh position={[0, 3.2, 0]}>
+          <capsuleGeometry args={[0.58, 1.45, 16, 32]} />
+          <meshBasicMaterial color={secondaryColor} transparent opacity={0.3} />
         </mesh>
 
         {/* Head */}
-        <mesh ref={headRef} position={[0, 5.5, 0]} material={hologramMaterial}>
-          <sphereGeometry args={[0.5, 32, 32]} />
-        </mesh>
+        <group position={[0, 5.2, 0]}>
+          <mesh ref={headRef}>
+            <sphereGeometry args={[0.55, 32, 32]} />
+            <meshBasicMaterial color={primaryColor} />
+          </mesh>
+          {/* Head outer glow */}
+          <mesh>
+            <sphereGeometry args={[0.6, 32, 32]} />
+            <meshBasicMaterial color={secondaryColor} transparent opacity={0.3} />
+          </mesh>
 
-        {/* Face elements */}
-        {/* Eyes */}
-        <mesh position={[-0.2, 5.6, 0.4]}>
-          <sphereGeometry args={[0.08, 16, 16]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-        <mesh position={[0.2, 5.6, 0.4]}>
-          <sphereGeometry args={[0.08, 16, 16]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
+          {/* Face - Eyes */}
+          <mesh position={[-0.18, 0.1, 0.45]}>
+            <sphereGeometry args={[0.12, 16, 16]} />
+            <meshBasicMaterial color={accentColor} />
+          </mesh>
+          <mesh position={[0.18, 0.1, 0.45]}>
+            <sphereGeometry args={[0.12, 16, 16]} />
+            <meshBasicMaterial color={accentColor} />
+          </mesh>
+          {/* Eye pupils */}
+          <mesh position={[-0.18, 0.1, 0.52]}>
+            <sphereGeometry args={[0.05, 12, 12]} />
+            <meshBasicMaterial color="#003366" />
+          </mesh>
+          <mesh position={[0.18, 0.1, 0.52]}>
+            <sphereGeometry args={[0.05, 12, 12]} />
+            <meshBasicMaterial color="#003366" />
+          </mesh>
+        </group>
 
-        {/* Core glow (heart) */}
-        <mesh position={[0, 3.8, 0]}>
-          <sphereGeometry args={[0.3, 16, 16]} />
-          <meshBasicMaterial color="#00ffff" transparent opacity={0.8} />
-          <pointLight intensity={1} color="#00ffff" distance={5} />
+        {/* Core glow (heart/chest) */}
+        <mesh ref={coreRef} position={[0, 3.5, 0.3]}>
+          <sphereGeometry args={[0.25, 16, 16]} />
+          <meshBasicMaterial color={accentColor} />
         </mesh>
+        <pointLight position={[0, 3.5, 0.3]} intensity={3} color={primaryColor} distance={10} />
 
-        {/* Arms with animation refs */}
-        <mesh
-          ref={leftArmRef}
-          position={[-0.9, 3.3, 0]}
-          rotation={[0, 0, Math.PI / 8]}
-          material={hologramMaterial}
-        >
-          <cylinderGeometry args={[0.15, 0.12, 1.8, 12]} />
-        </mesh>
-        <mesh
-          ref={rightArmRef}
-          position={[0.9, 3.3, 0]}
-          rotation={[0, 0, -Math.PI / 8]}
-          material={hologramMaterial}
-        >
-          <cylinderGeometry args={[0.15, 0.12, 1.8, 12]} />
-        </mesh>
+        {/* Left Arm - hangs straight down, hand at bottom */}
+        <group ref={leftArmRef} position={[-0.7, 3.9, 0]}>
+          <mesh position={[-0.1, -0.7, 0]}>
+            <capsuleGeometry args={[0.12, 1.0, 8, 12]} />
+            <meshBasicMaterial color={primaryColor} />
+          </mesh>
+          {/* Hand - out to the side */}
+          <mesh position={[-0.15, -1.4, 0]}>
+            <sphereGeometry args={[0.15, 12, 12]} />
+            <meshBasicMaterial color={secondaryColor} />
+          </mesh>
+        </group>
+
+        {/* Right Arm - hangs straight down, hand at bottom */}
+        <group ref={rightArmRef} position={[0.7, 3.9, 0]}>
+          <mesh position={[0.1, -0.7, 0]}>
+            <capsuleGeometry args={[0.12, 1.0, 8, 12]} />
+            <meshBasicMaterial color={primaryColor} />
+          </mesh>
+          {/* Hand - out to the side */}
+          <mesh position={[0.15, -1.4, 0]}>
+            <sphereGeometry args={[0.15, 12, 12]} />
+            <meshBasicMaterial color={secondaryColor} />
+          </mesh>
+        </group>
 
         {/* Legs */}
-        <mesh position={[-0.3, 1.5, 0]} rotation={[0, 0, Math.PI / 32]} material={hologramMaterial}>
-          <cylinderGeometry args={[0.18, 0.15, 2.2, 12]} />
+        <mesh position={[-0.25, 1.3, 0]}>
+          <capsuleGeometry args={[0.15, 1.6, 8, 12]} />
+          <meshBasicMaterial color={primaryColor} />
         </mesh>
-        <mesh position={[0.3, 1.5, 0]} rotation={[0, 0, -Math.PI / 32]} material={hologramMaterial}>
-          <cylinderGeometry args={[0.18, 0.15, 2.2, 12]} />
+        <mesh position={[0.25, 1.3, 0]}>
+          <capsuleGeometry args={[0.15, 1.6, 8, 12]} />
+          <meshBasicMaterial color={primaryColor} />
+        </mesh>
+
+        {/* Feet */}
+        <mesh position={[-0.25, 0.35, 0.1]}>
+          <boxGeometry args={[0.22, 0.12, 0.35]} />
+          <meshBasicMaterial color={primaryColor} />
+        </mesh>
+        <mesh position={[0.25, 0.35, 0.1]}>
+          <boxGeometry args={[0.22, 0.12, 0.35]} />
+          <meshBasicMaterial color={primaryColor} />
         </mesh>
       </group>
 
@@ -282,72 +248,82 @@ export function NoraAvatar({ position = [0, 6, 0], mood = 'neutral', speaking = 
           />
         </bufferGeometry>
         <pointsMaterial
-          size={0.08}
-          color="#00ffff"
+          size={0.12}
+          color={primaryColor}
           transparent
-          opacity={0.7}
+          opacity={0.8}
           sizeAttenuation
           blending={THREE.AdditiveBlending}
         />
       </points>
 
-      {/* Energy streams */}
+      {/* Vertical energy beams */}
       {[0, 1, 2, 3].map((i) => {
         const angle = (i / 4) * Math.PI * 2;
+        const radius = 1.2;
         return (
           <mesh
             key={i}
-            position={[Math.cos(angle) * 0.8, 3.5, Math.sin(angle) * 0.8]}
-            rotation={[0, angle, 0]}
+            position={[Math.cos(angle) * radius, 2.8, Math.sin(angle) * radius]}
           >
-            <cylinderGeometry args={[0.02, 0.02, 3, 8]} />
-            <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
+            <cylinderGeometry args={[0.03, 0.03, 5, 8]} />
+            <meshBasicMaterial color={primaryColor} transparent opacity={0.5} />
           </mesh>
         );
       })}
 
-      {/* Name label with mood indicator */}
-      <Text position={[0, 7, 0]} fontSize={0.5} color="#00ffff" anchorX="center" anchorY="middle">
+      {/* Horizontal ring at waist */}
+      <mesh position={[0, 2.8, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[1.2, 0.03, 8, 32]} />
+        <meshBasicMaterial color={primaryColor} />
+      </mesh>
+
+      {/* Name label */}
+      <Text position={[0, 6.5, 0]} fontSize={0.6} color={accentColor} anchorX="center" anchorY="middle">
         NORA
+      </Text>
+      <Text position={[0, 6.0, 0]} fontSize={0.25} color={primaryColor} anchorX="center" anchorY="middle">
+        Executive AI
       </Text>
       {mood !== 'neutral' && (
         <Text
-          position={[0, 6.5, 0]}
-          fontSize={0.3}
-          color={mood === 'alert' ? '#ff4444' : mood === 'happy' ? '#44ff44' : '#00ffff'}
+          position={[0, 5.6, 0]}
+          fontSize={0.2}
+          color={mood === 'alert' ? '#ff4444' : mood === 'happy' ? '#44ff44' : primaryColor}
           anchorX="center"
           anchorY="middle"
         >
-          {mood.toUpperCase()}
+          [{mood.toUpperCase()}]
         </Text>
       )}
 
-      {/* Speaking visualization (waveform ring) */}
+      {/* Speaking waveform */}
       {speaking && (
-        <group position={[0, 5.5, 0]}>
-          {[0, 1, 2, 3, 4, 5].map((i) => {
-            const angle = (i / 6) * Math.PI * 2;
-            return (
-              <mesh
-                key={i}
-                position={[Math.cos(angle) * 0.8, 0, Math.sin(angle) * 0.8]}
-                rotation={[0, angle, 0]}
-              >
-                <boxGeometry args={[0.05, 0.15, 0.05]} />
-                <meshBasicMaterial color="#00ffff" transparent opacity={0.8} />
-              </mesh>
-            );
-          })}
+        <group position={[0, 5.2, 0.6]}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <mesh key={i} position={[(i - 2) * 0.15, 0, 0]}>
+              <boxGeometry args={[0.06, 0.2, 0.04]} />
+              <meshBasicMaterial color={accentColor} />
+            </mesh>
+          ))}
         </group>
       )}
 
-      {/* Mood-based ambient light */}
+      {/* Main ambient light */}
       <pointLight
-        position={[0, 4, 0]}
-        intensity={mood === 'alert' ? 2.5 : mood === 'happy' ? 2.0 : 1.5}
-        color={mood === 'alert' ? '#ff4444' : '#00ffff'}
-        distance={mood === 'alert' ? 20 : 15}
+        position={[0, 3.5, 0]}
+        intensity={mood === 'alert' ? 4 : 2.5}
+        color={mood === 'alert' ? '#ff4444' : primaryColor}
+        distance={20}
         decay={2}
+      />
+
+      {/* Secondary light for visibility */}
+      <pointLight
+        position={[0, 5, 2]}
+        intensity={1.5}
+        color={primaryColor}
+        distance={15}
       />
     </group>
   );

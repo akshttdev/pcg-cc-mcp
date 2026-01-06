@@ -8,3 +8,4 @@ export { ActivitySettings } from './ActivitySettings';
 export { AgentSettings } from './AgentSettings';
 export { McpSettings } from './McpSettings';
 export { WalletSettings } from './WalletSettings';
+export { AirtableSettings } from './AirtableSettings';

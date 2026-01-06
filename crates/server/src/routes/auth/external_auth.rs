@@ -44,6 +44,7 @@ struct User {
     pub email: String,
     pub full_name: String,
     pub avatar_url: Option<String>,
+    #[allow(dead_code)]
     pub is_active: i32,
     pub is_admin: i32,
 }

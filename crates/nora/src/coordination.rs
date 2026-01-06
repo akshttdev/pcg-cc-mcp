@@ -70,6 +70,75 @@ pub enum CoordinationEvent {
         priority: Option<String>,
         timestamp: DateTime<Utc>,
     },
+    /// Workflow progress update from the orchestrator
+    WorkflowProgress {
+        workflow_instance_id: String,
+        agent_id: String,
+        agent_codename: String,
+        workflow_name: String,
+        current_stage: u32,
+        total_stages: u32,
+        stage_name: String,
+        status: String, // running, completed, failed
+        project_id: Option<String>,
+        timestamp: DateTime<Utc>,
+    },
+    /// Execution started (from ExecutionEngine)
+    ExecutionStarted {
+        execution_id: String,
+        project_id: Option<String>,
+        agent_codename: String,
+        workflow_name: Option<String>,
+        timestamp: DateTime<Utc>,
+    },
+    /// Execution stage started
+    ExecutionStageStarted {
+        execution_id: String,
+        stage_index: u32,
+        stage_name: String,
+        agent_codename: String,
+        timestamp: DateTime<Utc>,
+    },
+    /// Execution stage completed
+    ExecutionStageCompleted {
+        execution_id: String,
+        stage_index: u32,
+        stage_name: String,
+        output_summary: Option<String>,
+        timestamp: DateTime<Utc>,
+    },
+    /// Execution completed successfully
+    ExecutionCompleted {
+        execution_id: String,
+        project_id: Option<String>,
+        tasks_created: u32,
+        artifacts_count: u32,
+        duration_ms: u64,
+        timestamp: DateTime<Utc>,
+    },
+    /// Execution failed
+    ExecutionFailed {
+        execution_id: String,
+        error: String,
+        stage: Option<u32>,
+        timestamp: DateTime<Utc>,
+    },
+    /// Task created by execution
+    ExecutionTaskCreated {
+        execution_id: String,
+        task_id: String,
+        task_title: String,
+        board_id: String,
+        timestamp: DateTime<Utc>,
+    },
+    /// Artifact produced during execution
+    ExecutionArtifactProduced {
+        execution_id: String,
+        artifact_type: String,
+        title: String,
+        stage: Option<u32>,
+        timestamp: DateTime<Utc>,
+    },
 }
 
 /// Agent status types
@@ -443,7 +512,12 @@ impl CoordinationManager {
 
     /// Emit a raw coordination event for external callers
     pub async fn emit_event(&self, event: CoordinationEvent) -> crate::Result<()> {
-        let _ = self.event_sender.send(event);
+        let receiver_count = self.event_sender.receiver_count();
+        tracing::info!("[COORDINATION] Broadcasting event to {} subscribers", receiver_count);
+        match self.event_sender.send(event) {
+            Ok(n) => tracing::info!("[COORDINATION] Event sent to {} receivers", n),
+            Err(e) => tracing::warn!("[COORDINATION] No receivers for event: {}", e),
+        }
         Ok(())
     }
 

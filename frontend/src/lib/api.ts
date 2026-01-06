@@ -3,6 +3,7 @@
 import {
   ApiResponse,
   BranchStatus,
+  BrandProfile,
   CheckTokenResponse,
   Config,
   CommitInfo,
@@ -18,11 +19,9 @@ import {
   DirectoryEntry,
   EditorType,
   ExecutionProcess,
+  ExecutionSummary,
   GitBranch,
   Project,
-  ProjectPod,
-  CreateProjectPod,
-  UpdateProjectPod,
   ProjectBoard,
   CreateProjectBoard,
   UpdateProjectBoard,
@@ -30,6 +29,7 @@ import {
   CreateProjectAsset,
   UpdateProjectAsset,
   CreateProject,
+  UpsertBrandProfile,
   RebaseTaskAttemptRequest,
   RepositoryInfo,
   SearchResult,
@@ -63,6 +63,24 @@ import {
   GraphPlan,
   GraphPlanSummary,
   GraphNodeStatus,
+  AgentWithParsedFields,
+  AgentStatus,
+  CreateAgent,
+  UpdateAgent,
+  // Airtable integration types
+  AirtableBase,
+  CreateAirtableBase,
+  UpdateAirtableBase,
+  AirtableRecordLink,
+  AirtableBaseInfo,
+  AirtableTable,
+  AirtableRecord,
+  AirtableConnectionWithBase,
+  AirtableVerifyRequest,
+  AirtableVerifyResponse,
+  AirtableImportRequest,
+  AirtableImportResult,
+  AirtablePushTaskRequest,
 } from 'shared/types';
 
 // Re-export types for convenience
@@ -72,6 +90,7 @@ export type {
   UpdateFollowUpDraftRequest,
 } from 'shared/types';
 export type { ProjectBoard, ProjectBoardType } from 'shared/types';
+export type { BrandProfile, UpsertBrandProfile } from 'shared/types';
 
 export interface NoraModeSummary {
   id: string;
@@ -338,8 +357,6 @@ export const updateNoraPlanNode = async (
   return (await response.json()) as GraphPlan;
 };
 
-type ProjectPodCreateInput = Omit<CreateProjectPod, 'project_id'>;
-type ProjectPodUpdateInput = UpdateProjectPod;
 type ProjectBoardCreateInput = Omit<CreateProjectBoard, 'project_id'>;
 type ProjectBoardUpdateInput = UpdateProjectBoard;
 type ProjectAssetCreateInput = Omit<CreateProjectAsset, 'project_id'>;
@@ -410,47 +427,6 @@ export const projectsApi = {
       options
     );
     return handleApiResponse<SearchResult[]>(response);
-  },
-
-  listPods: async (projectId: string): Promise<ProjectPod[]> => {
-    const response = await makeRequest(`/api/projects/${projectId}/pods`);
-    return handleApiResponse<ProjectPod[]>(response);
-  },
-
-  createPod: async (
-    projectId: string,
-    data: ProjectPodCreateInput
-  ): Promise<ProjectPod> => {
-    const response = await makeRequest(`/api/projects/${projectId}/pods`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-    return handleApiResponse<ProjectPod>(response);
-  },
-
-  updatePod: async (
-    projectId: string,
-    podId: string,
-    data: ProjectPodUpdateInput
-  ): Promise<ProjectPod> => {
-    const response = await makeRequest(
-      `/api/projects/${projectId}/pods/${podId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      }
-    );
-    return handleApiResponse<ProjectPod>(response);
-  },
-
-  deletePod: async (projectId: string, podId: string): Promise<void> => {
-    const response = await makeRequest(
-      `/api/projects/${projectId}/pods/${podId}`,
-      {
-        method: 'DELETE',
-      }
-    );
-    return handleApiResponse<void>(response);
   },
 
   listBoards: async (projectId: string): Promise<ProjectBoard[]> => {
@@ -549,6 +525,28 @@ export const projectsApi = {
       }
     );
     return handleApiResponse<void>(response);
+  },
+
+  // Brand Profile APIs
+  getBrandProfile: async (projectId: string): Promise<BrandProfile | null> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/brand-profile`
+    );
+    return handleApiResponse<BrandProfile | null>(response);
+  },
+
+  upsertBrandProfile: async (
+    projectId: string,
+    data: UpsertBrandProfile
+  ): Promise<BrandProfile> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/brand-profile`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<BrandProfile>(response);
   },
 };
 
@@ -869,6 +867,124 @@ export const executionProcessesApi = {
       }
     );
     return handleApiResponse<void>(response);
+  },
+};
+
+// Execution Summary APIs
+export const executionSummaryApi = {
+  getByAttemptId: async (attemptId: string): Promise<ExecutionSummary | null> => {
+    try {
+      const response = await makeRequest(`/api/task-attempts/${attemptId}/summary`);
+      return handleApiResponse<ExecutionSummary>(response);
+    } catch (error) {
+      // Return null if not found
+      if (error instanceof ApiError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  },
+
+  getById: async (summaryId: string): Promise<ExecutionSummary> => {
+    const response = await makeRequest(`/api/execution-summaries/${summaryId}`);
+    return handleApiResponse<ExecutionSummary>(response);
+  },
+
+  updateFeedback: async (
+    summaryId: string,
+    feedback: {
+      human_rating?: number | null;
+      human_notes?: string | null;
+      is_reference_example?: boolean | null;
+    }
+  ): Promise<ExecutionSummary> => {
+    const response = await makeRequest(
+      `/api/execution-summaries/${summaryId}/feedback`,
+      {
+        method: 'POST',
+        body: JSON.stringify(feedback),
+      }
+    );
+    return handleApiResponse<ExecutionSummary>(response);
+  },
+};
+
+// Agent Registry APIs
+export const agentsApi = {
+  // List all agents
+  list: async (): Promise<AgentWithParsedFields[]> => {
+    const response = await makeRequest('/api/agents');
+    return handleApiResponse<AgentWithParsedFields[]>(response);
+  },
+
+  // List active agents only
+  listActive: async (): Promise<AgentWithParsedFields[]> => {
+    const response = await makeRequest('/api/agents/active');
+    return handleApiResponse<AgentWithParsedFields[]>(response);
+  },
+
+  // Get agent by ID
+  getById: async (agentId: string): Promise<AgentWithParsedFields> => {
+    const response = await makeRequest(`/api/agents/${agentId}`);
+    return handleApiResponse<AgentWithParsedFields>(response);
+  },
+
+  // Get agent by name
+  getByName: async (name: string): Promise<AgentWithParsedFields> => {
+    const response = await makeRequest(`/api/agents/by-name/${encodeURIComponent(name)}`);
+    return handleApiResponse<AgentWithParsedFields>(response);
+  },
+
+  // Create a new agent
+  create: async (agent: CreateAgent): Promise<AgentWithParsedFields> => {
+    const response = await makeRequest('/api/agents', {
+      method: 'POST',
+      body: JSON.stringify(agent),
+    });
+    return handleApiResponse<AgentWithParsedFields>(response);
+  },
+
+  // Update an agent
+  update: async (agentId: string, agent: UpdateAgent): Promise<AgentWithParsedFields> => {
+    const response = await makeRequest(`/api/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(agent),
+    });
+    return handleApiResponse<AgentWithParsedFields>(response);
+  },
+
+  // Delete an agent
+  delete: async (agentId: string): Promise<void> => {
+    const response = await makeRequest(`/api/agents/${agentId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  // Seed core agents (Nora, Maci, Editron)
+  seedCoreAgents: async (): Promise<AgentWithParsedFields[]> => {
+    const response = await makeRequest('/api/agents/seed', {
+      method: 'POST',
+    });
+    return handleApiResponse<AgentWithParsedFields[]>(response);
+  },
+
+  // Update agent status
+  updateStatus: async (agentId: string, status: AgentStatus): Promise<AgentWithParsedFields> => {
+    const response = await makeRequest(`/api/agents/${agentId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+    return handleApiResponse<AgentWithParsedFields>(response);
+  },
+
+  // Assign wallet to agent
+  assignWallet: async (agentId: string, walletAddress: string): Promise<AgentWithParsedFields> => {
+    const response = await makeRequest(`/api/agents/${agentId}/wallet`, {
+      method: 'PUT',
+      body: JSON.stringify({ wallet_address: walletAddress }),
+    });
+    return handleApiResponse<AgentWithParsedFields>(response);
   },
 };
 
@@ -1207,5 +1323,1209 @@ export const approvalsApi = {
     });
 
     return handleApiResponse<ToolApprovalStatus>(res);
+  },
+};
+
+// Airtable Integration API
+export const airtableApi = {
+  // Verify Airtable Personal Access Token
+  verifyCredentials: async (
+    credentials: AirtableVerifyRequest
+  ): Promise<AirtableVerifyResponse> => {
+    const response = await makeRequest('/api/airtable/verify', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+    return handleApiResponse<AirtableVerifyResponse>(response);
+  },
+
+  // List user's Airtable bases (from Airtable API)
+  listUserBases: async (): Promise<AirtableBaseInfo[]> => {
+    const response = await makeRequest('/api/airtable/bases');
+    return handleApiResponse<AirtableBaseInfo[]>(response);
+  },
+
+  // List base connections (from our DB)
+  listConnections: async (
+    projectId?: string
+  ): Promise<AirtableBase[]> => {
+    const url = projectId
+      ? `/api/airtable/connections?project_id=${projectId}`
+      : '/api/airtable/connections';
+    const response = await makeRequest(url);
+    return handleApiResponse<AirtableBase[]>(response);
+  },
+
+  // Get a single connection with base info
+  getConnection: async (
+    connectionId: string
+  ): Promise<AirtableConnectionWithBase> => {
+    const response = await makeRequest(
+      `/api/airtable/connections/${connectionId}`
+    );
+    return handleApiResponse<AirtableConnectionWithBase>(response);
+  },
+
+  // Create a base connection
+  createConnection: async (
+    connection: CreateAirtableBase
+  ): Promise<AirtableBase> => {
+    const response = await makeRequest('/api/airtable/connections', {
+      method: 'POST',
+      body: JSON.stringify(connection),
+    });
+    return handleApiResponse<AirtableBase>(response);
+  },
+
+  // Update a base connection
+  updateConnection: async (
+    connectionId: string,
+    update: UpdateAirtableBase
+  ): Promise<AirtableBase> => {
+    const response = await makeRequest(
+      `/api/airtable/connections/${connectionId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(update),
+      }
+    );
+    return handleApiResponse<AirtableBase>(response);
+  },
+
+  // Delete a base connection
+  deleteConnection: async (connectionId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/airtable/connections/${connectionId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  // Get tables in a connected base
+  getBaseTables: async (connectionId: string): Promise<AirtableTable[]> => {
+    const response = await makeRequest(
+      `/api/airtable/connections/${connectionId}/tables`
+    );
+    return handleApiResponse<AirtableTable[]>(response);
+  },
+
+  // Get records from a table in a connected base
+  getTableRecords: async (
+    connectionId: string,
+    tableId: string
+  ): Promise<AirtableRecord[]> => {
+    const response = await makeRequest(
+      `/api/airtable/connections/${connectionId}/records?table_id=${tableId}`
+    );
+    return handleApiResponse<AirtableRecord[]>(response);
+  },
+
+  // Import records from an Airtable table as PCG tasks
+  importRecords: async (
+    connectionId: string,
+    request: AirtableImportRequest
+  ): Promise<AirtableImportResult> => {
+    const response = await makeRequest(
+      `/api/airtable/connections/${connectionId}/import`,
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+      }
+    );
+    return handleApiResponse<AirtableImportResult>(response);
+  },
+
+  // Get Airtable link for a task
+  getTaskLink: async (taskId: string): Promise<AirtableRecordLink | null> => {
+    const response = await makeRequest(`/api/airtable/tasks/${taskId}/link`);
+    return handleApiResponse<AirtableRecordLink | null>(response);
+  },
+
+  // Push a PCG task to Airtable
+  pushTaskToAirtable: async (
+    taskId: string,
+    request: AirtablePushTaskRequest
+  ): Promise<AirtableRecordLink> => {
+    const response = await makeRequest(`/api/airtable/tasks/${taskId}/push`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+    return handleApiResponse<AirtableRecordLink>(response);
+  },
+
+  // Sync task deliverables to Airtable as a comment
+  syncDeliverables: async (taskId: string): Promise<AirtableRecordLink> => {
+    const response = await makeRequest(
+      `/api/airtable/tasks/${taskId}/sync-deliverables`,
+      {
+        method: 'POST',
+      }
+    );
+    return handleApiResponse<AirtableRecordLink>(response);
+  },
+};
+
+// ============================================
+// Agent Flow APIs
+// ============================================
+
+export interface AgentFlow {
+  id: string;
+  task_id: string;
+  flow_type: string;
+  status: string;
+  current_phase: string;
+  planner_agent_id?: string;
+  executor_agent_id?: string;
+  verifier_agent_id?: string;
+  flow_config?: string;
+  handoff_instructions?: string;
+  planning_started_at?: string;
+  planning_completed_at?: string;
+  execution_started_at?: string;
+  execution_completed_at?: string;
+  verification_started_at?: string;
+  verification_completed_at?: string;
+  verification_score?: number;
+  human_approval_required: boolean;
+  approved_by?: string;
+  approved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAgentFlow {
+  task_id: string;
+  flow_type: string;
+  planner_agent_id?: string;
+  executor_agent_id?: string;
+  verifier_agent_id?: string;
+  flow_config?: Record<string, unknown>;
+  human_approval_required?: boolean;
+}
+
+export interface UpdateAgentFlow {
+  status?: string;
+  current_phase?: string;
+  planner_agent_id?: string;
+  executor_agent_id?: string;
+  verifier_agent_id?: string;
+  handoff_instructions?: string;
+  verification_score?: number;
+  approved_by?: string;
+}
+
+export const agentFlowsApi = {
+  list: async (params?: {
+    task_id?: string;
+    status?: string;
+  }): Promise<AgentFlow[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.task_id) searchParams.set('task_id', params.task_id);
+    if (params?.status) searchParams.set('status', params.status);
+    const query = searchParams.toString();
+    const response = await makeRequest(
+      `/api/agent-flows${query ? `?${query}` : ''}`
+    );
+    return handleApiResponse<AgentFlow[]>(response);
+  },
+
+  getById: async (flowId: string): Promise<AgentFlow> => {
+    const response = await makeRequest(`/api/agent-flows/${flowId}`);
+    return handleApiResponse<AgentFlow>(response);
+  },
+
+  create: async (data: CreateAgentFlow): Promise<AgentFlow> => {
+    const response = await makeRequest('/api/agent-flows', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<AgentFlow>(response);
+  },
+
+  update: async (flowId: string, data: UpdateAgentFlow): Promise<AgentFlow> => {
+    const response = await makeRequest(`/api/agent-flows/${flowId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<AgentFlow>(response);
+  },
+
+  delete: async (flowId: string): Promise<void> => {
+    const response = await makeRequest(`/api/agent-flows/${flowId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  transitionPhase: async (
+    flowId: string,
+    phase: string
+  ): Promise<AgentFlow> => {
+    const response = await makeRequest(`/api/agent-flows/${flowId}/transition`, {
+      method: 'POST',
+      body: JSON.stringify({ phase }),
+    });
+    return handleApiResponse<AgentFlow>(response);
+  },
+
+  complete: async (
+    flowId: string,
+    verificationScore?: number
+  ): Promise<AgentFlow> => {
+    const response = await makeRequest(`/api/agent-flows/${flowId}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({ verification_score: verificationScore }),
+    });
+    return handleApiResponse<AgentFlow>(response);
+  },
+
+  requestApproval: async (flowId: string): Promise<AgentFlow> => {
+    const response = await makeRequest(
+      `/api/agent-flows/${flowId}/request-approval`,
+      { method: 'POST' }
+    );
+    return handleApiResponse<AgentFlow>(response);
+  },
+
+  approve: async (flowId: string, approvedBy: string): Promise<AgentFlow> => {
+    const response = await makeRequest(`/api/agent-flows/${flowId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ approved_by: approvedBy }),
+    });
+    return handleApiResponse<AgentFlow>(response);
+  },
+
+  listAwaitingApproval: async (): Promise<AgentFlow[]> => {
+    const response = await makeRequest('/api/agent-flows/awaiting-approval');
+    return handleApiResponse<AgentFlow[]>(response);
+  },
+
+  getEvents: async (
+    flowId: string,
+    params?: { since?: string; event_type?: string }
+  ): Promise<AgentFlowEvent[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.since) searchParams.set('since', params.since);
+    if (params?.event_type) searchParams.set('event_type', params.event_type);
+    const query = searchParams.toString();
+    const response = await makeRequest(
+      `/api/agent-flows/${flowId}/events${query ? `?${query}` : ''}`
+    );
+    return handleApiResponse<AgentFlowEvent[]>(response);
+  },
+
+  createEvent: async (
+    flowId: string,
+    eventType: string,
+    eventData: Record<string, unknown>
+  ): Promise<AgentFlowEvent> => {
+    const response = await makeRequest(`/api/agent-flows/${flowId}/events`, {
+      method: 'POST',
+      body: JSON.stringify({ event_type: eventType, event_data: eventData }),
+    });
+    return handleApiResponse<AgentFlowEvent>(response);
+  },
+
+  streamEvents: (flowId: string): EventSource => {
+    return new EventSource(`/api/agent-flows/${flowId}/events/stream`);
+  },
+};
+
+export interface AgentFlowEvent {
+  id: string;
+  agent_flow_id: string;
+  event_type: string;
+  event_data?: string;
+  created_at: string;
+}
+
+// ============================================
+// Wide Research APIs
+// ============================================
+
+export interface WideResearchSession {
+  id: string;
+  agent_flow_id?: string;
+  parent_agent_id?: string;
+  task_description: string;
+  total_subagents: number;
+  completed_count: number;
+  failed_count: number;
+  parallelism_limit: number;
+  timeout_per_subagent?: number;
+  status: string;
+  aggregated_result_artifact_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WideResearchSubagent {
+  id: string;
+  session_id: string;
+  subagent_index: number;
+  target_item: string;
+  metadata?: string;
+  status: string;
+  execution_process_id?: string;
+  result_artifact_id?: string;
+  error_message?: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+}
+
+export interface CreateWideResearchSession {
+  agent_flow_id?: string;
+  parent_agent_id?: string;
+  task_description: string;
+  targets: Array<{ target_item: string; metadata?: Record<string, unknown> }>;
+  parallelism_limit?: number;
+  timeout_per_subagent?: number;
+}
+
+export interface SessionWithSubagents {
+  session: WideResearchSession;
+  subagents: WideResearchSubagent[];
+  progress_percent: number;
+}
+
+export const wideResearchApi = {
+  list: async (params?: {
+    agent_flow_id?: string;
+    status?: string;
+  }): Promise<WideResearchSession[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.agent_flow_id)
+      searchParams.set('agent_flow_id', params.agent_flow_id);
+    if (params?.status) searchParams.set('status', params.status);
+    const query = searchParams.toString();
+    const response = await makeRequest(
+      `/api/wide-research${query ? `?${query}` : ''}`
+    );
+    return handleApiResponse<WideResearchSession[]>(response);
+  },
+
+  getById: async (sessionId: string): Promise<SessionWithSubagents> => {
+    const response = await makeRequest(`/api/wide-research/${sessionId}`);
+    return handleApiResponse<SessionWithSubagents>(response);
+  },
+
+  create: async (
+    data: CreateWideResearchSession
+  ): Promise<SessionWithSubagents> => {
+    const response = await makeRequest('/api/wide-research', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SessionWithSubagents>(response);
+  },
+
+  delete: async (sessionId: string): Promise<void> => {
+    const response = await makeRequest(`/api/wide-research/${sessionId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  getSubagents: async (sessionId: string): Promise<WideResearchSubagent[]> => {
+    const response = await makeRequest(
+      `/api/wide-research/${sessionId}/subagents`
+    );
+    return handleApiResponse<WideResearchSubagent[]>(response);
+  },
+
+  getNextPending: async (
+    sessionId: string,
+    limit?: number
+  ): Promise<WideResearchSubagent[]> => {
+    const query = limit ? `?limit=${limit}` : '';
+    const response = await makeRequest(
+      `/api/wide-research/${sessionId}/subagents/next${query}`
+    );
+    return handleApiResponse<WideResearchSubagent[]>(response);
+  },
+
+  startSubagent: async (
+    sessionId: string,
+    subagentId: string,
+    executionProcessId: string
+  ): Promise<WideResearchSubagent> => {
+    const response = await makeRequest(
+      `/api/wide-research/${sessionId}/subagents/${subagentId}/start`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ execution_process_id: executionProcessId }),
+      }
+    );
+    return handleApiResponse<WideResearchSubagent>(response);
+  },
+
+  completeSubagent: async (
+    sessionId: string,
+    subagentId: string,
+    resultArtifactId: string
+  ): Promise<WideResearchSubagent> => {
+    const response = await makeRequest(
+      `/api/wide-research/${sessionId}/subagents/${subagentId}/complete`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ result_artifact_id: resultArtifactId }),
+      }
+    );
+    return handleApiResponse<WideResearchSubagent>(response);
+  },
+
+  failSubagent: async (
+    sessionId: string,
+    subagentId: string,
+    errorMessage: string
+  ): Promise<WideResearchSubagent> => {
+    const response = await makeRequest(
+      `/api/wide-research/${sessionId}/subagents/${subagentId}/fail`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ error_message: errorMessage }),
+      }
+    );
+    return handleApiResponse<WideResearchSubagent>(response);
+  },
+
+  updateStatus: async (
+    sessionId: string,
+    status: string
+  ): Promise<WideResearchSession> => {
+    const response = await makeRequest(
+      `/api/wide-research/${sessionId}/status`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ status }),
+      }
+    );
+    return handleApiResponse<WideResearchSession>(response);
+  },
+
+  setAggregatedResult: async (
+    sessionId: string,
+    artifactId: string
+  ): Promise<WideResearchSession> => {
+    const response = await makeRequest(
+      `/api/wide-research/${sessionId}/aggregated-result`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ artifact_id: artifactId }),
+      }
+    );
+    return handleApiResponse<WideResearchSession>(response);
+  },
+};
+
+// ============================================
+// Artifact Review APIs
+// ============================================
+
+export interface ArtifactReview {
+  id: string;
+  artifact_id: string;
+  reviewer_id?: string;
+  reviewer_agent_id?: string;
+  reviewer_name?: string;
+  review_type: string;
+  status: string;
+  feedback_text?: string;
+  rating?: number;
+  revision_notes?: string;
+  revision_deadline?: string;
+  resolved_at?: string;
+  resolved_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateArtifactReview {
+  artifact_id: string;
+  reviewer_id?: string;
+  reviewer_agent_id?: string;
+  reviewer_name?: string;
+  review_type: string;
+  feedback_text?: string;
+  rating?: number;
+  revision_notes?: Record<string, unknown>;
+  revision_deadline?: string;
+}
+
+export interface ResolveReview {
+  status: string;
+  feedback_text?: string;
+  rating?: number;
+  resolved_by: string;
+}
+
+export const artifactReviewsApi = {
+  list: async (params?: {
+    artifact_id?: string;
+    reviewer_id?: string;
+    status?: string;
+    pending_only?: boolean;
+  }): Promise<ArtifactReview[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.artifact_id)
+      searchParams.set('artifact_id', params.artifact_id);
+    if (params?.reviewer_id)
+      searchParams.set('reviewer_id', params.reviewer_id);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.pending_only)
+      searchParams.set('pending_only', params.pending_only.toString());
+    const query = searchParams.toString();
+    const response = await makeRequest(
+      `/api/artifact-reviews${query ? `?${query}` : ''}`
+    );
+    return handleApiResponse<ArtifactReview[]>(response);
+  },
+
+  listPending: async (): Promise<ArtifactReview[]> => {
+    const response = await makeRequest('/api/artifact-reviews/pending');
+    return handleApiResponse<ArtifactReview[]>(response);
+  },
+
+  getById: async (reviewId: string): Promise<ArtifactReview> => {
+    const response = await makeRequest(`/api/artifact-reviews/${reviewId}`);
+    return handleApiResponse<ArtifactReview>(response);
+  },
+
+  create: async (data: CreateArtifactReview): Promise<ArtifactReview> => {
+    const response = await makeRequest('/api/artifact-reviews', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ArtifactReview>(response);
+  },
+
+  delete: async (reviewId: string): Promise<void> => {
+    const response = await makeRequest(`/api/artifact-reviews/${reviewId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  resolve: async (
+    reviewId: string,
+    data: ResolveReview
+  ): Promise<ArtifactReview> => {
+    const response = await makeRequest(
+      `/api/artifact-reviews/${reviewId}/resolve`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<ArtifactReview>(response);
+  },
+};
+
+// ============================================
+// Task Artifacts APIs
+// ============================================
+
+export interface TaskArtifact {
+  id: string;
+  task_id: string;
+  artifact_id: string;
+  artifact_role: string;
+  display_order: number;
+  pinned: boolean;
+  added_by?: string;
+  created_at: string;
+}
+
+export interface TaskArtifactWithDetails {
+  link: TaskArtifact;
+  artifact?: ExecutionArtifact;
+}
+
+export interface LinkArtifactToTask {
+  artifact_id: string;
+  artifact_role?: string;
+  display_order?: number;
+  pinned?: boolean;
+  added_by?: string;
+}
+
+export interface ExecutionArtifact {
+  id: string;
+  execution_process_id?: string;
+  artifact_type: string;
+  title?: string;
+  content?: string;
+  file_path?: string;
+  metadata?: string;
+  phase?: string;
+  created_by_agent_id?: string;
+  review_status?: string;
+  parent_artifact_id?: string;
+  created_at: string;
+}
+
+export const taskArtifactsApi = {
+  list: async (
+    taskId: string,
+    params?: { role?: string; pinned_only?: boolean }
+  ): Promise<TaskArtifactWithDetails[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.role) searchParams.set('role', params.role);
+    if (params?.pinned_only)
+      searchParams.set('pinned_only', params.pinned_only.toString());
+    const query = searchParams.toString();
+    const response = await makeRequest(
+      `/api/tasks/${taskId}/artifacts${query ? `?${query}` : ''}`
+    );
+    return handleApiResponse<TaskArtifactWithDetails[]>(response);
+  },
+
+  link: async (
+    taskId: string,
+    data: LinkArtifactToTask
+  ): Promise<TaskArtifact> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/artifacts`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<TaskArtifact>(response);
+  },
+
+  unlink: async (taskId: string, artifactId: string): Promise<boolean> => {
+    const response = await makeRequest(
+      `/api/tasks/${taskId}/artifacts/${artifactId}`,
+      { method: 'DELETE' }
+    );
+    return handleApiResponse<boolean>(response);
+  },
+
+  updateRole: async (
+    taskId: string,
+    artifactId: string,
+    role: string
+  ): Promise<TaskArtifact> => {
+    const response = await makeRequest(
+      `/api/tasks/${taskId}/artifacts/${artifactId}/role`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ role }),
+      }
+    );
+    return handleApiResponse<TaskArtifact>(response);
+  },
+
+  togglePin: async (
+    taskId: string,
+    artifactId: string
+  ): Promise<TaskArtifact> => {
+    const response = await makeRequest(
+      `/api/tasks/${taskId}/artifacts/${artifactId}/pin`,
+      { method: 'POST' }
+    );
+    return handleApiResponse<TaskArtifact>(response);
+  },
+
+  reorder: async (
+    taskId: string,
+    artifactId: string,
+    newOrder: number
+  ): Promise<TaskArtifact> => {
+    const response = await makeRequest(
+      `/api/tasks/${taskId}/artifacts/${artifactId}/reorder`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ new_order: newOrder }),
+      }
+    );
+    return handleApiResponse<TaskArtifact>(response);
+  },
+
+  getByArtifact: async (artifactId: string): Promise<TaskArtifact[]> => {
+    const response = await makeRequest(`/api/artifacts/${artifactId}/tasks`);
+    return handleApiResponse<TaskArtifact[]>(response);
+  },
+};
+
+// ============================================
+// Social Command APIs
+// ============================================
+
+export interface SocialAccountRecord {
+  id: string;
+  project_id: string;
+  platform: string;
+  account_type: string;
+  platform_account_id: string;
+  username?: string | null;
+  display_name?: string | null;
+  profile_url?: string | null;
+  avatar_url?: string | null;
+  follower_count?: number | null;
+  following_count?: number | null;
+  post_count?: number | null;
+  metadata?: string | null;
+  status: string;
+  last_sync_at?: string | null;
+  last_error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialPostRecord {
+  id: string;
+  project_id: string;
+  social_account_id?: string | null;
+  task_id?: string | null;
+  content_type: string;
+  caption?: string | null;
+  content_blocks?: string | null;
+  media_urls?: string | null;
+  hashtags?: string | null;
+  mentions?: string | null;
+  platforms: string;
+  platform_specific?: string | null;
+  status: string;
+  scheduled_for?: string | null;
+  published_at?: string | null;
+  category?: string | null;
+  queue_position?: number | null;
+  is_evergreen: boolean;
+  recycle_after_days?: number | null;
+  last_recycled_at?: string | null;
+  created_by_agent_id?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  platform_post_id?: string | null;
+  platform_url?: string | null;
+  publish_error?: string | null;
+  impressions: number;
+  reach: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  clicks: number;
+  engagement_rate: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialMentionRecord {
+  id: string;
+  social_account_id: string;
+  project_id: string;
+  mention_type: string;
+  platform: string;
+  platform_mention_id: string;
+  author_username?: string | null;
+  author_display_name?: string | null;
+  author_avatar_url?: string | null;
+  author_follower_count?: number | null;
+  author_is_verified: boolean;
+  content?: string | null;
+  media_urls?: string | null;
+  parent_post_id?: string | null;
+  parent_platform_id?: string | null;
+  status: string;
+  sentiment?: string | null;
+  priority: string;
+  replied_at?: string | null;
+  replied_by?: string | null;
+  reply_content?: string | null;
+  assigned_agent_id?: string | null;
+  auto_response_sent: boolean;
+  received_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialInboxStats {
+  total_unread: number;
+  high_priority: number;
+}
+
+export const socialApi = {
+  listAccounts: async (projectId?: string): Promise<SocialAccountRecord[]> => {
+    const searchParams = new URLSearchParams();
+    if (projectId) searchParams.set('project_id', projectId);
+    const query = searchParams.toString();
+    const response = await makeRequest(
+      `/api/social/accounts${query ? `?${query}` : ''}`
+    );
+    return handleApiResponse<SocialAccountRecord[]>(response);
+  },
+
+  listPosts: async (projectId?: string): Promise<SocialPostRecord[]> => {
+    const searchParams = new URLSearchParams();
+    if (projectId) searchParams.set('project_id', projectId);
+    const query = searchParams.toString();
+    const response = await makeRequest(
+      `/api/social/posts${query ? `?${query}` : ''}`
+    );
+    return handleApiResponse<SocialPostRecord[]>(response);
+  },
+
+  listMentions: async (
+    projectId: string,
+    options?: { unreadOnly?: boolean; limit?: number; accountId?: string }
+  ): Promise<SocialMentionRecord[]> => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('project_id', projectId);
+    if (options?.unreadOnly) searchParams.set('unread_only', 'true');
+    if (options?.limit) searchParams.set('limit', options.limit.toString());
+    if (options?.accountId)
+      searchParams.set('social_account_id', options.accountId);
+    const query = searchParams.toString();
+    const response = await makeRequest(`/api/social/inbox?${query}`);
+    return handleApiResponse<SocialMentionRecord[]>(response);
+  },
+
+  inboxStats: async (projectId: string): Promise<SocialInboxStats> => {
+    const response = await makeRequest(`/api/social/inbox/stats/${projectId}`);
+    return handleApiResponse<SocialInboxStats>(response);
+  },
+};
+
+// =============================================================================
+// Email Account Records
+// =============================================================================
+
+export interface EmailAccountRecord {
+  id: string;
+  project_id: string;
+  provider: string;
+  account_type: string;
+  email_address: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  granted_scopes: string | null;
+  storage_used_bytes: number | null;
+  storage_total_bytes: number | null;
+  unread_count: number | null;
+  status: string;
+  last_sync_at: string | null;
+  last_error: string | null;
+  sync_enabled: number | null;
+  sync_frequency_minutes: number | null;
+  auto_reply_enabled: number | null;
+  signature: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateEmailAccountRequest {
+  project_id: string;
+  provider: string;
+  account_type?: string;
+  email_address: string;
+  display_name?: string;
+  avatar_url?: string;
+  access_token?: string;
+  refresh_token?: string;
+  token_expires_at?: string;
+  imap_host?: string;
+  imap_port?: number;
+  smtp_host?: string;
+  smtp_port?: number;
+  use_ssl?: boolean;
+  granted_scopes?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateEmailAccountRequest {
+  display_name?: string;
+  avatar_url?: string;
+  status?: string;
+  sync_enabled?: boolean;
+  sync_frequency_minutes?: number;
+  auto_reply_enabled?: boolean;
+  signature?: string;
+}
+
+export interface OAuthUrlResponse {
+  auth_url: string;
+  state: string;
+}
+
+export const emailApi = {
+  listAccounts: async (projectId?: string, provider?: string): Promise<EmailAccountRecord[]> => {
+    const searchParams = new URLSearchParams();
+    if (projectId) searchParams.set('project_id', projectId);
+    if (provider) searchParams.set('provider', provider);
+    const query = searchParams.toString();
+    const response = await makeRequest(`/api/email/accounts${query ? `?${query}` : ''}`);
+    return handleApiResponse<EmailAccountRecord[]>(response);
+  },
+
+  getAccount: async (id: string): Promise<EmailAccountRecord> => {
+    const response = await makeRequest(`/api/email/accounts/${id}`);
+    return handleApiResponse<EmailAccountRecord>(response);
+  },
+
+  createAccount: async (data: CreateEmailAccountRequest): Promise<EmailAccountRecord> => {
+    const response = await makeRequest('/api/email/accounts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<EmailAccountRecord>(response);
+  },
+
+  updateAccount: async (id: string, data: UpdateEmailAccountRequest): Promise<EmailAccountRecord> => {
+    const response = await makeRequest(`/api/email/accounts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<EmailAccountRecord>(response);
+  },
+
+  deleteAccount: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/email/accounts/${id}`, {
+      method: 'DELETE',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  triggerSync: async (id: string): Promise<EmailAccountRecord> => {
+    const response = await makeRequest(`/api/email/accounts/${id}/sync`, {
+      method: 'POST',
+    });
+    return handleApiResponse<EmailAccountRecord>(response);
+  },
+
+  initiateOAuth: async (
+    projectId: string,
+    provider: string,
+    redirectUri: string
+  ): Promise<OAuthUrlResponse> => {
+    const response = await makeRequest('/api/email/oauth/initiate', {
+      method: 'POST',
+      body: JSON.stringify({
+        project_id: projectId,
+        provider,
+        redirect_uri: redirectUri,
+      }),
+    });
+    return handleApiResponse<OAuthUrlResponse>(response);
+  },
+};
+
+// =============================================================================
+// CRM Contact Records
+// =============================================================================
+
+export interface CrmContactRecord {
+  id: string;
+  project_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  avatar_url: string | null;
+  company_name: string | null;
+  job_title: string | null;
+  department: string | null;
+  linkedin_url: string | null;
+  twitter_handle: string | null;
+  website: string | null;
+  source: string | null;
+  lifecycle_stage: string;
+  lead_score: number;
+  last_activity_at: string | null;
+  last_contacted_at: string | null;
+  last_replied_at: string | null;
+  owner_user_id: string | null;
+  assigned_agent_id: string | null;
+  zoho_contact_id: string | null;
+  gmail_contact_id: string | null;
+  external_ids: string | null;
+  tags: string | null;
+  lists: string | null;
+  custom_fields: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  email_opt_in: number | null;
+  sms_opt_in: number | null;
+  do_not_contact: number | null;
+  email_count: number;
+  meeting_count: number;
+  deal_count: number;
+  total_revenue: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateCrmContactRequest {
+  project_id: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  avatar_url?: string;
+  company_name?: string;
+  job_title?: string;
+  department?: string;
+  linkedin_url?: string;
+  twitter_handle?: string;
+  website?: string;
+  source?: string;
+  lifecycle_stage?: string;
+  tags?: string[];
+  custom_fields?: Record<string, unknown>;
+  zoho_contact_id?: string;
+  gmail_contact_id?: string;
+}
+
+export interface UpdateCrmContactRequest {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  avatar_url?: string;
+  company_name?: string;
+  job_title?: string;
+  department?: string;
+  linkedin_url?: string;
+  twitter_handle?: string;
+  website?: string;
+  source?: string;
+  lifecycle_stage?: string;
+  lead_score?: number;
+  owner_user_id?: string;
+  assigned_agent_id?: string;
+  tags?: string[];
+  custom_fields?: Record<string, unknown>;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+  email_opt_in?: boolean;
+  sms_opt_in?: boolean;
+  do_not_contact?: boolean;
+  zoho_contact_id?: string;
+  gmail_contact_id?: string;
+}
+
+export interface CrmContactStats {
+  total: number;
+  by_stage: Array<{ stage: string; count: number }>;
+  avg_lead_score: number;
+  needs_follow_up: number;
+}
+
+export const crmApi = {
+  listContacts: async (
+    projectId: string,
+    options?: { lifecycleStage?: string; limit?: number }
+  ): Promise<CrmContactRecord[]> => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('project_id', projectId);
+    if (options?.lifecycleStage) searchParams.set('lifecycle_stage', options.lifecycleStage);
+    if (options?.limit) searchParams.set('limit', options.limit.toString());
+    const response = await makeRequest(`/api/crm/contacts?${searchParams.toString()}`);
+    return handleApiResponse<CrmContactRecord[]>(response);
+  },
+
+  searchContacts: async (
+    projectId: string,
+    query?: string,
+    options?: {
+      lifecycleStage?: string;
+      companyName?: string;
+      minLeadScore?: number;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<CrmContactRecord[]> => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('project_id', projectId);
+    if (query) searchParams.set('query', query);
+    if (options?.lifecycleStage) searchParams.set('lifecycle_stage', options.lifecycleStage);
+    if (options?.companyName) searchParams.set('company_name', options.companyName);
+    if (options?.minLeadScore) searchParams.set('min_lead_score', options.minLeadScore.toString());
+    if (options?.limit) searchParams.set('limit', options.limit.toString());
+    if (options?.offset) searchParams.set('offset', options.offset.toString());
+    const response = await makeRequest(`/api/crm/contacts/search?${searchParams.toString()}`);
+    return handleApiResponse<CrmContactRecord[]>(response);
+  },
+
+  getContact: async (id: string): Promise<CrmContactRecord> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}`);
+    return handleApiResponse<CrmContactRecord>(response);
+  },
+
+  getContactByEmail: async (projectId: string, email: string): Promise<CrmContactRecord | null> => {
+    const response = await makeRequest(`/api/crm/contacts/by-email/${projectId}/${encodeURIComponent(email)}`);
+    return handleApiResponse<CrmContactRecord | null>(response);
+  },
+
+  createContact: async (data: CreateCrmContactRequest): Promise<CrmContactRecord> => {
+    const response = await makeRequest('/api/crm/contacts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmContactRecord>(response);
+  },
+
+  updateContact: async (id: string, data: UpdateCrmContactRequest): Promise<CrmContactRecord> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmContactRecord>(response);
+  },
+
+  deleteContact: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}`, {
+      method: 'DELETE',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  getContactStats: async (projectId: string): Promise<CrmContactStats> => {
+    const response = await makeRequest(`/api/crm/contacts/stats/${projectId}`);
+    return handleApiResponse<CrmContactStats>(response);
+  },
+
+  recordActivity: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}/activity`, {
+      method: 'POST',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  recordContacted: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}/contacted`, {
+      method: 'POST',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  recordReplied: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}/replied`, {
+      method: 'POST',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  updateLeadScore: async (id: string, scoreDelta: number): Promise<CrmContactRecord> => {
+    const response = await makeRequest(`/api/crm/contacts/${id}/lead-score`, {
+      method: 'POST',
+      body: JSON.stringify({ score_delta: scoreDelta }),
+    });
+    return handleApiResponse<CrmContactRecord>(response);
   },
 };

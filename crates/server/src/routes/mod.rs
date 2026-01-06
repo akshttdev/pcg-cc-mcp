@@ -5,36 +5,57 @@ use axum::{
     response::IntoResponse,
     routing::{IntoMakeService, get},
 };
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::CorsLayer;
 
 use crate::{DeploymentImpl, middleware as app_middleware};
 
 pub mod activity;
+pub mod agent_flow_events;
+pub mod agent_flows;
+pub mod airtable;
 pub mod approvals;
+pub mod artifact_reviews;
 pub mod auth;
+pub mod bowser;
+pub mod collaboration;
 pub mod comments;
 pub mod config;
 pub mod containers;
 pub mod filesystem;
 // pub mod github;
 pub mod agent_wallets;
+pub mod agents;
 pub mod events;
 pub mod execution_processes;
+pub mod execution_summaries;
 pub mod frontend;
 pub mod health;
 pub mod images;
+pub mod mission_control;
 pub mod nora;
 pub mod permissions;
 pub mod project_boards;
 pub mod projects;
+pub mod task_artifacts;
 pub mod task_attempts;
 pub mod task_templates;
 pub mod tasks;
 pub mod twilio;
 pub mod users;
+pub mod autonomy;
 pub mod cinematics;
 pub mod webhooks;
 pub mod dropbox;
+pub mod wide_research;
+pub mod token_usage;
+pub mod system_metrics;
+pub mod event_stream;
+pub mod social_accounts;
+pub mod social_posts;
+pub mod social_inbox;
+pub mod email_accounts;
+pub mod crm_contacts;
+pub mod onboarding;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -67,12 +88,14 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(tasks::router(&deployment))
         .merge(task_attempts::router(&deployment))
         .merge(execution_processes::router(&deployment))
+        .merge(execution_summaries::routes())
         .merge(task_templates::router(&deployment))
         .merge(auth::router(&deployment))
         .merge(filesystem::router())
         .merge(events::router(&deployment))
         .merge(approvals::router())
         .merge(agent_wallets::router(&deployment))
+        .merge(agents::routes())
         .nest("/permissions", permissions::router(&deployment))
         .nest("/images", images::routes())
         .merge(nora::nora_routes())
@@ -81,7 +104,26 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(comments::router())
         .merge(activity::router())
         .merge(dropbox::router())
+        .merge(airtable::router())
         .merge(webhooks::router())
+        .merge(mission_control::router(&deployment))
+        .merge(bowser::router(&deployment))
+        .merge(collaboration::router(&deployment))
+        .merge(autonomy::router(&deployment))
+        .merge(agent_flows::router(&deployment))
+        .merge(agent_flow_events::router(&deployment))
+        .merge(wide_research::router(&deployment))
+        .merge(artifact_reviews::router(&deployment))
+        .merge(task_artifacts::router(&deployment))
+        .merge(token_usage::router(&deployment))
+        .merge(system_metrics::router(&deployment))
+        .merge(event_stream::router(&deployment))
+        .merge(social_accounts::router(&deployment))
+        .merge(social_posts::router(&deployment))
+        .merge(social_inbox::router(&deployment))
+        .merge(email_accounts::router(&deployment))
+        .merge(crm_contacts::router(&deployment))
+        .merge(onboarding::router(&deployment))
         .merge(admin_routes)
         .with_state(deployment);
 

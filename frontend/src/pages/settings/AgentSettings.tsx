@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -37,9 +38,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { agentWalletApi } from '@/lib/api';
-import type { AgentWallet, UpsertAgentWallet } from 'shared/types';
+import { agentWalletApi, agentsApi } from '@/lib/api';
+import type {
+  AgentWallet,
+  AgentWithParsedFields,
+  UpsertAgentWallet,
+} from 'shared/types';
 import { toast } from 'sonner';
 
 import { ExecutorConfigForm } from '@/components/ExecutorConfigForm';
@@ -83,6 +89,15 @@ export function AgentSettings() {
   } = useQuery({
     queryKey: ['agent-wallets'],
     queryFn: agentWalletApi.list,
+  });
+
+  const {
+    data: agentDirectory = [],
+    isLoading: agentsLoading,
+    error: agentsError,
+  } = useQuery<AgentWithParsedFields[], Error>({
+    queryKey: ['agents'],
+    queryFn: agentsApi.list,
   });
 
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
@@ -530,6 +545,13 @@ export function AgentSettings() {
     }
   };
 
+  const agentStatusStyles: Record<string, string> = {
+    active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    inactive: 'bg-gray-100 text-gray-600 border-gray-200',
+    maintenance: 'bg-amber-100 text-amber-700 border-amber-200',
+    training: 'bg-blue-100 text-blue-700 border-blue-200',
+  };
+
   if (profilesLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -565,6 +587,109 @@ export function AgentSettings() {
           <AlertDescription>{saveError}</AlertDescription>
         </Alert>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Autonomous Agents</CardTitle>
+          <CardDescription>
+            Live directory of Nora, Maci, and the social command specialists.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {agentsLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : agentsError ? (
+            <Alert variant="destructive">
+              <AlertDescription>
+                {agentsError instanceof Error
+                  ? agentsError.message
+                  : 'Unable to load agent directory.'}
+              </AlertDescription>
+            </Alert>
+          ) : agentDirectory.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No registered agents yet. Seed the registry to expose Nora’s team.
+            </p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {agentDirectory.map((agent) => {
+                const initials = agent.short_name
+                  .split(' ')
+                  .map((part) => part[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase();
+                const statusClass =
+                  agentStatusStyles[agent.status] ||
+                  'bg-gray-100 text-gray-600 border-gray-200';
+                return (
+                  <div
+                    key={agent.id}
+                    className="rounded-lg border border-dashed p-4 space-y-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      {agent.avatar_url ? (
+                        <img
+                          src={agent.avatar_url}
+                          alt={agent.short_name}
+                          className="h-10 w-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-sm font-semibold">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{agent.short_name}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {agent.designation || 'Specialist Agent'}
+                        </p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={`text-xs capitalize ${statusClass}`}
+                      >
+                        {agent.status}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      <span>
+                        Autonomy: {agent.autonomy_level?.replace('_', ' ') || 'manual'}
+                      </span>
+                      {agent.default_model && <span>Model: {agent.default_model}</span>}
+                    </div>
+                    {agent.capabilities && agent.capabilities.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {agent.capabilities.slice(0, 4).map((capability) => (
+                          <Badge key={capability} variant="secondary">
+                            {capability}
+                          </Badge>
+                        ))}
+                        {agent.capabilities.length > 4 && (
+                          <Badge variant="outline">
+                            +{agent.capabilities.length - 4}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                    {agent.tools && agent.tools.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Tools: {agent.tools.slice(0, 4).join(', ')}
+                        {agent.tools.length > 4 && '…'}
+                      </p>
+                    )}
+                    {agent.description && (
+                      <p className="text-sm text-muted-foreground line-clamp-2">
+                        {agent.description}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

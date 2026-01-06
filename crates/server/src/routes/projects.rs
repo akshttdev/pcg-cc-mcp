@@ -9,6 +9,7 @@ use axum::{
     routing::{get, patch, post},
 };
 use db::models::{
+    brand_profile::{BrandProfile, UpsertBrandProfile},
     project::{CreateProject, Project, ProjectError, SearchMatchType, SearchResult, UpdateProject},
     project_asset::{CreateProjectAsset, ProjectAsset, UpdateProjectAsset},
     project_board::ProjectBoard,
@@ -825,6 +826,27 @@ async fn search_files_in_repo(
     Ok(results)
 }
 
+// ============================================================================
+// Brand Profile Endpoints
+// ============================================================================
+
+pub async fn get_brand_profile(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Option<BrandProfile>>>, ApiError> {
+    let profile = BrandProfile::find_by_project(&deployment.db().pool, project.id).await?;
+    Ok(ResponseJson(ApiResponse::success(profile)))
+}
+
+pub async fn upsert_brand_profile(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<UpsertBrandProfile>,
+) -> Result<ResponseJson<ApiResponse<BrandProfile>>, ApiError> {
+    let profile = BrandProfile::upsert(&deployment.db().pool, project.id, &payload).await?;
+    Ok(ResponseJson(ApiResponse::success(profile)))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let project_id_router = Router::new()
         .route(
@@ -846,6 +868,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/assets/{asset_id}",
             patch(update_project_asset).delete(delete_project_asset),
+        )
+        .route(
+            "/brand-profile",
+            get(get_brand_profile).put(upsert_brand_profile),
         )
         .merge(crate::routes::project_boards::router(deployment))
         .layer(from_fn_with_state(

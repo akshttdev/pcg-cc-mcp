@@ -32,6 +32,8 @@ pub struct ExecutiveTools {
     task_executor: Option<Arc<TaskExecutor>>,
     media_pipeline: Option<MediaPipelineService>,
     workflow_orchestrator: Option<Arc<crate::workflow::WorkflowOrchestrator>>,
+    // Unified execution engine (replaces workflow_orchestrator for new architecture)
+    execution_engine: Option<Arc<crate::execution::ExecutionEngine>>,
 }
 
 /// Definition of an executive tool
@@ -120,6 +122,16 @@ pub enum NoraExecutiveTool {
         title: String,
         description: Option<String>,
         priority: Option<String>,
+    },
+    /// Get all tasks for a project by name - use this to review/analyze project tasks
+    GetProjectTasks {
+        project_name: String,
+        /// Optional filter by status: "todo", "in_progress", "done", "blocked"
+        status_filter: Option<String>,
+    },
+    /// Get detailed information about a specific project
+    GetProjectDetails {
+        project_name: String,
     },
     CreateTaskOnBoard {
         project_id: String,
@@ -730,6 +742,7 @@ pub enum ExecutionStatus {
     Cancelled,
 }
 
+#[allow(dead_code)]
 impl ExecutiveTools {
     pub fn new() -> Self {
         let mut tools = Self {
@@ -740,6 +753,7 @@ impl ExecutiveTools {
             task_executor: None,
             media_pipeline: None,
             workflow_orchestrator: None,
+            execution_engine: None,
         };
 
         tools.initialize_tools();
@@ -757,6 +771,11 @@ impl ExecutiveTools {
 
     pub fn set_workflow_orchestrator(&mut self, orchestrator: Arc<crate::workflow::WorkflowOrchestrator>) {
         self.workflow_orchestrator = Some(orchestrator);
+    }
+
+    /// Set the unified execution engine (new architecture)
+    pub fn set_execution_engine(&mut self, engine: Arc<crate::execution::ExecutionEngine>) {
+        self.execution_engine = Some(engine);
     }
 
     /// Generate OpenAI-compatible function schemas for available tools
@@ -847,19 +866,58 @@ impl ExecutiveTools {
             serde_json::json!({
                 "type": "function",
                 "function": {
+                    "name": "get_project_tasks",
+                    "description": "Get all tasks for a project. Use this FIRST when the user asks to review, analyze, check, or look at tasks in a project. This returns the actual task data for you to analyze and summarize.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_name": {
+                                "type": "string",
+                                "description": "The name of the project to get tasks from (e.g., 'PRIME', 'PCG')"
+                            },
+                            "status_filter": {
+                                "type": "string",
+                                "enum": ["todo", "in_progress", "done", "blocked"],
+                                "description": "Optional filter to only get tasks with this status"
+                            }
+                        },
+                        "required": ["project_name"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "get_project_details",
+                    "description": "Get detailed information about a project including its tasks, boards, and pods. Use this when the user asks for a project overview or summary.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_name": {
+                                "type": "string",
+                                "description": "The name of the project to get details for"
+                            }
+                        },
+                        "required": ["project_name"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
                     "name": "execute_workflow",
-                    "description": "Execute a multi-stage agent workflow. Use this when the user requests a complex operation that involves multiple coordinated steps, such as 'Editron, create a recap video from this Dropbox link' or 'Have Astra generate a project roadmap'. This will automatically handle all stages of the workflow and create tracking tasks for visibility.",
+                    "description": "Execute a multi-stage agent workflow. Use this when the user requests a complex operation that involves multiple coordinated steps. IMPORTANT: For research agents (scout-research, oracle-strategy), you MUST include the user's original request/topic in the inputs.request field so the agent knows what to research.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "agent_id": {
                                 "type": "string",
-                                "description": "The agent identifier (e.g., 'editron-post', 'master-cinematographer', 'astra-strategy', 'harbor-ops', 'pulse-intel', 'vesper-comms', 'forge-bd')",
-                                "enum": ["editron-post", "master-cinematographer", "astra-strategy", "harbor-ops", "pulse-intel", "vesper-comms", "forge-bd"]
+                                "description": "The agent identifier. Creative: 'editron-post' (video editing), 'master-cinematographer' (AI video). Strategy: 'astra-strategy' (roadmaps). Social: 'scout-research' (research), 'oracle-strategy' (content strategy), 'muse-creative' (copywriting), 'herald-distribution' (publishing), 'echo-engagement' (community)",
+                                "enum": ["editron-post", "master-cinematographer", "astra-strategy", "scout-research", "oracle-strategy", "muse-creative", "herald-distribution", "echo-engagement"]
                             },
                             "workflow_id": {
                                 "type": "string",
-                                "description": "The workflow identifier (e.g., 'ai-cinematic-suite' for AI video generation with Master Cinematographer, 'event-recap-forge' for Editron video editing, 'roadmap-compression' for Astra planning)"
+                                "description": "The workflow identifier (e.g., 'competitor-deep-dive' for Scout research, 'content-calendar-30day' for Oracle strategy)"
                             },
                             "project_id": {
                                 "type": "string",
@@ -867,11 +925,21 @@ impl ExecutiveTools {
                             },
                             "inputs": {
                                 "type": "object",
-                                "description": "Input parameters for the workflow (e.g., {'source_url': 'https://dropbox.com/...', 'deliverable_type': 'recap'})",
+                                "description": "Input parameters for the workflow. For research workflows, MUST include 'request' with the user's full research topic/question (e.g., {'request': 'research viral content trends for hospitality industry', 'target': 'Prime Hospitality competitors'})",
+                                "properties": {
+                                    "request": {
+                                        "type": "string",
+                                        "description": "The user's original request or research topic - REQUIRED for research agents"
+                                    },
+                                    "target": {
+                                        "type": "string",
+                                        "description": "Specific target/subject to research"
+                                    }
+                                },
                                 "additionalProperties": true
                             }
                         },
-                        "required": ["agent_id", "workflow_id"]
+                        "required": ["agent_id", "workflow_id", "inputs"]
                     }
                 }
             }),
@@ -1187,6 +1255,23 @@ impl ExecutiveTools {
                     title,
                     description,
                     priority,
+                })
+            }
+            "get_project_tasks" => {
+                let project_name = arguments.get("project_name")?.as_str()?.to_string();
+                let status_filter = arguments
+                    .get("status_filter")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                Some(NoraExecutiveTool::GetProjectTasks {
+                    project_name,
+                    status_filter,
+                })
+            }
+            "get_project_details" => {
+                let project_name = arguments.get("project_name")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::GetProjectDetails {
+                    project_name,
                 })
             }
             "execute_workflow" => {
@@ -1600,6 +1685,38 @@ impl ExecutiveTools {
             estimated_duration: Some("2-5 minutes".to_string()),
         });
 
+        // Task delegation tool - critical for orchestrating other agents
+        self.add_tool_definition(ToolDefinition {
+            name: "delegate_task".to_string(),
+            description: "Delegate a task to another agent (like AURI for coding) and trigger execution. Use this to assign work to specialized agents.".to_string(),
+            category: ToolCategory::Coordination,
+            parameters: vec![
+                ToolParameter {
+                    name: "task_id".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "The UUID of the task to delegate".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "assignee".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "The agent name to assign the task to (e.g., 'Auri' for coding, 'Editron' for video editing)".to_string(),
+                    required: true,
+                    default_value: None,
+                },
+                ToolParameter {
+                    name: "priority".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Task priority: low, medium, high, or critical".to_string(),
+                    required: false,
+                    default_value: Some(serde_json::json!("medium")),
+                },
+            ],
+            required_permissions: vec![Permission::Write, Permission::Execute],
+            estimated_duration: Some("1-5 seconds to start, execution time varies".to_string()),
+        });
+
         // Analysis tools
         self.add_tool_definition(ToolDefinition {
             name: "generate_kpi_dashboard".to_string(),
@@ -1830,6 +1947,8 @@ impl ExecutiveTools {
             NoraExecutiveTool::CreateProject { .. } => "create_project".to_string(),
             NoraExecutiveTool::CreateBoard { .. } => "create_board".to_string(),
             NoraExecutiveTool::CreateTaskInProject { .. } => "create_task".to_string(),
+            NoraExecutiveTool::GetProjectTasks { .. } => "get_project_tasks".to_string(),
+            NoraExecutiveTool::GetProjectDetails { .. } => "get_project_details".to_string(),
             NoraExecutiveTool::CreateTaskOnBoard { .. } => "create_task_on_board".to_string(),
             NoraExecutiveTool::AddTaskToBoard { .. } => "add_task_to_board".to_string(),
             NoraExecutiveTool::ExecuteWorkflow { .. } => "execute_workflow".to_string(),
@@ -1923,15 +2042,12 @@ impl ExecutiveTools {
 
                     // Map board type string to enum
                     let board_type_enum =
+                        // Simplified board types: only Default and Custom
                         board_type
                             .as_ref()
                             .and_then(|bt| match bt.to_lowercase().as_str() {
-                                "custom" => Some(ProjectBoardType::Custom),
-                                "executive_assets" => Some(ProjectBoardType::ExecutiveAssets),
-                                "brand_assets" => Some(ProjectBoardType::BrandAssets),
-                                "dev_assets" => Some(ProjectBoardType::DevAssets),
-                                "social_assets" => Some(ProjectBoardType::SocialAssets),
-                                _ => None,
+                                "default" | "main" => Some(ProjectBoardType::Default),
+                                "custom" | _ => Some(ProjectBoardType::Custom),
                             });
 
                     match executor
@@ -2010,26 +2126,225 @@ impl ExecutiveTools {
                     }))
                 }
             }
+            NoraExecutiveTool::GetProjectTasks {
+                project_name,
+                status_filter,
+            } => {
+                if let Some(executor) = &self.task_executor {
+                    match executor.get_tasks_by_project_name(&project_name).await {
+                        Ok(tasks) => {
+                            // Optionally filter by status
+                            let filtered_tasks: Vec<_> = if let Some(status) = status_filter {
+                                tasks.into_iter().filter(|t| t.status.to_lowercase() == status.to_lowercase()).collect()
+                            } else {
+                                tasks
+                            };
+
+                            let task_summaries: Vec<serde_json::Value> = filtered_tasks.iter().map(|t| {
+                                serde_json::json!({
+                                    "id": t.id,
+                                    "title": t.title,
+                                    "description": t.description,
+                                    "status": t.status,
+                                    "priority": t.priority,
+                                    "assignee": t.assignee_id,
+                                    "created_at": t.created_at,
+                                    "updated_at": t.updated_at,
+                                })
+                            }).collect();
+
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "project_name": project_name,
+                                "task_count": task_summaries.len(),
+                                "tasks": task_summaries,
+                            }))
+                        }
+                        Err(e) => Ok(serde_json::json!({
+                            "success": false,
+                            "error": format!("Failed to get tasks: {}", e),
+                        })),
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Task executor not available"
+                    }))
+                }
+            }
+            NoraExecutiveTool::GetProjectDetails {
+                project_name,
+            } => {
+                if let Some(executor) = &self.task_executor {
+                    // First find project by name, then get details
+                    match executor.find_project_by_name(&project_name).await {
+                        Ok(project_id) => {
+                            match executor.get_project_details(project_id).await {
+                                Ok(details) => Ok(serde_json::json!({
+                                    "success": true,
+                                    "project": {
+                                        "id": details.id,
+                                        "name": details.name,
+                                        "git_repo_path": details.git_repo_path,
+                                        "task_count": details.tasks.len(),
+                                        "board_count": details.boards.len(),
+                                        "pod_count": details.pods.len(),
+                                    },
+                                    "tasks": details.tasks.iter().map(|t| serde_json::json!({
+                                        "id": t.id,
+                                        "title": t.title,
+                                        "description": t.description,
+                                        "status": t.status,
+                                        "priority": t.priority,
+                                    })).collect::<Vec<_>>(),
+                                    "boards": details.boards.iter().map(|b| serde_json::json!({
+                                        "id": b.id,
+                                        "name": b.name,
+                                        "description": b.description,
+                                    })).collect::<Vec<_>>(),
+                                })),
+                                Err(e) => Ok(serde_json::json!({
+                                    "success": false,
+                                    "error": format!("Failed to get project details: {}", e),
+                                })),
+                            }
+                        }
+                        Err(e) => Ok(serde_json::json!({
+                            "success": false,
+                            "error": format!("Project not found: {}", e),
+                        })),
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Task executor not available"
+                    }))
+                }
+            }
+            NoraExecutiveTool::DelegateTask {
+                task_id,
+                assignee,
+                priority: _,
+                deadline: _,
+            } => {
+                if let Some(executor) = &self.task_executor {
+                    tracing::info!(
+                        "[TOOL] Delegating task {} to agent {}",
+                        task_id, assignee
+                    );
+
+                    // Parse the task UUID
+                    let task_uuid = match uuid::Uuid::parse_str(&task_id) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            return Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Invalid task ID format: {}", task_id)
+                            }));
+                        }
+                    };
+
+                    // Determine executor type based on agent name
+                    // AURI uses Claude Code, Editron would use video tools, etc.
+                    let executor_type = match assignee.to_lowercase().as_str() {
+                        "auri" => "CLAUDE_CODE",
+                        "editron" => "PREMIERE_PRO", // For future video editing
+                        "maci" => "COMFYUI",         // For future image generation
+                        "bowser" => "PLAYWRIGHT",    // For future browser automation
+                        _ => "CLAUDE_CODE",          // Default to Claude Code for coding agents
+                    };
+
+                    // Delegate and execute
+                    match executor.delegate_and_execute_task(task_uuid, &assignee, executor_type).await {
+                        Ok(result) => Ok(serde_json::json!({
+                            "success": true,
+                            "message": format!("Task delegated to {} and execution started", result.agent_name),
+                            "task_id": result.task_id.to_string(),
+                            "agent_id": result.agent_id.to_string(),
+                            "agent_name": result.agent_name,
+                            "executor_type": result.executor_type,
+                            "status": result.status,
+                            "details": result.details
+                        })),
+                        Err(e) => Ok(serde_json::json!({
+                            "success": false,
+                            "error": format!("Failed to delegate task: {}", e)
+                        }))
+                    }
+                } else {
+                    Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Task executor not available"
+                    }))
+                }
+            }
             NoraExecutiveTool::ExecuteWorkflow {
                 agent_id,
                 workflow_id,
                 project_id,
                 inputs,
             } => {
-                if let Some(orchestrator) = &self.workflow_orchestrator {
-                    tracing::info!(
-                        "[TOOL] Executing workflow: agent={}, workflow={}, project={:?}",
-                        agent_id,
-                        workflow_id,
-                        project_id
-                    );
+                tracing::info!(
+                    "[TOOL] Executing workflow: agent={}, workflow={}, project={:?}",
+                    agent_id,
+                    workflow_id,
+                    project_id
+                );
 
-                    // Parse project_id if provided
-                    let project_uuid = project_id
-                        .as_ref()
-                        .and_then(|id| Uuid::parse_str(id).ok());
+                // Parse project_id if provided
+                let project_uuid = project_id
+                    .as_ref()
+                    .and_then(|id| Uuid::parse_str(id).ok());
 
-                    // Create workflow context
+                // Prefer new ExecutionEngine if available
+                if let Some(engine) = &self.execution_engine {
+                    let request = crate::execution::ExecutionRequest {
+                        project_id: project_uuid,
+                        agent: Some(agent_id.clone()),
+                        workflow_id: Some(workflow_id.clone()),
+                        request: Some(format!("Execute workflow {} for agent {}", workflow_id, agent_id)),
+                        inputs: inputs.clone(),
+                    };
+
+                    match engine.execute(request).await {
+                        Ok(result) => {
+                            tracing::info!(
+                                "[TOOL] Workflow executed via ExecutionEngine: execution_id={}, stages={}/{}",
+                                result.execution_id,
+                                result.stages_completed,
+                                result.total_stages
+                            );
+
+                            Ok(serde_json::json!({
+                                "success": true,
+                                "message": format!("Workflow '{}' completed for agent '{}'", workflow_id, agent_id),
+                                "execution_id": result.execution_id.to_string(),
+                                "agent_id": result.agent_id,
+                                "agent_name": result.agent_name,
+                                "workflow_id": result.workflow_id,
+                                "workflow_name": result.workflow_name,
+                                "project_id": project_id,
+                                "status": format!("{:?}", result.status),
+                                "stages_completed": result.stages_completed,
+                                "total_stages": result.total_stages,
+                                "tasks_created": result.tasks_created.len(),
+                                "artifacts": result.artifacts.len(),
+                                "duration_ms": result.duration_ms,
+                            }))
+                        }
+                        Err(e) => {
+                            tracing::error!("[TOOL] ExecutionEngine workflow failed: {}", e);
+                            Ok(serde_json::json!({
+                                "success": false,
+                                "error": format!("Workflow execution failed: {}", e),
+                                "agent_id": agent_id,
+                                "workflow_id": workflow_id,
+                            }))
+                        }
+                    }
+                }
+                // Fallback to legacy WorkflowOrchestrator
+                else if let Some(orchestrator) = &self.workflow_orchestrator {
                     let context = crate::workflow::WorkflowContext {
                         project_id: project_uuid,
                         user_id: None,
@@ -2038,11 +2353,10 @@ impl ExecutiveTools {
                         metadata: std::collections::HashMap::new(),
                     };
 
-                    // Start the workflow
                     match orchestrator.start_workflow(&agent_id, &workflow_id, context).await {
                         Ok(workflow_instance_id) => {
                             tracing::info!(
-                                "[TOOL] Workflow started successfully: instance_id={}",
+                                "[TOOL] Workflow started via legacy orchestrator: instance_id={}",
                                 workflow_instance_id
                             );
 
@@ -2057,7 +2371,7 @@ impl ExecutiveTools {
                             }))
                         }
                         Err(e) => {
-                            tracing::error!("[TOOL] Failed to start workflow: {}", e);
+                            tracing::error!("[TOOL] Legacy orchestrator failed: {}", e);
                             Ok(serde_json::json!({
                                 "success": false,
                                 "error": format!("Failed to start workflow: {}", e),
@@ -2067,10 +2381,10 @@ impl ExecutiveTools {
                         }
                     }
                 } else {
-                    tracing::warn!("[TOOL] Workflow orchestrator not available");
+                    tracing::warn!("[TOOL] No execution engine or orchestrator available");
                     Ok(serde_json::json!({
                         "success": false,
-                        "error": "Workflow orchestrator not available. Nora needs to be initialized with workflow support.",
+                        "error": "No workflow execution system available. Nora needs to be initialized with ExecutionEngine or WorkflowOrchestrator.",
                         "agent_id": agent_id,
                         "workflow_id": workflow_id,
                     }))

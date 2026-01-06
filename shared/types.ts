@@ -20,7 +20,7 @@ export type CreateProjectPod = { project_id: string, title: string, description?
 
 export type UpdateProjectPod = { title?: string, description?: string, status?: string, lead?: string, };
 
-export type ProjectBoardType = "executive_assets" | "brand_assets" | "dev_assets" | "social_assets" | "custom";
+export type ProjectBoardType = "default" | "custom";
 
 export type ProjectBoard = { id: string, project_id: string, name: string, slug: string, board_type: ProjectBoardType, description?: string | null, metadata?: string | null, created_at: string, updated_at: string, };
 
@@ -74,15 +74,23 @@ export type Priority = "critical" | "high" | "medium" | "low";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "changesrequested";
 
-export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
+export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
 
-export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, has_merged_attempt: boolean, last_attempt_failed: boolean, executor: string, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
+export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, has_merged_attempt: boolean, last_attempt_failed: boolean, executor: string, 
+/**
+ * Latest execution summary for the task (populated from most recent attempt)
+ */
+last_execution_summary: ExecutionSummaryBrief | null, 
+/**
+ * Collaborators who have worked on this task
+ */
+collaborators: Array<TaskCollaborator> | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
 
 export type TaskRelationships = { parent_task: Task | null, current_attempt: TaskAttempt, children: Array<Task>, };
 
-export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assigned_agent: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
+export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
 
-export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_task_attempt: string | null, image_ids: Array<string> | null, pod_id?: string | null, board_id?: string | null, priority: Priority | null, assignee_id: string | null, assigned_agent: string | null, assigned_mcps: Array<string> | null, requires_approval: boolean | null, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null | null, scheduled_end: string | null | null, };
+export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_task_attempt: string | null, image_ids: Array<string> | null, pod_id?: string | null, board_id?: string | null, priority: Priority | null, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null | null, assigned_mcps: Array<string> | null, requires_approval: boolean | null, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null | null, scheduled_end: string | null | null, };
 
 export type CustomFieldType = "text" | "number" | "date" | "url" | "checkbox" | "select" | "multi_select" | "formula" | "relationship" | "user" | "file" | "auto_increment";
 
@@ -150,7 +158,7 @@ export type ImageResponse = { id: string, file_path: string, original_name: stri
 
 export enum GitHubServiceError { TOKEN_INVALID = "TOKEN_INVALID", INSUFFICIENT_PERMISSIONS = "INSUFFICIENT_PERMISSIONS", REPO_NOT_FOUND_OR_NO_ACCESS = "REPO_NOT_FOUND_OR_NO_ACCESS" }
 
-export type Config = { config_version: string, theme: ThemeMode, executor_profile: ExecutorProfileId, disclaimer_acknowledged: boolean, onboarding_acknowledged: boolean, github_login_acknowledged: boolean, telemetry_acknowledged: boolean, notifications: NotificationConfig, editor: EditorConfig, github: GitHubConfig, analytics_enabled: boolean | null, workspace_dir: string | null, last_app_version: string | null, show_release_notes: boolean, language: UiLanguage, aptos_wallet: AptosWalletConfig, };
+export type Config = { config_version: string, theme: ThemeMode, executor_profile: ExecutorProfileId, disclaimer_acknowledged: boolean, onboarding_acknowledged: boolean, github_login_acknowledged: boolean, telemetry_acknowledged: boolean, notifications: NotificationConfig, editor: EditorConfig, github: GitHubConfig, analytics_enabled: boolean | null, workspace_dir: string | null, last_app_version: string | null, show_release_notes: boolean, language: UiLanguage, aptos_wallet: AptosWalletConfig, trello: TrelloConfig, airtable: AirtableConfig, };
 
 export type NotificationConfig = { sound_enabled: boolean, push_enabled: boolean, sound_file: SoundFile, };
 
@@ -324,6 +332,70 @@ export type ExecutionProcessStatus = "running" | "completed" | "failed" | "kille
 
 export type ExecutionProcessRunReason = "setupscript" | "cleanupscript" | "codingagent" | "devserver";
 
+export type ExecutionSummary = { id: string, task_attempt_id: string, execution_process_id: string | null, files_modified: number, files_created: number, files_deleted: number, commands_run: number, commands_failed: number, 
+/**
+ * JSON array of tool names used during execution
+ */
+tools_used: string | null, completion_status: CompletionStatus, blocker_summary: string | null, error_summary: string | null, execution_time_ms: bigint, human_rating: number | null, human_notes: string | null, is_reference_example: boolean, workflow_tags: string | null, created_at: string, updated_at: string, };
+
+export type CompletionStatus = "full" | "partial" | "blocked" | "failed";
+
+export type CreateExecutionSummary = { task_attempt_id: string, execution_process_id: string | null, files_modified: number, files_created: number, files_deleted: number, commands_run: number, commands_failed: number, tools_used: Array<string> | null, completion_status: CompletionStatus, blocker_summary: string | null, error_summary: string | null, execution_time_ms: bigint, workflow_tags: Array<string> | null, };
+
+export type UpdateExecutionSummaryFeedback = { human_rating: number | null, human_notes: string | null, is_reference_example: boolean | null, };
+
+export type ExecutionSummaryBrief = { files_modified: number, files_created: number, commands_failed: number, completion_status: CompletionStatus, tools_used: Array<string> | null, human_rating: number | null, execution_time_ms: bigint, };
+
+export type TaskCollaborator = { actor_id: string, actor_type: string, last_action: string, last_action_at: string, };
+
+export type Agent = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: string | null, voice_style: string | null, avatar_url: string | null, capabilities: string | null, tools: string | null, functions: string | null, default_model: string | null, fallback_models: string | null, model_config: string | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, total_execution_time_ms: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, created_by: string | null, parent_agent_id: string | null, team_id: string | null, };
+
+export type AgentStatus = "active" | "inactive" | "maintenance" | "training";
+
+export type AutonomyLevel = "full" | "supervised" | "approval_required" | "manual";
+
+export type ProficiencyLevel = "novice" | "standard" | "expert" | "master";
+
+export type AgentPersonality = { 
+/**
+ * Core personality traits (e.g., "analytical", "creative", "methodical")
+ */
+traits: Array<string>, 
+/**
+ * Communication style (e.g., "formal", "casual", "technical")
+ */
+communication_style: string, 
+/**
+ * How the agent approaches problems
+ */
+problem_solving_approach: string, 
+/**
+ * Preferred interaction patterns
+ */
+interaction_preferences: Array<string>, 
+/**
+ * Agent's "backstory" or character description
+ */
+backstory: string | null, 
+/**
+ * Catchphrases or signature expressions
+ */
+signature_phrases: Array<string>, 
+/**
+ * Emotional baseline (e.g., "calm", "enthusiastic", "focused")
+ */
+emotional_baseline: string, };
+
+export type AgentFunction = { name: string, description: string, parameters: JsonValue, required_tools: Array<string>, example_usage: string | null, };
+
+export type AgentWithParsedFields = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, };
+
+export type CreateAgent = { wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus | null, autonomy_level: AutonomyLevel | null, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, parent_agent_id: string | null, team_id: string | null, created_by: string | null, };
+
+export type UpdateAgent = { wallet_address: string | null, short_name: string | null, designation: string | null, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus | null, autonomy_level: AutonomyLevel | null, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, };
+
+export type AgentBrief = { id: string, short_name: string, designation: string, avatar_url: string | null, status: AgentStatus, };
+
 export type Merge = { "type": "direct" } & DirectMerge | { "type": "pr" } & PrMerge;
 
 export type DirectMerge = { id: string, task_attempt_id: string, merge_commit: string, target_branch_name: string, created_at: string, };
@@ -411,3 +483,152 @@ export type GraphNodeStatus = "pending" | "running" | "completed" | "failed";
 export type GraphEdge = { fromNode: string, toNode: string, };
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]?: JsonValue } | null;
+
+export type AirtableBase = { id: string, project_id: string, airtable_base_id: string, airtable_base_name: string | null, sync_enabled: boolean, default_table_id: string | null, last_synced_at: string | null, created_at: string, updated_at: string, };
+
+export type CreateAirtableBase = { project_id: string, airtable_base_id: string, airtable_base_name: string | null, default_table_id: string | null, };
+
+export type UpdateAirtableBase = { airtable_base_name: string | null, sync_enabled: boolean | null, default_table_id: string | null, };
+
+export type AirtableRecordLink = { id: string, task_id: string, airtable_record_id: string, airtable_base_id: string, airtable_table_id: string | null, origin: string, sync_status: string, last_sync_error: string | null, airtable_record_url: string | null, last_synced_at: string | null, created_at: string, updated_at: string, };
+
+export type CreateAirtableRecordLink = { task_id: string, airtable_record_id: string, airtable_base_id: string, airtable_table_id: string | null, origin: AirtableOrigin, airtable_record_url: string | null, };
+
+export type AirtableOrigin = "airtable" | "pcg";
+
+export type AirtableSyncStatus = "synced" | "pending_push" | "pending_pull" | "error";
+
+export type AirtableBaseInfo = { id: string, name: string, permissionLevel: string, };
+
+export type AirtableTable = { id: string, name: string, primaryFieldId: string | null, fields: Array<AirtableField>, views: Array<AirtableView>, };
+
+export type AirtableField = { id: string, name: string, type: string, options: JsonValue | null, };
+
+export type AirtableView = { id: string, name: string, type: string, };
+
+export type AirtableRecord = { id: string, fields: JsonValue, createdTime: string, };
+
+export type AirtableRecordUpdate = { fields: JsonValue, };
+
+export type AirtableUserInfo = { id: string, email: string | null, };
+
+export type AirtableComment = { id: string, author: AirtableCommentAuthor, text: string, createdTime: string, };
+
+export type AirtableCommentAuthor = { id: string, email: string | null, name: string | null, };
+
+export type AirtableServiceError = "NOT_CONFIGURED" | "AUTH_FAILED" | "RATE_LIMITED" | { "BASE_NOT_FOUND": string } | { "RECORD_NOT_FOUND": string } | { "TABLE_NOT_FOUND": string } | { "API_ERROR": string };
+
+export type AirtableConfig = { 
+/**
+ * Airtable Personal Access Token
+ */
+token: string | null, 
+/**
+ * Cached Airtable user email for display
+ */
+user_email: string | null, 
+/**
+ * Sync deliverables as comments on Airtable records
+ */
+sync_deliverables_as_comments: boolean, 
+/**
+ * Auto-import new records when syncing
+ */
+auto_import_new_records: boolean, };
+
+// Stub type for backwards compatibility - Trello integration removed
+export type TrelloConfig = { api_key: string | null, api_token: string | null, };
+
+export type AirtableVerifyRequest = { token: string, };
+
+export type AirtableVerifyResponse = { user_email: string | null, valid: boolean, };
+
+export type AirtableProjectQuery = { project_id: string | null, };
+
+export type AirtableTableQuery = { table_id: string | null, };
+
+export type AirtableImportRequest = { table_id: string, project_id: string, board_id: string | null, 
+/**
+ * The field name to use as task title (defaults to first text field)
+ */
+title_field: string | null, 
+/**
+ * The field name to use as task description (optional)
+ */
+description_field: string | null, };
+
+export type AirtableImportResult = { imported_count: number, skipped_count: number, tasks: Array<AirtableTaskWithLink>, };
+
+export type AirtableTaskWithLink = { task: Task, airtable_link: AirtableRecordLink, };
+
+export type AirtablePushTaskRequest = { table_id: string, base_id: string, 
+/**
+ * Field name to store the task title
+ */
+title_field: string | null, 
+/**
+ * Field name to store the task description
+ */
+description_field: string | null, };
+
+export type AirtableConnectionWithBase = { connection: AirtableBase, base_info: AirtableBaseInfo | null, };
+
+export type FlowType = "content_creation" | "research" | "engagement" | "scheduling" | "campaign" | "analysis" | "monitoring" | "custom";
+
+export type FlowStatus = "planning" | "executing" | "verifying" | "completed" | "failed" | "paused" | "awaiting_approval";
+
+export type AgentPhase = "planning" | "execution" | "verification";
+
+export type AgentFlow = { id: string, task_id: string, flow_type: FlowType, status: FlowStatus, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, current_phase: AgentPhase, planning_started_at: string | null, planning_completed_at: string | null, execution_started_at: string | null, execution_completed_at: string | null, verification_started_at: string | null, verification_completed_at: string | null, flow_config: string | null, handoff_instructions: string | null, verification_score: number | null, human_approval_required: boolean, approved_by: string | null, approved_at: string | null, created_at: string, updated_at: string, };
+
+export type CreateAgentFlow = { task_id: string, flow_type: FlowType, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, flow_config: JsonValue | null, human_approval_required: boolean | null, };
+
+export type UpdateAgentFlow = { status: FlowStatus | null, current_phase: AgentPhase | null, planner_agent_id: string | null, executor_agent_id: string | null, verifier_agent_id: string | null, handoff_instructions: string | null, verification_score: number | null, approved_by: string | null, };
+
+export type FlowEventType = "phase_started" | "phase_completed" | "artifact_created" | "artifact_updated" | "approval_requested" | "approval_decision" | "wide_research_started" | "subagent_progress" | "wide_research_completed" | "agent_handoff" | "flow_paused" | "flow_resumed" | "flow_failed" | "flow_completed";
+
+export type FlowEventPayload = { "type": "PhaseStarted", phase: string, agent_id: string | null, } | { "type": "PhaseCompleted", phase: string, artifacts_produced: Array<string>, } | { "type": "ArtifactCreated", artifact_id: string, artifact_type: string, title: string, phase: string, } | { "type": "ArtifactUpdated", artifact_id: string, changes: JsonValue, } | { "type": "ApprovalRequested", artifact_id: string, requested_by_agent: string | null, approval_type: string, } | { "type": "ApprovalDecision", artifact_id: string, decision: string, reviewer_id: string | null, feedback: string | null, } | { "type": "WideResearchStarted", session_id: string, total_subagents: number, } | { "type": "SubagentProgress", session_id: string, subagent_id: string, subagent_index: number, target_item: string, status: string, result_artifact_id: string | null, } | { "type": "WideResearchCompleted", session_id: string, aggregated_artifact_id: string, total_completed: number, total_failed: number, } | { "type": "AgentHandoff", from_agent_id: string | null, to_agent_id: string | null, from_phase: string, to_phase: string, handoff_artifact_id: string | null, instructions: string | null, } | { "type": "FlowPaused", reason: string | null, paused_by: string | null, } | { "type": "FlowResumed", resumed_by: string | null, } | { "type": "FlowFailed", error: string, phase: string, } | { "type": "FlowCompleted", verification_score: number | null, total_artifacts: number, };
+
+export type AgentFlowEvent = { id: string, agent_flow_id: string, event_type: FlowEventType, event_data: string, created_at: string, };
+
+export type ResearchSessionStatus = "spawning" | "in_progress" | "aggregating" | "completed" | "failed" | "cancelled";
+
+export type SubagentStatus = "pending" | "running" | "completed" | "failed" | "timeout" | "cancelled";
+
+export type WideResearchSession = { id: string, agent_flow_id: string | null, parent_agent_id: string | null, task_description: string, total_subagents: number, completed_subagents: number, failed_subagents: number, status: ResearchSessionStatus, parallelism_limit: number | null, timeout_per_subagent: number | null, aggregated_result_artifact_id: string | null, created_at: string, completed_at: string | null, };
+
+export type WideResearchSubagent = { id: string, session_id: string, subagent_index: number, target_item: string, target_metadata: string | null, status: SubagentStatus, execution_process_id: string | null, result_artifact_id: string | null, error_message: string | null, started_at: string | null, completed_at: string | null, };
+
+export type CreateWideResearchSession = { agent_flow_id: string | null, parent_agent_id: string | null, task_description: string, targets: Array<ResearchTarget>, parallelism_limit: number | null, timeout_per_subagent: number | null, };
+
+export type ResearchTarget = { target_item: string, metadata: JsonValue | null, };
+
+export type ReviewType = "approval" | "feedback" | "revision_request" | "quality_check" | "compliance_check";
+
+export type ReviewStatus = "pending" | "approved" | "rejected" | "revision_requested" | "acknowledged";
+
+export type ArtifactReview = { id: string, artifact_id: string, reviewer_id: string | null, reviewer_agent_id: string | null, reviewer_name: string | null, review_type: ReviewType, status: ReviewStatus, feedback_text: string | null, rating: number | null, revision_notes: string | null, revision_deadline: string | null, created_at: string, resolved_at: string | null, resolved_by: string | null, };
+
+export type CreateArtifactReview = { artifact_id: string, reviewer_id: string | null, reviewer_agent_id: string | null, reviewer_name: string | null, review_type: ReviewType, feedback_text: string | null, rating: number | null, revision_notes: JsonValue | null, revision_deadline: string | null, };
+
+export type ResolveReview = { status: ReviewStatus, feedback_text: string | null, rating: number | null, resolved_by: string, };
+
+export type ArtifactRole = "primary" | "supporting" | "verification" | "reference";
+
+export type TaskArtifact = { task_id: string, artifact_id: string, artifact_role: ArtifactRole, display_order: number, pinned: boolean, added_at: string, added_by: string | null, };
+
+export type LinkArtifactToTask = { task_id: string, artifact_id: string, artifact_role: ArtifactRole | null, display_order: number | null, pinned: boolean | null, added_by: string | null, };
+
+export type ArtifactType = "plan" | "screenshot" | "walkthrough" | "diff_summary" | "test_result" | "checkpoint" | "error_report" | "research_report" | "strategy_document" | "content_calendar" | "competitor_analysis" | "content_draft" | "visual_brief" | "schedule_manifest" | "engagement_log" | "verification_report" | "browser_recording" | "compliance_score" | "platform_screenshot" | "subagent_result" | "aggregated_research";
+
+export type ArtifactPhase = "planning" | "execution" | "verification";
+
+export type ArtifactReviewStatus = "none" | "pending" | "approved" | "rejected" | "revision_requested";
+
+export type ExecutionArtifact = { id: string, execution_process_id: string, artifact_type: ArtifactType, title: string, content: string | null, file_path: string | null, metadata: string | null, created_at: string, };
+
+export type BrandVoice = "formal" | "casual" | "playful" | "authoritative";
+
+export type BrandProfile = { id: string, projectId: string, tagline: string | null, industry: string | null, primaryColor: string, secondaryColor: string, brandVoice: string | null, targetAudience: string | null, logoAssetId: string | null, guidelinesAssetId: string | null, createdAt: Date, updatedAt: Date, };
+
+export type UpsertBrandProfile = { tagline: string | null, industry: string | null, primaryColor: string | null, secondaryColor: string | null, brandVoice: string | null, targetAudience: string | null, logoAssetId: string | null, guidelinesAssetId: string | null, };

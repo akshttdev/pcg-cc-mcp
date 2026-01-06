@@ -1,0 +1,182 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                wallet_address,\n                short_name,\n                designation,\n                description,\n                personality,\n                voice_style,\n                avatar_url,\n                capabilities,\n                tools,\n                functions,\n                default_model,\n                fallback_models,\n                model_config,\n                status as \"status!: AgentStatus\",\n                autonomy_level as \"autonomy_level!: AutonomyLevel\",\n                max_concurrent_tasks,\n                priority_weight,\n                tasks_completed,\n                tasks_failed,\n                total_execution_time_ms,\n                average_rating,\n                version,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\",\n                created_by,\n                parent_agent_id as \"parent_agent_id: Uuid\",\n                team_id\n            FROM agents\n            WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "wallet_address",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "short_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "designation",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "personality",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "voice_style",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "avatar_url",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "capabilities",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "tools",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "functions",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "default_model",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "fallback_models",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "model_config",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: AgentStatus",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "autonomy_level!: AutonomyLevel",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "max_concurrent_tasks",
+        "ordinal": 16,
+        "type_info": "Integer"
+      },
+      {
+        "name": "priority_weight",
+        "ordinal": 17,
+        "type_info": "Integer"
+      },
+      {
+        "name": "tasks_completed",
+        "ordinal": 18,
+        "type_info": "Integer"
+      },
+      {
+        "name": "tasks_failed",
+        "ordinal": 19,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_execution_time_ms",
+        "ordinal": 20,
+        "type_info": "Integer"
+      },
+      {
+        "name": "average_rating",
+        "ordinal": 21,
+        "type_info": "Float"
+      },
+      {
+        "name": "version",
+        "ordinal": 22,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 23,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 24,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_by",
+        "ordinal": 25,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_agent_id: Uuid",
+        "ordinal": 26,
+        "type_info": "Text"
+      },
+      {
+        "name": "team_id",
+        "ordinal": 27,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "401b5e402f3d3979da1309ec26267abad62b8d72454d90e1d4c36e682869bdf1"
+}

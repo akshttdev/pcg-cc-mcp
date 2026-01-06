@@ -120,6 +120,7 @@ export function ImportDialog({
             priority: priority ?? 'medium',
             assignee_id: assigneeId,
             assigned_agent: null,
+            agent_id: null,
             assigned_mcps: null,
             parent_task_id: task.parent_task_id ?? null,
             parent_task_attempt: null,

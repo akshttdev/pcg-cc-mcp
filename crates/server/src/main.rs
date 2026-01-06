@@ -23,6 +23,12 @@ pub enum VibeKanbanError {
 
 #[tokio::main]
 async fn main() -> Result<(), VibeKanbanError> {
+    // Install the rustls crypto provider (ring) before any TLS operations
+    // This is required for octocrab/reqwest to work with rustls
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     // Load environment variables from `.env` if present so local development picks up API keys
     dotenv::dotenv().ok();
 
@@ -50,6 +56,28 @@ async fn main() -> Result<(), VibeKanbanError> {
     deployment
         .track_if_analytics_allowed("session_start", serde_json::json!({}))
         .await;
+
+    // Seed core agents (Nora, Maci, Editron) on startup
+    match services::services::agent_registry::AgentRegistryService::seed_core_agents(
+        &deployment.db().pool,
+    )
+    .await
+    {
+        Ok(agents) => {
+            tracing::info!(
+                "Agent registry initialized with {} agents: {}",
+                agents.len(),
+                agents
+                    .iter()
+                    .map(|a| a.short_name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        Err(e) => {
+            tracing::warn!("Failed to seed core agents: {}", e);
+        }
+    }
 
     // Auto-initialize Nora executive assistant on server startup
     if let Err(e) = routes::nora::initialize_nora_on_startup(&deployment).await {

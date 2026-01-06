@@ -39,20 +39,14 @@ export type ProjectBoardSummary = {
   error?: string;
 };
 
+// Simplified board labels
 const CORE_BOARD_LABELS: Record<ProjectBoard['board_type'], string> = {
-  executive_assets: 'Exec',
-  brand_assets: 'Brand',
-  dev_assets: 'Dev',
-  social_assets: 'Social',
+  default: 'Main',
   custom: 'Custom',
 };
 
-const CORE_BOARD_TYPES: ProjectBoard['board_type'][] = [
-  'executive_assets',
-  'brand_assets',
-  'dev_assets',
-  'social_assets',
-];
+// Default board type for display
+const CORE_BOARD_TYPES: ProjectBoard['board_type'][] = ['default'];
 
 type Props = {
   project: Project;

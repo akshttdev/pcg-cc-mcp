@@ -30,7 +30,7 @@ use crate::{
     memory::{
         BudgetStatus, ConversationMemory, ExecutiveContext, ExecutivePriority, Milestone,
         MilestoneStatus, PriorityImpact, PriorityStatus, PriorityUrgency, ProjectContext,
-        ProjectStatus, Risk,
+        ProjectStatus,
     },
     personality::BritishPersonality,
     profiles::default_agent_profiles,
@@ -38,9 +38,7 @@ use crate::{
     voice::VoiceEngine,
     NoraConfig, NoraError, Result,
 };
-use cinematics::{CinematicsConfig, CinematicsService, Cinematographer};
-use db::models::cinematic_brief::CreateCinematicBrief;
-use serde_json::{json, Value};
+use cinematics::CinematicsService;
 
 /// Main Nora agent structure
 pub struct NoraAgent {
@@ -58,6 +56,8 @@ pub struct NoraAgent {
     pub is_active: Arc<RwLock<bool>>,
     pub pool: Option<SqlitePool>,
     pub executor: Option<Arc<TaskExecutor>>,
+    /// Unified execution engine for orchestrating agent workflows
+    pub execution_engine: Arc<crate::execution::ExecutionEngine>,
     /// Conversation history per session for true conversational mode
     pub conversation_histories:
         Arc<RwLock<HashMap<String, Vec<crate::brain::ConversationMessage>>>>,
@@ -222,6 +222,11 @@ impl NoraAgent {
             coordination_manager.clone(),
         ));
 
+        // Initialize unified execution engine (new architecture)
+        let execution_engine = crate::execution::ExecutionEngine::new(default_agent_profiles());
+        // Wire coordination manager for SSE event broadcasting
+        execution_engine.set_coordination_manager(coordination_manager.clone()).await;
+
         // Initialize graph orchestrator for task dependencies
         let graph_orchestrator = Arc::new(GraphOrchestrator::new());
 
@@ -268,6 +273,7 @@ impl NoraAgent {
             llm,
             pool: None,
             executor: None,
+            execution_engine,
             conversation_histories: Arc::new(RwLock::new(HashMap::new())),
         })
     }
@@ -285,7 +291,21 @@ impl NoraAgent {
                 .expect("Executive tools should not be shared yet during initialization");
             tools.set_task_executor(executor.clone());
             tools.set_workflow_orchestrator(self.workflow_orchestrator.clone());
+            tools.set_execution_engine(self.execution_engine.clone());
         }
+
+        // Wire up TaskCreator to ExecutionEngine so workflow stages create board tasks
+        let execution_engine = self.execution_engine.clone();
+        let task_creator_executor = executor.clone();
+        let db_pool_for_engine = pool.clone();
+        tokio::spawn(async move {
+            execution_engine
+                .set_task_creator(task_creator_executor)
+                .await;
+            // Also wire database for workflow log persistence (AgentFlow, AgentFlowEvent)
+            execution_engine.set_database(db_pool_for_engine).await;
+            tracing::info!("[NORA] TaskCreator and database wired to ExecutionEngine for workflow task creation and log persistence");
+        });
 
         // Configure workflow orchestrator with database and executor
         let workflow_orchestrator = self.workflow_orchestrator.clone();
@@ -671,76 +691,176 @@ impl NoraAgent {
                         }
                     }
 
-                    // Second call - pass tool results back to LLM for final response (with history)
-                    tracing::info!(
-                        "[TOOL_FLOW] ========== CONTINUING WITH TOOL RESULTS =========="
-                    );
-                    tracing::info!(
-                        "[TOOL_FLOW] Passing {} tool result(s) back to LLM",
-                        tool_results.len()
-                    );
-                    for (i, tr) in tool_results.iter().enumerate() {
-                        tracing::debug!(
-                            "[TOOL_FLOW] Result {}: success={}, data={}",
-                            i + 1,
-                            tr.success,
-                            &tr.result[..tr.result.len().min(100)]
+                    // Tool call loop - LLM can chain multiple tool calls (e.g., get_project_details -> execute_workflow)
+                    let mut current_tool_calls = tool_calls;
+                    let mut current_tool_results = tool_results;
+                    let max_chain_depth = 5; // Prevent infinite loops
+
+                    for chain_depth in 0..max_chain_depth {
+                        tracing::info!(
+                            "[TOOL_FLOW] ========== CONTINUING WITH TOOL RESULTS (depth {}) ==========",
+                            chain_depth
                         );
+                        tracing::info!(
+                            "[TOOL_FLOW] Passing {} tool result(s) back to LLM",
+                            current_tool_results.len()
+                        );
+                        for (i, tr) in current_tool_results.iter().enumerate() {
+                            tracing::debug!(
+                                "[TOOL_FLOW] Result {}: success={}, data={}",
+                                i + 1,
+                                tr.success,
+                                &tr.result[..tr.result.len().min(100)]
+                            );
+                        }
+
+                        match llm
+                            .continue_with_tool_results_and_history(
+                                &system_prompt,
+                                original,
+                                &context_snapshot,
+                                &current_tool_calls,
+                                &current_tool_results,
+                                &conversation_history,
+                                &tools,
+                            )
+                            .await
+                        {
+                            Ok(crate::brain::LLMResponse::Text(final_response)) => {
+                                tracing::info!(
+                                    "[TOOL_FLOW] ========== FINAL RESPONSE RECEIVED =========="
+                                );
+                                tracing::debug!(
+                                    "[TOOL_FLOW] Final response: {}",
+                                    &final_response[..final_response.len().min(300)]
+                                );
+                                // Add to conversation history
+                                self.add_to_conversation_history(session_id, original, &final_response)
+                                    .await;
+                                return Ok(final_response);
+                            }
+                            Ok(crate::brain::LLMResponse::ToolCalls(new_tool_calls)) => {
+                                // LLM wants to chain more tool calls
+                                tracing::info!(
+                                    "[TOOL_FLOW] ========== CHAINED TOOL CALLS (depth {}) ==========",
+                                    chain_depth + 1
+                                );
+                                tracing::info!(
+                                    "[TOOL_FLOW] LLM requested {} more tool call(s)",
+                                    new_tool_calls.len()
+                                );
+
+                                // Execute the new tool calls
+                                let mut new_results = Vec::new();
+                                for tc in &new_tool_calls {
+                                    tracing::info!("[TOOL_FLOW] Executing chained tool: {} (id: {})", tc.name, tc.id);
+                                    tracing::debug!("[TOOL_FLOW] Chained tool arguments: {}", tc.arguments);
+
+                                    if let Some(nora_tool) =
+                                        crate::tools::ExecutiveTools::parse_tool_call(&tc.name, &tc.arguments)
+                                    {
+                                        match self
+                                            .executive_tools
+                                            .execute_tool(nora_tool, permissions.clone())
+                                            .await
+                                        {
+                                            Ok(result) => {
+                                                let success = matches!(
+                                                    result.status,
+                                                    crate::tools::ExecutionStatus::Success
+                                                );
+                                                let result_text = if success {
+                                                    result
+                                                        .result_data
+                                                        .map(|d| {
+                                                            serde_json::to_string(&d)
+                                                                .unwrap_or_else(|_| "Success".to_string())
+                                                        })
+                                                        .unwrap_or_else(|| "Success".to_string())
+                                                } else {
+                                                    result
+                                                        .error_message
+                                                        .unwrap_or_else(|| "Unknown error".to_string())
+                                                };
+                                                tracing::info!("[TOOL_FLOW] Chained tool SUCCESS");
+                                                new_results.push(crate::brain::ToolResult {
+                                                    tool_call_id: tc.id.clone(),
+                                                    result: result_text,
+                                                    success,
+                                                });
+                                            }
+                                            Err(e) => {
+                                                tracing::error!("[TOOL_FLOW] Chained tool FAILED: {}", e);
+                                                new_results.push(crate::brain::ToolResult {
+                                                    tool_call_id: tc.id.clone(),
+                                                    result: format!("Error: {}", e),
+                                                    success: false,
+                                                });
+                                            }
+                                        }
+                                    } else {
+                                        tracing::warn!("[TOOL_FLOW] Failed to parse chained tool: {}", tc.name);
+                                        new_results.push(crate::brain::ToolResult {
+                                            tool_call_id: tc.id.clone(),
+                                            result: format!("Unknown tool: {}", tc.name),
+                                            success: false,
+                                        });
+                                    }
+                                }
+
+                                // Update for next iteration
+                                current_tool_calls = new_tool_calls;
+                                current_tool_results = new_results;
+                            }
+                            Err(e) => {
+                                tracing::error!("[TOOL_FLOW] LLM continuation FAILED: {}", e);
+                                // Fall back to summarizing what we did
+                                tracing::info!(
+                                    "[TOOL_FLOW] Falling back to manual summary of tool results"
+                                );
+                                let summary: Vec<String> = current_tool_results
+                                    .iter()
+                                    .map(|r| {
+                                        if r.success {
+                                            format!("✅ {}", r.result)
+                                        } else {
+                                            format!("❌ {}", r.result)
+                                        }
+                                    })
+                                    .collect();
+                                let fallback_response = format!(
+                                    "I've completed the requested actions:\n\n{}",
+                                    summary.join("\n")
+                                );
+                                self.add_to_conversation_history(
+                                    session_id,
+                                    original,
+                                    &fallback_response,
+                                )
+                                .await;
+                                return Ok(fallback_response);
+                            }
+                        }
                     }
 
-                    match llm
-                        .continue_with_tool_results_and_history(
-                            &system_prompt,
-                            original,
-                            &context_snapshot,
-                            &tool_calls,
-                            &tool_results,
-                            &conversation_history,
-                        )
-                        .await
-                    {
-                        Ok(final_response) => {
-                            tracing::info!(
-                                "[TOOL_FLOW] ========== FINAL RESPONSE RECEIVED =========="
-                            );
-                            tracing::debug!(
-                                "[TOOL_FLOW] Final response: {}",
-                                &final_response[..final_response.len().min(300)]
-                            );
-                            // Add to conversation history
-                            self.add_to_conversation_history(session_id, original, &final_response)
-                                .await;
-                            return Ok(final_response);
-                        }
-                        Err(e) => {
-                            tracing::error!("[TOOL_FLOW] LLM continuation FAILED: {}", e);
-                            // Fall back to summarizing what we did
-                            tracing::info!(
-                                "[TOOL_FLOW] Falling back to manual summary of tool results"
-                            );
-                            let summary: Vec<String> = tool_results
-                                .iter()
-                                .map(|r| {
-                                    if r.success {
-                                        format!("✅ {}", r.result)
-                                    } else {
-                                        format!("❌ {}", r.result)
-                                    }
-                                })
-                                .collect();
-                            let fallback_response = format!(
-                                "I've completed the requested actions:\n\n{}",
-                                summary.join("\n")
-                            );
-                            self.add_to_conversation_history(
-                                session_id,
-                                original,
-                                &fallback_response,
-                            )
-                            .await;
-                            return Ok(fallback_response);
-                        }
-                    }
+                    // Max chain depth reached
+                    tracing::warn!("[TOOL_FLOW] Max tool chain depth ({}) reached", max_chain_depth);
+                    let summary: Vec<String> = current_tool_results
+                        .iter()
+                        .map(|r| {
+                            if r.success {
+                                format!("✅ {}", r.result)
+                            } else {
+                                format!("❌ {}", r.result)
+                            }
+                        })
+                        .collect();
+                    let fallback_response = format!(
+                        "I've completed multiple actions:\n\n{}",
+                        summary.join("\n")
+                    );
+                    self.add_to_conversation_history(session_id, original, &fallback_response).await;
+                    return Ok(fallback_response);
                 }
                 Err(e) => {
                     tracing::warn!("[TOOL_FLOW] LLM with tools FAILED: {} - falling back to regular generation", e);
@@ -809,6 +929,7 @@ impl NoraAgent {
         tracing::info!("[CONVERSATION] Cleared history for session {}", session_id);
     }
 
+    #[allow(dead_code)]
     async fn process_text_interaction(&self, request: &NoraRequest) -> Result<String> {
         let original = request.content.trim();
         let lowered = original.to_lowercase();
@@ -1301,13 +1422,20 @@ CAPABILITIES:
 
 WORKFLOW EXECUTION:
 You can orchestrate complex multi-stage workflows through specialized agents:
+
+CREATIVE AGENTS:
 - Editron (editron-post): Video production workflows - ingesting footage, analysis, editing, rendering
+- Maci / Master Cinematographer (master-cinematographer): AI image and video generation via ComfyUI/Stable Diffusion
+
+STRATEGY AGENTS:
 - Astra (astra-strategy): Strategic planning and roadmap generation
-- Harbor (harbor-ops): Operations orchestration and incident response
-- Pulse (pulse-intel): Portfolio intelligence and KPI reporting
-- Vesper (vesper-comms): Communications and partnerships
-- Forge (forge-bd): Business development and enterprise deals
-- Maci / Master Cinematographer / Spectra (master-cinematographer): AI image and video generation via ComfyUI/Stable Diffusion
+
+SOCIAL COMMAND TEAM (for social media workflows):
+- Scout (scout-research): Social intelligence - competitor analysis, trend detection, hashtag research
+- Oracle (oracle-strategy): Content strategy - calendar planning, campaign architecture
+- Muse (muse-creative): Content creation - copywriting, hashtag optimization, platform adaptation
+- Herald (herald-distribution): Distribution - multi-platform publishing, schedule management
+- Echo (echo-engagement): Engagement - mention monitoring, sentiment analysis, response drafting
 
 When a user requests a complex operation that involves multiple coordinated steps, use workflows:
 1. First, use list_available_workflows to discover which workflows exist for the relevant agent
@@ -1668,13 +1796,25 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     async fn generate_rule_based_response(&self, user_text: &str) -> Option<String> {
         static PROJECT_CREATE_REGEX: Lazy<Regex> = Lazy::new(|| {
             Regex::new(
-                r#"(?ix)(?:start|create|spin\s+up|launch|open)\s+(?:a\s+)?(?:new\s+)?project(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?)"#
+                r#"(?ix)
+                (?:
+                    (?:start|create|spin\s+up|launch|open)\s+(?:a\s+)?(?:new\s+)?project(?:\s+(?:called|named))?\s+"?(?P<project_name_after>[a-z0-9 _\-]+)"?
+                  |
+                    (?:start|create|spin\s+up|launch|open)\s+(?:a\s+)?(?P<project_name_before>[a-z0-9 _\-]+)\s+project
+                )
+                "#
             )
             .expect("valid project regex")
         });
         static TASK_CREATE_REGEX: Lazy<Regex> = Lazy::new(|| {
             Regex::new(
-                r#"(?ix)(?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?([a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)??"?([a-z0-9 _\-]+)"?)?)"#
+                r#"(?ix)
+                (?:
+                    (?:create|add|open)\s+(?:a\s+)?(?:new\s+)?task(?:\s+(?:called|named))?\s+"?(?P<task_name_after>[a-z0-9 _\-]+)"?(?:\s+for\s+(?:project\s+)?"?(?P<task_project>[a-z0-9 _\-]+)"?)?
+                  |
+                    (?:create|add|open)\s+(?:a\s+)?(?P<task_name_before>[a-z0-9 _\-]+)\s+task
+                )
+                "#
             )
             .expect("valid task regex")
         });
@@ -1682,7 +1822,8 @@ Provide concise, insight-driven British executive responses. Surface actionable 
 
         if let Some(caps) = PROJECT_CREATE_REGEX.captures(&utterance) {
             let name_raw = caps
-                .get(1)
+                .name("project_name_after")
+                .or_else(|| caps.name("project_name_before"))
                 .map(|m| m.as_str().trim())
                 .filter(|s| !s.is_empty())?;
             let project_name = title_case(name_raw);
@@ -1711,11 +1852,14 @@ Provide concise, insight-driven British executive responses. Surface actionable 
 
         if let Some(caps) = TASK_CREATE_REGEX.captures(&utterance) {
             let task_name = caps
-                .get(1)
+                .name("task_name_after")
+                .or_else(|| caps.name("task_name_before"))
                 .map(|m| m.as_str().trim())
                 .filter(|s| !s.is_empty())
                 .map(title_case)?;
-            let project_hint = caps.get(2).map(|m| m.as_str().trim().to_string());
+            let project_hint = caps
+                .name("task_project")
+                .map(|m| m.as_str().trim().to_string());
 
             if let Some(message) = self
                 .try_create_task_record(&task_name, project_hint.as_deref(), user_text)
@@ -1750,10 +1894,25 @@ Provide concise, insight-driven British executive responses. Surface actionable 
 
         let context = self.context.read().await;
 
+        if utterance.contains("social")
+            && (utterance.contains("content")
+                || utterance.contains("system")
+                || utterance.contains("integration"))
+        {
+            return Some(Self::describe_social_command_system());
+        }
+
         if utterance.contains("project")
             || utterance.contains("pipeline")
             || utterance.contains("roadmap")
         {
+            if let Some(summary) = self
+                .generate_live_project_summary_from_db(user_text)
+                .await
+            {
+                return Some(summary);
+            }
+
             let projects = &context.active_projects;
             if projects.is_empty() {
                 return Some(
@@ -1826,6 +1985,93 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         }
 
         None
+    }
+
+    async fn generate_live_project_summary_from_db(
+        &self,
+        user_text: &str,
+    ) -> Option<String> {
+        let executor = self.executor.as_ref()?;
+        let project_name = self.extract_project_name(user_text)?;
+        let project_id = executor.find_project_by_name(&project_name).await.ok()?;
+        let details = executor.get_project_details(project_id).await.ok()?;
+
+        let mut status_counts: HashMap<String, usize> = HashMap::new();
+        for task in &details.tasks {
+            let key = task.status.to_lowercase();
+            *status_counts.entry(key).or_insert(0) += 1;
+        }
+
+        let total = details.tasks.len();
+        let in_progress = status_counts.get("inprogress").copied().unwrap_or(0);
+        let todo = status_counts.get("todo").copied().unwrap_or(0);
+        let blocked = status_counts
+            .get("blocked")
+            .or_else(|| status_counts.get("stalled"))
+            .copied()
+            .unwrap_or(0);
+        let done = status_counts
+            .get("done")
+            .or_else(|| status_counts.get("completed"))
+            .copied()
+            .unwrap_or(0);
+        let pending_review = status_counts
+            .get("inreview")
+            .or_else(|| status_counts.get("review"))
+            .copied()
+            .unwrap_or(0);
+
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "{} — live snapshot from the command centre:",
+            details.name
+        ));
+        lines.push(format!(
+            "Tasks: {} total · {} in progress · {} waiting review · {} blocked · {} done · {} queued.",
+            total,
+            in_progress,
+            pending_review,
+            blocked,
+            done,
+            todo
+        ));
+
+        if !details.boards.is_empty() {
+            let board_list: Vec<String> =
+                details.boards.iter().map(|b| b.name.clone()).collect();
+            lines.push(format!("Boards live: {}", board_list.join(", ")));
+        } else {
+            lines.push("Boards live: none configured yet — ready to spin up".to_string());
+        }
+
+        if !details.pods.is_empty() {
+            let pod_list: Vec<String> = details.pods.iter().map(|p| p.name.clone()).collect();
+            lines.push(format!("Pods staged: {}", pod_list.join(", ")));
+        }
+
+        if !details.tasks.is_empty() {
+            lines.push("Latest cards:".to_string());
+            for task in details.tasks.iter().take(5) {
+                let description = task
+                    .description
+                    .as_deref()
+                    .unwrap_or("No description provided");
+                lines.push(format!(
+                    "- [{}] {} — {}",
+                    task.status,
+                    task.title,
+                    description
+                ));
+            }
+        } else {
+            lines.push("No tasks logged yet — ready for the first brief.".to_string());
+        }
+
+        Some(lines.join("\n"))
+    }
+
+    fn describe_social_command_system() -> String {
+        "Here’s the current Social Command stack:\n- Platform connectors for LinkedIn and Instagram with shared scheduler/publisher services, plus extensible adapters for future networks.\n- Structured social objects in the DB (`social_accounts`, `social_posts`, `social_mentions`) tied into Nora’s toolchain so every post, mention, and metric is trackable.\n- Five dedicated social agents (Scout, Oracle, Muse, Herald, Echo) that handle research → strategy → creative → distribution → engagement hand-offs.\n- Content Studio UI with block editor, platform previews, category queues, and a calendar view so social_assets boards can flip between Kanban and schedule mode.\n- Unified Social Account Connect + Inbox components that call the new `/social/accounts`, `/social/posts`, and `/social/inbox` routes for OAuth, scheduling, and mention triage.\nIt’s all wired through the same Mission Control surface, so once credentials are connected the agents can plan, draft, schedule, and reply without leaving Command Center.".to_string()
     }
 
     fn default_projects() -> Vec<ProjectContext> {
@@ -2099,6 +2345,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     }
 
     /// Extract tasks from user request and LLM response, then execute or confirm
+    #[allow(dead_code)]
     async fn extract_and_execute_tasks(&self, user_input: &str, llm_response: &str) -> Result<()> {
         use crate::memory::{PendingAction, PendingActionType};
 
@@ -2258,6 +2505,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     }
 
     /// Extract task information from LLM response
+    #[allow(dead_code)]
     fn extract_tasks_from_response(&self, response: &str) -> Vec<crate::memory::PendingTask> {
         use crate::memory::PendingTask;
 
@@ -2303,6 +2551,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     }
 
     /// Try to detect and execute tools based on user request
+    #[allow(dead_code)]
     async fn try_execute_tools_from_request(
         &self,
         request: &NoraRequest,
@@ -2458,7 +2707,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         stage: &crate::profiles::WorkflowStage,
         context: &crate::workflow::WorkflowContext,
         tools: &ExecutiveTools,
-        executor: &Option<Arc<crate::executor::TaskExecutor>>,
+        _executor: &Option<Arc<crate::executor::TaskExecutor>>,
     ) -> Result<serde_json::Value> {
         use crate::tools::NoraExecutiveTool;
 
@@ -2555,6 +2804,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             .map_err(|e| NoraError::CoordinationError(e.to_string()))
     }
 }
+
 
 fn title_case(value: &str) -> String {
     let mut chars = value.chars();

@@ -55,6 +55,7 @@ coverage/
 
 # Optional npm cache directory
 .npm
+/.npm-cache/
 
 # Optional eslint cache
 .eslintcache
@@ -94,3 +95,14 @@ backups/
 .ssh
 
 vibe-kanban-cloud/
+
+# Session logs (internal use only)
+session-logs/
+session_logs/
+
+# Dev logs
+.pcg-dev.log
+.pcg-dev.log.prev
+.dev-server.log
+.cc.log
+*.pid

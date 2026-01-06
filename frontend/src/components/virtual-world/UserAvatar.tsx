@@ -2,6 +2,19 @@ import { useRef, useState, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Line } from '@react-three/drei';
 import * as THREE from 'three';
+import {
+  GROUND_Y,
+  getFloorHeightAt,
+  getCeilingHeightAt,
+  performCollisionCheck,
+  AVATAR_HEIGHT,
+  AVATAR_RADIUS,
+} from '@/lib/virtual-world/spatialSystem';
+
+export interface BuildingCollider {
+  position: [number, number, number];
+  entranceDirection: THREE.Vector3;
+}
 
 interface UserAvatarProps {
   initialPosition?: [number, number, number];
@@ -10,6 +23,8 @@ interface UserAvatarProps {
   onInteract?: () => void;
   isSuspended?: boolean;
   canFly?: boolean;
+  buildings?: BuildingCollider[];
+  baseFloorHeight?: number;
 }
 
 type MovementKeys = {
@@ -26,27 +41,41 @@ interface AnimationDescriptor {
   mode: 'idle' | 'walk' | 'run' | 'jump' | 'fly';
   intensity: number;
   airborne: boolean;
+  tiltX: number;
+  tiltZ: number;
 }
 
+// Movement constants
 const FLIGHT_DOUBLE_TAP_WINDOW_MS = 400;
-const JUMP_STRENGTH = 0.22;
-const WALK_SPEED = 0.5;
-const RUN_MULTIPLIER = 1.4;
+const JUMP_STRENGTH = 0.125;
+const WALK_SPEED = 3.0;
+const RUN_MULTIPLIER = 1.8;
+const ROTATION_LERP = 0.15;
+const CAMERA_DISTANCE = 15;
+const CAMERA_HEIGHT = 10;
+const CAMERA_LERP = 0.08;
+
+// Building collision constants
+const BUILDING_HALF_WIDTH = 25;
+const BUILDING_HALF_LENGTH = 50;
 
 export function UserAvatar({
   initialPosition = [0, 0, 30],
-  color = '#ff8000',
+  color = '#ff8800',
   onPositionChange,
   onInteract,
   isSuspended = false,
   canFly = false,
+  buildings = [],
+  baseFloorHeight,
 }: UserAvatarProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const { camera } = useThree();
+  const avatarRef = useRef<THREE.Group>(null);
+  const { camera, gl } = useThree();
 
-  const [position] = useState(new THREE.Vector3(...initialPosition));
-  const [velocity] = useState(new THREE.Vector3());
-  const [keys] = useState<MovementKeys>({
+  const positionRef = useRef(new THREE.Vector3(...initialPosition));
+  const velocityRef = useRef(new THREE.Vector3());
+  const keysRef = useRef<MovementKeys>({
     forward: false,
     backward: false,
     left: false,
@@ -55,6 +84,21 @@ export function UserAvatar({
     down: false,
     sprint: false,
   });
+
+  // Camera orbit
+  const cameraAngleRef = useRef(Math.PI / 4);
+  const cameraAngleTargetRef = useRef(Math.PI / 4);
+  const isDraggingRef = useRef(false);
+  const lastMouseXRef = useRef(0);
+
+  // Avatar rotation
+  const avatarRotationRef = useRef(0);
+  const targetRotationRef = useRef(0);
+  const hasMovedRef = useRef(false);
+
+  // Tilt
+  const tiltRef = useRef({ x: 0, z: 0 });
+
   const lastEmittedPosition = useRef<THREE.Vector3 | null>(null);
   const isGroundedRef = useRef(true);
   const flightModeRef = useRef(false);
@@ -63,19 +107,66 @@ export function UserAvatar({
     mode: 'idle',
     intensity: 0,
     airborne: false,
+    tiltX: 0,
+    tiltZ: 0,
   });
 
   const trailRef = useRef<THREE.Vector3[]>([]);
   const [trailPoints, setTrailPoints] = useState<THREE.Vector3[]>([]);
-  const maxTrailLength = 20;
+  const maxTrailLength = 25;
 
+  // Mouse controls
   useEffect(() => {
+    const canvas = gl.domElement;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 0 || e.button === 2) {
+        isDraggingRef.current = true;
+        lastMouseXRef.current = e.clientX;
+        canvas.style.cursor = 'grabbing';
+      }
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      canvas.style.cursor = 'grab';
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingRef.current && !isSuspended) {
+        const deltaX = e.clientX - lastMouseXRef.current;
+        cameraAngleTargetRef.current -= deltaX * 0.004;
+        lastMouseXRef.current = e.clientX;
+      }
+    };
+
+    const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    canvas.style.cursor = 'grab';
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseleave', handleMouseUp);
+    canvas.addEventListener('contextmenu', handleContextMenu);
+
+    return () => {
+      canvas.removeEventListener('mousedown', handleMouseDown);
+      canvas.removeEventListener('mouseup', handleMouseUp);
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mouseleave', handleMouseUp);
+      canvas.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, [gl, isSuspended]);
+
+  // Keyboard controls
+  useEffect(() => {
+    const keys = keysRef.current;
+    const velocity = velocityRef.current;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       if (key === 'e') {
-        if (!isSuspended && onInteract) {
-          onInteract();
-        }
+        if (!isSuspended && onInteract) onInteract();
         return;
       }
 
@@ -83,18 +174,23 @@ export function UserAvatar({
 
       switch (key) {
         case 'w':
+        case 'arrowup':
           keys.forward = true;
           break;
         case 's':
+        case 'arrowdown':
           keys.backward = true;
           break;
         case 'a':
+        case 'arrowleft':
           keys.left = true;
           break;
         case 'd':
+        case 'arrowright':
           keys.right = true;
           break;
         case ' ':
+          e.preventDefault();
           if (canFly) {
             const now = performance.now();
             if (now - lastSpaceTapRef.current < FLIGHT_DOUBLE_TAP_WINDOW_MS) {
@@ -103,13 +199,16 @@ export function UserAvatar({
             lastSpaceTapRef.current = now;
             keys.up = true;
             if (isGroundedRef.current && velocity.y <= 0.01) {
-              velocity.y += JUMP_STRENGTH;
+              velocity.y = JUMP_STRENGTH;
+              isGroundedRef.current = false;
             }
           } else if (isGroundedRef.current) {
             velocity.y = JUMP_STRENGTH;
+            isGroundedRef.current = false;
           }
           break;
         case 'control':
+        case 'q':
           keys.down = true;
           break;
         case 'shift':
@@ -122,15 +221,19 @@ export function UserAvatar({
       if (isSuspended) return;
       switch (e.key.toLowerCase()) {
         case 'w':
+        case 'arrowup':
           keys.forward = false;
           break;
         case 's':
+        case 'arrowdown':
           keys.backward = false;
           break;
         case 'a':
+        case 'arrowleft':
           keys.left = false;
           break;
         case 'd':
+        case 'arrowright':
           keys.right = false;
           break;
         case ' ':
@@ -138,6 +241,7 @@ export function UserAvatar({
           flightModeRef.current = false;
           break;
         case 'control':
+        case 'q':
           keys.down = false;
           break;
         case 'shift':
@@ -153,20 +257,31 @@ export function UserAvatar({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [keys, isSuspended, onInteract, canFly, velocity]);
+  }, [isSuspended, onInteract, canFly]);
 
+  // Reset on suspend
   useEffect(() => {
     if (isSuspended) {
-      (Object.keys(keys) as (keyof MovementKeys)[]).forEach((movementKey) => {
-        keys[movementKey] = false;
-      });
-      velocity.set(0, 0, 0);
+      const keys = keysRef.current;
+      keys.forward = keys.backward = keys.left = keys.right = keys.up = keys.down = keys.sprint = false;
+      velocityRef.current.set(0, 0, 0);
       flightModeRef.current = false;
     }
-  }, [isSuspended, keys, velocity]);
+  }, [isSuspended]);
 
-  useFrame((_state) => {
-    if (!groupRef.current) return;
+  // Main update loop
+  useFrame((_, delta) => {
+    if (!groupRef.current || !avatarRef.current) return;
+
+    const position = positionRef.current;
+    const velocity = velocityRef.current;
+    const keys = keysRef.current;
+
+    const dt = Math.min(delta, 0.1);
+    const dtScale = dt * 60;
+
+    // Smooth camera angle
+    cameraAngleRef.current += (cameraAngleTargetRef.current - cameraAngleRef.current) * 0.08 * dtScale;
 
     if (isSuspended) {
       groupRef.current.position.copy(position);
@@ -174,53 +289,186 @@ export function UserAvatar({
       return;
     }
 
-    const moveSpeed = keys.sprint ? WALK_SPEED * RUN_MULTIPLIER : WALK_SPEED;
-    const acceleration = 0.1;
-    const deceleration = 0.95;
+    // Get floor height (use override if provided)
+    const getFloor = (x: number, z: number, y: number) => {
+      if (baseFloorHeight !== undefined) {
+        return baseFloorHeight + AVATAR_RADIUS;
+      }
+      return getFloorHeightAt(x, z, y) + AVATAR_RADIUS;
+    };
 
-    const forward = new THREE.Vector3();
-    camera.getWorldDirection(forward);
-    forward.y = 0;
-    forward.normalize();
+    const currentFloorHeight = getFloor(position.x, position.z, position.y);
 
-    const right = new THREE.Vector3();
-    right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-
-    const inputVector = new THREE.Vector3();
-    if (keys.forward) inputVector.add(forward.multiplyScalar(acceleration));
-    if (keys.backward) inputVector.add(forward.multiplyScalar(-acceleration));
-    if (keys.left) inputVector.add(right.multiplyScalar(-acceleration));
-    if (keys.right) inputVector.add(right.multiplyScalar(acceleration));
-    if (canFly && keys.up) inputVector.y += acceleration;
-    if (keys.down) inputVector.y -= acceleration * 0.6;
-
-    velocity.add(inputVector);
-    velocity.multiplyScalar(deceleration);
-
-    const gravity = canFly ? 0.01 : 0.03;
-    if (!isGroundedRef.current || velocity.y > 0) {
-      velocity.y -= gravity;
-    }
-
-    if (canFly && flightModeRef.current && keys.up) {
-      velocity.y = Math.min(velocity.y + 0.01, 0.25);
-    }
-
-    const currentSpeed = keys.sprint ? 2.0 : 1.0;
-    const movement = velocity.clone().multiplyScalar(moveSpeed * currentSpeed);
-
-    position.add(movement);
-
-    if (position.y < 0) {
-      position.y = 0;
+    // Floor snap
+    if (position.y < currentFloorHeight) {
+      position.y = currentFloorHeight;
       velocity.y = 0;
       isGroundedRef.current = true;
-    } else {
+    }
+
+    const onGround = position.y <= currentFloorHeight + 0.15;
+    if (onGround && velocity.y <= 0) {
+      isGroundedRef.current = true;
+      velocity.y = 0;
+      position.y = currentFloorHeight;
+    }
+
+    // Movement direction based on camera
+    const cameraAngle = cameraAngleRef.current;
+    const forward = new THREE.Vector3(-Math.sin(cameraAngle), 0, -Math.cos(cameraAngle));
+    const right = new THREE.Vector3(-Math.cos(cameraAngle), 0, Math.sin(cameraAngle));
+
+    // Acceleration
+    const baseAccel = isGroundedRef.current ? 0.08 : 0.03;
+    const accel = keys.sprint ? baseAccel * 1.4 : baseAccel;
+    const friction = isGroundedRef.current ? 0.88 : 0.96;
+
+    // Input direction
+    const inputDir = new THREE.Vector3();
+    if (keys.forward) inputDir.add(forward);
+    if (keys.backward) inputDir.sub(forward);
+    if (keys.left) inputDir.add(right);
+    if (keys.right) inputDir.sub(right);
+
+    if (inputDir.lengthSq() > 0) {
+      inputDir.normalize();
+      velocity.x += inputDir.x * accel * dtScale;
+      velocity.z += inputDir.z * accel * dtScale;
+    }
+
+    // Vertical movement
+    if (canFly && keys.up) velocity.y += accel * dtScale;
+    if (keys.down) velocity.y -= accel * 0.7 * dtScale;
+
+    // Friction
+    velocity.x *= Math.pow(friction, dtScale);
+    velocity.z *= Math.pow(friction, dtScale);
+
+    // Gravity
+    const gravity = canFly ? 0.018 : 0.045;
+    if (!isGroundedRef.current) {
+      velocity.y -= gravity * dtScale;
+    }
+
+    // Flight boost
+    if (canFly && flightModeRef.current && keys.up) {
+      velocity.y = Math.min(velocity.y + 0.025 * dtScale, 0.4);
+    }
+
+    // Speed limit
+    const maxSpeed = keys.sprint ? WALK_SPEED * RUN_MULTIPLIER : WALK_SPEED;
+    const horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+
+    if (horizontalSpeed > maxSpeed * 0.035) {
+      const scale = Math.min(1, (maxSpeed * 0.035) / horizontalSpeed);
+      velocity.x *= scale;
+      velocity.z *= scale;
+    }
+
+    // Apply movement
+    const movement = velocity.clone().multiplyScalar(maxSpeed * dtScale);
+    const oldPosition = position.clone();
+    const newPosition = position.clone().add(movement);
+
+    // ============ COLLISION DETECTION ============
+    // Skip all boundary/wall collisions when flying - fly freely wherever you want
+    const isFlying = canFly && flightModeRef.current;
+
+    // 1. Building collisions (external project buildings) - skip when flying
+    if (!isFlying) {
+      for (const building of buildings) {
+        const [bx, , bz] = building.position;
+        const dx = newPosition.x - bx;
+        const dz = newPosition.z - bz;
+        const angle = Math.atan2(building.entranceDirection.x, building.entranceDirection.z);
+        const cos = Math.cos(-angle);
+        const sin = Math.sin(-angle);
+        const localX = dx * cos - dz * sin;
+        const localZ = dx * sin + dz * cos;
+
+        if (Math.abs(localX) < BUILDING_HALF_WIDTH && Math.abs(localZ) < BUILDING_HALF_LENGTH) {
+          const atDoor = localZ > BUILDING_HALF_LENGTH - 8 && Math.abs(localX) < 6;
+          if (!atDoor) {
+            newPosition.x = oldPosition.x;
+            newPosition.z = oldPosition.z;
+            velocity.x = 0;
+            velocity.z = 0;
+          }
+        }
+      }
+    }
+
+    // 2. Workspace/Command Center collisions (spatial system)
+    if (!isFlying) {
+      const collisionResult = performCollisionCheck(oldPosition, newPosition);
+      if (collisionResult.blocked) {
+        newPosition.copy(collisionResult.correctedPosition);
+        // Kill velocity in direction of wall
+        if (collisionResult.hitNormal) {
+          const dot = velocity.dot(collisionResult.hitNormal);
+          if (dot < 0) {
+            velocity.sub(collisionResult.hitNormal.clone().multiplyScalar(dot));
+          }
+        } else {
+          velocity.x *= 0.5;
+          velocity.z *= 0.5;
+        }
+      }
+    }
+
+    // 3. Ceiling collision - skip when flying
+    if (!isFlying) {
+      const ceiling = getCeilingHeightAt(newPosition.x, newPosition.z, newPosition.y);
+      if (ceiling !== null && newPosition.y + AVATAR_HEIGHT > ceiling) {
+        newPosition.y = ceiling - AVATAR_HEIGHT;
+        velocity.y = Math.min(velocity.y, 0);
+      }
+    }
+
+    // 4. Floor collision
+    const newFloorHeight = getFloor(newPosition.x, newPosition.z, newPosition.y);
+    if (newPosition.y < newFloorHeight) {
+      newPosition.y = newFloorHeight;
+      velocity.y = 0;
+      isGroundedRef.current = true;
+    } else if (newPosition.y > newFloorHeight + 0.5) {
       isGroundedRef.current = false;
     }
 
+    // 5. Safety floor (never go below ground)
+    if (newPosition.y < GROUND_Y + AVATAR_RADIUS) {
+      newPosition.y = GROUND_Y + AVATAR_RADIUS;
+      velocity.y = 0;
+      isGroundedRef.current = true;
+    }
+
+    // Apply final position
+    position.copy(newPosition);
     groupRef.current.position.copy(position);
 
+    // Avatar rotation
+    tiltRef.current.x = 0;
+    tiltRef.current.z = 0;
+
+    const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+
+    if (speed > 0.002) {
+      targetRotationRef.current = Math.atan2(velocity.x, velocity.z);
+      hasMovedRef.current = true;
+    }
+
+    if (hasMovedRef.current) {
+      let rotationDiff = targetRotationRef.current - avatarRotationRef.current;
+      while (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
+      while (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
+      avatarRotationRef.current += rotationDiff * ROTATION_LERP * dtScale;
+    }
+
+    avatarRef.current.rotation.y = avatarRotationRef.current;
+    avatarRef.current.rotation.x = 0;
+    avatarRef.current.rotation.z = 0;
+
+    // Position callback
     if (onPositionChange) {
       if (!lastEmittedPosition.current) {
         lastEmittedPosition.current = position.clone();
@@ -231,55 +479,73 @@ export function UserAvatar({
       }
     }
 
-    if (movement.length() > 0.01) {
+    // Motion trail
+    if (speed > 0.005) {
       trailRef.current.unshift(position.clone());
       if (trailRef.current.length > maxTrailLength) {
         trailRef.current.pop();
       }
       setTrailPoints(trailRef.current.map((point, index) => {
         const alpha = 1 - index / maxTrailLength;
-        return point.clone().setY(point.y + alpha * 0.15);
+        return point.clone().setY(point.y + alpha * 0.1);
       }));
     }
 
-    const horizontalSpeed = new THREE.Vector3(velocity.x, 0, velocity.z).length();
+    // Animation state
     const airborne = !isGroundedRef.current;
     let mode: AnimationDescriptor['mode'] = 'idle';
     if (airborne) {
       mode = canFly && flightModeRef.current ? 'fly' : 'jump';
-    } else if (horizontalSpeed > 0.4) {
+    } else if (speed > 0.005) {
       mode = keys.sprint ? 'run' : 'walk';
     }
+
     animationStateRef.current = {
       mode,
-      intensity: Math.min(horizontalSpeed * 2.5, 1.0),
+      intensity: Math.min(speed * 50, 1.0),
       airborne,
+      tiltX: tiltRef.current.x,
+      tiltZ: tiltRef.current.z,
     };
 
-    const desiredCameraPosition = position.clone().add(new THREE.Vector3(25, 20, 25));
-    camera.position.lerp(desiredCameraPosition, 0.05);
-    camera.lookAt(position.clone().add(new THREE.Vector3(0, 4, 0)));
+    // Camera follow
+    const cameraOffset = new THREE.Vector3(
+      Math.sin(cameraAngleRef.current) * CAMERA_DISTANCE,
+      CAMERA_HEIGHT,
+      Math.cos(cameraAngleRef.current) * CAMERA_DISTANCE
+    );
+    const desiredCameraPosition = position.clone().add(cameraOffset);
+    camera.position.lerp(desiredCameraPosition, CAMERA_LERP * dtScale);
+
+    const lookTarget = position.clone().add(new THREE.Vector3(0, 2.5, 0));
+    camera.lookAt(lookTarget);
   });
 
   return (
-    <group ref={groupRef} position={position}>
-      <HumanoidAvatar
-        color={color}
-        animationRef={animationStateRef}
-        showJetpack={canFly && (flightModeRef.current || !isGroundedRef.current)}
-      />
+    <group ref={groupRef}>
+      <group ref={avatarRef}>
+        <HumanoidAvatar
+          color={color}
+          animationRef={animationStateRef}
+          showJetpack={canFly && flightModeRef.current}
+        />
+      </group>
       {trailPoints.length >= 2 && (
         <Line
           points={trailPoints}
-          color={color}
+          color="#00ffff"
           lineWidth={2}
           transparent
-          opacity={0.4}
+          opacity={0.3}
         />
       )}
     </group>
   );
 }
+
+// ============================================================================
+// HUMANOID AVATAR COMPONENT
+// ============================================================================
 
 interface HumanoidAvatarProps {
   color: string;
@@ -287,321 +553,333 @@ interface HumanoidAvatarProps {
   showJetpack?: boolean;
 }
 
-function HumanoidAvatar({ color, animationRef, showJetpack = false }: HumanoidAvatarProps) {
+function HumanoidAvatar({ color: _color, animationRef, showJetpack = false }: HumanoidAvatarProps) {
+  const bodyRef = useRef<THREE.Group>(null);
   const headRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Group>(null);
   const rightArmRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Group>(null);
   const rightLegRef = useRef<THREE.Group>(null);
-  const torsoRef = useRef<THREE.Mesh>(null);
 
   useFrame((state) => {
     const { mode, intensity } = animationRef.current;
-    const swingSpeed = mode === 'run' ? 10 : 6;
-    const swingAmount = matchAnimationSwing(mode, intensity);
-    const swing = Math.sin(state.clock.elapsedTime * swingSpeed) * swingAmount;
-    const oppositeSwing = Math.sin(state.clock.elapsedTime * swingSpeed + Math.PI) * swingAmount;
+    const time = state.clock.elapsedTime;
 
+    const cycleSpeed = mode === 'run' ? 14 : mode === 'walk' ? 9 : 2;
+    const cycle = Math.sin(time * cycleSpeed);
+    const oppositeCycle = Math.sin(time * cycleSpeed + Math.PI);
+
+    // Arms
     if (leftArmRef.current && rightArmRef.current) {
-      leftArmRef.current.rotation.x = swing;
-      rightArmRef.current.rotation.x = oppositeSwing;
+      const armSwing = mode === 'idle' ? 0.03 : (mode === 'run' ? 0.9 : 0.5) * intensity;
+      leftArmRef.current.rotation.x = cycle * armSwing;
+      rightArmRef.current.rotation.x = oppositeCycle * armSwing;
+      if (mode === 'run') {
+        leftArmRef.current.rotation.z = -0.1;
+        rightArmRef.current.rotation.z = 0.1;
+      } else {
+        leftArmRef.current.rotation.z = 0;
+        rightArmRef.current.rotation.z = 0;
+      }
     }
 
+    // Legs
     if (leftLegRef.current && rightLegRef.current) {
-      leftLegRef.current.rotation.x = oppositeSwing * 0.8;
-      rightLegRef.current.rotation.x = swing * 0.8;
+      const legSwing = mode === 'idle' ? 0 : (mode === 'run' ? 0.7 : 0.4) * intensity;
+      leftLegRef.current.rotation.x = oppositeCycle * legSwing;
+      rightLegRef.current.rotation.x = cycle * legSwing;
     }
 
+    // Head bob
     if (headRef.current) {
-      const hover =
-        mode === 'fly'
-          ? Math.sin(state.clock.elapsedTime * 3) * 0.05
-          : Math.sin(state.clock.elapsedTime * 1.5) * 0.02;
-      headRef.current.position.y = 2.4 + hover;
+      const bobAmount = mode === 'run' ? 0.04 : mode === 'walk' ? 0.02 : 0.01;
+      const bobSpeed = mode === 'run' ? 28 : mode === 'walk' ? 18 : 1.5;
+      headRef.current.position.y = 2.4 + Math.abs(Math.sin(time * bobSpeed)) * bobAmount * intensity;
+      headRef.current.rotation.y = mode === 'idle' ? Math.sin(time * 0.3) * 0.1 : 0;
     }
 
-    // Breathing animation for torso
-    if (torsoRef.current && mode === 'idle') {
-      const breathe = Math.sin(state.clock.elapsedTime * 0.8) * 0.02 + 1;
-      torsoRef.current.scale.y = breathe;
+    // Body bounce
+    if (bodyRef.current) {
+      if (mode === 'run' || mode === 'walk') {
+        const bounce = Math.abs(Math.sin(time * cycleSpeed * 2)) * 0.03 * intensity;
+        bodyRef.current.position.y = bounce;
+      } else {
+        bodyRef.current.position.y = 0;
+      }
     }
   });
 
+  const mainColor = '#f5f5f5';
+  const accentColor = '#ffd700';
+  const darkColor = '#1a1a1a';
+
   return (
-    <group>
-      {/* Head with facial features */}
+    <group ref={bodyRef}>
+      {/* Head */}
       <group ref={headRef} position={[0, 2.4, 0]}>
-        {/* Main head sphere */}
-        <mesh castShadow receiveShadow>
-          <sphereGeometry args={[0.55, 32, 32]} />
-          <meshStandardMaterial
-            color={color}
-            emissive={color}
-            emissiveIntensity={0.5}
-            metalness={0.2}
-            roughness={0.3}
-          />
+        <mesh castShadow>
+          <sphereGeometry args={[0.5, 32, 32]} />
+          <meshStandardMaterial color={mainColor} metalness={0} roughness={1} />
         </mesh>
-
-        {/* Eyes */}
-        <mesh position={[-0.2, 0.1, 0.45]}>
-          <sphereGeometry args={[0.08, 16, 16]} />
-          <meshStandardMaterial
-            color="#ffffff"
-            emissive="#00ffff"
-            emissiveIntensity={0.8}
-          />
+        <mesh position={[0, 0.05, 0.35]} rotation={[0.1, 0, 0]}>
+          <boxGeometry args={[0.6, 0.25, 0.15]} />
+          <meshPhysicalMaterial color={accentColor} emissive={accentColor} emissiveIntensity={0.5} metalness={0.9} roughness={0.1} transparent opacity={0.8} />
         </mesh>
-        <mesh position={[0.2, 0.1, 0.45]}>
-          <sphereGeometry args={[0.08, 16, 16]} />
-          <meshStandardMaterial
-            color="#ffffff"
-            emissive="#00ffff"
-            emissiveIntensity={0.8}
-          />
-        </mesh>
-
-        {/* Visor/Face plate */}
-        <mesh position={[0, 0, 0.52]} rotation={[0, 0, 0]}>
-          <planeGeometry args={[0.8, 0.4]} />
-          <meshPhysicalMaterial
-            color="#00ffff"
-            transmission={0.9}
-            roughness={0.05}
-            metalness={0.8}
-            transparent
-            opacity={0.3}
-            emissive="#00ffff"
-            emissiveIntensity={0.2}
-          />
-        </mesh>
-
-        {/* Antenna/Communication device */}
-        <group position={[0, 0.55, -0.2]}>
+        <group position={[0.2, 0.45, -0.1]}>
           <mesh>
-            <cylinderGeometry args={[0.02, 0.02, 0.3, 8]} />
-            <meshStandardMaterial
-              color="#00ffff"
-              emissive="#00ffff"
-              emissiveIntensity={0.6}
-              metalness={0.9}
-            />
+            <cylinderGeometry args={[0.02, 0.015, 0.25, 8]} />
+            <meshStandardMaterial color={darkColor} metalness={0.8} />
           </mesh>
-          <mesh position={[0, 0.18, 0]}>
-            <sphereGeometry args={[0.05, 16, 16]} />
-            <meshBasicMaterial color="#00ffff" />
-            <pointLight intensity={0.5} color="#00ffff" distance={3} />
+          <mesh position={[0, 0.15, 0]}>
+            <sphereGeometry args={[0.04, 12, 12]} />
+            <meshBasicMaterial color={accentColor} />
+            <pointLight color={accentColor} intensity={0.3} distance={2} />
+          </mesh>
+        </group>
+
+        {/* Blunt */}
+        <group position={[0.1, -0.2, 0.5]} rotation={[1.2, 0, 0.2]}>
+          {/* Blunt body */}
+          <mesh>
+            <cylinderGeometry args={[0.04, 0.035, 0.4, 12]} />
+            <meshStandardMaterial color="#5c4033" roughness={0.9} metalness={0} />
+          </mesh>
+          {/* Blunt wrap lines */}
+          <mesh position={[0, -0.08, 0]}>
+            <cylinderGeometry args={[0.042, 0.042, 0.025, 12]} />
+            <meshStandardMaterial color="#3d2817" roughness={1} metalness={0} />
+          </mesh>
+          <mesh position={[0, -0.14, 0]}>
+            <cylinderGeometry args={[0.037, 0.037, 0.02, 12]} />
+            <meshStandardMaterial color="#3d2817" roughness={1} metalness={0} />
+          </mesh>
+          {/* Cherry/lit end - now at the FAR end */}
+          <mesh position={[0, 0.2, 0]}>
+            <sphereGeometry args={[0.042, 12, 12]} />
+            <meshStandardMaterial color="#ff4500" emissive="#ff2200" emissiveIntensity={0.8} roughness={0.5} />
+          </mesh>
+          {/* Ash */}
+          <mesh position={[0, 0.24, 0]}>
+            <cylinderGeometry args={[0.02, 0.038, 0.06, 8]} />
+            <meshStandardMaterial color="#606060" roughness={1} metalness={0} />
+          </mesh>
+          {/* Smoke wisps - rising from cherry */}
+          <mesh position={[0, 0.32, 0]}>
+            <sphereGeometry args={[0.025, 8, 8]} />
+            <meshStandardMaterial color="#aaaaaa" transparent opacity={0.35} />
+          </mesh>
+          <mesh position={[0.03, 0.4, 0.02]}>
+            <sphereGeometry args={[0.03, 8, 8]} />
+            <meshStandardMaterial color="#bbbbbb" transparent opacity={0.25} />
+          </mesh>
+          <mesh position={[-0.02, 0.5, 0.03]}>
+            <sphereGeometry args={[0.035, 8, 8]} />
+            <meshStandardMaterial color="#cccccc" transparent opacity={0.15} />
+          </mesh>
+        </group>
+
+        {/* Crown */}
+        <group position={[0, 0.52, 0]}>
+          {/* Crown base band - ring/cylinder */}
+          <mesh>
+            <cylinderGeometry args={[0.38, 0.35, 0.15, 32, 1, true]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.3} metalness={0.95} roughness={0.1} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Inner band */}
+          <mesh>
+            <cylinderGeometry args={[0.30, 0.28, 0.15, 32, 1, true]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.2} metalness={0.95} roughness={0.1} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Top rim - hollow ring */}
+          <mesh position={[0, 0.075, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.30, 0.38, 32]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.3} metalness={0.95} roughness={0.1} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Bottom rim */}
+          <mesh position={[0, -0.075, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.28, 0.35, 32]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.3} metalness={0.95} roughness={0.1} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Decorative band around middle */}
+          <mesh position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.365, 0.025, 8, 32]} />
+            <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.5} metalness={0.95} roughness={0.05} />
+          </mesh>
+          {/* Crown points/spikes */}
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+            const angle = (i / 8) * Math.PI * 2;
+            const x = Math.sin(angle) * 0.34;
+            const z = Math.cos(angle) * 0.34;
+            const isMainSpike = i % 2 === 0;
+            const spikeHeight = isMainSpike ? 0.22 : 0.14;
+            return (
+              <group key={i} position={[x, 0.075 + spikeHeight / 2, z]}>
+                {/* Spike */}
+                <mesh>
+                  <coneGeometry args={[0.05, spikeHeight, 4]} />
+                  <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={0.3} metalness={0.95} roughness={0.1} />
+                </mesh>
+                {/* Diamond on main spikes */}
+                {isMainSpike && (
+                  <mesh position={[0, spikeHeight / 2 + 0.03, 0]}>
+                    <octahedronGeometry args={[0.035]} />
+                    <meshPhysicalMaterial
+                      color="#ffffff"
+                      emissive="#88ffff"
+                      emissiveIntensity={0.4}
+                      metalness={0.1}
+                      roughness={0}
+                      transmission={0.9}
+                      thickness={0.5}
+                      ior={2.4}
+                    />
+                  </mesh>
+                )}
+              </group>
+            );
+          })}
+          {/* Front center large diamond on band */}
+          <mesh position={[0, 0, 0.37]}>
+            <octahedronGeometry args={[0.06]} />
+            <meshPhysicalMaterial color="#ffffff" emissive="#aaffff" emissiveIntensity={0.6} metalness={0.1} roughness={0} transmission={0.9} thickness={0.5} ior={2.4} />
+          </mesh>
+          {/* Back diamond */}
+          <mesh position={[0, 0, -0.37]}>
+            <octahedronGeometry args={[0.05]} />
+            <meshPhysicalMaterial color="#ffffff" emissive="#aaffff" emissiveIntensity={0.5} metalness={0.1} roughness={0} transmission={0.9} thickness={0.5} ior={2.4} />
+          </mesh>
+          {/* Side diamonds */}
+          <mesh position={[0.37, 0, 0]}>
+            <octahedronGeometry args={[0.05]} />
+            <meshPhysicalMaterial color="#ffffff" emissive="#aaffff" emissiveIntensity={0.5} metalness={0.1} roughness={0} transmission={0.9} thickness={0.5} ior={2.4} />
+          </mesh>
+          <mesh position={[-0.37, 0, 0]}>
+            <octahedronGeometry args={[0.05]} />
+            <meshPhysicalMaterial color="#ffffff" emissive="#aaffff" emissiveIntensity={0.5} metalness={0.1} roughness={0} transmission={0.9} thickness={0.5} ior={2.4} />
           </mesh>
         </group>
       </group>
 
-      {/* Torso with tool belt */}
-      <group position={[0, 1.1, 0]}>
-        <mesh ref={torsoRef} castShadow receiveShadow>
-          <capsuleGeometry args={[0.55, 1.7, 16, 32]} />
-          <meshStandardMaterial
-            color={color}
-            emissive={color}
-            emissiveIntensity={0.35}
-            metalness={0.15}
-            roughness={0.35}
-          />
+      {/* Torso */}
+      <group position={[0, 1.3, 0]}>
+        <mesh castShadow>
+          <capsuleGeometry args={[0.4, 0.9, 12, 24]} />
+          <meshStandardMaterial color={mainColor} emissive={accentColor} emissiveIntensity={0.03} metalness={0.1} roughness={0.85} />
         </mesh>
-
-        {/* Tool belt */}
-        <mesh position={[0, -0.4, 0]} rotation={[0, 0, 0]}>
-          <torusGeometry args={[0.6, 0.08, 16, 32]} />
-          <meshStandardMaterial
-            color="#1a1a1a"
-            metalness={0.9}
-            roughness={0.2}
-            emissive="#00ffff"
-            emissiveIntensity={0.1}
-          />
+        <mesh position={[0, 0.15, 0.3]}>
+          <boxGeometry args={[0.5, 0.4, 0.15]} />
+          <meshStandardMaterial color={darkColor} metalness={0.7} roughness={0.2} />
         </mesh>
-
-        {/* Belt pouches */}
-        <mesh position={[0.4, -0.4, 0.4]}>
-          <boxGeometry args={[0.15, 0.15, 0.1]} />
-          <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.3} />
-        </mesh>
-        <mesh position={[-0.4, -0.4, 0.4]}>
-          <boxGeometry args={[0.15, 0.15, 0.1]} />
-          <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.3} />
-        </mesh>
-
-        {/* Chest light indicator */}
-        <mesh position={[0, 0.5, 0.5]}>
+        <mesh position={[0, 0.15, 0.38]}>
           <circleGeometry args={[0.08, 16]} />
-          <meshBasicMaterial color="#00ffff" transparent opacity={0.8} />
-          <pointLight intensity={0.3} color="#00ffff" distance={2} />
+          <meshBasicMaterial color={accentColor} />
+          <pointLight color={accentColor} intensity={0.4} distance={3} />
+        </mesh>
+        <mesh position={[0, -0.35, 0]}>
+          <torusGeometry args={[0.42, 0.06, 12, 24]} />
+          <meshStandardMaterial color={darkColor} metalness={0.8} roughness={0.2} />
         </mesh>
       </group>
 
-      {/* Arms with gloves */}
-      <group ref={leftArmRef} position={[0.85, 1.2, 0]}>
-        <mesh castShadow>
-          <capsuleGeometry args={[0.18, 1.0, 12, 16]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25} />
+      {/* Left Arm */}
+      <group ref={leftArmRef} position={[0.65, 1.5, 0]}>
+        <mesh castShadow position={[0, -0.25, 0]}>
+          <capsuleGeometry args={[0.12, 0.4, 8, 12]} />
+          <meshStandardMaterial color={mainColor} emissive={accentColor} emissiveIntensity={0.02} metalness={0.1} roughness={0.85} />
         </mesh>
-        {/* Glove */}
-        <mesh position={[0, -0.6, 0]}>
-          <sphereGeometry args={[0.2, 16, 16]} />
-          <meshStandardMaterial
-            color="#1a1a1a"
-            metalness={0.9}
-            roughness={0.2}
-            emissive="#00ffff"
-            emissiveIntensity={0.1}
-          />
+        <mesh castShadow position={[0, -0.6, 0]}>
+          <capsuleGeometry args={[0.1, 0.35, 8, 12]} />
+          <meshStandardMaterial color={darkColor} metalness={0.6} roughness={0.3} />
         </mesh>
-      </group>
-      <group ref={rightArmRef} position={[-0.85, 1.2, 0]}>
-        <mesh castShadow>
-          <capsuleGeometry args={[0.18, 1.0, 12, 16]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25} />
-        </mesh>
-        {/* Glove */}
-        <mesh position={[0, -0.6, 0]}>
-          <sphereGeometry args={[0.2, 16, 16]} />
-          <meshStandardMaterial
-            color="#1a1a1a"
-            metalness={0.9}
-            roughness={0.2}
-            emissive="#00ffff"
-            emissiveIntensity={0.1}
-          />
+        <mesh position={[0, -0.85, 0]}>
+          <sphereGeometry args={[0.1, 12, 12]} />
+          <meshStandardMaterial color={darkColor} metalness={0.7} />
         </mesh>
       </group>
 
-      {/* Legs with boots */}
-      <group ref={leftLegRef} position={[0.35, 0, 0]}>
-        <mesh castShadow>
-          <capsuleGeometry args={[0.22, 1.2, 12, 16]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25} />
+      {/* Right Arm */}
+      <group ref={rightArmRef} position={[-0.65, 1.5, 0]}>
+        <mesh castShadow position={[0, -0.25, 0]}>
+          <capsuleGeometry args={[0.12, 0.4, 8, 12]} />
+          <meshStandardMaterial color={mainColor} emissive={accentColor} emissiveIntensity={0.02} metalness={0.1} roughness={0.85} />
         </mesh>
-        {/* Boot */}
-        <mesh position={[0, -0.7, 0.1]}>
-          <boxGeometry args={[0.28, 0.2, 0.4]} />
-          <meshStandardMaterial
-            color="#1a1a1a"
-            metalness={0.9}
-            roughness={0.2}
-          />
+        <mesh castShadow position={[0, -0.6, 0]}>
+          <capsuleGeometry args={[0.1, 0.35, 8, 12]} />
+          <meshStandardMaterial color={darkColor} metalness={0.6} roughness={0.3} />
         </mesh>
-        {/* Boot accent strip */}
-        <mesh position={[0, -0.7, 0.3]}>
-          <boxGeometry args={[0.3, 0.05, 0.05]} />
-          <meshBasicMaterial color="#00ffff" />
-        </mesh>
-      </group>
-      <group ref={rightLegRef} position={[-0.35, 0, 0]}>
-        <mesh castShadow>
-          <capsuleGeometry args={[0.22, 1.2, 12, 16]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25} />
-        </mesh>
-        {/* Boot */}
-        <mesh position={[0, -0.7, 0.1]}>
-          <boxGeometry args={[0.28, 0.2, 0.4]} />
-          <meshStandardMaterial
-            color="#1a1a1a"
-            metalness={0.9}
-            roughness={0.2}
-          />
-        </mesh>
-        {/* Boot accent strip */}
-        <mesh position={[0, -0.7, 0.3]}>
-          <boxGeometry args={[0.3, 0.05, 0.05]} />
-          <meshBasicMaterial color="#00ffff" />
+        <mesh position={[0, -0.85, 0]}>
+          <sphereGeometry args={[0.1, 12, 12]} />
+          <meshStandardMaterial color={darkColor} metalness={0.7} />
         </mesh>
       </group>
 
-      {/* Jetpack (visible during flight) */}
+      {/* Left Leg */}
+      <group ref={leftLegRef} position={[0.22, 0.4, 0]}>
+        <mesh castShadow position={[0, -0.25, 0]}>
+          <capsuleGeometry args={[0.14, 0.4, 8, 12]} />
+          <meshStandardMaterial color={mainColor} emissive={accentColor} emissiveIntensity={0.02} metalness={0.1} roughness={0.85} />
+        </mesh>
+        <mesh castShadow position={[0, -0.65, 0]}>
+          <capsuleGeometry args={[0.11, 0.4, 8, 12]} />
+          <meshStandardMaterial color={darkColor} metalness={0.5} roughness={0.3} />
+        </mesh>
+        <mesh position={[0, -0.95, 0.05]}>
+          <boxGeometry args={[0.18, 0.12, 0.28]} />
+          <meshStandardMaterial color={darkColor} metalness={0.7} roughness={0.2} />
+        </mesh>
+        <mesh position={[0, -0.92, 0.15]}>
+          <boxGeometry args={[0.19, 0.04, 0.04]} />
+          <meshBasicMaterial color={accentColor} />
+        </mesh>
+      </group>
+
+      {/* Right Leg */}
+      <group ref={rightLegRef} position={[-0.22, 0.4, 0]}>
+        <mesh castShadow position={[0, -0.25, 0]}>
+          <capsuleGeometry args={[0.14, 0.4, 8, 12]} />
+          <meshStandardMaterial color={mainColor} emissive={mainColor} emissiveIntensity={0.15} />
+        </mesh>
+        <mesh castShadow position={[0, -0.65, 0]}>
+          <capsuleGeometry args={[0.11, 0.4, 8, 12]} />
+          <meshStandardMaterial color={darkColor} metalness={0.5} roughness={0.3} />
+        </mesh>
+        <mesh position={[0, -0.95, 0.05]}>
+          <boxGeometry args={[0.18, 0.12, 0.28]} />
+          <meshStandardMaterial color={darkColor} metalness={0.7} roughness={0.2} />
+        </mesh>
+        <mesh position={[0, -0.92, 0.15]}>
+          <boxGeometry args={[0.19, 0.04, 0.04]} />
+          <meshBasicMaterial color={accentColor} />
+        </mesh>
+      </group>
+
+      {/* Jetpack */}
       {showJetpack && (
-        <group position={[0, 1.2, -0.6]}>
-          {/* Main jetpack body */}
+        <group position={[0, 1.3, -0.45]}>
           <mesh>
-            <boxGeometry args={[0.8, 1.2, 0.4]} />
-            <meshStandardMaterial
-              color="#1a1a1a"
-              metalness={0.9}
-              roughness={0.2}
-              emissive="#0080ff"
-              emissiveIntensity={0.3}
-            />
+            <boxGeometry args={[0.5, 0.7, 0.25]} />
+            <meshStandardMaterial color={darkColor} metalness={0.8} roughness={0.2} />
           </mesh>
-
-          {/* Fuel tanks */}
-          <mesh position={[-0.25, 0, 0]}>
-            <cylinderGeometry args={[0.15, 0.15, 1.0, 16]} />
-            <meshStandardMaterial
-              color="#0a2f4a"
-              metalness={0.8}
-              roughness={0.3}
-              emissive="#00b4ff"
-              emissiveIntensity={0.4}
-            />
+          <mesh position={[-0.15, -0.35, 0]}>
+            <cylinderGeometry args={[0.1, 0.12, 0.2, 12]} />
+            <meshStandardMaterial color={darkColor} metalness={0.9} />
           </mesh>
-          <mesh position={[0.25, 0, 0]}>
-            <cylinderGeometry args={[0.15, 0.15, 1.0, 16]} />
-            <meshStandardMaterial
-              color="#0a2f4a"
-              metalness={0.8}
-              roughness={0.3}
-              emissive="#00b4ff"
-              emissiveIntensity={0.4}
-            />
+          <mesh position={[0.15, -0.35, 0]}>
+            <cylinderGeometry args={[0.1, 0.12, 0.2, 12]} />
+            <meshStandardMaterial color={darkColor} metalness={0.9} />
           </mesh>
-
-          {/* Thrusters */}
-          <mesh position={[-0.25, -0.6, 0]}>
-            <coneGeometry args={[0.18, 0.3, 8]} />
-            <meshBasicMaterial color="#00ffff" transparent opacity={0.8} />
-            <pointLight intensity={1} color="#00ffff" distance={5} />
+          <mesh position={[-0.15, -0.5, 0]}>
+            <coneGeometry args={[0.08, 0.25, 8]} />
+            <meshBasicMaterial color={accentColor} transparent opacity={0.8} />
+            <pointLight color={accentColor} intensity={1.5} distance={4} />
           </mesh>
-          <mesh position={[0.25, -0.6, 0]}>
-            <coneGeometry args={[0.18, 0.3, 8]} />
-            <meshBasicMaterial color="#00ffff" transparent opacity={0.8} />
-            <pointLight intensity={1} color="#00ffff" distance={5} />
+          <mesh position={[0.15, -0.5, 0]}>
+            <coneGeometry args={[0.08, 0.25, 8]} />
+            <meshBasicMaterial color={accentColor} transparent opacity={0.8} />
+            <pointLight color={accentColor} intensity={1.5} distance={4} />
           </mesh>
-
-          {/* Exhaust particles */}
-          {animationRef.current.mode === 'fly' && (
-            <>
-              <mesh position={[-0.25, -0.8, 0]}>
-                <sphereGeometry args={[0.1, 8, 8]} />
-                <meshBasicMaterial
-                  color="#00b4ff"
-                  transparent
-                  opacity={0.6}
-                />
-              </mesh>
-              <mesh position={[0.25, -0.8, 0]}>
-                <sphereGeometry args={[0.1, 8, 8]} />
-                <meshBasicMaterial
-                  color="#00b4ff"
-                  transparent
-                  opacity={0.6}
-                />
-              </mesh>
-            </>
-          )}
         </group>
       )}
     </group>
   );
-}
-
-function matchAnimationSwing(mode: AnimationDescriptor['mode'], intensity: number): number {
-  switch (mode) {
-    case 'run':
-      return 0.7 * intensity;
-    case 'walk':
-      return 0.4 * intensity;
-    case 'jump':
-    case 'fly':
-      return 0.2;
-    default:
-      return 0.05;
-  }
 }

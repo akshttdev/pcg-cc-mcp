@@ -7,7 +7,12 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Projects } from '@/pages/projects';
 import { ProjectTasks } from '@/pages/project-tasks';
 import { NoraPage } from '@/pages/nora';
+import MissionControlPage from '@/pages/mission-control';
+import { WorkflowsPage } from '@/pages/workflows';
+import { SocialPage } from '@/pages/social';
+import { CrmPage } from '@/pages/crm';
 import { VirtualEnvironmentPage } from '@/pages/virtual-environment';
+import { EmbedVirtualEnvironmentPage } from '@/pages/embed/virtual-environment';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
 
@@ -22,6 +27,7 @@ import {
   WalletSettings,
   UsersSettings,
   ProjectsSettings,
+  AirtableSettings,
 } from '@/pages/settings/';
 import {
   UserSystemProvider,
@@ -207,6 +213,20 @@ function AppContent() {
                       element={<ProtectedRoute><ProjectTasks /></ProtectedRoute>}
                     />
                     <Route path="/nora" element={<ProtectedRoute><NoraPage /></ProtectedRoute>} />
+                    <Route path="/mission-control" element={<ProtectedRoute><MissionControlPage /></ProtectedRoute>} />
+                    <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
+                    <Route
+                      path="/social-command"
+                      element={<ProtectedRoute><SocialPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/projects/:projectId/social"
+                      element={<Navigate to="/social-command" replace />}
+                    />
+                    <Route
+                      path="/crm"
+                      element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
+                    />
                     <Route
                       path="/virtual-environment"
                       element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}
@@ -222,6 +242,7 @@ function AppContent() {
                       <Route path="activity" element={<ActivitySettings />} />
                       <Route path="agents" element={<AgentSettings />} />
                       <Route path="mcp" element={<McpSettings />} />
+                      <Route path="airtable" element={<AirtableSettings />} />
                     </Route>
                     {/* Redirect old MCP route */}
                     <Route
@@ -247,19 +268,27 @@ function AppContent() {
 function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <UserSystemProvider>
-          <ProjectProvider>
-            <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
-              <KeyboardShortcutsProvider>
-                <NiceModal.Provider>
-                  <AppContent />
-                </NiceModal.Provider>
-              </KeyboardShortcutsProvider>
-            </HotkeysProvider>
-          </ProjectProvider>
-        </UserSystemProvider>
-      </AuthProvider>
+      <Routes>
+        {/* Embed routes - no layout, no auth wrapper (token-based auth) */}
+        <Route path="/embed/virtual-environment" element={<EmbedVirtualEnvironmentPage />} />
+
+        {/* Main app with full layout */}
+        <Route path="*" element={
+          <AuthProvider>
+            <UserSystemProvider>
+              <ProjectProvider>
+                <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
+                  <KeyboardShortcutsProvider>
+                    <NiceModal.Provider>
+                      <AppContent />
+                    </NiceModal.Provider>
+                  </KeyboardShortcutsProvider>
+                </HotkeysProvider>
+              </ProjectProvider>
+            </UserSystemProvider>
+          </AuthProvider>
+        } />
+      </Routes>
     </BrowserRouter>
   );
 }

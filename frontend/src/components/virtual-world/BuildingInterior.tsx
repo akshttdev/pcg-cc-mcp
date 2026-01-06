@@ -1,10 +1,29 @@
-import { Suspense, useRef } from 'react';
+import { Suspense, useRef, useState, useEffect, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text } from '@react-three/drei';
+import { Text, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { BUILDING_THEMES, BuildingTheme, BuildingType } from '@/lib/virtual-world/buildingTypes';
-import { INTERIOR_AGENT_POSITIONS, INTERIOR_CAMERA, INTERIOR_ROOM } from '@/lib/virtual-world/constants';
-import { VoxelAgentAvatar, type AgentRole } from '@/components/virtual-world/VoxelAgentAvatar';
+import { INTERIOR_CAMERA, INTERIOR_ROOM } from '@/lib/virtual-world/constants';
+import { UserAvatar } from '@/components/virtual-world/UserAvatar';
+
+interface CustomEnvironmentConfig {
+  url: string;
+  scale: number;
+  position: [number, number, number];
+  cameraPosition?: [number, number, number];
+  cameraFov?: number;
+  spawnPosition?: [number, number, number];
+}
+
+const PROJECT_ENVIRONMENTS: Record<string, CustomEnvironmentConfig> = {
+  'Fine Art Society': {
+    url: '/environments/fine-art-gallery.glb',
+    scale: 4,
+    position: [0, 0, 0],
+    cameraPosition: [0, 5, 0],
+    spawnPosition: [0, 0.7, 0],
+  },
+};
 
 interface InteriorProject {
   name: string;
@@ -15,51 +34,82 @@ interface InteriorProject {
 interface BuildingInteriorProps {
   project: InteriorProject;
   onExit: () => void;
+  playerColor: string;
 }
 
-export function BuildingInterior({ project, onExit }: BuildingInteriorProps) {
+export function BuildingInterior({ project, onExit, playerColor }: BuildingInteriorProps) {
   const theme = BUILDING_THEMES[project.type];
   const energyPercent = (project.energy * 100).toFixed(1);
+  const customEnv = PROJECT_ENVIRONMENTS[project.name];
+  const [loading, setLoading] = useState(!!customEnv);
+  const cameraPosition = customEnv?.cameraPosition ?? INTERIOR_CAMERA.position;
+  const cameraFov = customEnv?.cameraFov ?? INTERIOR_CAMERA.fov;
+  const spawnPosition: [number, number, number] = customEnv?.spawnPosition ?? [0, 1.5, 10];
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-30 bg-black/90 backdrop-blur">
+      {customEnv && loading && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/85 text-center text-cyan-200">
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-cyan-500 border-t-transparent" />
+          <p className="text-lg">Loading {project.name} environment…</p>
+          <p className="text-sm text-cyan-200/70">High-resolution gallery assets, please wait.</p>
+        </div>
+      )}
+
       <Canvas
         shadows
-        camera={{ position: INTERIOR_CAMERA.position, fov: INTERIOR_CAMERA.fov }}
+        camera={{ position: cameraPosition, fov: cameraFov }}
       >
         <color attach="background" args={['#05070e']} />
-        <fog attach="fog" args={[theme.interior.wallColor, 10, 80]} />
-        <ambientLight intensity={0.4} color={theme.interior.glowColor} />
-        <spotLight
-          position={[10, 25, 10]}
-          intensity={1.5}
-          angle={Math.PI / 4}
-          penumbra={0.6}
-          color={theme.accentColor}
-          castShadow
-        />
-        <pointLight position={[0, 8, 0]} intensity={1.2} color={theme.hologramColor} distance={50} />
-
-        <Suspense fallback={null}>
-          <InteriorRoom project={project} theme={theme} />
-          {INTERIOR_AGENT_POSITIONS.map((pos, index) => {
-            const roles: AgentRole[] = ['developer', 'designer', 'analyst'];
-            const role = roles[index % 3];
-            const energy = 0.6 + Math.random() * 0.4; // 60-100% energy
-            return (
-              <VoxelAgentAvatar
-                key={`${project.name}-agent-${index}`}
-                position={[pos[0], pos[1], pos[2]]}
-                role={role}
-                status={index === 0 ? 'working' : 'idle'}
-                pulseOffset={index * 0.7}
-                label={`${role.toUpperCase().slice(0, 3)}-${index + 1}`}
-                energy={energy}
+        {customEnv ? (
+          <>
+            <ambientLight intensity={0.7} color="#f5d5b5" />
+            <directionalLight
+              position={[12, 18, 6]}
+              intensity={1.4}
+              castShadow
+              shadow-mapSize-width={2048}
+              shadow-mapSize-height={2048}
+            />
+            <pointLight position={[0, 10, 0]} intensity={1.2} color="#ffe7cc" distance={60} />
+            <Suspense fallback={null}>
+              <GLBEnvironment
+                url={customEnv.url}
+                scale={customEnv.scale}
+                position={customEnv.position}
+                onLoaded={() => setLoading(false)}
               />
-            );
-          })}
-        </Suspense>
-        <OrbitControls enablePan={false} maxPolarAngle={Math.PI / 2.2} />
+            </Suspense>
+          </>
+        ) : (
+          <>
+            <fog attach="fog" args={[theme.interior.wallColor, 10, 80]} />
+            <ambientLight intensity={0.4} color={theme.interior.glowColor} />
+            <spotLight
+              position={[10, 25, 10]}
+              intensity={1.5}
+              angle={Math.PI / 4}
+              penumbra={0.6}
+              color={theme.accentColor}
+              castShadow
+            />
+            <pointLight position={[0, 8, 0]} intensity={1.2} color={theme.hologramColor} distance={50} />
+
+            <Suspense fallback={null}>
+              <InteriorRoom project={project} theme={theme} />
+            </Suspense>
+          </>
+        )}
+
+        <UserAvatar
+          initialPosition={spawnPosition}
+          color={playerColor}
+          onInteract={onExit}
+          canFly={true}
+          buildings={[]}
+          isSuspended={false}
+          baseFloorHeight={0}
+        />
       </Canvas>
 
       <div className="pointer-events-none absolute inset-x-0 top-10 text-center">
@@ -263,3 +313,28 @@ function DataStream({ position, color }: { position: [number, number, number]; c
     </mesh>
   );
 }
+
+function GLBEnvironment({ url, scale, position, onLoaded }: CustomEnvironmentConfig & { onLoaded?: () => void }) {
+  const { scene } = useGLTF(url);
+  const clonedScene = useMemo(() => scene.clone(), [scene]);
+
+  useEffect(() => {
+    // Enable shadows on all meshes
+    clonedScene.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    // Signal that loading is complete
+    onLoaded?.();
+  }, [clonedScene, onLoaded]);
+
+  return (
+    <group position={position} scale={[scale, scale, scale]}>
+      <primitive object={clonedScene} />
+    </group>
+  );
+}
+
+useGLTF.preload('/environments/fine-art-gallery.glb');
