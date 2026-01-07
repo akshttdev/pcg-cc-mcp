@@ -4,6 +4,7 @@ import { Grid, Environment, Stars, SpotLight } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   type LucideIcon,
+  Backpack,
   ChevronDown,
   ChevronUp,
   Compass,
@@ -12,6 +13,7 @@ import {
   Layers,
   Loader2,
   Map as MapIcon,
+  Shirt,
 } from 'lucide-react';
 import { CommandCenter } from '@/components/virtual-world/CommandCenter';
 import { NoraAvatar } from '@/components/virtual-world/NoraAvatar';
@@ -23,6 +25,7 @@ import { BuildingInterior } from '@/components/virtual-world/BuildingInterior';
 import { AgentWorkspaceLevel, getAgentBayBounds } from '@/components/virtual-world/AgentWorkspaceLevel';
 import { SpiralStaircase } from '@/components/virtual-world/SpiralStaircase';
 import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
+import { InventoryPanel, EquipmentPanel } from '@/components/virtual-world/hud';
 import { getBuildingType } from '@/lib/virtual-world/buildingTypes';
 import { ENTRY_TRIGGER_DISTANCE } from '@/lib/virtual-world/constants';
 import { cn } from '@/lib/utils';
@@ -50,13 +53,15 @@ interface ProjectData {
   project: Project; // Full project data from API
 }
 
-type HudPanelId = 'systems' | 'intel' | 'map' | 'controls';
+type HudPanelId = 'systems' | 'intel' | 'map' | 'controls' | 'inventory' | 'equipment';
 
 const HUD_NAV_ITEMS: { id: HudPanelId; label: string; description: string; icon: LucideIcon }[] = [
   { id: 'systems', label: 'Systems', description: 'Server diagnostics', icon: Cpu },
   { id: 'intel', label: 'Intel', description: 'Project dossiers', icon: Layers },
   { id: 'map', label: 'Cartography', description: 'Spatial telemetry', icon: MapIcon },
   { id: 'controls', label: 'Controls', description: 'Piloting reference', icon: Gamepad2 },
+  { id: 'inventory', label: 'Inventory', description: 'Personal belongings', icon: Backpack },
+  { id: 'equipment', label: 'Gear', description: 'Equipped items', icon: Shirt },
 ];
 
 const HUD_PANEL_META: Record<HudPanelId, { title: string; description: string }> = {
@@ -64,6 +69,8 @@ const HUD_PANEL_META: Record<HudPanelId, { title: string; description: string }>
   intel: { title: 'Intel Ledger', description: 'Active engagements ranked by signal strength.' },
   map: { title: 'Aerial Cartography', description: 'Top-down sweep of the monumental grid.' },
   controls: { title: 'Flight Controls', description: 'Reference for movement, chat, and interaction shortcuts.' },
+  inventory: { title: 'Inventory', description: 'Items in your possession. Click to equip.' },
+  equipment: { title: 'Equipment', description: 'Currently equipped gear. Click slots to unequip.' },
 };
 
 const noraAcknowledgements = [
@@ -455,6 +462,10 @@ export function VirtualEnvironmentPage() {
         );
       case 'controls':
         return <ControlsPanel />;
+      case 'inventory':
+        return <InventoryPanel />;
+      case 'equipment':
+        return <EquipmentPanel />;
       default:
         return null;
     }
