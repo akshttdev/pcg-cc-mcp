@@ -10,12 +10,20 @@ export interface PlayerRotation {
   y: number;
 }
 
+export interface PlayerEquipment {
+  head: string | null;
+  primaryHand: string | null;
+  secondaryHand: string | null;
+  back: string | null;
+}
+
 export interface RemotePlayer {
   id: string;
   username: string;
   displayName: string;
   avatarUrl: string | null;
   isAdmin: boolean;
+  equipment: PlayerEquipment;
   position: PlayerPosition;
   rotation: PlayerRotation;
   currentZone: string;
@@ -40,6 +48,7 @@ export type ClientMessage =
       display_name: string;
       avatar_url: string | null;
       is_admin: boolean;
+      equipment: PlayerEquipment;
       spawn_preference: string | null;
     }
   | {
@@ -48,6 +57,10 @@ export type ClientMessage =
       rotation: PlayerRotation;
       current_zone: string;
       is_moving: boolean;
+    }
+  | {
+      type: 'equipment_update';
+      equipment: PlayerEquipment;
     }
   | {
       type: 'set_spawn_preference';
@@ -83,6 +96,11 @@ export type ServerMessage =
       current_zone: string;
       is_moving: boolean;
       timestamp: string;
+    }
+  | {
+      type: 'equipment_broadcast';
+      player_id: string;
+      equipment: PlayerEquipment;
     }
   | {
       type: 'spawn_preference_updated';

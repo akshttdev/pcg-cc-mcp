@@ -38,7 +38,7 @@ INSERT INTO cms_faq_items (id, site_id, question, answer, category, sort_order, 
 ('faq-004', 'omega-wireless-001', 'When will devices ship?', 'We will announce the manufacturing timeline after the Shenzhen sprint. Estimated window will be shown at checkout or in your order email.', 'Shipping', 3, 1);
 
 -- Create page sections for home page
-INSERT INTO cms_page_sections (id, site_id, page_slug, section_slug, content, sort_order, is_active) VALUES
+INSERT INTO cms_page_sections (id, site_id, page_slug, section_key, content, sort_order, is_active) VALUES
 -- Hero section
 ('section-hero-001', 'omega-wireless-001', 'home', 'hero', '{
     "headline": "Host Your Own Secure Network. Earn Rewards.",
@@ -82,7 +82,7 @@ INSERT INTO cms_page_sections (id, site_id, page_slug, section_slug, content, so
 }', 4, 1);
 
 -- Create site settings
-INSERT INTO cms_site_settings (id, site_id, key, value) VALUES
+INSERT INTO cms_site_settings (id, site_id, setting_key, setting_value) VALUES
 ('setting-btc-001', 'omega-wireless-001', 'btc_address', '12cbTwnap9MT5GS6ah7J9cm32Zaz7hjk2B'),
 ('setting-eth-001', 'omega-wireless-001', 'eth_address', '0x49cE915A25Af93254E125Ce84a69E790aD13Dc1e'),
 ('setting-email-001', 'omega-wireless-001', 'contact_email', 'innovate@powerclubglobal.com'),

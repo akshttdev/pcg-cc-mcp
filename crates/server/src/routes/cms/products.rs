@@ -10,6 +10,7 @@ use db::models::cms_site::CmsSite;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
+use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
 
 pub async fn list_products(

@@ -9,6 +9,9 @@ interface EquipmentStore {
   // Equipment: map of slot -> equipped item ID (or null)
   equipped: Record<EquipmentSlot, ItemId | null>;
 
+  // Track if equipment has been initialized for this user
+  initializedForUser: string | null;
+
   // Actions
   addToInventory: (itemId: ItemId) => void;
   removeFromInventory: (itemId: ItemId) => void;
@@ -16,21 +19,38 @@ interface EquipmentStore {
   unequipSlot: (slot: EquipmentSlot) => void;
   isEquipped: (itemId: ItemId) => boolean;
   getEquippedItem: (slot: EquipmentSlot) => ItemId | null;
+  initializeForUser: (userId: string, isAdmin: boolean) => void;
+  resetEquipment: () => void;
 }
+
+// Default empty equipment for regular users
+const EMPTY_EQUIPMENT: Record<EquipmentSlot, ItemId | null> = {
+  head: null,
+  primaryHand: null,
+  secondaryHand: null,
+  back: null,
+};
+
+// Admin equipment loadout
+const ADMIN_INVENTORY: ItemId[] = ['crown', 'blunt', 'fireCape', 'godBook'];
+const ADMIN_EQUIPMENT: Record<EquipmentSlot, ItemId | null> = {
+  head: 'crown',
+  primaryHand: 'blunt',
+  secondaryHand: 'godBook',
+  back: 'fireCape',
+};
 
 export const useEquipmentStore = create<EquipmentStore>()(
   persist(
     (set, get) => ({
-      // Default inventory: player starts with crown, blunt, fire cape, and god book
-      inventory: ['crown', 'blunt', 'fireCape', 'godBook'],
+      // Default: no inventory, no equipment (will be set based on user)
+      inventory: [],
 
-      // Default equipment: all items equipped by default
-      equipped: {
-        head: 'crown',
-        primaryHand: 'blunt',
-        secondaryHand: 'godBook',
-        back: 'fireCape',
-      },
+      // Default equipment: empty
+      equipped: { ...EMPTY_EQUIPMENT },
+
+      // Track which user this equipment was initialized for
+      initializedForUser: null,
 
       addToInventory: (itemId) =>
         set((state) => ({
@@ -78,6 +98,64 @@ export const useEquipmentStore = create<EquipmentStore>()(
       },
 
       getEquippedItem: (slot) => get().equipped[slot],
+
+      // Initialize equipment based on user role
+      initializeForUser: (userId, isAdmin) => {
+        const currentUser = get().initializedForUser;
+        const currentInventory = get().inventory;
+
+        // Check if equipment matches expected state for this user's role
+        const hasAdminEquipment = currentInventory.length === 4 && currentInventory.includes('crown');
+        const equipmentMatchesRole = isAdmin ? hasAdminEquipment : currentInventory.length === 0;
+
+        console.log('[EquipmentStore] initializeForUser called:', {
+          userId,
+          isAdmin,
+          currentUser,
+          currentInventory,
+          hasAdminEquipment,
+          equipmentMatchesRole,
+          willSkip: currentUser === userId && equipmentMatchesRole
+        });
+
+        // Only skip if already initialized for this user AND equipment matches their role
+        if (currentUser === userId && equipmentMatchesRole) {
+          console.log('[EquipmentStore] Skipping - already correctly initialized for this user');
+          return;
+        }
+
+        console.log('[EquipmentStore] Reinitializing - user or equipment mismatch');
+
+        // Set up equipment based on admin status
+        console.log('[EquipmentStore] Setting up equipment, isAdmin:', isAdmin);
+        if (isAdmin) {
+          console.log('[EquipmentStore] Setting ADMIN equipment:', ADMIN_INVENTORY, ADMIN_EQUIPMENT);
+          set({
+            inventory: [...ADMIN_INVENTORY],
+            equipped: { ...ADMIN_EQUIPMENT },
+            initializedForUser: userId,
+          });
+          console.log('[EquipmentStore] After set, state:', get());
+        } else {
+          console.log('[EquipmentStore] Setting EMPTY equipment');
+          // Regular users start with empty inventory and no equipment
+          set({
+            inventory: [],
+            equipped: { ...EMPTY_EQUIPMENT },
+            initializedForUser: userId,
+          });
+          console.log('[EquipmentStore] After set, state:', get());
+        }
+      },
+
+      // Reset equipment (for logout)
+      resetEquipment: () => {
+        set({
+          inventory: [],
+          equipped: { ...EMPTY_EQUIPMENT },
+          initializedForUser: null,
+        });
+      },
     }),
     {
       name: 'pcg-equipment-storage',

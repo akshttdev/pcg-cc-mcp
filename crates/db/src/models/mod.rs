@@ -4,12 +4,11 @@ pub mod agent_conversation;
 pub mod agent_flow;
 pub mod brand_profile;
 pub mod agent_flow_event;
-// CMS models - uncomment after running `cargo sqlx prepare`
-// pub mod cms_faq_item;
-// pub mod cms_page_section;
-// pub mod cms_product;
-// pub mod cms_site;
-// pub mod cms_site_setting;
+pub mod cms_faq_item;
+pub mod cms_page_section;
+pub mod cms_product;
+pub mod cms_site;
+pub mod cms_site_setting;
 pub mod airtable_base;
 pub mod airtable_record_link;
 pub mod agent_task_plan;

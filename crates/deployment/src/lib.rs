@@ -33,6 +33,7 @@ use services::services::{
     media_pipeline::{MediaPipelineError, MediaPipelineService},
     pr_monitor::PrMonitorService,
     sentry::SentryService,
+    topos_scanner::{ToposScannerService, DiscoveredProject},
     worktree_manager::WorktreeError,
 };
 use sqlx::{Error as SqlxError, types::Uuid};
@@ -338,5 +339,136 @@ pub trait Deployment: Clone + Send + Sync + 'static {
             .history_plus_stream()
             .map_ok(|m| m.to_sse_event())
             .boxed()
+    }
+
+    /// Sync projects from the topos directory on startup
+    /// This runs every time the server starts and ensures projects from topos are loaded
+    async fn sync_from_topos(&self) {
+        if !ToposScannerService::is_configured() {
+            tracing::debug!("TOPOS_DIR not configured, skipping topos sync");
+            return;
+        }
+
+        let scanner = ToposScannerService::new();
+
+        match scanner.discover_projects().await {
+            Ok(projects) => {
+                tracing::info!("Discovered {} projects in topos directory", projects.len());
+
+                for project in projects {
+                    self.sync_topos_project(project).await;
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to discover topos projects: {}", e);
+            }
+        }
+    }
+
+    /// Sync a single discovered project from topos
+    async fn sync_topos_project(&self, discovered: DiscoveredProject) {
+        let scanner = ToposScannerService::new();
+
+        // Skip if no git repo found
+        let git_repo_path = match &discovered.git_repo_path {
+            Some(path) => path,
+            None => {
+                tracing::debug!(
+                    "Skipping topos project '{}' - no git repository found",
+                    discovered.name
+                );
+                return;
+            }
+        };
+
+        let repo_path_str = git_repo_path.to_string_lossy().to_string();
+
+        // Check if project already exists with this repo path
+        match Project::find_by_git_repo_path(&self.db().pool, &repo_path_str).await {
+            Ok(Some(existing)) => {
+                tracing::debug!(
+                    "Topos project '{}' already exists in database (id: {})",
+                    discovered.name,
+                    existing.id
+                );
+                return;
+            }
+            Ok(None) => {
+                // Project doesn't exist, create it
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to check for existing project '{}': {}",
+                    discovered.name,
+                    e
+                );
+                return;
+            }
+        }
+
+        // Ensure main branch exists
+        if let Err(e) = self.git().ensure_main_branch_exists(git_repo_path) {
+            tracing::warn!(
+                "Failed to ensure main branch for '{}': {}",
+                discovered.name,
+                e
+            );
+            return;
+        }
+
+        // Determine scripts from metadata
+        let (setup_script, dev_script) = match &discovered.metadata {
+            Some(meta) => (meta.setup_script.clone(), meta.dev_script.clone()),
+            None => (None, None),
+        };
+
+        // Create the project
+        let create_data = CreateProject {
+            name: discovered.name.clone(),
+            git_repo_path: repo_path_str,
+            use_existing_repo: true,
+            setup_script,
+            dev_script,
+            cleanup_script: None,
+            copy_files: None,
+        };
+
+        let project_id = Uuid::new_v4();
+        match Project::create(&self.db().pool, &create_data, project_id).await {
+            Ok(project) => {
+                tracing::info!(
+                    "Created project '{}' from topos (id: {})",
+                    discovered.name,
+                    project.id
+                );
+
+                // Ensure project has standard topos directory structure
+                if let Err(e) = scanner.ensure_project_structure(&discovered.project_path) {
+                    tracing::warn!(
+                        "Failed to ensure topos structure for '{}': {}",
+                        discovered.name,
+                        e
+                    );
+                }
+
+                // Track analytics
+                self.track_if_analytics_allowed(
+                    "project_created",
+                    serde_json::json!({
+                        "project_id": project.id.to_string(),
+                        "source": "topos_sync",
+                        "has_metadata": discovered.metadata.is_some(),
+                    }),
+                )
+                .await;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to create topos project '{}': {}",
+                    discovered.name,
+                    e
+                );
+            }
+        }
     }
 }

@@ -153,8 +153,8 @@ export function RemoteAvatar({ player }: RemoteAvatarProps) {
             </mesh>
           </group>
 
-          {/* Crown - only for admin */}
-          {player.isAdmin && <CrownEquipment />}
+          {/* Crown - based on equipped items */}
+          {player.equipment?.head === 'crown' && <CrownEquipment />}
         </group>
 
         {/* Torso */}
@@ -182,8 +182,8 @@ export function RemoteAvatar({ player }: RemoteAvatarProps) {
             <torusGeometry args={[0.42, 0.06, 12, 24]} />
             <meshStandardMaterial color={colors.dark} metalness={0.8} roughness={0.2} />
           </mesh>
-          {/* Fire Cape - only for admin */}
-          {player.isAdmin && <FireCapeEquipment />}
+          {/* Fire Cape - based on equipped items */}
+          {player.equipment?.back === 'fireCape' && <FireCapeEquipment />}
         </group>
 
         {/* Left Arm */}
@@ -206,8 +206,8 @@ export function RemoteAvatar({ player }: RemoteAvatarProps) {
             <sphereGeometry args={[0.1, 12, 12]} />
             <meshStandardMaterial color={colors.dark} metalness={0.7} />
           </mesh>
-          {/* God Book - only for admin */}
-          {player.isAdmin && <GodBookEquipment />}
+          {/* God Book - based on equipped items */}
+          {player.equipment?.secondaryHand === 'godBook' && <GodBookEquipment />}
         </group>
 
         {/* Right Arm */}

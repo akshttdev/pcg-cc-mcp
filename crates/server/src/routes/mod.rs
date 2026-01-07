@@ -17,7 +17,7 @@ pub mod approvals;
 pub mod artifact_reviews;
 pub mod auth;
 pub mod bowser;
-// pub mod cms; // Uncomment after running `cargo sqlx prepare`
+pub mod cms;
 pub mod collaboration;
 pub mod comments;
 pub mod config;
@@ -129,7 +129,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(crm_contacts::router(&deployment))
         .merge(onboarding::router(&deployment))
         .merge(multiplayer::router(&deployment))
-        // .merge(cms::router(&deployment)) // Uncomment after running `cargo sqlx prepare`
+        .merge(cms::router(&deployment))
         .merge(admin_routes)
         .with_state(deployment);
 

@@ -95,7 +95,7 @@ impl CmsSiteSetting {
             sqlx::query_as!(
                 CmsSiteSetting,
                 r#"UPDATE cms_site_settings SET
-                    setting_value = $3,
+                    setting_value = $2,
                     updated_at = datetime('now', 'subsec')
                 WHERE id = $1
                 RETURNING
@@ -106,7 +106,6 @@ impl CmsSiteSetting {
                     created_at as "created_at!: DateTime<Utc>",
                     updated_at as "updated_at!: DateTime<Utc>""#,
                 existing.id,
-                site_id,
                 value
             )
             .fetch_one(pool)

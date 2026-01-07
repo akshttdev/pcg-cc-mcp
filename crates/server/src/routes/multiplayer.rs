@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, RwLock, mpsc};
 use ts_rs::TS;
 
 use crate::{DeploymentImpl, error::ApiError};
@@ -36,6 +36,16 @@ pub struct PlayerRotation {
     pub y: f32,
 }
 
+// Equipment slots for player avatars
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerEquipment {
+    pub head: Option<String>,
+    pub primary_hand: Option<String>,
+    pub secondary_hand: Option<String>,
+    pub back: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerState {
@@ -44,6 +54,7 @@ pub struct PlayerState {
     pub display_name: String,
     pub avatar_url: Option<String>,
     pub is_admin: bool,
+    pub equipment: PlayerEquipment,
     pub position: PlayerPosition,
     pub rotation: PlayerRotation,
     pub current_zone: String,
@@ -62,6 +73,7 @@ pub enum ClientMessage {
         display_name: String,
         avatar_url: Option<String>,
         is_admin: bool,
+        equipment: PlayerEquipment,
         spawn_preference: Option<String>,
     },
     PositionUpdate {
@@ -69,6 +81,9 @@ pub enum ClientMessage {
         rotation: PlayerRotation,
         current_zone: String,
         is_moving: bool,
+    },
+    EquipmentUpdate {
+        equipment: PlayerEquipment,
     },
     SetSpawnPreference {
         project_slug: Option<String>,
@@ -99,6 +114,10 @@ pub enum ServerMessage {
         current_zone: String,
         is_moving: bool,
         timestamp: DateTime<Utc>,
+    },
+    EquipmentBroadcast {
+        player_id: String,
+        equipment: PlayerEquipment,
     },
     SpawnPreferenceUpdated {
         success: bool,
@@ -179,6 +198,20 @@ impl MultiplayerState {
         }
     }
 
+    pub fn update_player_equipment(
+        &self,
+        player_id: &str,
+        equipment: PlayerEquipment,
+    ) -> bool {
+        if let Some(mut player) = self.players.get_mut(player_id) {
+            player.equipment = equipment;
+            player.last_update = Utc::now();
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn set_spawn_preference(&self, user_id: &str, project_slug: Option<String>) {
         if let Some(slug) = project_slug {
             self.spawn_preferences.insert(user_id.to_string(), slug);
@@ -241,40 +274,61 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
 
     let (mut sender, mut receiver) = socket.split();
 
-    let mut player_id: Option<String> = None;
+    let player_id: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
     let mut last_position_update = std::time::Instant::now();
     const POSITION_THROTTLE_MS: u128 = 100; // 10 updates per second max
 
-    // Spawn task to forward broadcasts to this client
-    let mp_state_clone = mp_state.clone();
+    // Channel for sending messages to the client (allows sending from multiple places)
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel::<ServerMessage>();
+
+    // Spawn task to forward broadcasts and direct messages to this client
     let player_id_for_broadcast = player_id.clone();
     let mut send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            // Don't send position updates back to the sender
-            if let ServerMessage::PositionBroadcast { player_id: pid, .. } = &msg {
-                if player_id_for_broadcast.as_ref() == Some(pid) {
-                    continue;
+        loop {
+            tokio::select! {
+                // Handle broadcast messages
+                Ok(msg) = rx.recv() => {
+                    // Don't send position updates back to the sender
+                    if let ServerMessage::PositionBroadcast { player_id: pid, .. } = &msg {
+                        let current_pid = player_id_for_broadcast.read().await;
+                        if current_pid.as_ref() == Some(pid) {
+                            continue;
+                        }
+                    }
+
+                    let text = match serde_json::to_string(&msg) {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+
+                    if sender.send(Message::Text(text.into())).await.is_err() {
+                        break;
+                    }
                 }
-            }
+                // Handle direct messages to this client
+                Some(msg) = client_rx.recv() => {
+                    let text = match serde_json::to_string(&msg) {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
 
-            let text = match serde_json::to_string(&msg) {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-
-            if sender.send(Message::Text(text.into())).await.is_err() {
-                break;
+                    if sender.send(Message::Text(text.into())).await.is_err() {
+                        break;
+                    }
+                }
+                else => break,
             }
         }
     });
 
     // Handle incoming messages
     let mp_state_for_recv = mp_state.clone();
+    let player_id_for_recv = player_id.clone();
     while let Some(result) = receiver.next().await {
         let msg = match result {
             Ok(Message::Text(text)) => text,
             Ok(Message::Close(_)) => break,
-            Ok(Message::Ping(data)) => {
+            Ok(Message::Ping(_data)) => {
                 // Pong is handled automatically by axum
                 continue;
             }
@@ -300,9 +354,14 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                 display_name,
                 avatar_url,
                 is_admin,
+                equipment,
                 spawn_preference,
             } => {
-                player_id = Some(user_id.clone());
+                // Set the player ID
+                {
+                    let mut pid = player_id_for_recv.write().await;
+                    *pid = Some(user_id.clone());
+                }
 
                 // Get spawn preference from store or use provided
                 let stored_pref = mp_state_for_recv.get_spawn_preference(&user_id);
@@ -319,12 +378,18 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                     PlayerPosition { x: 180.0, y: 1.0, z: 0.0 }
                 };
 
+                // Use default avatar for users without one
+                let effective_avatar = avatar_url.or_else(|| {
+                    Some("/avatars/default-avatar.png".to_string())
+                });
+
                 let new_player = PlayerState {
                     id: user_id.clone(),
                     username,
                     display_name,
-                    avatar_url,
+                    avatar_url: effective_avatar.clone(),
                     is_admin,
+                    equipment,
                     position: spawn_pos.clone(),
                     rotation: PlayerRotation { y: 0.0 },
                     current_zone: if is_admin { "command_center".to_string() } else { "ground".to_string() },
@@ -333,19 +398,20 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                     spawn_preference: effective_spawn,
                 };
 
-                // Send current players snapshot to the new player
+                // Send current players snapshot to the new player BEFORE adding them
                 let existing_players = mp_state_for_recv.get_all_players();
                 let snapshot = ServerMessage::PlayersSnapshot { players: existing_players };
-                let snapshot_text = serde_json::to_string(&snapshot).unwrap();
-                // Note: we can't send directly here since sender is moved, but we'll handle this differently
+                if let Err(e) = client_tx.send(snapshot) {
+                    tracing::warn!("Failed to send players snapshot: {}", e);
+                }
 
                 // Add player to state
                 mp_state_for_recv.add_player(new_player.clone());
 
-                // Broadcast player joined to all
+                // Broadcast player joined to all (including the new player so they see themselves)
                 mp_state_for_recv.broadcast(ServerMessage::PlayerJoined { player: new_player });
 
-                tracing::info!("Player joined: {}", user_id);
+                tracing::info!("Player joined: {} (avatar: {:?})", user_id, effective_avatar);
             }
 
             ClientMessage::PositionUpdate {
@@ -361,7 +427,8 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                 }
                 last_position_update = now;
 
-                if let Some(ref pid) = player_id {
+                let pid = player_id_for_recv.read().await;
+                if let Some(ref pid) = *pid {
                     if mp_state_for_recv.update_player_position(
                         pid,
                         position.clone(),
@@ -382,8 +449,22 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                 }
             }
 
+            ClientMessage::EquipmentUpdate { equipment } => {
+                let pid = player_id_for_recv.read().await;
+                if let Some(ref pid) = *pid {
+                    if mp_state_for_recv.update_player_equipment(pid, equipment.clone()) {
+                        // Broadcast to others
+                        mp_state_for_recv.broadcast(ServerMessage::EquipmentBroadcast {
+                            player_id: pid.clone(),
+                            equipment,
+                        });
+                    }
+                }
+            }
+
             ClientMessage::SetSpawnPreference { project_slug } => {
-                if let Some(ref pid) = player_id {
+                let pid = player_id_for_recv.read().await;
+                if let Some(ref pid) = *pid {
                     mp_state_for_recv.set_spawn_preference(pid, project_slug.clone());
                     mp_state_for_recv.broadcast(ServerMessage::SpawnPreferenceUpdated {
                         success: true,
@@ -393,7 +474,8 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
             }
 
             ClientMessage::Teleport { destination } => {
-                if let Some(ref pid) = player_id {
+                let pid = player_id_for_recv.read().await;
+                if let Some(ref pid) = *pid {
                     // TODO: Add access control check here
                     if let Some(pos) = get_spawn_position(&destination) {
                         mp_state_for_recv.update_player_position(
@@ -438,9 +520,10 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
     }
 
     // Cleanup on disconnect
-    if let Some(pid) = player_id {
+    let pid = player_id.read().await;
+    if let Some(ref pid) = *pid {
         let mp_state = get_multiplayer_state().await;
-        mp_state.remove_player(&pid);
+        mp_state.remove_player(pid);
         mp_state.broadcast(ServerMessage::PlayerLeft { player_id: pid.clone() });
         tracing::info!("Player left: {}", pid);
     }

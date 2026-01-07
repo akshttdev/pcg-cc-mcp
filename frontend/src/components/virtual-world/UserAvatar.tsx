@@ -21,6 +21,7 @@ export interface BuildingCollider {
 interface UserAvatarProps {
   initialPosition?: [number, number, number];
   color?: string;
+  isAdmin?: boolean;
   onPositionChange?: (position: THREE.Vector3) => void;
   onInteract?: () => void;
   isSuspended?: boolean;
@@ -64,6 +65,7 @@ const BUILDING_HALF_LENGTH = 50;
 export function UserAvatar({
   initialPosition = [0, 0, 30],
   color = '#ff8800',
+  isAdmin = false,
   onPositionChange,
   onInteract,
   isSuspended = false,
@@ -528,6 +530,7 @@ export function UserAvatar({
       <group ref={avatarRef}>
         <HumanoidAvatar
           color={color}
+          isAdmin={isAdmin}
           animationRef={animationStateRef}
           showJetpack={canFly && flightModeRef.current}
         />
@@ -549,13 +552,27 @@ export function UserAvatar({
 // HUMANOID AVATAR COMPONENT
 // ============================================================================
 
+// Color schemes for different user types
+const ADMIN_COLORS = {
+  main: '#f5f5f5',    // White
+  accent: '#ffd700',  // Gold
+  dark: '#1a1a1a',
+};
+
+const DEFAULT_COLORS = {
+  main: '#7a8b99',    // Steel gray
+  accent: '#00bcd4',  // Cyan
+  dark: '#2a2a2a',
+};
+
 interface HumanoidAvatarProps {
   color: string;
+  isAdmin: boolean;
   animationRef: React.MutableRefObject<AnimationDescriptor>;
   showJetpack?: boolean;
 }
 
-function HumanoidAvatar({ color: _color, animationRef, showJetpack = false }: HumanoidAvatarProps) {
+function HumanoidAvatar({ color: _color, isAdmin, animationRef, showJetpack = false }: HumanoidAvatarProps) {
   const bodyRef = useRef<THREE.Group>(null);
   const headRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Group>(null);
@@ -569,6 +586,9 @@ function HumanoidAvatar({ color: _color, animationRef, showJetpack = false }: Hu
   const hasBlunt = equipped.primaryHand === 'blunt';
   const hasGodBook = equipped.secondaryHand === 'godBook';
   const hasFireCape = equipped.back === 'fireCape';
+
+  // Select colors based on admin status
+  const colors = isAdmin ? ADMIN_COLORS : DEFAULT_COLORS;
 
   useFrame((state) => {
     const { mode, intensity } = animationRef.current;
@@ -618,9 +638,9 @@ function HumanoidAvatar({ color: _color, animationRef, showJetpack = false }: Hu
     }
   });
 
-  const mainColor = '#f5f5f5';
-  const accentColor = '#ffd700';
-  const darkColor = '#1a1a1a';
+  const mainColor = colors.main;
+  const accentColor = colors.accent;
+  const darkColor = colors.dark;
 
   return (
     <group ref={bodyRef}>

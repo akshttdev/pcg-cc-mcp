@@ -1,0 +1,128 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                site_id as \"site_id!: Uuid\",\n                slug,\n                name,\n                short_description,\n                long_description,\n                price_cents as \"price_cents!: i64\",\n                currency,\n                stripe_price_id,\n                image_url,\n                gallery_images,\n                specs,\n                features,\n                is_active as \"is_active!: bool\",\n                is_featured as \"is_featured!: bool\",\n                stock_status,\n                sort_order as \"sort_order!: i64\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            FROM cms_products\n            WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "site_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "slug",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "short_description",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "long_description",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "price_cents!: i64",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "currency",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "stripe_price_id",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "image_url",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "gallery_images",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "specs",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "features",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_active!: bool",
+        "ordinal": 13,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_featured!: bool",
+        "ordinal": 14,
+        "type_info": "Integer"
+      },
+      {
+        "name": "stock_status",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "sort_order!: i64",
+        "ordinal": 16,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 17,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 18,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "0c1e86b4c1ad8f09ee717f0b8e85b09d7cd467b7c05d3b6dcdbd172447f8f3bc"
+}

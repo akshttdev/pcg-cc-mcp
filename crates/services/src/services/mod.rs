@@ -25,5 +25,6 @@ pub mod pcg_policy;
 pub mod pr_monitor;
 pub mod sentry;
 pub mod slot_manager;
+pub mod topos_scanner;
 pub mod worktree_manager;
 pub mod social;

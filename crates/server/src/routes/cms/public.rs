@@ -14,6 +14,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use std::collections::HashMap;
 
+use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError};
 
 #[derive(Debug, Serialize, TS)]

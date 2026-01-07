@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { BUILDING_THEMES, BuildingTheme, BuildingType } from '@/lib/virtual-world/buildingTypes';
 import { INTERIOR_CAMERA, INTERIOR_ROOM } from '@/lib/virtual-world/constants';
 import { UserAvatar } from '@/components/virtual-world/UserAvatar';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CustomEnvironmentConfig {
   url: string;
@@ -38,6 +39,8 @@ interface BuildingInteriorProps {
 }
 
 export function BuildingInterior({ project, onExit, playerColor }: BuildingInteriorProps) {
+  const { user } = useAuth();
+  const isAdmin = user?.is_admin ?? false;
   const theme = BUILDING_THEMES[project.type];
   const energyPercent = (project.energy * 100).toFixed(1);
   const customEnv = PROJECT_ENVIRONMENTS[project.name];
@@ -104,6 +107,7 @@ export function BuildingInterior({ project, onExit, playerColor }: BuildingInter
         <UserAvatar
           initialPosition={spawnPosition}
           color={playerColor}
+          isAdmin={isAdmin}
           onInteract={onExit}
           canFly={true}
           buildings={[]}

@@ -32,6 +32,8 @@ import { getBuildingType } from '@/lib/virtual-world/buildingTypes';
 import { ENTRY_TRIGGER_DISTANCE } from '@/lib/virtual-world/constants';
 import { cn } from '@/lib/utils';
 import { useProjectList } from '@/hooks/api/useProjectList';
+import { useAuth } from '@/contexts/AuthContext';
+import { useEquipmentStore } from '@/stores/useEquipmentStore';
 import type { Project } from 'shared/types';
 
 // Topos directory items for the Data Sphere visualization
@@ -265,6 +267,15 @@ function EnhancedParticles() {
 }
 
 export function VirtualEnvironmentPage() {
+  // Get current user info
+  const { user } = useAuth();
+  const isAdmin = user?.is_admin ?? false;
+
+  // Debug: Equipment store state
+  const equipped = useEquipmentStore((s) => s.equipped);
+  const inventory = useEquipmentStore((s) => s.inventory);
+  const initializedForUser = useEquipmentStore((s) => s.initializedForUser);
+
   // Fetch projects from the Dashboard API
   const { data: apiProjects = [], isLoading: projectsLoading, error: projectsError } = useProjectList();
 
@@ -635,6 +646,7 @@ export function VirtualEnvironmentPage() {
           <UserAvatar
             initialPosition={INITIAL_PLAYER_POSITION}
             color={PLAYER_COLOR}
+            isAdmin={isAdmin}
             onPositionChange={handleUserPositionChange}
             onInteract={handleAttemptEnter}
             isSuspended={Boolean(activeInterior || isConsoleInputActive)}
@@ -659,6 +671,20 @@ export function VirtualEnvironmentPage() {
                 size={220}
               />
             </div>
+          </div>
+
+          {/* Debug Panel - Remove after testing */}
+          <div className="pointer-events-auto absolute top-4 left-4 w-64 rounded-lg border border-red-500/50 bg-black/90 p-3 font-mono text-xs text-red-400">
+            <div className="mb-2 font-bold text-red-300">DEBUG STATE</div>
+            <div>User: {user?.username || 'none'}</div>
+            <div>user.is_admin: {String(user?.is_admin)}</div>
+            <div>isAdmin (derived): {String(isAdmin)}</div>
+            <div>initializedForUser: {initializedForUser || 'null'}</div>
+            <div>inventory: [{inventory.join(', ')}]</div>
+            <div>equipped.head: {equipped.head || 'null'}</div>
+            <div>equipped.primaryHand: {equipped.primaryHand || 'null'}</div>
+            <div>equipped.secondaryHand: {equipped.secondaryHand || 'null'}</div>
+            <div>equipped.back: {equipped.back || 'null'}</div>
           </div>
 
           <div className="pointer-events-auto absolute bottom-4 left-4 w-[min(30rem,calc(100%-2rem))]">

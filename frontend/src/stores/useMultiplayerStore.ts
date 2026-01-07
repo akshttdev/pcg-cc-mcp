@@ -3,6 +3,7 @@ import type {
   RemotePlayer,
   PlayerPosition,
   PlayerRotation,
+  PlayerEquipment,
   ClientMessage,
   ServerMessage,
 } from '@/types/multiplayer';
@@ -25,6 +26,7 @@ interface MultiplayerStore {
     displayName: string,
     avatarUrl: string | null,
     isAdmin: boolean,
+    equipment: PlayerEquipment,
     spawnPreference: string | null
   ) => void;
   disconnect: () => void;
@@ -34,6 +36,7 @@ interface MultiplayerStore {
     currentZone: string,
     isMoving: boolean
   ) => void;
+  sendEquipmentUpdate: (equipment: PlayerEquipment) => void;
   setSpawnPreference: (projectSlug: string | null) => void;
   teleport: (destination: string) => void;
 
@@ -53,7 +56,7 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
   spawnPreference: null,
   _lastPositionUpdate: 0,
 
-  connect: (userId, username, displayName, avatarUrl, isAdmin, spawnPreference) => {
+  connect: (userId, username, displayName, avatarUrl, isAdmin, equipment, spawnPreference) => {
     const { ws: existingWs } = get();
     if (existingWs) {
       existingWs.close();
@@ -78,6 +81,7 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
           display_name: displayName,
           avatar_url: avatarUrl,
           is_admin: isAdmin,
+          equipment,
           spawn_preference: spawnPreference,
         };
         ws.send(JSON.stringify(joinMessage));
@@ -142,6 +146,18 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
     };
     ws.send(JSON.stringify(message));
     set({ _lastPositionUpdate: now });
+  },
+
+  sendEquipmentUpdate: (equipment) => {
+    const { ws, isConnected } = get();
+    if (!ws || !isConnected) return;
+
+    const message: ClientMessage = {
+      type: 'equipment_update',
+      equipment,
+    };
+    ws.send(JSON.stringify(message));
+    console.log('[Multiplayer] Sent equipment update:', equipment);
   },
 
   setSpawnPreference: (projectSlug) => {
@@ -229,6 +245,25 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
               lastUpdate: Date.now(),
             });
             set({ remotePlayers: newPlayers });
+          }
+          break;
+        }
+
+        case 'equipment_broadcast': {
+          const { localPlayerId, remotePlayers } = get();
+          // Don't update self
+          if (message.player_id === localPlayerId) break;
+
+          const player = remotePlayers.get(message.player_id);
+          if (player) {
+            const newPlayers = new Map(remotePlayers);
+            newPlayers.set(message.player_id, {
+              ...player,
+              equipment: message.equipment,
+              lastUpdate: Date.now(),
+            });
+            set({ remotePlayers: newPlayers });
+            console.log('[Multiplayer] Equipment updated for:', message.player_id, message.equipment);
           }
           break;
         }

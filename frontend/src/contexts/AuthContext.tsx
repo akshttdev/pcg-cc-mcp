@@ -1,6 +1,7 @@
 // Auth Context for managing user authentication state
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserProfile, login as apiLogin, logout as apiLogout, getCurrentUser } from '../lib/auth-api';
+import { useEquipmentStore } from '../stores/useEquipmentStore';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -16,11 +17,26 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const initializeEquipment = useEquipmentStore((state) => state.initializeForUser);
+  const resetEquipment = useEquipmentStore((state) => state.resetEquipment);
 
   // Check for existing session on mount
   useEffect(() => {
     checkSession();
   }, []);
+
+  // Initialize equipment when user changes
+  useEffect(() => {
+    if (user) {
+      console.log('[AuthContext] User changed, initializing equipment:', {
+        userId: user.id,
+        username: user.username,
+        is_admin: user.is_admin,
+        typeof_is_admin: typeof user.is_admin
+      });
+      initializeEquipment(user.id, user.is_admin);
+    }
+  }, [user, initializeEquipment]);
 
   async function checkSession() {
     try {
@@ -39,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const userProfile = await apiLogin({ username, password });
       setUser(userProfile);
+      // Equipment will be initialized by the useEffect
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -48,10 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     try {
       await apiLogout();
+      resetEquipment(); // Clear equipment on logout
       setUser(null);
     } catch (error) {
       console.error('Logout failed:', error);
-      // Even if logout API fails, clear local user state
+      // Even if logout API fails, clear local state
+      resetEquipment();
       setUser(null);
     }
   }

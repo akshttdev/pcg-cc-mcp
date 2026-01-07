@@ -516,6 +516,7 @@ export function EmbedVirtualEnvironmentPage() {
           <UserAvatar
             initialPosition={initialPosition}
             color="#10b981" // Emerald color for Jungleverse visitors
+            isAdmin={user?.is_admin ?? false}
             onPositionChange={handleUserPositionChange}
             isSuspended={isChatInputActive}
             canFly

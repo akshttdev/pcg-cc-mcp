@@ -7,6 +7,7 @@ use axum::{
 use db::models::cms_site::CmsSite;
 use uuid::Uuid;
 
+use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError, middleware::require_auth};
 
 pub mod faq_items;
