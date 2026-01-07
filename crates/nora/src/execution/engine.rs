@@ -696,24 +696,23 @@ impl ExecutionEngine {
                     // Clone output for event data before moving into artifact
                     let output_for_event = output.clone();
 
-                    // Extract output summary for the event (truncate if too long)
+                    // Extract output for the event - preserve full content for conversational context
+                    // Increased limit to 15000 chars to enable rich agent conversations
+                    const MAX_OUTPUT_LEN: usize = 15000;
                     let output_summary = if let Some(s) = output_for_event.as_str() {
-                        if s.len() > 2000 {
-                            format!("{}...", &s[..2000])
+                        if s.len() > MAX_OUTPUT_LEN {
+                            format!("{}...\n[Output truncated. {} total chars]", &s[..MAX_OUTPUT_LEN], s.len())
                         } else {
                             s.to_string()
                         }
                     } else if let Some(obj) = output_for_event.as_object() {
-                        // Try to get a summary field or stringify the object
-                        obj.get("summary")
-                            .or_else(|| obj.get("result"))
-                            .or_else(|| obj.get("output"))
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| {
-                                let s = serde_json::to_string_pretty(&output_for_event).unwrap_or_default();
-                                if s.len() > 2000 { format!("{}...", &s[..2000]) } else { s }
-                            })
+                        // Try to get a summary field first, but also include full structured data
+                        let full_json = serde_json::to_string_pretty(&output_for_event).unwrap_or_default();
+                        if full_json.len() > MAX_OUTPUT_LEN {
+                            format!("{}...\n[Output truncated. {} total chars]", &full_json[..MAX_OUTPUT_LEN], full_json.len())
+                        } else {
+                            full_json
+                        }
                     } else {
                         serde_json::to_string(&output_for_event).unwrap_or_default()
                     };

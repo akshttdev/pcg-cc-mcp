@@ -17,6 +17,7 @@ pub mod approvals;
 pub mod artifact_reviews;
 pub mod auth;
 pub mod bowser;
+// pub mod cms; // Uncomment after running `cargo sqlx prepare`
 pub mod collaboration;
 pub mod comments;
 pub mod config;
@@ -57,6 +58,7 @@ pub mod social_inbox;
 pub mod email_accounts;
 pub mod crm_contacts;
 pub mod onboarding;
+pub mod multiplayer;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -126,6 +128,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(email_accounts::router(&deployment))
         .merge(crm_contacts::router(&deployment))
         .merge(onboarding::router(&deployment))
+        .merge(multiplayer::router(&deployment))
+        // .merge(cms::router(&deployment)) // Uncomment after running `cargo sqlx prepare`
         .merge(admin_routes)
         .with_state(deployment);
 

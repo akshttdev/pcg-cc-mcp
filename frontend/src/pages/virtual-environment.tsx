@@ -22,6 +22,8 @@ import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
 import { ToposDataSphere } from '@/components/virtual-world/ToposDataSphere';
 import { UserAvatar, type BuildingCollider } from '@/components/virtual-world/UserAvatar';
 import { BuildingInterior } from '@/components/virtual-world/BuildingInterior';
+import { MultiplayerManager } from '@/components/virtual-world/MultiplayerManager';
+import { useMultiplayerStore } from '@/stores/useMultiplayerStore';
 import { AgentWorkspaceLevel, getAgentBayBounds } from '@/components/virtual-world/AgentWorkspaceLevel';
 import { SpiralStaircase } from '@/components/virtual-world/SpiralStaircase';
 import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
@@ -349,9 +351,40 @@ export function VirtualEnvironmentPage() {
     updateNoraLine(`${line} ${project.name}.`);
   }, [updateNoraLine]);
 
+  const sendPositionUpdate = useMultiplayerStore((s) => s.sendPositionUpdate);
+  const multiplayerIsConnected = useMultiplayerStore((s) => s.isConnected);
+  const isMovingRef = useRef(false);
+  const lastPositionRef = useRef<[number, number, number]>(INITIAL_PLAYER_POSITION);
+
   const handleUserPositionChange = useCallback((vector: THREE.Vector3) => {
-    setUserPosition([vector.x, vector.y, vector.z]);
-  }, []);
+    const newPos: [number, number, number] = [vector.x, vector.y, vector.z];
+    setUserPosition(newPos);
+
+    // Determine if player is moving (position changed significantly)
+    const [lx, ly, lz] = lastPositionRef.current;
+    const dist = Math.hypot(vector.x - lx, vector.y - ly, vector.z - lz);
+    isMovingRef.current = dist > 0.01;
+    lastPositionRef.current = newPos;
+
+    // Determine zone based on position
+    let zone = 'ground';
+    const distFromCenter = Math.hypot(vector.x, vector.z);
+    if (vector.y >= 75 && distFromCenter <= 45) {
+      zone = 'command_center';
+    } else if (vector.y >= 65 && vector.y < 78) {
+      zone = 'workspace';
+    }
+
+    // Send position to multiplayer
+    if (multiplayerIsConnected) {
+      sendPositionUpdate(
+        { x: vector.x, y: vector.y, z: vector.z },
+        { y: 0 }, // Rotation - UserAvatar doesn't expose this yet
+        zone,
+        isMovingRef.current
+      );
+    }
+  }, [sendPositionUpdate, multiplayerIsConnected]);
 
   const enterTarget = useMemo(() => {
     if (activeInterior) return null;
@@ -608,6 +641,9 @@ export function VirtualEnvironmentPage() {
             canFly
             buildings={buildingColliders}
           />
+
+          {/* Multiplayer - renders other players */}
+          <MultiplayerManager />
 
         </Suspense>
       </Canvas>

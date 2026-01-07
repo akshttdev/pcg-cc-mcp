@@ -1,6 +1,6 @@
 export type EquipmentSlot = 'head' | 'primaryHand' | 'secondaryHand' | 'back';
 
-export type ItemId = 'crown' | 'blunt' | 'jetpack' | 'fireCape';
+export type ItemId = 'crown' | 'blunt' | 'jetpack' | 'fireCape' | 'godBook';
 
 export interface InventoryItem {
   id: ItemId;
@@ -44,5 +44,12 @@ export const ITEM_DEFINITIONS: Record<ItemId, InventoryItem> = {
     description: 'Earned from the TzHaar Fight Cave. Animated lava flows within.',
     slot: 'back',
     icon: 'Flame',
+  },
+  godBook: {
+    id: 'godBook',
+    name: 'Book of Law',
+    description: 'Armadyl\'s sacred text. Contains deployment knowledge for rebuilding civilization.',
+    slot: 'secondaryHand',
+    icon: 'BookOpen',
   },
 };

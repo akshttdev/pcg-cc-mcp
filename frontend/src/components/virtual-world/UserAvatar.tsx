@@ -11,7 +11,7 @@ import {
   AVATAR_RADIUS,
 } from '@/lib/virtual-world/spatialSystem';
 import { useEquipmentStore } from '@/stores/useEquipmentStore';
-import { CrownEquipment, BluntEquipment, FireCapeEquipment } from './equipment';
+import { CrownEquipment, BluntEquipment, FireCapeEquipment, GodBookEquipment } from './equipment';
 
 export interface BuildingCollider {
   position: [number, number, number];
@@ -567,6 +567,7 @@ function HumanoidAvatar({ color: _color, animationRef, showJetpack = false }: Hu
   const equipped = useEquipmentStore((s) => s.equipped);
   const hasCrown = equipped.head === 'crown';
   const hasBlunt = equipped.primaryHand === 'blunt';
+  const hasGodBook = equipped.secondaryHand === 'godBook';
   const hasFireCape = equipped.back === 'fireCape';
 
   useFrame((state) => {
@@ -686,6 +687,8 @@ function HumanoidAvatar({ color: _color, animationRef, showJetpack = false }: Hu
           <sphereGeometry args={[0.1, 12, 12]} />
           <meshStandardMaterial color={darkColor} metalness={0.7} />
         </mesh>
+        {/* God Book held in offhand */}
+        {hasGodBook && <GodBookEquipment />}
       </group>
 
       {/* Right Arm */}

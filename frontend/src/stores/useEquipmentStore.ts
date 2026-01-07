@@ -21,14 +21,14 @@ interface EquipmentStore {
 export const useEquipmentStore = create<EquipmentStore>()(
   persist(
     (set, get) => ({
-      // Default inventory: player starts with crown, blunt, and fire cape
-      inventory: ['crown', 'blunt', 'fireCape'],
+      // Default inventory: player starts with crown, blunt, fire cape, and god book
+      inventory: ['crown', 'blunt', 'fireCape', 'godBook'],
 
-      // Default equipment: crown, blunt, and fire cape are equipped by default
+      // Default equipment: all items equipped by default
       equipped: {
         head: 'crown',
         primaryHand: 'blunt',
-        secondaryHand: null,
+        secondaryHand: 'godBook',
         back: 'fireCape',
       },
 

@@ -2,44 +2,42 @@ import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
-interface FireEmbersProps {
-  bottomY: number;
-  width: number;
-}
+// OSRS Fire Cape - Earned from TzHaar Fight Cave
+// Features organic lava blob pattern on orange/yellow background
+// with olive/brown clasp and pointed bottom
 
 export function FireCapeEquipment() {
   const capeGroupRef = useRef<THREE.Group>(null);
 
-  const { capeGeometry, edgeGeometry, bottomExtent, width } = useMemo(() => {
-    const topWidth = 0.42;
-    const midWidth = 0.82;
-    const bottomWidth = 1.05;
-    const height = 1.45;
-    const notchDepth = 0.2;
+  // Create cape shape - pointed bottom like OSRS reference
+  const { capeGeometry, edgeGeometry } = useMemo(() => {
+    const topWidth = 0.38;
+    const midWidth = 0.75;
+    const height = 1.35;
 
     const shape = new THREE.Shape();
+    // Start from top left
     shape.moveTo(-topWidth / 2, 0);
+    // Top edge
     shape.lineTo(topWidth / 2, 0);
-    shape.quadraticCurveTo(topWidth * 0.45, -0.18, midWidth / 2, -height * 0.35);
-    shape.quadraticCurveTo(bottomWidth / 2 + 0.05, -height * 0.7, bottomWidth / 2, -height);
-    shape.lineTo(bottomWidth / 2 - 0.18, -height - notchDepth * 0.1);
-    shape.lineTo(0.18, -height - notchDepth);
-    shape.lineTo(-0.02, -height - notchDepth * 1.35);
-    shape.lineTo(-(bottomWidth / 2 - 0.22), -height - notchDepth * 0.25);
-    shape.lineTo(-(bottomWidth / 2 + 0.06), -height * 0.7);
-    shape.quadraticCurveTo(-(midWidth / 2), -height * 0.35, -topWidth / 2, 0);
+    // Right side - curves outward then tapers to point
+    shape.quadraticCurveTo(topWidth * 0.6, -0.15, midWidth / 2, -height * 0.3);
+    shape.quadraticCurveTo(midWidth / 2 + 0.08, -height * 0.6, midWidth * 0.35, -height * 0.85);
+    // Bottom point
+    shape.lineTo(0, -height);
+    // Left side - mirror of right
+    shape.lineTo(-midWidth * 0.35, -height * 0.85);
+    shape.quadraticCurveTo(-midWidth / 2 - 0.08, -height * 0.6, -midWidth / 2, -height * 0.3);
+    shape.quadraticCurveTo(-topWidth * 0.6, -0.15, -topWidth / 2, 0);
     shape.closePath();
 
-    const geometry = new THREE.ShapeGeometry(shape, 64);
-    geometry.computeBoundingBox();
+    const geometry = new THREE.ShapeGeometry(shape, 32);
     const edges = new THREE.EdgesGeometry(geometry, 60);
-    const bbox = geometry.boundingBox;
-    const bottomY = bbox ? bbox.min.y : -height;
-    const totalWidth = bbox ? bbox.max.x - bbox.min.x : bottomWidth;
 
-    return { capeGeometry: geometry, edgeGeometry: edges, bottomExtent: bottomY, width: totalWidth };
+    return { capeGeometry: geometry, edgeGeometry: edges };
   }, []);
 
+  // Create lava texture matching OSRS style - organic blobs
   const fireCapeTexture = useMemo(() => {
     if (typeof document === 'undefined') return null;
 
@@ -50,171 +48,154 @@ export function FireCapeEquipment() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
+    // Base gradient - light orange/yellow at top, deeper orange at bottom
     const gradient = ctx.createLinearGradient(0, 0, 0, size);
-    gradient.addColorStop(0, '#fdd275');
-    gradient.addColorStop(1, '#f0781d');
+    gradient.addColorStop(0, '#f5c563'); // Light golden yellow
+    gradient.addColorStop(0.3, '#f0a03c'); // Orange-yellow
+    gradient.addColorStop(0.7, '#e88a2a'); // Orange
+    gradient.addColorStop(1, '#d97020'); // Deeper orange
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
 
-    const blobCount = 85;
-    for (let i = 0; i < blobCount; i++) {
-      const radius = (Math.random() * 0.12 + 0.05) * size;
-      const x = (Math.random() * 0.7 + 0.15) * size;
-      const y = (Math.random() * 0.8 + 0.1) * size;
+    // Draw organic lava blobs - darker orange spots
+    // These should look like flowing lava pools
+    const drawLavaBlob = (x: number, y: number, w: number, h: number, rotation: number) => {
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate((Math.random() - 0.5) * Math.PI);
-      ctx.scale(1, Math.random() * 0.5 + 0.6);
-      const blobGradient = ctx.createRadialGradient(0, 0, radius * 0.15, 0, 0, radius);
-      blobGradient.addColorStop(0, 'rgba(255, 160, 40, 0.9)');
-      blobGradient.addColorStop(1, 'rgba(206, 69, 16, 0.8)');
+      ctx.rotate(rotation);
+
+      // Create organic blob shape
+      const blobGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(w, h));
+      blobGradient.addColorStop(0, 'rgba(180, 80, 30, 0.85)'); // Dark orange center
+      blobGradient.addColorStop(0.5, 'rgba(200, 100, 40, 0.7)'); // Medium orange
+      blobGradient.addColorStop(1, 'rgba(220, 130, 50, 0.0)'); // Fade to transparent
+
       ctx.fillStyle = blobGradient;
       ctx.beginPath();
-      ctx.ellipse(0, 0, radius, radius * 0.6, 0, 0, Math.PI * 2);
+
+      // Organic blob with irregular edges
+      const points = 12;
+      for (let i = 0; i <= points; i++) {
+        const angle = (i / points) * Math.PI * 2;
+        const radiusVariation = 0.7 + Math.sin(i * 3.7) * 0.3;
+        const rx = w * radiusVariation;
+        const ry = h * radiusVariation;
+        const px = Math.cos(angle) * rx;
+        const py = Math.sin(angle) * ry;
+        if (i === 0) {
+          ctx.moveTo(px, py);
+        } else {
+          ctx.lineTo(px, py);
+        }
+      }
+      ctx.closePath();
       ctx.fill();
       ctx.restore();
+    };
+
+    // Large flowing blobs
+    drawLavaBlob(size * 0.3, size * 0.2, 60, 45, 0.3);
+    drawLavaBlob(size * 0.7, size * 0.15, 50, 40, -0.2);
+    drawLavaBlob(size * 0.5, size * 0.35, 70, 50, 0.1);
+    drawLavaBlob(size * 0.25, size * 0.5, 55, 65, -0.4);
+    drawLavaBlob(size * 0.75, size * 0.45, 60, 55, 0.5);
+    drawLavaBlob(size * 0.4, size * 0.65, 65, 50, 0.2);
+    drawLavaBlob(size * 0.6, size * 0.7, 55, 60, -0.3);
+    drawLavaBlob(size * 0.35, size * 0.85, 50, 45, 0.4);
+    drawLavaBlob(size * 0.65, size * 0.88, 45, 55, -0.1);
+    drawLavaBlob(size * 0.5, size * 0.55, 45, 40, 0.6);
+
+    // Medium blobs for detail
+    for (let i = 0; i < 15; i++) {
+      const x = (Math.random() * 0.7 + 0.15) * size;
+      const y = (Math.random() * 0.85 + 0.1) * size;
+      const w = 25 + Math.random() * 30;
+      const h = 20 + Math.random() * 35;
+      const rot = (Math.random() - 0.5) * Math.PI;
+      drawLavaBlob(x, y, w, h, rot);
     }
 
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.strokeStyle = 'rgba(130, 42, 6, 0.55)';
-    ctx.lineWidth = 6;
-    for (let i = 0; i < blobCount / 2; i++) {
-      ctx.beginPath();
-      ctx.moveTo(Math.random() * size, Math.random() * size);
-      ctx.lineTo(Math.random() * size, Math.random() * size);
-      ctx.stroke();
+    // Small accent blobs
+    for (let i = 0; i < 25; i++) {
+      const x = Math.random() * size;
+      const y = Math.random() * size;
+      const w = 10 + Math.random() * 20;
+      const h = 8 + Math.random() * 18;
+      const rot = Math.random() * Math.PI;
+      drawLavaBlob(x, y, w, h, rot);
     }
-    ctx.globalCompositeOperation = 'source-over';
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = THREE.ClampToEdgeWrapping;
     texture.wrapT = THREE.ClampToEdgeWrapping;
-    texture.anisotropy = 4;
     texture.needsUpdate = true;
     return texture;
   }, []);
 
   useFrame(({ clock }) => {
     if (!capeGroupRef.current) return;
-    const flutter = Math.sin(clock.elapsedTime * 1.8) * 0.04;
-    capeGroupRef.current.rotation.x = 0.35 + flutter;
-    capeGroupRef.current.rotation.z = Math.sin(clock.elapsedTime * 0.9) * 0.02;
-    capeGroupRef.current.position.z = -0.02 - Math.cos(clock.elapsedTime * 1.4) * 0.015;
+    const time = clock.elapsedTime;
+    // Subtle flutter animation
+    const flutter = Math.sin(time * 1.5) * 0.03;
+    capeGroupRef.current.rotation.x = 0.32 + flutter;
+    capeGroupRef.current.rotation.z = Math.sin(time * 0.8) * 0.015;
+    capeGroupRef.current.position.z = -0.02 - Math.cos(time * 1.2) * 0.01;
   });
 
-  return (
-    <group position={[0, 0.68, -0.28]}>
-      {/* Hexagonal hook like the OSRS fire cape */}
-      <mesh position={[0, 0.02, -0.03]} rotation={[Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.07, 0.12, 6]} />
-        <meshStandardMaterial
-          color="#4d2f00"
-          metalness={0.85}
-          roughness={0.25}
-          emissive="#a66c1d"
-          emissiveIntensity={0.2}
-        />
-      </mesh>
+  // OSRS-style olive/brown clasp color
+  const claspColor = '#5a5030'; // Olive brown like the reference
 
-      {/* Cloth loop attaching hook to cape */}
-      <mesh position={[0, -0.08, -0.02]}>
-        <boxGeometry args={[0.08, 0.16, 0.04]} />
+  return (
+    <group position={[0, 0.68, -0.26]}>
+      {/* Hexagonal clasp/hook - olive/brown like OSRS reference */}
+      <mesh position={[0, 0.02, -0.02]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.06, 0.07, 0.04, 6]} />
         <meshStandardMaterial
-          color="#d9931a"
+          color={claspColor}
           metalness={0.4}
           roughness={0.6}
-          emissive="#f9ae32"
-          emissiveIntensity={0.25}
         />
       </mesh>
 
-      <group ref={capeGroupRef} position={[0, -0.18, -0.04]}>
+      {/* Inner clasp detail */}
+      <mesh position={[0, 0.02, -0.02]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.035, 0.04, 0.05, 6]} />
+        <meshStandardMaterial
+          color="#3d3520"
+          metalness={0.3}
+          roughness={0.7}
+        />
+      </mesh>
+
+      {/* Cloth attachment loop */}
+      <mesh position={[0, -0.06, -0.02]}>
+        <boxGeometry args={[0.07, 0.1, 0.035]} />
+        <meshStandardMaterial
+          color="#d98c30"
+          metalness={0.1}
+          roughness={0.7}
+        />
+      </mesh>
+
+      {/* Main cape */}
+      <group ref={capeGroupRef} position={[0, -0.14, -0.03]}>
         <mesh geometry={capeGeometry} castShadow receiveShadow>
           <meshStandardMaterial
-            color="#f59f2c"
+            color="#f0a040"
             map={fireCapeTexture ?? undefined}
-            emissive="#ff9e1a"
-            emissiveIntensity={0.4}
-            roughness={0.65}
-            metalness={0.05}
+            emissive="#e08020"
+            emissiveIntensity={0.15}
+            roughness={0.75}
+            metalness={0}
             side={THREE.DoubleSide}
           />
         </mesh>
+
+        {/* Subtle edge outline */}
         <lineSegments geometry={edgeGeometry}>
-          <lineBasicMaterial color="#5f2304" linewidth={1} />
+          <lineBasicMaterial color="#8a4010" linewidth={1} transparent opacity={0.5} />
         </lineSegments>
-        <FireEmbers bottomY={bottomExtent} width={width * 0.7} />
       </group>
     </group>
-  );
-}
-
-function FireEmbers({ bottomY, width }: FireEmbersProps) {
-  const particlesRef = useRef<THREE.Points>(null);
-  const particleCount = 15;
-
-  const { positions, velocities, lifetimes } = useMemo(() => {
-    const pos = new Float32Array(particleCount * 3);
-    const vel = new Float32Array(particleCount * 3);
-    const life = new Float32Array(particleCount);
-
-    for (let i = 0; i < particleCount; i++) {
-      pos[i * 3] = (Math.random() - 0.5) * width;
-      pos[i * 3 + 1] = bottomY + Math.random() * 0.3;
-      pos[i * 3 + 2] = -0.04 + Math.random() * 0.08;
-
-      vel[i * 3] = (Math.random() - 0.5) * 0.015;
-      vel[i * 3 + 1] = 0.02 + Math.random() * 0.025;
-      vel[i * 3 + 2] = -0.005 - Math.random() * 0.01;
-
-      life[i] = Math.random();
-    }
-
-    return { positions: pos, velocities: vel, lifetimes: life };
-  }, [bottomY, width]);
-
-  useFrame((_, delta) => {
-    if (!particlesRef.current) return;
-
-    const posAttr = particlesRef.current.geometry.attributes.position;
-    const posArray = posAttr.array as Float32Array;
-
-    for (let i = 0; i < particleCount; i++) {
-      lifetimes[i] += delta * 0.3;
-
-      if (lifetimes[i] > 1) {
-        lifetimes[i] = 0;
-        posArray[i * 3] = (Math.random() - 0.5) * width;
-        posArray[i * 3 + 1] = bottomY + Math.random() * 0.3;
-        posArray[i * 3 + 2] = -0.04 + Math.random() * 0.08;
-      } else {
-        posArray[i * 3] += velocities[i * 3];
-        posArray[i * 3 + 1] += velocities[i * 3 + 1];
-        posArray[i * 3 + 2] += velocities[i * 3 + 2];
-      }
-    }
-
-    posAttr.needsUpdate = true;
-  });
-
-  return (
-    <points ref={particlesRef}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          count={particleCount}
-          array={positions}
-          itemSize={3}
-        />
-      </bufferGeometry>
-      <pointsMaterial
-        size={0.04}
-        color="#ffaa00"
-        transparent
-        opacity={0.8}
-        sizeAttenuation
-        blending={THREE.AdditiveBlending}
-      />
-    </points>
   );
 }

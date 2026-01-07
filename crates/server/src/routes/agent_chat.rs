@@ -14,6 +14,7 @@ use axum::{
 use db::models::{
     agent::Agent,
     agent_conversation::{AgentConversation, AgentConversationMessage},
+    agent_flow_event::AgentFlowEvent,
 };
 use deployment::Deployment;
 use futures::stream::Stream;
@@ -175,8 +176,14 @@ pub async fn agent_chat(
         None
     };
 
-    // Build context string
-    let context = build_context_string(&request.context, request.project_id, project_context.as_deref());
+    // Build context string with workflow results for conversational continuity
+    let context = build_context_string_with_workflows(
+        &request.context,
+        request.project_id,
+        project_context.as_deref(),
+        agent_id,
+        pool,
+    ).await;
 
     // Generate response
     let llm_response = llm
@@ -301,8 +308,14 @@ pub async fn agent_chat_stream(
         None
     };
 
-    // Build context
-    let context = build_context_string(&request.context, request.project_id, project_context.as_deref());
+    // Build context with workflow results for conversational continuity
+    let context = build_context_string_with_workflows(
+        &request.context,
+        request.project_id,
+        project_context.as_deref(),
+        agent_id,
+        &pool,
+    ).await;
 
     // Get streaming response
     let stream_result = llm
@@ -484,4 +497,159 @@ fn build_context_string(
     } else {
         parts.join("\n")
     }
+}
+
+/// Build context string from request context, project ID, and workflow results
+async fn build_context_string_with_workflows(
+    context: &Option<serde_json::Value>,
+    project_id: Option<Uuid>,
+    project_context: Option<&str>,
+    agent_id: Uuid,
+    pool: &sqlx::SqlitePool,
+) -> String {
+    let mut parts = Vec::new();
+
+    // Include rich project context if available
+    if let Some(proj_ctx) = project_context {
+        parts.push(proj_ctx.to_string());
+    } else if let Some(project_id) = project_id {
+        parts.push(format!("Project ID: {}", project_id));
+    }
+
+    // Include any additional context from the request
+    if let Some(ctx) = context {
+        if let Some(obj) = ctx.as_object() {
+            for (key, value) in obj {
+                parts.push(format!("{}: {}", key, value));
+            }
+        } else {
+            parts.push(ctx.to_string());
+        }
+    }
+
+    // Fetch recent workflow execution results for this agent
+    if let Ok(workflow_context) = fetch_recent_workflow_results(agent_id, pool).await {
+        if !workflow_context.is_empty() {
+            parts.push(workflow_context);
+        }
+    }
+
+    if parts.is_empty() {
+        "No additional context provided.".to_string()
+    } else {
+        parts.join("\n\n")
+    }
+}
+
+/// Fetch recent workflow execution results for an agent to provide conversational context
+async fn fetch_recent_workflow_results(
+    agent_id: Uuid,
+    pool: &sqlx::SqlitePool,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // First, get the agent's short_name to match in event_data
+    let agent_name: Option<String> = sqlx::query_scalar(
+        r#"SELECT short_name FROM agents WHERE id = ?1"#
+    )
+    .bind(agent_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let agent_name = match agent_name {
+        Some(name) => name,
+        None => return Ok(String::new()),
+    };
+
+    // Query recent flow events that mention this agent in event_data
+    // Since executor_agent_id may be NULL, we search by agent_name in the JSON
+    let events: Vec<AgentFlowEvent> = sqlx::query_as(
+        r#"
+        SELECT * FROM agent_flow_events
+        WHERE created_at > datetime('now', '-24 hours')
+          AND event_type IN ('phase_completed', 'flow_completed')
+          AND event_data LIKE ?1
+        ORDER BY created_at DESC
+        LIMIT 50
+        "#,
+    )
+    .bind(format!("%\"agent_name\":\"{}\"%", agent_name))
+    .fetch_all(pool)
+    .await?;
+
+    if events.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut output = String::new();
+    output.push_str("═══════════════════════════════════════════════════════════════\n");
+    output.push_str("                    RECENT WORKFLOW RESULTS                     \n");
+    output.push_str("═══════════════════════════════════════════════════════════════\n\n");
+
+    // Group events by flow and format them
+    let mut current_flow_id: Option<Uuid> = None;
+
+    for event in events.iter().rev() {
+        // Parse the event data
+        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&event.event_data) {
+            // New flow header
+            if current_flow_id != Some(event.agent_flow_id) {
+                current_flow_id = Some(event.agent_flow_id);
+                output.push_str("───────────────────────────────────────────────────────────────\n");
+                output.push_str(&format!("Workflow: {}\n", event.agent_flow_id));
+                output.push_str("───────────────────────────────────────────────────────────────\n");
+            }
+
+            let event_type = event.event_type.to_string();
+
+            if event_type == "phase_completed" {
+                let phase = data.get("phase")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
+                let duration = data.get("duration_ms")
+                    .and_then(|v| v.as_u64())
+                    .map(|ms| format!("{}ms", ms))
+                    .unwrap_or_default();
+                let agent_name = data.get("agent_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
+
+                output.push_str(&format!("\n▶ Stage: {} (by {})\n", phase, agent_name));
+                if !duration.is_empty() {
+                    output.push_str(&format!("  Duration: {}\n", duration));
+                }
+
+                // Include the full output - this is key for conversationality
+                if let Some(stage_output) = data.get("output") {
+                    output.push_str("  Output:\n");
+                    let output_str = if let Some(s) = stage_output.as_str() {
+                        s.to_string()
+                    } else {
+                        serde_json::to_string_pretty(stage_output).unwrap_or_default()
+                    };
+
+                    // Format each line with indentation
+                    for line in output_str.lines() {
+                        output.push_str(&format!("    {}\n", line));
+                    }
+                }
+            } else if event_type == "flow_completed" {
+                let total_artifacts = data.get("total_artifacts")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let score = data.get("verification_score")
+                    .and_then(|v| v.as_f64());
+
+                output.push_str("\n✓ WORKFLOW COMPLETED\n");
+                output.push_str(&format!("  Artifacts produced: {}\n", total_artifacts));
+                if let Some(s) = score {
+                    output.push_str(&format!("  Verification score: {:.1}%\n", s * 100.0));
+                }
+            }
+        }
+    }
+
+    output.push_str("\n═══════════════════════════════════════════════════════════════\n");
+    output.push_str("You can reference any of the above results in this conversation.\n");
+    output.push_str("═══════════════════════════════════════════════════════════════\n");
+
+    Ok(output)
 }

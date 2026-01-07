@@ -8,7 +8,8 @@ import { SlashCommandMenu, SlashCommand, useSlashCommands } from '@/components/s
 import { cn } from '@/lib/utils';
 import { useAgentDirectory } from '@/hooks/useAgentDirectory';
 import type { AgentCoordinationState, CoordinationEvent } from '@/types/nora';
-import { Activity, Bot, Crown, MessageSquare, Radio, Terminal } from 'lucide-react';
+import { Activity, Bot, Crown, MapPin, MessageSquare, Navigation, Radio, Terminal } from 'lucide-react';
+import { useMultiplayerStore } from '@/stores/useMultiplayerStore';
 
 interface AgentChatConsoleProps {
   className?: string;
@@ -75,6 +76,7 @@ export function AgentChatConsole({
   extraSystemMessageVersion,
 }: AgentChatConsoleProps) {
   const { agents, socketConnected, lastEvent } = useAgentDirectory();
+  const { spawnPreference, setSpawnPreference, teleport } = useMultiplayerStore();
   const [messages, setMessages] = useState<ConsoleMessage[]>(() => [
     {
       id: 'boot',
@@ -120,6 +122,22 @@ export function AgentChatConsole({
         icon: Terminal,
         keywords: ['broadcast', 'say'],
         action: () => setDraft('/global '),
+      },
+      {
+        id: 'spawnpoint',
+        label: '/spawnpoint',
+        description: 'Set your spawn location',
+        icon: MapPin,
+        keywords: ['spawn', 'home', 'default'],
+        action: () => setDraft('/spawnpoint '),
+      },
+      {
+        id: 'teleport',
+        label: '/teleport',
+        description: 'Teleport to a location',
+        icon: Navigation,
+        keywords: ['tp', 'warp', 'goto'],
+        action: () => setDraft('/teleport '),
       },
       {
         id: 'help',
@@ -385,8 +403,40 @@ export function AgentChatConsole({
   );
 
   const handleHelp = useCallback(() => {
-    pushSystemMessage('Slash commands: /nora, /global, /help, and /<agent>. Example: /nora execute sprint retro.');
+    pushSystemMessage('Slash commands: /nora, /global, /spawnpoint, /teleport, /help, and /<agent>. Example: /nora execute sprint retro.');
   }, [pushSystemMessage]);
+
+  const handleSpawnpoint = useCallback(
+    (payload: string) => {
+      if (!payload) {
+        // Show current spawn preference
+        if (spawnPreference) {
+          pushSystemMessage(`Current spawn point: ${spawnPreference}. Use /spawnpoint <project-slug> to change.`);
+        } else {
+          pushSystemMessage('No spawn point set. Use /spawnpoint <project-slug> to set one (e.g., /spawnpoint omega-wireless).');
+        }
+        return;
+      }
+      // Set new spawn preference
+      const slug = payload.toLowerCase().replace(/\s+/g, '-');
+      setSpawnPreference(slug);
+      pushSystemMessage(`Spawn point set to: ${slug}. You will spawn here on next login.`);
+    },
+    [spawnPreference, setSpawnPreference, pushSystemMessage]
+  );
+
+  const handleTeleport = useCallback(
+    (payload: string) => {
+      if (!payload) {
+        pushSystemMessage('Usage: /teleport <location>. Examples: /teleport command-center, /teleport omega-wireless');
+        return;
+      }
+      const destination = payload.toLowerCase().replace(/\s+/g, '-');
+      teleport(destination);
+      pushSystemMessage(`Teleporting to ${destination}...`);
+    },
+    [teleport, pushSystemMessage]
+  );
 
   const handleGlobalBroadcast = useCallback(
     (payload: string) => {
@@ -422,6 +472,14 @@ export function AgentChatConsole({
           }
           handleGlobalBroadcast(payload);
           return;
+        case 'spawnpoint':
+        case 'spawn':
+          handleSpawnpoint(payload);
+          return;
+        case 'teleport':
+        case 'tp':
+          handleTeleport(payload);
+          return;
         case 'help':
           handleHelp();
           return;
@@ -439,7 +497,7 @@ export function AgentChatConsole({
         }
       }
     },
-    [agentCommandMap, handleAgentDirective, handleGlobalBroadcast, handleHelp, submitNoraCommand, pushSystemMessage]
+    [agentCommandMap, handleAgentDirective, handleGlobalBroadcast, handleHelp, handleSpawnpoint, handleTeleport, submitNoraCommand, pushSystemMessage]
   );
 
   const handleSubmit = useCallback(async (): Promise<boolean> => {
