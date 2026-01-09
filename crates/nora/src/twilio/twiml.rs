@@ -164,6 +164,37 @@ impl TwimlBuilder {
         self
     }
 
+    /// Add a Gather element with audio playback (using NORA's TTS)
+    ///
+    /// Instead of using <Say>, this plays pre-generated audio from NORA's voice engine
+    pub fn gather_speech_with_audio(
+        mut self,
+        audio_url: &str,
+        action: &str,
+        timeout: u32,
+        language: &str,
+        hints: Option<&str>,
+    ) -> Self {
+        let children = vec![TwimlElement::Play {
+            url: audio_url.to_string(),
+            loop_count: 1,
+        }];
+
+        self.elements.push(TwimlElement::Gather {
+            input: GatherInput::Speech,
+            action: action.to_string(),
+            method: "POST".to_string(),
+            timeout,
+            speech_timeout: "auto".to_string(),
+            speech_model: "phone_call".to_string(),
+            language: language.to_string(),
+            hints: hints.map(|s| s.to_string()),
+            partial_result_callback: None,
+            children,
+        });
+        self
+    }
+
     /// Add a Play element (play audio file)
     pub fn play(mut self, url: &str, loop_count: u32) -> Self {
         self.elements.push(TwimlElement::Play {
@@ -230,6 +261,49 @@ impl TwimlBuilder {
 
         xml.push_str("</Response>");
         xml
+    }
+
+    /// Create a greeting response with audio playback and speech gathering
+    ///
+    /// Uses NORA's voice engine for TTS instead of Twilio's Polly
+    pub fn greeting_with_audio_and_gather(
+        audio_url: &str,
+        gather_action: &str,
+        language: &str,
+    ) -> String {
+        TwimlBuilder::new()
+            .gather_speech_with_audio(audio_url, gather_action, 10, language, None)
+            .say_british(
+                "I didn't catch that. Please try again, or press any key to speak with me.",
+            )
+            .redirect(gather_action)
+            .build()
+    }
+
+    /// Create a simple response with audio playback and continue gathering
+    ///
+    /// Uses NORA's voice engine for TTS instead of Twilio's Polly
+    pub fn respond_with_audio_and_gather(
+        audio_url: &str,
+        gather_action: &str,
+        language: &str,
+    ) -> String {
+        TwimlBuilder::new()
+            .gather_speech_with_audio(audio_url, gather_action, 10, language, None)
+            .say_british("Is there anything else I can help you with?")
+            .redirect(gather_action)
+            .build()
+    }
+
+    /// Create a goodbye response with audio playback
+    ///
+    /// Uses NORA's voice engine for TTS instead of Twilio's Polly
+    pub fn goodbye_with_audio(audio_url: &str) -> String {
+        TwimlBuilder::new()
+            .play(audio_url, 1)
+            .pause(1)
+            .hangup()
+            .build()
     }
 
     /// Create a greeting response with speech gathering

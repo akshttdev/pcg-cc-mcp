@@ -1,11 +1,13 @@
 //! Twilio phone integration for NORA
 //!
 //! Enables users to call a Twilio virtual number and interact with NORA via voice.
-//! Supports inbound calls, speech recognition, and TTS responses.
+//! Supports inbound calls, speech recognition, and TTS responses using NORA's voice engine.
 
+pub mod audio_cache;
 pub mod call_handler;
 pub mod twiml;
 
+pub use audio_cache::{get_audio_cache, CachedAudio, TwilioAudioCache};
 pub use call_handler::{TwilioCallHandler, TwilioCallState};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

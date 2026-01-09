@@ -24,12 +24,14 @@ services:
       - AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY:-}
       - AZURE_SPEECH_REGION=${AZURE_SPEECH_REGION:-eastus}
       # Twilio Phone Integration (Optional - enables phone calls to NORA)
+      # NOTE: Twilio now uses NORA's voice engine (OpenAI/ElevenLabs) for TTS.
+      # The TWILIO_TTS_VOICE is only used as a fallback if NORA voice fails.
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
       - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-}
       - TWILIO_WEBHOOK_BASE_URL=${TWILIO_WEBHOOK_BASE_URL:-}
       - TWILIO_SPEECH_LANGUAGE=${TWILIO_SPEECH_LANGUAGE:-en-GB}
-      - TWILIO_TTS_VOICE=${TWILIO_TTS_VOICE:-Polly.Amy}
+      - TWILIO_TTS_VOICE=${TWILIO_TTS_VOICE:-Polly.Amy}  # Fallback voice only
       - TWILIO_MAX_CALL_DURATION=${TWILIO_MAX_CALL_DURATION:-3600}
       - TWILIO_RECORDING_ENABLED=${TWILIO_RECORDING_ENABLED:-false}
       - TWILIO_GREETING_MESSAGE=${TWILIO_GREETING_MESSAGE:-}
