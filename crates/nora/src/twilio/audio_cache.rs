@@ -130,11 +130,7 @@ impl TwilioAudioCache {
             id,
             cached.audio_bytes.len(),
             cached.format,
-            if source_text.len() > 50 {
-                format!("{}...", &source_text[..50])
-            } else {
-                source_text.to_string()
-            }
+            truncate_text(source_text, 50)
         );
 
         cache.insert(id.clone(), cached);
@@ -214,6 +210,17 @@ impl TwilioAudioCache {
                 call_sid
             );
         }
+    }
+}
+
+/// Safely truncate a string for logging (UTF-8 aware)
+fn truncate_text(text: &str, max_chars: usize) -> String {
+    let char_count = text.chars().count();
+    if char_count <= max_chars {
+        text.to_string()
+    } else {
+        let truncated: String = text.chars().take(max_chars).collect();
+        format!("{}...", truncated)
     }
 }
 

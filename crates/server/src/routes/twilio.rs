@@ -96,9 +96,8 @@ async fn generate_and_cache_audio(
         .ok_or_else(|| "NORA not initialized".to_string())?;
 
     // Synthesize speech using NORA's voice engine
-    info!("Synthesizing speech with NORA voice engine: '{}'",
-        if text.len() > 50 { format!("{}...", &text[..50]) } else { text.to_string() }
-    );
+    let truncated_text = truncate_for_log(text, 50);
+    info!("Synthesizing speech with NORA voice engine: '{}'", truncated_text);
 
     let audio_base64 = nora
         .voice_engine
@@ -550,6 +549,17 @@ async fn process_with_nora(
 
     // Return just the text content (we synthesize speech separately)
     Ok(response.content)
+}
+
+/// Safely truncate a string for logging (UTF-8 aware)
+fn truncate_for_log(text: &str, max_chars: usize) -> String {
+    let char_count = text.chars().count();
+    if char_count <= max_chars {
+        text.to_string()
+    } else {
+        let truncated: String = text.chars().take(max_chars).collect();
+        format!("{}...", truncated)
+    }
 }
 
 #[cfg(test)]
