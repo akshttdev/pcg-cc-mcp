@@ -579,24 +579,25 @@ impl TextToSpeech for OpenAITTS {
             .as_ref()
             .ok_or_else(|| VoiceError::TTSError("OpenAI API key not configured".to_string()))?;
 
-        // Use the configured voice_id if it's a valid OpenAI voice, otherwise map from profile
-        let valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
-        let voice = if valid_voices.contains(&self.config.voice_id.as_str()) {
-            self.config.voice_id.as_str()
+        // OpenAI voice selection - enforce British voices
+        // "fable" is the only OpenAI voice with a British accent
+        // All British profiles should use "fable" regardless of config
+        let voice = if request.british_accent {
+            // For British accent requests, always use fable
+            "fable"
         } else {
-            // Fall back to profile-based mapping for non-OpenAI voice IDs
-            match request.voice_profile {
-                VoiceProfile::BritishExecutiveFemale => "fable", // Most British-sounding female
-                VoiceProfile::BritishProfessionalFemale => "nova", // Warm professional female
-                VoiceProfile::BritishExecutiveMale => "echo",    // Clear, authoritative male
-                VoiceProfile::BritishProfessionalMale => "onyx", // Deep, professional male
-                VoiceProfile::SystemDefault => "fable",          // Default to British-leaning voice
+            // For non-British requests, respect the configured voice
+            let valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+            if valid_voices.contains(&self.config.voice_id.as_str()) {
+                self.config.voice_id.as_str()
+            } else {
+                "fable" // Default to British
             }
         };
 
         info!(
-            "Synthesizing speech with OpenAI voice: {} (config voice_id: {}, profile: {:?})",
-            voice, self.config.voice_id, request.voice_profile
+            "Synthesizing speech with OpenAI voice: {} (british_accent: {}, profile: {:?})",
+            voice, request.british_accent, request.voice_profile
         );
 
         let payload = serde_json::json!({

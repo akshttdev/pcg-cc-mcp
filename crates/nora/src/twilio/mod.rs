@@ -90,6 +90,14 @@ impl TwilioConfig {
         let phone_number = std::env::var("TWILIO_PHONE_NUMBER").ok()?;
         let webhook_base_url = std::env::var("TWILIO_WEBHOOK_BASE_URL").ok()?;
 
+        // Helper to get env var with fallback if empty
+        let get_env_or_default = |key: &str, default: String| -> String {
+            std::env::var(key)
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or(default)
+        };
+
         Some(Self {
             account_sid,
             auth_token,
@@ -99,14 +107,12 @@ impl TwilioConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_else(default_max_call_duration),
-            speech_language: std::env::var("TWILIO_SPEECH_LANGUAGE")
-                .unwrap_or_else(|_| default_speech_language()),
-            tts_voice: std::env::var("TWILIO_TTS_VOICE").unwrap_or_else(|_| default_tts_voice()),
+            speech_language: get_env_or_default("TWILIO_SPEECH_LANGUAGE", default_speech_language()),
+            tts_voice: get_env_or_default("TWILIO_TTS_VOICE", default_tts_voice()),
             recording_enabled: std::env::var("TWILIO_RECORDING_ENABLED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
-            greeting_message: std::env::var("TWILIO_GREETING_MESSAGE")
-                .unwrap_or_else(|_| default_greeting()),
+            greeting_message: get_env_or_default("TWILIO_GREETING_MESSAGE", default_greeting()),
         })
     }
 }

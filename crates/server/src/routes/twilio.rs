@@ -5,6 +5,7 @@
 //! Now uses NORA's voice engine for TTS instead of Twilio's Polly.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::{
     Form, Router,
@@ -24,6 +25,7 @@ use nora::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::time::timeout;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -80,6 +82,12 @@ pub struct TwilioHealthResponse {
     pub using_nora_voice: bool,
 }
 
+/// Maximum time allowed for TTS generation (Twilio has ~15s timeout, leave margin for response)
+const TTS_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Maximum time allowed for LLM + TTS combined
+const TOTAL_PROCESSING_TIMEOUT: Duration = Duration::from_secs(12);
+
 /// Generate audio using NORA's voice engine and cache it
 async fn generate_and_cache_audio(
     text: &str,
@@ -95,15 +103,17 @@ async fn generate_and_cache_audio(
         .as_ref()
         .ok_or_else(|| "NORA not initialized".to_string())?;
 
-    // Synthesize speech using NORA's voice engine
+    // Synthesize speech using NORA's voice engine with timeout
     let truncated_text = truncate_for_log(text, 50);
     info!("Synthesizing speech with NORA voice engine: '{}'", truncated_text);
 
-    let audio_base64 = nora
-        .voice_engine
-        .synthesize_speech(text)
-        .await
-        .map_err(|e| format!("TTS synthesis failed: {}", e))?;
+    // Apply timeout to TTS generation
+    let tts_future = nora.voice_engine.synthesize_speech(text);
+    let audio_base64 = match timeout(TTS_TIMEOUT, tts_future).await {
+        Ok(Ok(audio)) => audio,
+        Ok(Err(e)) => return Err(format!("TTS synthesis failed: {}", e)),
+        Err(_) => return Err(format!("TTS timeout after {:?}", TTS_TIMEOUT)),
+    };
 
     // Cache the audio
     let cache = get_audio_cache().await;
@@ -507,6 +517,9 @@ pub async fn twilio_health(State(_state): State<DeploymentImpl>) -> impl IntoRes
     (StatusCode::OK, axum::Json(response))
 }
 
+/// Maximum time for LLM to respond (leave time for TTS after)
+const LLM_TIMEOUT: Duration = Duration::from_secs(8);
+
 /// Process speech input with NORA
 async fn process_with_nora(
     speech_text: &str,
@@ -524,9 +537,10 @@ async fn process_with_nora(
         .ok_or_else(|| "NORA not initialized".to_string())?;
 
     // Build the request with context about it being a phone call
+    // Emphasize brevity to keep responses fast
     let phone_context = json!({
         "source": "phone_call",
-        "instruction": "This is a phone conversation. Please respond naturally and conversationally, keeping your response concise (2-3 sentences max) as it will be spoken aloud. Use British English.",
+        "instruction": "IMPORTANT: This is a phone call with strict time limits. Keep your response to 1-2 SHORT sentences only. Be conversational and natural, but extremely concise. Use British English. Do not list items - summarise instead.",
         "conversation_history": context.unwrap_or_default()
     });
 
@@ -541,11 +555,16 @@ async fn process_with_nora(
         timestamp: Utc::now(),
     };
 
-    // Process the request
-    let response = nora
-        .process_request(request)
-        .await
-        .map_err(|e| format!("NORA processing error: {}", e))?;
+    // Process the request with timeout
+    let process_future = nora.process_request(request);
+    let response = match timeout(LLM_TIMEOUT, process_future).await {
+        Ok(Ok(resp)) => resp,
+        Ok(Err(e)) => return Err(format!("NORA processing error: {}", e)),
+        Err(_) => {
+            warn!("LLM timeout after {:?}, using fallback response", LLM_TIMEOUT);
+            return Ok("I'm still thinking about that. Could you ask me again in a simpler way?".to_string());
+        }
+    };
 
     // Return just the text content (we synthesize speech separately)
     Ok(response.content)
