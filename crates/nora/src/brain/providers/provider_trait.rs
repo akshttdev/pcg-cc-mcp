@@ -13,11 +13,13 @@ use ts_rs::TS;
 pub enum ProviderType {
     OpenAI,
     Anthropic,
+    /// Ollama local LLM (OpenAI-compatible)
+    Ollama,
 }
 
 impl Default for ProviderType {
     fn default() -> Self {
-        ProviderType::OpenAI
+        ProviderType::Ollama
     }
 }
 
@@ -26,6 +28,7 @@ impl std::fmt::Display for ProviderType {
         match self {
             ProviderType::OpenAI => write!(f, "openai"),
             ProviderType::Anthropic => write!(f, "anthropic"),
+            ProviderType::Ollama => write!(f, "ollama"),
         }
     }
 }
@@ -37,6 +40,7 @@ impl std::str::FromStr for ProviderType {
         match s.to_lowercase().as_str() {
             "openai" => Ok(ProviderType::OpenAI),
             "anthropic" | "claude" => Ok(ProviderType::Anthropic),
+            "ollama" => Ok(ProviderType::Ollama),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
     }

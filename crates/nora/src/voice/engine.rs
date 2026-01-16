@@ -195,6 +195,10 @@ impl VoiceEngine {
                 info!("Creating OpenAI TTS provider");
                 Ok(Arc::new(super::tts::OpenAITTS::new(&config.tts).await?))
             }
+            TTSProvider::Chatterbox => {
+                info!("Creating Chatterbox TTS provider (local)");
+                Ok(Arc::new(super::tts::ChatterboxTTS::new(&config.tts).await?))
+            }
             TTSProvider::System => {
                 info!("Creating System TTS provider");
                 Ok(Arc::new(super::tts::SystemTTS::new(&config.tts).await?))

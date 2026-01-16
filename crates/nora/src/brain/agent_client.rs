@@ -48,12 +48,12 @@ impl Default for AgentModelConfig {
 /// - "claude-3-5-sonnet-20241022" → Anthropic
 /// - "gpt-4o" → OpenAI
 /// - "gpt-4-turbo" → OpenAI
-/// - "deepseek-chat" → DeepSeek
-/// - "gpt-oss:20b" → DeepSeek (Ollama)
+/// - "gpt-oss" → Ollama (local)
+/// - "llama3.3" → Ollama (local)
 pub fn infer_provider_from_model(model: &str) -> LLMProvider {
     let model_lower = model.to_lowercase();
 
-    // Check DeepSeek/Ollama models FIRST (before generic gpt check)
+    // Check Ollama models FIRST (before generic gpt check)
     if model_lower.starts_with("deepseek")
         || model_lower.starts_with("gpt-oss")
         || model_lower.starts_with("gptoss")
@@ -62,21 +62,23 @@ pub fn infer_provider_from_model(model: &str) -> LLMProvider {
         || model_lower.starts_with("mistral")
         || model_lower.starts_with("phi")
     {
-        LLMProvider::DeepSeek
+        LLMProvider::Ollama
     } else if model_lower.starts_with("claude") || model_lower.contains("anthropic") {
         LLMProvider::Anthropic
-    } else if model_lower.starts_with("gpt")
+    } else if model_lower.starts_with("gpt-4")
+        || model_lower.starts_with("gpt-3")
         || model_lower.starts_with("o1")
         || model_lower.contains("openai")
     {
         LLMProvider::OpenAI
     } else {
-        // Default to DeepSeek/Ollama for unknown models (more flexible local fallback)
-        tracing::warn!(
-            "Unknown model '{}', defaulting to DeepSeek/Ollama provider",
+        // Default to Ollama for unknown models (local-first approach)
+        // This includes: gpt-oss, llama, mistral, codellama, deepseek, etc.
+        tracing::info!(
+            "Model '{}' not recognized as cloud provider, using Ollama (local)",
             model
         );
-        LLMProvider::DeepSeek
+        LLMProvider::Ollama
     }
 }
 
@@ -118,17 +120,10 @@ pub fn normalize_model_name(model: &str, provider: &LLMProvider) -> String {
                 _ => model.to_string(),
             }
         }
-        LLMProvider::DeepSeek => {
-            // Handle DeepSeek and GPT-OSS model aliases (both OpenAI-compatible)
-            match model_lower.as_str() {
-                "deepseek" | "deepseek-chat" | "deepseek-v3" => "deepseek-chat".to_string(),
-                "deepseek-coder" | "deepseek-coder-v2" => "deepseek-coder".to_string(),
-                "deepseek-reasoner" | "deepseek-r1" => "deepseek-reasoner".to_string(),
-                // OpenAI GPT-OSS open source models (via Ollama)
-                "gpt-oss" | "gpt-oss-20b" | "gptoss" => "gpt-oss:20b".to_string(),
-                "gpt-oss-120b" => "gpt-oss:120b".to_string(),
-                _ => model.to_string(),
-            }
+        LLMProvider::Ollama => {
+            // Ollama model names are passed through as-is
+            // Common models: gpt-oss, llama3.3, codellama, mistral, etc.
+            model.to_string()
         }
     }
 }
@@ -158,7 +153,7 @@ pub fn create_client_for_agent(agent: &Agent) -> LLMClient {
         .map(|p| match p.to_lowercase().as_str() {
             "anthropic" | "claude" => LLMProvider::Anthropic,
             "openai" | "gpt" => LLMProvider::OpenAI,
-            "deepseek" | "ollama" | "local" => LLMProvider::DeepSeek,
+            "ollama" | "local" => LLMProvider::Ollama,
             _ => infer_provider_from_model(model),
         })
         .unwrap_or_else(|| infer_provider_from_model(model));
@@ -175,15 +170,14 @@ pub fn create_client_for_agent(agent: &Agent) -> LLMClient {
 
     // Determine endpoint based on provider
     let endpoint = match provider {
-        LLMProvider::DeepSeek => {
-            // Check for custom endpoint first, then try Ollama, then DeepSeek API
+        LLMProvider::Ollama => {
+            // Check for custom endpoint first, then default to Ollama's port
             std::env::var("OLLAMA_ENDPOINT").ok().or_else(|| {
                 // Check if Ollama is running on default port
                 if std::net::TcpStream::connect("127.0.0.1:11434").is_ok() {
                     Some("http://127.0.0.1:11434/v1/chat/completions".to_string())
                 } else {
-                    // Fall back to DeepSeek API
-                    Some("https://api.deepseek.com/v1/chat/completions".to_string())
+                    None
                 }
             })
         }

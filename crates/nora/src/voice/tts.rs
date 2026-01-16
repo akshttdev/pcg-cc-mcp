@@ -725,3 +725,146 @@ impl SystemTTS {
         (minutes * 60.0 * 1000.0) as u64
     }
 }
+
+/// Chatterbox TTS implementation (local resemble-ai/chatterbox)
+///
+/// Chatterbox is a Python library for high-quality TTS. This implementation
+/// expects a local HTTP server wrapping Chatterbox with the following API:
+///
+/// POST /tts
+/// Content-Type: application/json
+/// Body: { "text": "text to synthesize", "voice": "british_female" }
+/// Response: audio/wav or audio/mpeg binary data
+#[derive(Debug)]
+pub struct ChatterboxTTS {
+    config: TTSConfig,
+    client: reqwest::Client,
+    endpoint: String,
+}
+
+impl ChatterboxTTS {
+    pub async fn new(config: &TTSConfig) -> VoiceResult<Self> {
+        // Get Chatterbox endpoint from environment or use default
+        let endpoint = std::env::var("CHATTERBOX_URL")
+            .unwrap_or_else(|_| "http://localhost:8100".to_string());
+
+        info!("Initializing Chatterbox TTS with endpoint: {}", endpoint);
+
+        Ok(Self {
+            config: config.clone(),
+            client: reqwest::Client::new(),
+            endpoint,
+        })
+    }
+}
+
+#[async_trait]
+impl TextToSpeech for ChatterboxTTS {
+    async fn synthesize_speech(&self, request: SpeechRequest) -> VoiceResult<SpeechResponse> {
+        let start_time = Instant::now();
+
+        // Determine voice based on profile
+        let voice = match request.voice_profile {
+            VoiceProfile::BritishExecutiveFemale => "british_female",
+            VoiceProfile::BritishExecutiveMale => "british_male",
+            VoiceProfile::BritishProfessionalFemale => "british_female",
+            VoiceProfile::BritishProfessionalMale => "british_male",
+            VoiceProfile::SystemDefault => "british_female",
+        };
+
+        info!(
+            "Synthesizing speech with Chatterbox voice: {} (profile: {:?})",
+            voice, request.voice_profile
+        );
+
+        // Build the TTS request payload
+        let payload = serde_json::json!({
+            "text": request.text,
+            "voice": voice,
+            "speed": request.speed,
+            "exaggeration": if request.executive_tone { 0.3 } else { 0.5 }
+        });
+
+        let response = self
+            .client
+            .post(format!("{}/tts", self.endpoint))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| VoiceError::NetworkError(e))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            warn!("Chatterbox TTS error: {}", error_text);
+            return Err(VoiceError::TTSError(format!(
+                "Chatterbox TTS error: {}",
+                error_text
+            )));
+        }
+
+        // Get the content type to determine format
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("audio/wav");
+
+        let format = if content_type.contains("mpeg") || content_type.contains("mp3") {
+            AudioFormat::Mp3
+        } else {
+            AudioFormat::Wav
+        };
+
+        let audio_bytes = response
+            .bytes()
+            .await
+            .map_err(|e| VoiceError::NetworkError(e))?;
+
+        let audio_data = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
+        let processing_time = start_time.elapsed().as_millis() as u64;
+
+        info!(
+            "Chatterbox TTS completed in {}ms ({} bytes)",
+            processing_time,
+            audio_bytes.len()
+        );
+
+        Ok(SpeechResponse {
+            audio_data,
+            duration_ms: self.estimate_duration(&request.text),
+            sample_rate: 24000, // Chatterbox default sample rate
+            format,
+            processing_time_ms: processing_time,
+        })
+    }
+
+    async fn get_available_voices(&self) -> VoiceResult<Vec<String>> {
+        // Return known Chatterbox British voices
+        Ok(vec![
+            "british_female".to_string(),
+            "british_male".to_string(),
+        ])
+    }
+
+    async fn is_ready(&self) -> bool {
+        // Check if Chatterbox server is reachable
+        match self
+            .client
+            .get(format!("{}/health", self.endpoint))
+            .send()
+            .await
+        {
+            Ok(response) => response.status().is_success(),
+            Err(_) => false,
+        }
+    }
+}
+
+impl ChatterboxTTS {
+    fn estimate_duration(&self, text: &str) -> u64 {
+        let word_count = text.split_whitespace().count();
+        let minutes = word_count as f64 / 150.0;
+        (minutes * 60.0 * 1000.0) as u64
+    }
+}

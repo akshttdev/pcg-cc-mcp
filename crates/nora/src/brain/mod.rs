@@ -117,7 +117,8 @@ impl LLMResponse {
 pub enum LLMProvider {
     OpenAI,
     Anthropic,
-    DeepSeek,
+    /// Ollama local LLM server (OpenAI-compatible API)
+    Ollama,
 }
 
 /// Configuration for Nora's reasoning engine
@@ -136,8 +137,8 @@ pub struct LLMConfig {
 impl Default for LLMConfig {
     fn default() -> Self {
         Self {
-            provider: LLMProvider::OpenAI,
-            model: "gpt-4o".to_string(),
+            provider: LLMProvider::Ollama,
+            model: "gpt-oss".to_string(),
             temperature: 0.2,
             max_tokens: 600,
             system_prompt: r#"You are Nora, the executive AI assistant for PowerClub Global. Respond in confident British English.
@@ -221,7 +222,7 @@ pub struct LLMClient {
     client: Client,
     api_key: Option<String>,
     cache: Arc<LlmCache>,
-    /// Fallback to local Ollama (DeepSeek) when primary provider fails
+    /// Fallback to local Ollama when primary provider fails
     fallback_endpoint: Option<String>,
     fallback_model: Option<String>,
 }
@@ -231,29 +232,35 @@ impl LLMClient {
         let api_key = match config.provider {
             LLMProvider::OpenAI => std::env::var("OPENAI_API_KEY").ok(),
             LLMProvider::Anthropic => std::env::var("ANTHROPIC_API_KEY").ok(),
-            LLMProvider::DeepSeek => std::env::var("DEEPSEEK_API_KEY").ok(),
+            LLMProvider::Ollama => None, // Ollama doesn't require an API key
         };
 
         let provider_name = match config.provider {
             LLMProvider::OpenAI => "OpenAI",
             LLMProvider::Anthropic => "Anthropic",
-            LLMProvider::DeepSeek => "DeepSeek",
+            LLMProvider::Ollama => "Ollama",
         };
 
-        if api_key.is_some() {
-            tracing::info!("LLMClient initialized with {} API key", provider_name);
-        } else {
-            tracing::warn!(
-                "LLMClient created without API key - {} env var not found",
-                match config.provider {
-                    LLMProvider::OpenAI => "OPENAI_API_KEY",
-                    LLMProvider::Anthropic => "ANTHROPIC_API_KEY",
-                    LLMProvider::DeepSeek => "DEEPSEEK_API_KEY",
-                }
-            );
+        match config.provider {
+            LLMProvider::Ollama => {
+                tracing::info!("LLMClient initialized with Ollama (local, no API key required)");
+            }
+            _ if api_key.is_some() => {
+                tracing::info!("LLMClient initialized with {} API key", provider_name);
+            }
+            _ => {
+                tracing::warn!(
+                    "LLMClient created without API key - {} env var not found",
+                    match config.provider {
+                        LLMProvider::OpenAI => "OPENAI_API_KEY",
+                        LLMProvider::Anthropic => "ANTHROPIC_API_KEY",
+                        LLMProvider::Ollama => "N/A",
+                    }
+                );
+            }
         }
 
-        // Check for local Ollama fallback (DeepSeek or other local models)
+        // Check for local Ollama fallback (local LLM models)
         let fallback_endpoint = std::env::var("OLLAMA_ENDPOINT")
             .ok()
             .or_else(|| {
@@ -284,12 +291,46 @@ impl LLMClient {
     }
 
     pub fn is_ready(&self) -> bool {
-        self.api_key.is_some() || self.config.endpoint.is_some()
+        // Ollama is always ready (local server, no API key needed)
+        matches!(self.config.provider, LLMProvider::Ollama)
+            || self.api_key.is_some()
+            || self.config.endpoint.is_some()
     }
 
     /// Check if LLM is configured and operational
     pub fn is_configured(&self) -> bool {
-        self.config.endpoint.is_some() || self.api_key.is_some()
+        // Ollama is always configured (just needs the local server running)
+        matches!(self.config.provider, LLMProvider::Ollama)
+            || self.config.endpoint.is_some()
+            || self.api_key.is_some()
+    }
+
+    /// Get the appropriate API endpoint based on provider
+    fn get_endpoint(&self) -> String {
+        // Custom endpoint takes priority
+        if let Some(ref endpoint) = self.config.endpoint {
+            return endpoint.clone();
+        }
+
+        // Provider-specific default endpoints
+        match self.config.provider {
+            LLMProvider::Ollama => {
+                // Ollama's OpenAI-compatible endpoint
+                std::env::var("OLLAMA_BASE_URL")
+                    .unwrap_or_else(|_| "http://localhost:11434".to_string())
+                    + "/v1/chat/completions"
+            }
+            LLMProvider::OpenAI | LLMProvider::Anthropic => {
+                // Default OpenAI endpoint
+                "https://api.openai.com/v1/chat/completions".to_string()
+            }
+        }
+    }
+
+    /// Check if authentication is required for the current provider
+    fn requires_auth(&self) -> bool {
+        // Ollama doesn't require authentication
+        !matches!(self.config.provider, LLMProvider::Ollama)
     }
 
     /// Get cache statistics
@@ -322,7 +363,7 @@ impl LLMClient {
         tracing::info!("LLM cache miss - generating from provider");
         let start = std::time::Instant::now();
         let content = match self.config.provider {
-            LLMProvider::OpenAI | LLMProvider::DeepSeek => {
+            LLMProvider::OpenAI | LLMProvider::Ollama => {
                 self.generate_openai(system_prompt, user_query, context)
                     .await?
             }
@@ -362,7 +403,7 @@ impl LLMClient {
         tracing::info!("LLM streaming request (cache bypassed)");
 
         match self.config.provider {
-            LLMProvider::OpenAI | LLMProvider::DeepSeek => {
+            LLMProvider::OpenAI | LLMProvider::Ollama => {
                 self.generate_openai_stream(system_prompt, user_query, context)
                     .await
             }
@@ -398,7 +439,7 @@ impl LLMClient {
         conversation_history: &[ConversationMessage],
     ) -> Result<LLMResponse> {
         match self.config.provider {
-            LLMProvider::OpenAI | LLMProvider::DeepSeek => {
+            LLMProvider::OpenAI | LLMProvider::Ollama => {
                 self.generate_openai_with_tools_and_history(
                     system_prompt,
                     user_query,
@@ -464,7 +505,7 @@ impl LLMClient {
         tools: &[serde_json::Value],
     ) -> Result<LLMResponse> {
         match self.config.provider {
-            LLMProvider::OpenAI | LLMProvider::DeepSeek => {
+            LLMProvider::OpenAI | LLMProvider::Ollama => {
                 self.continue_openai_with_tool_results_and_history(
                     system_prompt,
                     user_query,
@@ -507,20 +548,16 @@ impl LLMClient {
             conversation_history.len()
         );
 
-        let endpoint = self
-            .config
-            .endpoint
-            .clone()
-            .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+        let endpoint = self.get_endpoint();
 
         tracing::debug!("[LLM_API] Endpoint: {}", endpoint);
 
         let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
 
-        if auth_header.is_none() && self.config.endpoint.is_none() {
-            tracing::error!("[LLM_API] No API key or endpoint configured");
+        if auth_header.is_none() && self.requires_auth() {
+            tracing::error!("[LLM_API] No API key configured for provider that requires auth");
             return Err(NoraError::ConfigError(
-                "LLM configured without OPENAI_API_KEY or custom endpoint".to_string(),
+                "LLM configured without required API key".to_string(),
             ));
         }
 
@@ -791,17 +828,13 @@ impl LLMClient {
             tools.len()
         );
 
-        let endpoint = self
-            .config
-            .endpoint
-            .clone()
-            .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+        let endpoint = self.get_endpoint();
 
         let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
 
-        if auth_header.is_none() && self.config.endpoint.is_none() {
+        if auth_header.is_none() && self.requires_auth() {
             return Err(NoraError::ConfigError(
-                "LLM configured without OPENAI_API_KEY or custom endpoint".to_string(),
+                "LLM configured without required API key".to_string(),
             ));
         }
 
@@ -1070,20 +1103,16 @@ impl LLMClient {
             tools.len()
         );
 
-        let endpoint = self
-            .config
-            .endpoint
-            .clone()
-            .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+        let endpoint = self.get_endpoint();
 
         tracing::debug!("[LLM_API] Endpoint: {}", endpoint);
 
         let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
 
-        if auth_header.is_none() && self.config.endpoint.is_none() {
-            tracing::error!("[LLM_API] No API key or endpoint configured");
+        if auth_header.is_none() && self.requires_auth() {
+            tracing::error!("[LLM_API] No API key configured for provider that requires auth");
             return Err(NoraError::ConfigError(
-                "LLM configured without OPENAI_API_KEY or custom endpoint".to_string(),
+                "LLM configured without required API key".to_string(),
             ));
         }
 
@@ -1229,17 +1258,13 @@ impl LLMClient {
             tool_results.len()
         );
 
-        let endpoint = self
-            .config
-            .endpoint
-            .clone()
-            .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+        let endpoint = self.get_endpoint();
 
         let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
 
-        if auth_header.is_none() && self.config.endpoint.is_none() {
+        if auth_header.is_none() && self.requires_auth() {
             return Err(NoraError::ConfigError(
-                "LLM configured without OPENAI_API_KEY or custom endpoint".to_string(),
+                "LLM configured without required API key".to_string(),
             ));
         }
 
@@ -1364,17 +1389,13 @@ impl LLMClient {
         user_query: &str,
         context: &str,
     ) -> Result<String> {
-        let endpoint = self
-            .config
-            .endpoint
-            .clone()
-            .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+        let endpoint = self.get_endpoint();
 
         let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
 
-        if auth_header.is_none() && self.config.endpoint.is_none() {
+        if auth_header.is_none() && self.requires_auth() {
             return Err(NoraError::ConfigError(
-                "LLM configured without OPENAI_API_KEY or custom endpoint".to_string(),
+                "LLM configured without required API key".to_string(),
             ));
         }
 
@@ -1457,17 +1478,13 @@ impl LLMClient {
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
         use futures::stream::StreamExt;
 
-        let endpoint = self
-            .config
-            .endpoint
-            .clone()
-            .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
+        let endpoint = self.get_endpoint();
 
         let auth_header = self.api_key.as_ref().map(|k| format!("Bearer {}", k));
 
-        if auth_header.is_none() && self.config.endpoint.is_none() {
+        if auth_header.is_none() && self.requires_auth() {
             return Err(NoraError::ConfigError(
-                "LLM configured without OPENAI_API_KEY or custom endpoint".to_string(),
+                "LLM configured without required API key".to_string(),
             ));
         }
 
