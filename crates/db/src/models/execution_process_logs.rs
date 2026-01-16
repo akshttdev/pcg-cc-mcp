@@ -6,10 +6,13 @@ use utils::log_msg::LogMsg;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ExecutionProcessLogs {
     pub execution_id: Uuid,
     pub logs: String, // JSONL format
+    #[ts(type = "number")]
     pub byte_size: i64,
+    #[ts(type = "Date")]
     pub inserted_at: DateTime<Utc>,
 }
 

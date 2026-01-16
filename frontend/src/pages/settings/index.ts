@@ -6,6 +6,7 @@ export { ProjectsSettings } from './ProjectsSettings';
 export { PrivacySettings } from './PrivacySettings';
 export { ActivitySettings } from './ActivitySettings';
 export { AgentSettings } from './AgentSettings';
+export { ModelsSettings } from './ModelsSettings';
 export { McpSettings } from './McpSettings';
 export { WalletSettings } from './WalletSettings';
 export { AirtableSettings } from './AirtableSettings';

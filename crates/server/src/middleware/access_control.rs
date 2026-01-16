@@ -200,6 +200,9 @@ pub async fn get_current_user(
     // Try to get session from cookie first (SQLite auth)
     if let Some(cookies) = cookie_header {
         if let Some(session_id) = extract_session_from_cookies(cookies) {
+            // Hash the session token before lookup (sessions are stored as SHA256 hashes)
+            let session_token_hash = db::services::AuthService::hash_session_token(&session_id);
+
             // Find session and join with user
             #[derive(FromRow)]
             struct UserSession {
@@ -216,7 +219,7 @@ pub async fn get_current_user(
                 WHERE s.token_hash = ? AND s.expires_at > datetime('now')
                 "#,
             )
-            .bind(&session_id)
+            .bind(&session_token_hash)
             .fetch_optional(&pool)
             .await
             .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
@@ -236,9 +239,8 @@ pub async fn get_current_user(
 
     // Try Bearer token (for API access)
     if let Some(token) = auth_header.and_then(|h| h.strip_prefix("Bearer ")) {
-        // Hash the token to match against stored hash
-        let token_hash = db::services::AuthService::hash_password(token)
-            .map_err(|e| ApiError::InternalError(format!("Failed to hash token: {}", e)))?;
+        // Hash the token using SHA256 (same as session tokens)
+        let token_hash = db::services::AuthService::hash_session_token(token);
 
         // Find session and join with user
         #[derive(FromRow)]

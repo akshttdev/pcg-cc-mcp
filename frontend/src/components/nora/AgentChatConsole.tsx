@@ -535,12 +535,9 @@ export function AgentChatConsole({
         onRequestCloseInput();
         return;
       }
-      void (async () => {
-        const sent = await handleSubmit();
-        if (sent) {
-          onRequestCloseInput();
-        }
-      })();
+      // Release input immediately so avatar can move while Nora processes
+      onRequestCloseInput();
+      void handleSubmit();
     }
   };
 
@@ -549,12 +546,9 @@ export function AgentChatConsole({
       onRequestCloseInput();
       return;
     }
-    void (async () => {
-      const sent = await handleSubmit();
-      if (sent) {
-        onRequestCloseInput();
-      }
-    })();
+    // Release input immediately so avatar can move while Nora processes
+    onRequestCloseInput();
+    void handleSubmit();
   };
 
   const activeAgents = useMemo(

@@ -1,3 +1,22 @@
+import { useState, useEffect } from 'react';
+
+// Simple debounced value hook
+export function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export { useBranchStatus } from './useBranchStatus';
 export { useAttemptExecution } from './useAttemptExecution';
 export { useOpenInEditor } from './useOpenInEditor';
@@ -128,3 +147,12 @@ export type {
   GateApproval,
   PendingApprovalsSummary,
 } from './useAutonomy';
+export {
+  useTaskCardData,
+  useTasksCardData,
+} from './useTaskCardData';
+export {
+  useWorkflowEventStream,
+  useTasksWorkflowEventPolling,
+  useExecutionEventStream,
+} from './useWorkflowEventStream';

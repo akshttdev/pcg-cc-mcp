@@ -1,0 +1,104 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                onboarding_id as \"onboarding_id!: Uuid\",\n                segment_type as \"segment_type!: SegmentType\",\n                name,\n                assigned_agent_id as \"assigned_agent_id: Uuid\",\n                assigned_agent_name,\n                status as \"status!: SegmentStatus\",\n                recommendations,\n                user_decisions,\n                order_index as \"order_index!: i32\",\n                started_at as \"started_at: DateTime<Utc>\",\n                completed_at as \"completed_at: DateTime<Utc>\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            FROM onboarding_segments\n            WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "onboarding_id!: Uuid",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "segment_type!: SegmentType",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "assigned_agent_id: Uuid",
+        "ordinal": 5,
+        "type_info": "Blob"
+      },
+      {
+        "name": "assigned_agent_name",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: SegmentStatus",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "recommendations",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_decisions",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "order_index!: i32",
+        "ordinal": 10,
+        "type_info": "Integer"
+      },
+      {
+        "name": "started_at: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "completed_at: DateTime<Utc>",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 14,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "c19b18142e5fcb38380154a074f76c74de1d5c4c129b75fbab9cb7525984b43a"
+}

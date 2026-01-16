@@ -41,6 +41,7 @@ pub mod merge;
 pub mod nora_config;
 pub mod project;
 pub mod project_asset;
+pub mod project_controller;
 pub mod project_board;
 pub mod project_onboarding;
 pub mod project_pod;
@@ -58,6 +59,9 @@ pub mod social_post;
 pub mod social_mention;
 pub mod email_account;
 pub mod crm_contact;
+pub mod model_pricing;
+pub mod vibe_deposit;
+pub mod vibe_transaction;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

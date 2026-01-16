@@ -48,10 +48,22 @@ impl Default for AgentModelConfig {
 /// - "claude-3-5-sonnet-20241022" → Anthropic
 /// - "gpt-4o" → OpenAI
 /// - "gpt-4-turbo" → OpenAI
+/// - "deepseek-chat" → DeepSeek
+/// - "gpt-oss:20b" → DeepSeek (Ollama)
 pub fn infer_provider_from_model(model: &str) -> LLMProvider {
     let model_lower = model.to_lowercase();
 
-    if model_lower.starts_with("claude") || model_lower.contains("anthropic") {
+    // Check DeepSeek/Ollama models FIRST (before generic gpt check)
+    if model_lower.starts_with("deepseek")
+        || model_lower.starts_with("gpt-oss")
+        || model_lower.starts_with("gptoss")
+        || model_lower.starts_with("llama")
+        || model_lower.starts_with("qwen")
+        || model_lower.starts_with("mistral")
+        || model_lower.starts_with("phi")
+    {
+        LLMProvider::DeepSeek
+    } else if model_lower.starts_with("claude") || model_lower.contains("anthropic") {
         LLMProvider::Anthropic
     } else if model_lower.starts_with("gpt")
         || model_lower.starts_with("o1")
@@ -59,12 +71,12 @@ pub fn infer_provider_from_model(model: &str) -> LLMProvider {
     {
         LLMProvider::OpenAI
     } else {
-        // Default to OpenAI for unknown models
+        // Default to DeepSeek/Ollama for unknown models (more flexible local fallback)
         tracing::warn!(
-            "Unknown model '{}', defaulting to OpenAI provider",
+            "Unknown model '{}', defaulting to DeepSeek/Ollama provider",
             model
         );
-        LLMProvider::OpenAI
+        LLMProvider::DeepSeek
     }
 }
 
@@ -106,6 +118,18 @@ pub fn normalize_model_name(model: &str, provider: &LLMProvider) -> String {
                 _ => model.to_string(),
             }
         }
+        LLMProvider::DeepSeek => {
+            // Handle DeepSeek and GPT-OSS model aliases (both OpenAI-compatible)
+            match model_lower.as_str() {
+                "deepseek" | "deepseek-chat" | "deepseek-v3" => "deepseek-chat".to_string(),
+                "deepseek-coder" | "deepseek-coder-v2" => "deepseek-coder".to_string(),
+                "deepseek-reasoner" | "deepseek-r1" => "deepseek-reasoner".to_string(),
+                // OpenAI GPT-OSS open source models (via Ollama)
+                "gpt-oss" | "gpt-oss-20b" | "gptoss" => "gpt-oss:20b".to_string(),
+                "gpt-oss-120b" => "gpt-oss:120b".to_string(),
+                _ => model.to_string(),
+            }
+        }
     }
 }
 
@@ -134,6 +158,7 @@ pub fn create_client_for_agent(agent: &Agent) -> LLMClient {
         .map(|p| match p.to_lowercase().as_str() {
             "anthropic" | "claude" => LLMProvider::Anthropic,
             "openai" | "gpt" => LLMProvider::OpenAI,
+            "deepseek" | "ollama" | "local" => LLMProvider::DeepSeek,
             _ => infer_provider_from_model(model),
         })
         .unwrap_or_else(|| infer_provider_from_model(model));
@@ -148,11 +173,30 @@ pub fn create_client_for_agent(agent: &Agent) -> LLMClient {
         config.system_prompt_prefix.clone()
     };
 
+    // Determine endpoint based on provider
+    let endpoint = match provider {
+        LLMProvider::DeepSeek => {
+            // Check for custom endpoint first, then try Ollama, then DeepSeek API
+            std::env::var("OLLAMA_ENDPOINT").ok().or_else(|| {
+                // Check if Ollama is running on default port
+                if std::net::TcpStream::connect("127.0.0.1:11434").is_ok() {
+                    Some("http://127.0.0.1:11434/v1/chat/completions".to_string())
+                } else {
+                    // Fall back to DeepSeek API
+                    Some("https://api.deepseek.com/v1/chat/completions".to_string())
+                }
+            })
+        }
+        LLMProvider::OpenAI => None, // Uses default OpenAI endpoint
+        LLMProvider::Anthropic => None, // Uses Anthropic SDK
+    };
+
     tracing::info!(
-        "Creating LLM client for agent '{}': provider={:?}, model={}",
+        "Creating LLM client for agent '{}': provider={:?}, model={}, endpoint={:?}",
         agent.short_name,
         provider,
-        normalized_model
+        normalized_model,
+        endpoint
     );
 
     let llm_config = LLMConfig {
@@ -161,7 +205,7 @@ pub fn create_client_for_agent(agent: &Agent) -> LLMClient {
         temperature: config.temperature,
         max_tokens: config.max_tokens,
         system_prompt,
-        endpoint: None,
+        endpoint,
     };
 
     LLMClient::new(llm_config)

@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Table2 } from 'lucide-react';
+import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Table2, Boxes } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
@@ -55,7 +55,13 @@ const settingsNavigation = [
     path: 'agents',
     icon: Cpu,
     label: 'Agents',
-    description: 'Coding agent configurations',
+    description: 'Autonomous agents and budgets',
+  },
+  {
+    path: 'models',
+    icon: Boxes,
+    label: 'Models',
+    description: 'AI model configurations',
   },
   {
     path: 'mcp',

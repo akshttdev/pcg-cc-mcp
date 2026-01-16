@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { UserCombobox, AgentCombobox } from '@/components/ui/assignee-combobox';
 import { templatesApi, imagesApi, projectsApi, attemptsApi } from '@/lib/api';
 import { useTaskMutations } from '@/hooks/useTaskMutations';
 import { useUserSystem } from '@/components/config-provider';
@@ -490,96 +491,89 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     }, []);
 
     const handleSubmit = useCallback(async () => {
-      if (!title.trim() || !projectId) return;
+      if (!title.trim() || !projectId) {
+        console.log('[TaskFormDialog] Submit blocked - missing title or projectId');
+        return;
+      }
 
+      console.log('[TaskFormDialog] handleSubmit called, isEditMode:', isEditMode);
       setIsSubmitting(true);
-      try {
-        let imageIds: string[] | undefined;
 
-        if (isEditMode) {
-          // In edit mode, send all current image IDs (existing + newly uploaded)
-          imageIds =
-            images.length > 0 ? images.map((img) => img.id) : undefined;
-        } else {
-          // In create mode, only send newly uploaded image IDs
-          imageIds =
-            newlyUploadedImageIds.length > 0
-              ? newlyUploadedImageIds
-              : undefined;
-        }
+      let imageIds: string[] | undefined;
 
-        const assignedMcps = assignedMcpsInput
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean);
-        const tags = tagsInput
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean);
-        const dueDateIso = dueDate ? new Date(dueDate).toISOString() : null;
+      if (isEditMode) {
+        // In edit mode, send all current image IDs (existing + newly uploaded)
+        imageIds =
+          images.length > 0 ? images.map((img) => img.id) : undefined;
+      } else {
+        // In create mode, only send newly uploaded image IDs
+        imageIds =
+          newlyUploadedImageIds.length > 0
+            ? newlyUploadedImageIds
+            : undefined;
+      }
 
-        if (isEditMode && task) {
-          updateTask.mutate(
-            {
-              taskId: task.id,
-              data: {
-                title,
-                description: description || null,
-                status,
-                parent_task_attempt: parentTaskAttemptId || null,
-                image_ids: imageIds || null,
-                board_id: selectedBoardId ?? null,
-                priority,
-                assignee_id: assigneeId.trim() || null,
-                assigned_agent: assignedAgent.trim() || null,
-                assigned_mcps: assignedMcps.length ? assignedMcps : null,
-                requires_approval: requiresApproval,
-                approval_status: task.approval_status,
-                parent_task_id: task.parent_task_id,
-                tags: tags.length ? tags : null,
-                due_date: dueDateIso,
-              },
-            },
-            {
-              onSuccess: () => {
-                modal.hide();
-              },
-            }
-          );
-        } else {
-          const createdBy = createdByFallback;
+      const assignedMcps = assignedMcpsInput
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const tags = tagsInput
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const dueDateIso = dueDate ? new Date(dueDate).toISOString() : null;
 
-          createTask.mutate(
-            {
-              project_id: projectId,
-              title,
-              description: description || null,
-              parent_task_attempt: parentTaskAttemptId || null,
-              image_ids: imageIds || null,
-              board_id: selectedBoardId ?? undefined,
-              priority,
-              assignee_id: assigneeId.trim() || null,
-              assigned_agent: assignedAgent.trim() || null,
-              agent_id: null,  // Will be set via agent lookup in future
-              assigned_mcps: assignedMcps.length ? assignedMcps : null,
-              created_by: createdBy,
-              requires_approval: requiresApproval,
-              parent_task_id: null,
-              tags: tags.length ? tags : null,
-              due_date: dueDateIso,
-              custom_properties: null,
-              scheduled_start: null,
-              scheduled_end: null,
-            },
-            {
-              onSuccess: () => {
-                modal.hide();
-              },
-            }
-          );
-        }
-      } finally {
-        setIsSubmitting(false);
+      // Close modal FIRST before any async operations
+      console.log('[TaskFormDialog] Closing modal NOW');
+      modal.hide();
+      setIsSubmitting(false);
+
+      if (isEditMode && task) {
+        console.log('[TaskFormDialog] Updating task:', task.id);
+        updateTask.mutate({
+          taskId: task.id,
+          data: {
+            title,
+            description: description || null,
+            status,
+            parent_task_attempt: parentTaskAttemptId || null,
+            image_ids: imageIds || null,
+            board_id: selectedBoardId ?? null,
+            priority,
+            assignee_id: assigneeId.trim() || null,
+            assigned_agent: assignedAgent.trim() || null,
+            assigned_mcps: assignedMcps.length ? assignedMcps : null,
+            requires_approval: requiresApproval,
+            approval_status: task.approval_status,
+            parent_task_id: task.parent_task_id,
+            tags: tags.length ? tags : null,
+            due_date: dueDateIso,
+          },
+        });
+      } else {
+        const createdBy = createdByFallback;
+        console.log('[TaskFormDialog] Creating new task');
+        createTask.mutate({
+          project_id: projectId,
+          title,
+          description: description || null,
+          parent_task_attempt: parentTaskAttemptId || null,
+          image_ids: imageIds || null,
+          board_id: selectedBoardId ?? undefined,
+          priority,
+          assignee_id: assigneeId.trim() || null,
+          assigned_agent: assignedAgent.trim() || null,
+          agent_id: null,
+          assigned_mcps: assignedMcps.length ? assignedMcps : null,
+          created_by: createdBy,
+          requires_approval: requiresApproval,
+          parent_task_id: null,
+          tags: tags.length ? tags : null,
+          due_date: dueDateIso,
+          custom_properties: null,
+          scheduled_start: null,
+          scheduled_end: null,
+        });
       }
     }, [
       title,
@@ -606,73 +600,75 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     ]);
 
     const handleCreateAndStart = useCallback(async () => {
-      if (!title.trim() || !projectId) return;
-
-      setIsSubmittingAndStart(true);
-      try {
-        if (!isEditMode) {
-          const imageIds =
-            newlyUploadedImageIds.length > 0
-              ? newlyUploadedImageIds
-              : undefined;
-
-          const assignedMcps = assignedMcpsInput
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean);
-          const tags = tagsInput
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean);
-          const dueDateIso = dueDate ? new Date(dueDate).toISOString() : null;
-          const createdBy = createdByFallback;
-
-          // Use selected executor profile or fallback to config default
-          const finalExecutorProfile =
-            selectedExecutorProfile || system.config?.executor_profile;
-          if (!finalExecutorProfile || !selectedBranch) {
-            console.warn(
-              `Missing ${!finalExecutorProfile ? 'executor profile' : 'branch'} for Create & Start`
-            );
-            return;
-          }
-
-          createAndStart.mutate(
-            {
-              task: {
-                project_id: projectId,
-                title,
-                description: description || null,
-                parent_task_attempt: parentTaskAttemptId || null,
-                image_ids: imageIds || null,
-                board_id: selectedBoardId ?? undefined,
-                priority,
-                assignee_id: assigneeId.trim() || null,
-                assigned_agent: assignedAgent.trim() || null,
-                agent_id: null,
-                assigned_mcps: assignedMcps.length ? assignedMcps : null,
-                created_by: createdBy,
-                requires_approval: requiresApproval,
-                parent_task_id: null,
-                tags: tags.length ? tags : null,
-                due_date: dueDateIso,
-                custom_properties: null,
-                scheduled_start: null,
-                scheduled_end: null,
-              },
-              executor_profile_id: finalExecutorProfile,
-              base_branch: selectedBranch,
-            },
-            {
-              onSuccess: () => {
-                modal.hide();
-              },
-            }
-          );
-        }
-      } finally {
-        setIsSubmittingAndStart(false);
+      if (!title.trim() || !projectId) {
+        console.log('[TaskFormDialog] Create & Start blocked - missing title or projectId');
+        return;
       }
+
+      if (isEditMode) {
+        console.log('[TaskFormDialog] Create & Start not available in edit mode');
+        return;
+      }
+
+      console.log('[TaskFormDialog] handleCreateAndStart called');
+      setIsSubmittingAndStart(true);
+
+      const imageIds =
+        newlyUploadedImageIds.length > 0
+          ? newlyUploadedImageIds
+          : undefined;
+
+      const assignedMcps = assignedMcpsInput
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const tags = tagsInput
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const dueDateIso = dueDate ? new Date(dueDate).toISOString() : null;
+      const createdBy = createdByFallback;
+
+      // Use selected executor profile or fallback to config default
+      const finalExecutorProfile =
+        selectedExecutorProfile || system.config?.executor_profile;
+      if (!finalExecutorProfile || !selectedBranch) {
+        console.warn('[TaskFormDialog] Missing executor profile or branch for Create & Start');
+        setIsSubmittingAndStart(false);
+        return;
+      }
+
+      // Close modal FIRST before mutation
+      console.log('[TaskFormDialog] Closing modal NOW (Create & Start)');
+      modal.hide();
+      setIsSubmittingAndStart(false);
+
+      console.log('[TaskFormDialog] Creating and starting task');
+      createAndStart.mutate({
+        task: {
+          project_id: projectId,
+          title,
+          description: description || null,
+          parent_task_attempt: parentTaskAttemptId || null,
+          image_ids: imageIds || null,
+          board_id: selectedBoardId ?? undefined,
+          priority,
+          assignee_id: assigneeId.trim() || null,
+          assigned_agent: assignedAgent.trim() || null,
+          agent_id: null,
+          assigned_mcps: assignedMcps.length ? assignedMcps : null,
+          created_by: createdBy,
+          requires_approval: requiresApproval,
+          parent_task_id: null,
+          tags: tags.length ? tags : null,
+          due_date: dueDateIso,
+          custom_properties: null,
+          scheduled_start: null,
+          scheduled_end: null,
+        },
+        executor_profile_id: finalExecutorProfile,
+        base_branch: selectedBranch,
+      });
     }, [
       title,
       description,
@@ -845,21 +841,21 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Assignee ID</Label>
-                  <Input
+                  <Label className="text-sm font-medium">Assignee</Label>
+                  <UserCombobox
                     value={assigneeId}
-                    onChange={(e) => setAssigneeId(e.target.value)}
-                    placeholder="e.g. user@example"
+                    onChange={setAssigneeId}
+                    placeholder="Select user..."
                     disabled={isSubmitting || isSubmittingAndStart}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Assigned Agent</Label>
-                  <Input
+                  <AgentCombobox
                     value={assignedAgent}
-                    onChange={(e) => setAssignedAgent(e.target.value)}
-                    placeholder="e.g. claude"
+                    onChange={setAssignedAgent}
+                    placeholder="Select agent..."
                     disabled={isSubmitting || isSubmittingAndStart}
                   />
                 </div>

@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                source_task_id as \"source_task_id!: Uuid\",\n                target_task_id as \"target_task_id!: Uuid\",\n                dependency_type as \"dependency_type!: DependencyType\",\n                created_at as \"created_at!: DateTime<Utc>\"\n              FROM task_dependencies\n             WHERE source_task_id = $1 OR target_task_id = $1\n             ORDER BY created_at",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "source_task_id!: Uuid",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "target_task_id!: Uuid",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "dependency_type!: DependencyType",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "22664691d5e5d71d1b7b06031b8a248dd38ef2af95a835770cdb7c8e0b10854b"
+}

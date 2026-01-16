@@ -758,4 +758,55 @@ ORDER BY t.created_at DESC"#,
             children,
         })
     }
+
+    /// Find all tasks assigned to a specific user across all projects
+    pub async fn find_by_assignee(
+        pool: &SqlitePool,
+        assignee_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Task,
+            r#"SELECT
+                id as "id!: Uuid",
+                project_id as "project_id!: Uuid",
+                pod_id as "pod_id: Uuid",
+                board_id as "board_id: Uuid",
+                title,
+                description,
+                status as "status!: TaskStatus",
+                parent_task_attempt as "parent_task_attempt: Uuid",
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>",
+                priority as "priority!: Priority",
+                assignee_id,
+                assigned_agent,
+                agent_id as "agent_id: Uuid",
+                assigned_mcps,
+                created_by,
+                requires_approval as "requires_approval!: bool",
+                approval_status as "approval_status: ApprovalStatus",
+                parent_task_id as "parent_task_id: Uuid",
+                tags,
+                due_date as "due_date: DateTime<Utc>",
+                custom_properties as "custom_properties: Json<Value>",
+                scheduled_start as "scheduled_start: DateTime<Utc>",
+                scheduled_end as "scheduled_end: DateTime<Utc>"
+               FROM tasks
+               WHERE assignee_id = $1
+               AND status != 'completed'
+               ORDER BY
+                 CASE priority
+                   WHEN 'urgent' THEN 0
+                   WHEN 'high' THEN 1
+                   WHEN 'medium' THEN 2
+                   WHEN 'low' THEN 3
+                   ELSE 4
+                 END,
+                 due_date ASC NULLS LAST,
+                 created_at DESC"#,
+            assignee_id,
+        )
+        .fetch_all(pool)
+        .await
+    }
 }

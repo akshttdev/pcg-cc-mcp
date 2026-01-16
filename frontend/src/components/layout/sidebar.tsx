@@ -8,7 +8,6 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import {
-  Activity,
   ChevronDown,
   ChevronRight,
   FolderOpen,
@@ -24,7 +23,9 @@ import {
   Share2,
   Megaphone,
   Users,
-  Workflow,
+  ListTodo,
+  BarChart3,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -39,15 +40,30 @@ interface SidebarProps {
   className?: string;
 }
 
-const NAVIGATION_ITEMS = [
+// Navigation items with role-based visibility
+interface NavItem {
+  label: string;
+  icon: typeof FolderOpen;
+  to: string;
+  id: string;
+  adminOnly?: boolean;
+  memberOnly?: boolean;
+}
+
+// Primary navigation - always visible (role-filtered)
+const PRIMARY_NAV_ITEMS: NavItem[] = [
+  { label: 'Nora Command', icon: Crown, to: '/nora', id: 'nora', adminOnly: true },
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
-  { label: 'Mission Control', icon: Activity, to: '/mission-control', id: 'mission-control' },
-  { label: 'Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
-  { label: 'Social Command', icon: Megaphone, to: '/social-command', id: 'social-command' },
-  { label: 'CRM & Email', icon: Users, to: '/crm', id: 'crm' },
-  { label: 'Virtual Environment', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
-  { label: 'Nora Assistant', icon: Crown, to: '/nora', id: 'nora' },
+  { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
+  { label: 'Virtual World', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'Settings', icon: Settings, to: '/settings', id: 'settings' },
+];
+
+// Global views - admin only, collapsible
+const GLOBAL_VIEW_ITEMS: NavItem[] = [
+  { label: 'All Tasks', icon: ListTodo, to: '/global-tasks', id: 'global-tasks', adminOnly: true },
+  { label: 'All CRM', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
+  { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
 ];
 
 const EXTERNAL_LINKS = [
@@ -223,17 +239,43 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
             </Link>
           )}
 
+          {/* Project Controller / Master Control */}
+          <Link
+            to={`/projects/${project.id}/control`}
+            className={cn(
+              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-2 border-t pt-2',
+              location.pathname === `/projects/${project.id}/control` &&
+                'bg-accent text-accent-foreground'
+            )}
+          >
+            <Bot className="h-3 w-3 text-purple-500" />
+            <span className="font-medium">Controller</span>
+          </Link>
+
+          {/* CRM Board Link */}
+          <Link
+            to={`/projects/${project.id}/crm`}
+            className={cn(
+              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+              location.pathname === `/projects/${project.id}/crm` &&
+                'bg-accent text-accent-foreground'
+            )}
+          >
+            <Users className="h-3 w-3 text-muted-foreground" />
+            <span>CRM</span>
+          </Link>
+
           {/* Social Media Link */}
           <Link
             to={`/projects/${project.id}/social`}
             className={cn(
-              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-1',
+              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
               location.pathname === `/projects/${project.id}/social` &&
                 'bg-accent text-accent-foreground'
             )}
           >
             <Share2 className="h-3 w-3 text-muted-foreground" />
-            <span>Social Media</span>
+            <span>Social</span>
           </Link>
         </div>
       </CollapsibleContent>
@@ -313,32 +355,97 @@ export function Sidebar({ className }: SidebarProps) {
     }
   };
 
+  const [globalViewsExpanded, setGlobalViewsExpanded] = useState(false);
+
+  // Filter navigation items based on user role
+  const filteredPrimaryNav = PRIMARY_NAV_ITEMS.filter((item) => {
+    if (item.adminOnly && !isAdmin) return false;
+    if (item.memberOnly && isAdmin) return false;
+    return true;
+  });
+
   return (
     <div className={cn("flex flex-col h-full bg-muted/30 border-r", className)}>
-      {/* Main Navigation */}
+      {/* Primary Navigation */}
       <div className="p-3 border-b">
         <div className="space-y-1">
-          {NAVIGATION_ITEMS.map((item) => {
+          {filteredPrimaryNav.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname.startsWith(item.to);
-            
+
             return (
               <Link key={item.id} to={item.to}>
                 <Button
                   variant="ghost"
                   className={cn(
                     "w-full justify-start px-3 py-2 h-auto font-medium",
-                    isActive && "bg-accent text-accent-foreground"
+                    isActive && "bg-accent text-accent-foreground",
+                    item.id === 'nora' && "bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/30 dark:hover:bg-purple-950/50"
                   )}
                 >
-                  <Icon className="h-4 w-4 mr-3" />
+                  <Icon className={cn(
+                    "h-4 w-4 mr-3",
+                    item.id === 'nora' && "text-purple-600"
+                  )} />
                   <span className="text-sm">{item.label}</span>
+                  {item.id === 'nora' && (
+                    <span className="ml-auto text-[10px] bg-purple-600 text-white px-1.5 py-0.5 rounded">
+                      ADMIN
+                    </span>
+                  )}
                 </Button>
               </Link>
             );
           })}
         </div>
       </div>
+
+      {/* Global Views - Admin Only */}
+      {isAdmin && (
+        <div className="border-b">
+          <Collapsible open={globalViewsExpanded} onOpenChange={setGlobalViewsExpanded}>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                className="w-full justify-between px-3 py-2 h-auto font-medium text-muted-foreground hover:text-foreground"
+              >
+                <div className="flex items-center">
+                  <BarChart3 className="h-4 w-4 mr-3" />
+                  <span className="text-sm">Global Views</span>
+                </div>
+                {globalViewsExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-3 pb-2">
+              <div className="space-y-1 pl-4 border-l border-muted ml-2">
+                {GLOBAL_VIEW_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.to;
+
+                  return (
+                    <Link key={item.id} to={item.to}>
+                      <Button
+                        variant="ghost"
+                        className={cn(
+                          "w-full justify-start px-2 py-1.5 h-auto font-normal text-sm",
+                          isActive && "bg-accent text-accent-foreground"
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                        {item.label}
+                      </Button>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
 
       {/* Favorites Section */}
       {favorites.length > 0 && (
@@ -373,8 +480,8 @@ export function Sidebar({ className }: SidebarProps) {
       )}
 
       {/* Projects Section */}
-      <div className="flex-1 overflow-hidden">
-        <div className="px-3 py-2 flex items-center justify-between">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <div className="px-3 py-2 flex items-center justify-between flex-shrink-0">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Projects
           </span>
@@ -390,7 +497,7 @@ export function Sidebar({ className }: SidebarProps) {
           )}
         </div>
 
-        <ScrollArea className="flex-1 px-3">
+        <ScrollArea className="flex-1 px-3 min-h-0">
           <div className="space-y-1">
             {isProjectsLoading ? (
               <div className="py-4 text-xs text-muted-foreground flex items-center gap-2">

@@ -13,6 +13,7 @@ pub mod activity;
 pub mod agent_flow_events;
 pub mod agent_flows;
 pub mod airtable;
+pub mod aptos;
 pub mod approvals;
 pub mod artifact_reviews;
 pub mod auth;
@@ -37,6 +38,7 @@ pub mod mission_control;
 pub mod nora;
 pub mod permissions;
 pub mod project_boards;
+pub mod project_controllers;
 pub mod projects;
 pub mod task_artifacts;
 pub mod task_attempts;
@@ -59,6 +61,8 @@ pub mod email_accounts;
 pub mod crm_contacts;
 pub mod onboarding;
 pub mod multiplayer;
+pub mod model_pricing;
+pub mod vibe_treasury;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -81,11 +85,30 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
                 app_middleware::require_admin,
             ));
 
+    // Protected routes that require authentication
+    // These routes handle sensitive data and must not be publicly accessible
+    let protected_routes = Router::new()
+        .merge(airtable::router())
+        .merge(social_accounts::router(&deployment))
+        .merge(social_posts::router(&deployment))
+        .merge(social_inbox::router(&deployment))
+        .merge(email_accounts::router(&deployment))
+        .merge(crm_contacts::router(&deployment))
+        .merge(dropbox::router())
+        .merge(agents::routes())
+        .merge(agent_chat::routes())
+        .merge(comments::router())
+        .layer(middleware::from_fn_with_state(
+            deployment.clone(),
+            app_middleware::require_auth,
+        ));
+
     // All routes (public and protected)
     let base_routes = Router::new()
         .route("/health", get(health::health_check))
         .route("/metrics", get(metrics_handler))
         .merge(config::router())
+        .merge(agent_chat::public_routes()) // Public read-only conversation endpoints for team collaboration
         .merge(containers::router(&deployment))
         .merge(projects::router(&deployment))
         .merge(tasks::router(&deployment))
@@ -98,17 +121,13 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(events::router(&deployment))
         .merge(approvals::router())
         .merge(agent_wallets::router(&deployment))
-        .merge(agents::routes())
-        .merge(agent_chat::routes())
         .nest("/permissions", permissions::router(&deployment))
         .nest("/images", images::routes())
         .merge(nora::nora_routes())
         .merge(cinematics::router(&deployment))
         .merge(twilio::twilio_routes())
-        .merge(comments::router())
         .merge(activity::router())
-        .merge(dropbox::router())
-        .merge(airtable::router())
+        .merge(aptos::router(&deployment))
         .merge(webhooks::router())
         .merge(mission_control::router(&deployment))
         .merge(bowser::router(&deployment))
@@ -122,14 +141,13 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))
         .merge(event_stream::router(&deployment))
-        .merge(social_accounts::router(&deployment))
-        .merge(social_posts::router(&deployment))
-        .merge(social_inbox::router(&deployment))
-        .merge(email_accounts::router(&deployment))
-        .merge(crm_contacts::router(&deployment))
         .merge(onboarding::router(&deployment))
         .merge(multiplayer::router(&deployment))
         .merge(cms::router(&deployment))
+        .merge(tasks::global_router(&deployment))
+        .merge(model_pricing::router(&deployment))
+        .merge(vibe_treasury::router(&deployment))
+        .merge(protected_routes)
         .merge(admin_routes)
         .with_state(deployment);
 

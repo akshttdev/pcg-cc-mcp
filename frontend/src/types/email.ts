@@ -1,6 +1,6 @@
 // Email Integration Types
 
-export type EmailProvider = 'gmail' | 'zoho' | 'outlook' | 'imap_custom';
+export type EmailProvider = 'gmail' | 'zoho' | 'imap_custom';
 
 export type EmailAccountType = 'primary' | 'team' | 'notifications' | 'marketing' | 'support';
 
@@ -134,12 +134,6 @@ export const EMAIL_PROVIDER_INFO: Record<EmailProvider, {
     icon: 'Z',
     color: '#C8202B',
     description: 'Zoho Mail - Team operations and CRM integration',
-  },
-  outlook: {
-    name: 'Outlook',
-    icon: 'O',
-    color: '#0078D4',
-    description: 'Microsoft Outlook / Office 365',
   },
   imap_custom: {
     name: 'Custom IMAP',

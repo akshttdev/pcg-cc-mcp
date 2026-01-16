@@ -476,7 +476,24 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
             ClientMessage::Teleport { destination } => {
                 let pid = player_id_for_recv.read().await;
                 if let Some(ref pid) = *pid {
-                    // TODO: Add access control check here
+                    // Access control check: verify player can teleport to destination
+                    let player = mp_state_for_recv.players.get(pid);
+                    let is_admin = player.as_ref().map(|p| p.is_admin).unwrap_or(false);
+
+                    // Check if destination requires admin access
+                    let requires_admin = matches!(destination.as_str(), "command-center" | "admin-zone");
+
+                    if requires_admin && !is_admin {
+                        // Non-admins cannot teleport to admin-only zones
+                        let _ = client_tx.send(ServerMessage::TeleportResult {
+                            success: false,
+                            destination,
+                            position: None,
+                            error: Some("Access denied: Admin privileges required for this zone".to_string()),
+                        });
+                        continue;
+                    }
+
                     if let Some(pos) = get_spawn_position(&destination) {
                         mp_state_for_recv.update_player_position(
                             pid,
@@ -496,14 +513,14 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                             timestamp: Utc::now(),
                         });
 
-                        mp_state_for_recv.broadcast(ServerMessage::TeleportResult {
+                        let _ = client_tx.send(ServerMessage::TeleportResult {
                             success: true,
                             destination,
                             position: Some(pos),
                             error: None,
                         });
                     } else {
-                        mp_state_for_recv.broadcast(ServerMessage::TeleportResult {
+                        let _ = client_tx.send(ServerMessage::TeleportResult {
                             success: false,
                             destination,
                             position: None,

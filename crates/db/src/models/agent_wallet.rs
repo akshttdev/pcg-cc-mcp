@@ -4,16 +4,26 @@ use sqlx::{FromRow, SqlitePool, sqlite::SqliteQueryResult};
 use ts_rs::TS;
 use uuid::Uuid;
 
+/// Agent wallet for tracking VIBE budget and spending
+/// Note: On-chain operations are handled at the project/treasury level, not per-agent
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AgentWallet {
     pub id: Uuid,
     pub profile_key: String,
     pub display_name: String,
+    /// APT budget limit in octas (legacy, not used)
     #[ts(type = "number")]
     pub budget_limit: i64,
+    /// APT spent amount in octas (legacy, not used)
     #[ts(type = "number")]
     pub spent_amount: i64,
+    /// VIBE budget limit (1 VIBE = $0.001 USD)
+    #[ts(type = "number | null")]
+    pub vibe_budget_limit: Option<i64>,
+    /// VIBE spent amount
+    #[ts(type = "number")]
+    pub vibe_spent_amount: i64,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -63,18 +73,19 @@ pub struct CreateWalletTransaction {
 
 impl AgentWallet {
     pub async fn list(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            AgentWallet,
+        sqlx::query_as::<_, AgentWallet>(
             r#"SELECT
-                id as "id!: Uuid",
+                id,
                 profile_key,
                 display_name,
                 budget_limit,
                 spent_amount,
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>"
+                vibe_budget_limit,
+                COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                created_at,
+                updated_at
             FROM agent_wallets
-            ORDER BY profile_key"#
+            ORDER BY profile_key"#,
         )
         .fetch_all(pool)
         .await
@@ -84,20 +95,41 @@ impl AgentWallet {
         pool: &SqlitePool,
         profile_key: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            AgentWallet,
+        sqlx::query_as::<_, AgentWallet>(
             r#"SELECT
-                id as "id!: Uuid",
+                id,
                 profile_key,
                 display_name,
                 budget_limit,
                 spent_amount,
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>"
+                vibe_budget_limit,
+                COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                created_at,
+                updated_at
             FROM agent_wallets
             WHERE profile_key = ?"#,
-            profile_key
         )
+        .bind(profile_key)
+        .fetch_optional(pool)
+        .await
+    }
+
+    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as::<_, AgentWallet>(
+            r#"SELECT
+                id,
+                profile_key,
+                display_name,
+                budget_limit,
+                spent_amount,
+                vibe_budget_limit,
+                COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                created_at,
+                updated_at
+            FROM agent_wallets
+            WHERE id = ?"#,
+        )
+        .bind(id)
         .fetch_optional(pool)
         .await
     }
@@ -153,6 +185,55 @@ impl AgentWallet {
         )
         .execute(pool)
         .await
+    }
+
+    /// Set VIBE budget limit for an agent wallet
+    pub async fn set_vibe_budget(
+        pool: &SqlitePool,
+        wallet_id: Uuid,
+        vibe_budget_limit: Option<i64>,
+    ) -> Result<SqliteQueryResult, sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE agent_wallets
+               SET vibe_budget_limit = ?,
+                   updated_at = datetime('now', 'subsec')
+             WHERE id = ?"#,
+            vibe_budget_limit,
+            wallet_id
+        )
+        .execute(pool)
+        .await
+    }
+
+    /// Adjust VIBE spent amount for an agent wallet
+    pub async fn adjust_vibe_spent(
+        pool: &SqlitePool,
+        wallet_id: Uuid,
+        delta: i64,
+    ) -> Result<SqliteQueryResult, sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE agent_wallets
+               SET vibe_spent_amount = COALESCE(vibe_spent_amount, 0) + ?,
+                   updated_at = datetime('now', 'subsec')
+             WHERE id = ?"#,
+            delta,
+            wallet_id
+        )
+        .execute(pool)
+        .await
+    }
+
+    /// Check if agent has sufficient VIBE budget
+    pub fn has_vibe_budget(&self, required_vibe: i64) -> bool {
+        match self.vibe_budget_limit {
+            Some(limit) => (limit - self.vibe_spent_amount) >= required_vibe,
+            None => true, // No limit means unlimited
+        }
+    }
+
+    /// Get remaining VIBE budget
+    pub fn remaining_vibe(&self) -> Option<i64> {
+        self.vibe_budget_limit.map(|limit| limit - self.vibe_spent_amount)
     }
 }
 

@@ -138,8 +138,10 @@ async fn initiate_oauth(
     let provider: EmailProvider = request.provider.parse()
         .map_err(|e: String| ApiError::BadRequest(e))?;
 
-    // Generate a random state for CSRF protection
-    let state = uuid::Uuid::new_v4().to_string();
+    // Generate a state token that encodes the project along with a random nonce
+    let state_nonce = uuid::Uuid::new_v4().to_string();
+    let state_raw = format!("{}:{}", request.project_id, state_nonce);
+    let state_param = urlencoding::encode(&state_raw);
 
     let auth_url = match provider {
         EmailProvider::Gmail => {
@@ -159,7 +161,7 @@ async fn initiate_oauth(
                 client_id,
                 urlencoding::encode(&request.redirect_uri),
                 urlencoding::encode(&scopes),
-                state
+                state_param
             )
         }
         EmailProvider::Zoho => {
@@ -182,25 +184,7 @@ async fn initiate_oauth(
                 client_id,
                 urlencoding::encode(&request.redirect_uri),
                 urlencoding::encode(&scopes),
-                state
-            )
-        }
-        EmailProvider::Outlook => {
-            let client_id = std::env::var("MICROSOFT_CLIENT_ID")
-                .unwrap_or_default();
-            let scopes = "openid email profile https://outlook.office.com/mail.read https://outlook.office.com/mail.send";
-
-            format!(
-                "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?\
-                client_id={}&\
-                redirect_uri={}&\
-                response_type=code&\
-                scope={}&\
-                state={}",
-                client_id,
-                urlencoding::encode(&request.redirect_uri),
-                urlencoding::encode(scopes),
-                state
+                state_param
             )
         }
         EmailProvider::ImapCustom => {
@@ -208,7 +192,7 @@ async fn initiate_oauth(
         }
     };
 
-    Ok(Json(ApiResponse::success(OAuthUrlResponse { auth_url, state })))
+    Ok(Json(ApiResponse::success(OAuthUrlResponse { auth_url, state: state_raw })))
 }
 
 /// GET /email/oauth/gmail/callback - Handle Gmail OAuth callback
@@ -240,6 +224,19 @@ async fn gmail_oauth_callback(
         .await
         .map_err(|e| ApiError::InternalError(format!("Token exchange failed: {}", e)))?;
 
+    // Check response status and get body for debugging
+    let status = token_response.status();
+    let body = token_response.text().await
+        .map_err(|e| ApiError::InternalError(format!("Failed to read token response: {}", e)))?;
+
+    tracing::info!("[GMAIL_OAUTH] Token exchange response status: {}", status);
+    tracing::debug!("[GMAIL_OAUTH] Token exchange response body: {}", &body[..body.len().min(500)]);
+
+    if !status.is_success() {
+        tracing::error!("[GMAIL_OAUTH] Token exchange failed: {}", body);
+        return Err(ApiError::InternalError(format!("Google token exchange failed: {}", body)));
+    }
+
     #[derive(Deserialize)]
     struct TokenResponse {
         access_token: String,
@@ -247,10 +244,8 @@ async fn gmail_oauth_callback(
         expires_in: Option<i64>,
     }
 
-    let tokens: TokenResponse = token_response
-        .json()
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Failed to parse token response: {}", e)))?;
+    let tokens: TokenResponse = serde_json::from_str(&body)
+        .map_err(|e| ApiError::InternalError(format!("Failed to parse token response: {} - body: {}", e, &body[..body.len().min(200)])))?;
 
     // Get user info
     let userinfo_response = client
@@ -337,6 +332,19 @@ async fn zoho_oauth_callback(
         .await
         .map_err(|e| ApiError::InternalError(format!("Token exchange failed: {}", e)))?;
 
+    // Check response status and get body for debugging
+    let status = token_response.status();
+    let body = token_response.text().await
+        .map_err(|e| ApiError::InternalError(format!("Failed to read token response: {}", e)))?;
+
+    tracing::info!("[ZOHO_OAUTH] Token exchange response status: {}", status);
+    tracing::debug!("[ZOHO_OAUTH] Token exchange response body: {}", &body[..body.len().min(500)]);
+
+    if !status.is_success() {
+        tracing::error!("[ZOHO_OAUTH] Token exchange failed: {}", body);
+        return Err(ApiError::InternalError(format!("Zoho token exchange failed: {}", body)));
+    }
+
     #[derive(Deserialize)]
     struct TokenResponse {
         access_token: String,
@@ -344,10 +352,8 @@ async fn zoho_oauth_callback(
         expires_in: Option<i64>,
     }
 
-    let tokens: TokenResponse = token_response
-        .json()
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Failed to parse token response: {}", e)))?;
+    let tokens: TokenResponse = serde_json::from_str(&body)
+        .map_err(|e| ApiError::InternalError(format!("Failed to parse token response: {} - body: {}", e, &body[..body.len().min(200)])))?;
 
     // Get user info from Zoho
     let userinfo_response = client

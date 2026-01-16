@@ -102,55 +102,51 @@ pub struct CreateUserResponse {
 }
 
 /// GET /api/users - List all users (admin only)
+/// Uses parameterized queries to prevent SQL injection
 async fn list_users(
     State(deployment): State<DeploymentImpl>,
     Query(params): Query<ListUsersQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<UserListItem>>>, ApiError> {
     let pool = deployment.db().pool.clone();
 
-    // Build query dynamically based on filters
-    let mut query = String::from(
+    // Use parameterized query to prevent SQL injection
+    // Build search pattern safely
+    let search_pattern = params.search.as_ref().map(|s| format!("%{}%", s));
+
+    // Validate and sanitize limit/offset
+    let limit = params.limit.unwrap_or(100).min(1000).max(1);
+    let offset = params.offset.unwrap_or(0).max(0);
+
+    let is_active_filter = params.is_active.map(|b| if b { 1i32 } else { 0i32 });
+    let is_admin_filter = params.is_admin.map(|b| if b { 1i32 } else { 0i32 });
+
+    let users = sqlx::query_as::<_, UserListItem>(
         r#"
-        SELECT 
+        SELECT
             id, username, email, full_name, avatar_url,
             is_active, is_admin, last_login_at, created_at
         FROM users
-        WHERE 1=1
+        WHERE
+            (? IS NULL OR username LIKE ? OR email LIKE ? OR full_name LIKE ?)
+            AND (? IS NULL OR is_active = ?)
+            AND (? IS NULL OR is_admin = ?)
+        ORDER BY created_at DESC
+        LIMIT ? OFFSET ?
         "#,
-    );
-
-    if let Some(search) = &params.search {
-        query.push_str(&format!(
-            " AND (username LIKE '%{}%' OR email LIKE '%{}%' OR full_name LIKE '%{}%')",
-            search, search, search
-        ));
-    }
-
-    if let Some(is_active) = params.is_active {
-        query.push_str(&format!(
-            " AND is_active = {}",
-            if is_active { 1 } else { 0 }
-        ));
-    }
-
-    if let Some(is_admin) = params.is_admin {
-        query.push_str(&format!(" AND is_admin = {}", if is_admin { 1 } else { 0 }));
-    }
-
-    query.push_str(" ORDER BY created_at DESC");
-
-    if let Some(limit) = params.limit {
-        query.push_str(&format!(" LIMIT {}", limit));
-    }
-
-    if let Some(offset) = params.offset {
-        query.push_str(&format!(" OFFSET {}", offset));
-    }
-
-    let users = sqlx::query_as::<_, UserListItem>(&query)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Failed to fetch users: {}", e)))?;
+    )
+    .bind(&search_pattern)
+    .bind(&search_pattern)
+    .bind(&search_pattern)
+    .bind(&search_pattern)
+    .bind(&is_active_filter)
+    .bind(&is_active_filter)
+    .bind(&is_admin_filter)
+    .bind(&is_admin_filter)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to fetch users: {}", e)))?;
 
     Ok(ResponseJson(ApiResponse::success(users)))
 }

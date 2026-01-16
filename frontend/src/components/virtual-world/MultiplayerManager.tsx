@@ -19,6 +19,7 @@ export function MultiplayerManager() {
   useEffect(() => {
     if (user && !isConnected) {
       // Convert equipment store format to multiplayer format
+      // Note: We read equipped here but don't include it in deps to avoid reconnects on equipment change
       const equipment = {
         head: equipped.head,
         primaryHand: equipped.primaryHand,
@@ -42,7 +43,8 @@ export function MultiplayerManager() {
         disconnect();
       }
     };
-  }, [user, isConnected, connect, disconnect, equipped]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isConnected, connect, disconnect]); // Intentionally exclude equipped to prevent reconnects
 
   // Broadcast equipment changes when they occur
   useEffect(() => {

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO onboarding_segments\n                    (id, project_id, onboarding_id, segment_type, name, assigned_agent_name, status, order_index)\n                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "3e35ef7a112e72f0b136814c2bc720f11cad12a010ee786b4e4cfcea3f5e2778"
+}

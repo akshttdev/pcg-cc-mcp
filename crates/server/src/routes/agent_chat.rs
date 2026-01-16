@@ -15,8 +15,12 @@ use db::models::{
     agent::Agent,
     agent_conversation::{AgentConversation, AgentConversationMessage},
     agent_flow_event::AgentFlowEvent,
+    agent_wallet::{AgentWallet, AgentWalletTransaction, CreateWalletTransaction},
+    project::Project,
+    vibe_transaction::VibeSourceType,
 };
 use deployment::Deployment;
+use services::services::vibe_pricing::VibePricingService;
 use futures::stream::Stream;
 use nora::{
     brain::{create_client_for_agent, ConversationMessage, LLMResponse},
@@ -86,12 +90,23 @@ pub struct ConversationSummary {
     pub created_at: String,
 }
 
-/// Build routes for agent chat
+/// Build protected routes for agent chat (write operations - require auth)
 pub fn routes() -> Router<DeploymentImpl> {
     Router::new()
         .route("/agents/{agent_id}/chat", post(agent_chat))
         .route("/agents/{agent_id}/chat/stream", post(agent_chat_stream))
+}
+
+/// Build public routes for reading agent conversations (no auth required)
+/// These are read-only endpoints for viewing conversation history,
+/// important for team collaboration and task handoffs.
+pub fn public_routes() -> Router<DeploymentImpl> {
+    Router::new()
         .route("/agents/{agent_id}/conversations", get(list_conversations))
+        .route(
+            "/agents/{agent_id}/conversations/session/{session_id}",
+            get(get_conversation_by_session),
+        )
         .route(
             "/agents/{agent_id}/conversations/{conversation_id}",
             get(get_conversation),
@@ -185,6 +200,37 @@ pub async fn agent_chat(
         pool,
     ).await;
 
+    // VIBE Balance Check (if project is specified)
+    let vibe_pricing = VibePricingService::new(pool.clone());
+    if let Some(project_id) = request.project_id {
+        if let Ok(Some(project)) = Project::find_by_id(pool, project_id).await {
+            // Check if project has budget and hasn't exceeded it
+            if let Some(budget_limit) = project.vibe_budget_limit {
+                let spent = project.vibe_spent_amount;
+                // Estimate cost (rough: assume 2000 input tokens, 500 output for a typical chat)
+                let estimate = vibe_pricing.estimate_cost(
+                    agent.default_model.as_deref().unwrap_or("gpt-4o"),
+                    2000,  // Estimated input tokens
+                    500,   // Estimated output tokens
+                ).await.ok();
+
+                if let Some(est) = estimate {
+                    let remaining = budget_limit - spent;
+                    if remaining < est.cost_vibe {
+                        tracing::warn!(
+                            "[VIBE] Insufficient budget for project {}: remaining={}, estimated={}",
+                            project_id, remaining, est.cost_vibe
+                        );
+                        return Err(ApiError::PaymentRequired(format!(
+                            "Insufficient VIBE balance. Remaining: {} VIBE, Estimated cost: {} VIBE",
+                            remaining, est.cost_vibe
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
     // Generate response
     let llm_response = llm
         .generate_with_tools_and_history(
@@ -197,21 +243,33 @@ pub async fn agent_chat(
         .await
         .map_err(|e| ApiError::InternalError(format!("LLM error: {}", e)))?;
 
-    // Extract response content
-    let content = match llm_response {
-        LLMResponse::Text(text) => text,
-        LLMResponse::ToolCalls(calls) => {
+    // Extract response content and usage
+    let (content, usage) = match llm_response {
+        LLMResponse::Text { content: text, usage } => (text, usage),
+        LLMResponse::ToolCalls { calls, usage } => {
             // For now, just describe the tool calls
-            format!(
+            let text = format!(
                 "I would like to use the following tools: {}",
                 calls
                     .iter()
                     .map(|c| c.name.clone())
                     .collect::<Vec<_>>()
                     .join(", ")
-            )
+            );
+            (text, usage)
         }
     };
+
+    // Extract token counts from usage
+    let (input_tokens, output_tokens) = usage
+        .as_ref()
+        .map(|u| (u.input_tokens as i64, u.output_tokens as i64))
+        .unwrap_or((0, 0));
+
+    // Log token usage if available
+    if let Some(u) = &usage {
+        tracing::info!("[AGENT_CHAT] Token usage: {} input, {} output", u.input_tokens, u.output_tokens);
+    }
 
     let latency_ms = start.elapsed().as_millis() as i64;
 
@@ -225,6 +283,88 @@ pub async fn agent_chat(
         }
     });
 
+    // Record VIBE usage (if project is specified and we have token counts)
+    let mut vibe_earned: i64 = 0;
+    if let Some(project_id) = request.project_id {
+        if input_tokens > 0 || output_tokens > 0 {
+            match vibe_pricing.record_llm_usage(
+                VibeSourceType::Project,
+                project_id,
+                model.as_deref().unwrap_or("gpt-4o"),
+                input_tokens,
+                output_tokens,
+                None,  // task_id
+                None,  // task_attempt_id
+                None,  // process_id
+            ).await {
+                Ok(tx) => {
+                    vibe_earned = tx.amount_vibe;
+                    tracing::info!(
+                        "[VIBE] Recorded {} VIBE usage for project {} (tx: {})",
+                        tx.amount_vibe, project_id, tx.id
+                    );
+                    // Update project spent amount
+                    if let Err(e) = Project::adjust_vibe_spent(pool, project_id, tx.amount_vibe).await {
+                        tracing::error!("[VIBE] Failed to update project spent amount: {}", e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("[VIBE] Failed to record usage: {}", e);
+                }
+            }
+        }
+    }
+
+    // Credit agent's wallet with earned VIBE
+    if vibe_earned > 0 {
+        // Use agent's short_name as wallet profile_key
+        let profile_key = agent.short_name.to_lowercase();
+
+        match AgentWallet::find_by_profile_key(pool, &profile_key).await {
+            Ok(Some(wallet)) => {
+                // Create credit transaction for agent
+                let tx_result = AgentWalletTransaction::create(
+                    pool,
+                    &CreateWalletTransaction {
+                        wallet_id: wallet.id,
+                        direction: "credit".to_string(),
+                        amount: vibe_earned,
+                        description: Some(format!("Earned from chat session {}", request.session_id)),
+                        metadata: Some(serde_json::json!({
+                            "input_tokens": input_tokens,
+                            "output_tokens": output_tokens,
+                            "model": model,
+                            "project_id": request.project_id
+                        }).to_string()),
+                        task_id: None,
+                        process_id: None,
+                    },
+                ).await;
+
+                match tx_result {
+                    Ok(tx) => {
+                        tracing::info!(
+                            "[VIBE] Credited {} VIBE to agent {} wallet (tx: {})",
+                            vibe_earned, agent.short_name, tx.id
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("[VIBE] Failed to credit agent wallet: {}", e);
+                    }
+                }
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    "[VIBE] No wallet found for agent '{}' (profile_key: {}), skipping credit",
+                    agent.short_name, profile_key
+                );
+            }
+            Err(e) => {
+                tracing::error!("[VIBE] Failed to lookup agent wallet: {}", e);
+            }
+        }
+    }
+
     // Save assistant response to conversation
     AgentConversationMessage::add_assistant_message(
         pool,
@@ -232,8 +372,8 @@ pub async fn agent_chat(
         &content,
         model.as_deref(),
         provider.as_deref(),
-        None, // TODO: Get actual token counts
-        None,
+        Some(input_tokens),
+        Some(output_tokens),
         Some(latency_ms),
     )
     .await
@@ -244,8 +384,8 @@ pub async fn agent_chat(
         conversation_id: conversation.id,
         agent_name: agent.short_name,
         agent_designation: agent.designation,
-        input_tokens: None,
-        output_tokens: None,
+        input_tokens: Some(input_tokens),
+        output_tokens: Some(output_tokens),
         model,
         provider,
         latency_ms,
@@ -439,6 +579,41 @@ pub async fn get_conversation(
     }
 
     Ok(Json(conversation))
+}
+
+/// Get conversation by session ID (returns conversation with messages)
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationWithMessages {
+    pub conversation: AgentConversation,
+    pub messages: Vec<AgentConversationMessage>,
+}
+
+pub async fn get_conversation_by_session(
+    State(state): State<DeploymentImpl>,
+    Path((agent_id, session_id)): Path<(Uuid, String)>,
+) -> Result<Json<Option<ConversationWithMessages>>, ApiError> {
+    let pool = &state.db().pool;
+
+    // Find conversation by agent and session
+    let conversation = AgentConversation::find_by_agent_session(pool, agent_id, &session_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to load conversation: {}", e)))?;
+
+    match conversation {
+        Some(conv) => {
+            // Load messages for this conversation
+            let messages = AgentConversationMessage::find_by_conversation(pool, conv.id, None)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Failed to load messages: {}", e)))?;
+
+            Ok(Json(Some(ConversationWithMessages {
+                conversation: conv,
+                messages,
+            })))
+        }
+        None => Ok(Json(None)),
+    }
 }
 
 /// Get messages for a conversation

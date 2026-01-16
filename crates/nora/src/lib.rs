@@ -128,6 +128,9 @@ pub enum NoraError {
 
     #[error("Execution error: {0}")]
     ExecutionError(String),
+
+    #[error("Insufficient VIBE balance: {0}")]
+    InsufficientBalance(String),
 }
 
 pub type Result<T> = std::result::Result<T, NoraError>;

@@ -328,11 +328,23 @@ impl NoraAgent {
     }
 
     pub fn with_cinematics(self, cinematics: Arc<CinematicsService>) -> Self {
-        // Set cinematics service in workflow orchestrator
+        // Set cinematics service in workflow orchestrator (fire-and-forget is ok here)
         let workflow_orchestrator = self.workflow_orchestrator.clone();
+        let cinematics_for_orchestrator = cinematics.clone();
         tokio::spawn(async move {
-            workflow_orchestrator.set_cinematics(cinematics).await;
+            workflow_orchestrator.set_cinematics(cinematics_for_orchestrator).await;
         });
+
+        // Set in execution engine SYNCHRONOUSLY - this must complete before workflows can run
+        // Using block_in_place to run async code synchronously without deadlocking
+        let execution_engine = self.execution_engine.clone();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                execution_engine.set_cinematics(cinematics).await;
+                tracing::info!("[NORA] CinematicsService wired to ExecutionEngine for image/video generation");
+            });
+        });
+
         self
     }
 
@@ -567,9 +579,12 @@ impl NoraAgent {
                 )
                 .await
             {
-                Ok(crate::brain::LLMResponse::Text(response)) => {
+                Ok(crate::brain::LLMResponse::Text { content: response, usage }) => {
                     // LLM responded directly without needing tools
                     tracing::info!("[TOOL_FLOW] LLM returned text response (no tools needed)");
+                    if let Some(u) = &usage {
+                        tracing::info!("[TOOL_FLOW] Token usage: {} input, {} output", u.input_tokens, u.output_tokens);
+                    }
                     tracing::debug!(
                         "[TOOL_FLOW] Response: {}",
                         &response[..response.len().min(200)]
@@ -579,7 +594,7 @@ impl NoraAgent {
                         .await;
                     return Ok(response);
                 }
-                Ok(crate::brain::LLMResponse::ToolCalls(tool_calls)) => {
+                Ok(crate::brain::LLMResponse::ToolCalls { calls: tool_calls, usage: _ }) => {
                     // LLM wants to call tools - execute them
                     tracing::info!("[TOOL_FLOW] ========== TOOL CALLS REQUESTED ==========");
                     tracing::info!(
@@ -726,10 +741,13 @@ impl NoraAgent {
                             )
                             .await
                         {
-                            Ok(crate::brain::LLMResponse::Text(final_response)) => {
+                            Ok(crate::brain::LLMResponse::Text { content: final_response, usage }) => {
                                 tracing::info!(
                                     "[TOOL_FLOW] ========== FINAL RESPONSE RECEIVED =========="
                                 );
+                                if let Some(u) = &usage {
+                                    tracing::info!("[TOOL_FLOW] Token usage: {} input, {} output", u.input_tokens, u.output_tokens);
+                                }
                                 tracing::debug!(
                                     "[TOOL_FLOW] Final response: {}",
                                     &final_response[..final_response.len().min(300)]
@@ -739,7 +757,7 @@ impl NoraAgent {
                                     .await;
                                 return Ok(final_response);
                             }
-                            Ok(crate::brain::LLMResponse::ToolCalls(new_tool_calls)) => {
+                            Ok(crate::brain::LLMResponse::ToolCalls { calls: new_tool_calls, usage: _ }) => {
                                 // LLM wants to chain more tool calls
                                 tracing::info!(
                                     "[TOOL_FLOW] ========== CHAINED TOOL CALLS (depth {}) ==========",
@@ -863,8 +881,18 @@ impl NoraAgent {
                     return Ok(fallback_response);
                 }
                 Err(e) => {
-                    tracing::warn!("[TOOL_FLOW] LLM with tools FAILED: {} - falling back to regular generation", e);
-                    // Fall back to regular generation
+                    let error_str = e.to_string();
+                    tracing::warn!("[TOOL_FLOW] LLM with tools FAILED: {} - checking error type", error_str);
+
+                    // Check if this is a rate limit error - give a specific message instead of generic fallback
+                    if error_str.contains("429") || error_str.to_lowercase().contains("rate limit") {
+                        let rate_limit_response = "I'm currently experiencing high demand from the AI service (rate limited). Please wait a moment and try again. If this persists, you may need to check your OpenAI API quota at https://platform.openai.com/usage".to_string();
+                        self.add_to_conversation_history(session_id, original, &rate_limit_response)
+                            .await;
+                        return Ok(rate_limit_response);
+                    }
+
+                    // Fall back to regular generation for other errors
                     let fallback = self.generate_llm_response(request, original).await;
                     self.add_to_conversation_history(session_id, original, &fallback)
                         .await;

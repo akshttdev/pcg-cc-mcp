@@ -94,18 +94,22 @@ pub async fn login(
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
-    // Generate session ID (simple UUID for now)
-    let session_id = Uuid::new_v4().to_string();
+    // Generate session ID using secure random UUID
+    let session_id = db::services::AuthService::generate_session_id();
 
-    // Create session in database
-    let expires_at = chrono::Utc::now() + chrono::Duration::days(30);
+    // Hash the session token before storage (SHA256 for fast verification)
+    let session_token_hash = db::services::AuthService::hash_session_token(&session_id);
+
+    // Create session in database with hashed token
+    // Reduced expiration from 30 days to 7 days for better security
+    let expires_at = chrono::Utc::now() + chrono::Duration::days(7);
     sqlx::query(
         "INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at, last_used_at)
          VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
     )
     .bind(Uuid::new_v4().as_bytes().as_slice())
     .bind(user.id.as_bytes().as_slice())
-    .bind(&session_id)
+    .bind(&session_token_hash)
     .bind(expires_at.to_rfc3339())
     .execute(pool)
     .await
@@ -157,11 +161,12 @@ pub async fn login(
         session_id: session_id.clone(),
     };
 
-    // Set session cookie
+    // Set session cookie with improved security settings
+    // Note: Add 'Secure' flag in production when using HTTPS
     let cookie = format!(
         "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
         session_id,
-        30 * 24 * 60 * 60 // 30 days in seconds
+        7 * 24 * 60 * 60 // 7 days in seconds (reduced from 30 for security)
     );
 
     Ok((
@@ -196,6 +201,9 @@ pub async fn get_current_user(
 
     let pool = &deployment.db().pool;
 
+    // Hash the session token to look up in database
+    let session_token_hash = db::services::AuthService::hash_session_token(session_id);
+
     // Find session and check if it's valid
     #[derive(FromRow)]
     struct Session {
@@ -207,7 +215,7 @@ pub async fn get_current_user(
     let session = sqlx::query_as::<_, Session>(
         "SELECT user_id, expires_at FROM sessions WHERE token_hash = ?",
     )
-    .bind(session_id)
+    .bind(&session_token_hash)
     .fetch_optional(pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
@@ -296,9 +304,12 @@ pub async fn logout(
         }) {
             let pool = &deployment.db().pool;
 
+            // Hash the session token to find and delete in database
+            let session_token_hash = db::services::AuthService::hash_session_token(session_id);
+
             // Delete session from database
             let _ = sqlx::query("DELETE FROM sessions WHERE token_hash = ?")
-                .bind(session_id)
+                .bind(&session_token_hash)
                 .execute(pool)
                 .await;
         }

@@ -3,9 +3,10 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertTriangle, Plus } from 'lucide-react';
+import { AlertTriangle, Plus, Sparkles } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
-import { projectsApi, tasksApi, attemptsApi } from '@/lib/api';
+import { projectsApi, tasksApi, attemptsApi, agentsApi } from '@/lib/api';
+import type { AgentChatRequest } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { ViewSwitcher } from '@/components/views/ViewSwitcher';
 import { TableView } from '@/components/views/TableView';
@@ -49,6 +50,7 @@ import {
 
 import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
+import { EnhancedTaskDetailsPanel } from '@/components/tasks';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
@@ -83,7 +85,7 @@ export function ProjectTasks() {
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const { currentViewType } = useViewStore();
+  const { currentViewType, useEnhancedCards, setUseEnhancedCards } = useViewStore();
   const {
     selectionMode,
     selectedTaskIds,
@@ -395,6 +397,73 @@ export function ProjectTasks() {
     [handleDuplicateTask]
   );
 
+  // Handler for sending messages to agents from task cards
+  const handleSendMessageToAgent = useCallback(
+    async (taskId: string, message: string, agentName?: string): Promise<string> => {
+      const task = tasksById[taskId];
+      if (!task) throw new Error('Task not found');
+
+      // Try to find the assigned agent or provided agent name
+      const targetAgentName = agentName || task.assigned_agent;
+
+      if (targetAgentName) {
+        try {
+          // Look up agent by name to get the real UUID
+          const agent = await agentsApi.getByName(targetAgentName);
+
+          const request: AgentChatRequest = {
+            message,
+            sessionId: `task-${taskId}`,
+            projectId: projectId || null,
+            context: {
+              taskId: task.id,
+              taskTitle: task.title,
+              isWorkflowFollowUp: true,
+            },
+            stream: false,
+          };
+
+          const response = await agentsApi.chat(agent.id, request);
+          return response.content;
+        } catch (error) {
+          // Fall back to Nora if agent lookup or chat fails
+          console.warn(`Agent chat failed for ${targetAgentName}, falling back to Nora:`, error);
+        }
+      }
+
+      // Fallback: route through Nora with agent context
+      const agentContext = agentName ? `[To ${agentName}] ` : '';
+      const contextualMessage = `${agentContext}Regarding task "${task.title}": ${message}`;
+
+      const response = await fetch('/api/nora/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: contextualMessage,
+          sessionId: `task-${taskId}`,
+          requestType: 'textInteraction',
+          voiceEnabled: false,
+          priority: 'normal',
+          context: {
+            taskId: task.id,
+            taskTitle: task.title,
+            projectId,
+            executingAgent: agentName,
+            isWorkflowFollowUp: true,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to send message${agentName ? ` to ${agentName}` : ''}`);
+      }
+
+      const data = await response.json();
+      return data.content || data.message || data.response || 'Response received';
+    },
+    [tasksById, projectId]
+  );
+
   const handleViewTaskDetails = useCallback(
     (task: Task, attemptIdToShow?: string, fullscreen?: boolean) => {
       if (attemptIdToShow) {
@@ -618,6 +687,16 @@ export function ProjectTasks() {
                   <CheckSquare className="h-4 w-4" />
                   {selectionMode ? 'Done' : 'Select'}
                 </Button>
+                <Button
+                  variant={useEnhancedCards ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUseEnhancedCards(!useEnhancedCards)}
+                  className="gap-2"
+                  title={useEnhancedCards ? 'Switch to classic cards' : 'Switch to enhanced cards'}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {useEnhancedCards ? 'Enhanced' : 'Classic'}
+                </Button>
                 <TagManager projectId={projectId} />
                 <ViewSwitcher />
               </div>
@@ -736,13 +815,27 @@ export function ProjectTasks() {
                   }
                 }}
                 agentFlowMap={agentFlowMap}
+                useEnhancedCards={useEnhancedCards}
+                onSendMessageToAgent={handleSendMessageToAgent}
               />
             </div>
           )}
         </div>
 
         {/* Right Column - Task Details Panel */}
-        {isPanelOpen && (
+        {isPanelOpen && selectedTask && useEnhancedCards ? (
+          <EnhancedTaskDetailsPanel
+            task={selectedTask}
+            projectId={projectId!}
+            onClose={handleClosePanel}
+            onEdit={() => handleEditTaskCallback(selectedTask)}
+            onDelete={() => handleDeleteTask(selectedTask.id)}
+            onDuplicate={() => handleDuplicateTaskCallback(selectedTask)}
+            onToggleFullscreen={() => toggleFullscreen(!isFullscreen)}
+            isFullscreen={isFullscreen}
+            className={isFullscreen ? 'fixed inset-0 z-50' : 'w-[600px] xl:w-[700px] shrink-0'}
+          />
+        ) : isPanelOpen ? (
           <TaskDetailsPanel
             task={selectedTask}
             projectHasDevScript={!!project?.dev_script}
@@ -763,7 +856,7 @@ export function ProjectTasks() {
             setSelectedAttempt={setSelectedAttempt}
             tasksById={tasksById}
           />
-        )}
+        ) : null}
       </div>
     </div>
   );

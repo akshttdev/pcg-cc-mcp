@@ -104,6 +104,7 @@ export function UserAvatar({
   const tiltRef = useRef({ x: 0, z: 0 });
 
   const lastEmittedPosition = useRef<THREE.Vector3 | null>(null);
+  const wasMovingRef = useRef(false);
   const isGroundedRef = useRef(true);
   const flightModeRef = useRef(false);
   const lastSpaceTapRef = useRef(0);
@@ -474,13 +475,22 @@ export function UserAvatar({
 
     // Position callback
     if (onPositionChange) {
+      const isCurrentlyMoving = speed > 0.01;
+
       if (!lastEmittedPosition.current) {
         lastEmittedPosition.current = position.clone();
         onPositionChange(position.clone());
       } else if (lastEmittedPosition.current.distanceToSquared(position) > 0.25) {
+        // Significant position change
+        lastEmittedPosition.current.copy(position);
+        onPositionChange(position.clone());
+      } else if (wasMovingRef.current && !isCurrentlyMoving) {
+        // Player just stopped - send final position update so remote clients know
         lastEmittedPosition.current.copy(position);
         onPositionChange(position.clone());
       }
+
+      wasMovingRef.current = isCurrentlyMoving;
     }
 
     // Motion trail

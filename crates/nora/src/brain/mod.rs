@@ -13,7 +13,7 @@ use crate::{
 // Multi-provider abstraction layer
 pub mod providers;
 pub use providers::{
-    AnthropicProvider, LLMProviderTrait, OpenAIProvider, ProviderError, ProviderType,
+    AnthropicProvider, LLMProviderTrait, OpenAIProvider, ProviderError, ProviderType, TokenUsage,
 };
 
 // Agent-specific LLM client configuration
@@ -74,9 +74,41 @@ pub struct ToolResult {
 #[derive(Debug, Clone)]
 pub enum LLMResponse {
     /// Direct text response
-    Text(String),
+    Text {
+        content: String,
+        usage: Option<TokenUsage>,
+    },
     /// LLM wants to call tools
-    ToolCalls(Vec<ToolCall>),
+    ToolCalls {
+        calls: Vec<ToolCall>,
+        usage: Option<TokenUsage>,
+    },
+}
+
+impl LLMResponse {
+    /// Get token usage if available
+    pub fn usage(&self) -> Option<&TokenUsage> {
+        match self {
+            LLMResponse::Text { usage, .. } => usage.as_ref(),
+            LLMResponse::ToolCalls { usage, .. } => usage.as_ref(),
+        }
+    }
+
+    /// Get text content if this is a text response
+    pub fn content(&self) -> Option<&str> {
+        match self {
+            LLMResponse::Text { content, .. } => Some(content),
+            LLMResponse::ToolCalls { .. } => None,
+        }
+    }
+
+    /// Get tool calls if this is a tool calls response
+    pub fn tool_calls(&self) -> Option<&[ToolCall]> {
+        match self {
+            LLMResponse::Text { .. } => None,
+            LLMResponse::ToolCalls { calls, .. } => Some(calls),
+        }
+    }
 }
 
 /// Supported LLM providers for Nora
@@ -85,6 +117,7 @@ pub enum LLMResponse {
 pub enum LLMProvider {
     OpenAI,
     Anthropic,
+    DeepSeek,
 }
 
 /// Configuration for Nora's reasoning engine
@@ -188,6 +221,9 @@ pub struct LLMClient {
     client: Client,
     api_key: Option<String>,
     cache: Arc<LlmCache>,
+    /// Fallback to local Ollama (DeepSeek) when primary provider fails
+    fallback_endpoint: Option<String>,
+    fallback_model: Option<String>,
 }
 
 impl LLMClient {
@@ -195,11 +231,13 @@ impl LLMClient {
         let api_key = match config.provider {
             LLMProvider::OpenAI => std::env::var("OPENAI_API_KEY").ok(),
             LLMProvider::Anthropic => std::env::var("ANTHROPIC_API_KEY").ok(),
+            LLMProvider::DeepSeek => std::env::var("DEEPSEEK_API_KEY").ok(),
         };
 
         let provider_name = match config.provider {
             LLMProvider::OpenAI => "OpenAI",
             LLMProvider::Anthropic => "Anthropic",
+            LLMProvider::DeepSeek => "DeepSeek",
         };
 
         if api_key.is_some() {
@@ -210,8 +248,29 @@ impl LLMClient {
                 match config.provider {
                     LLMProvider::OpenAI => "OPENAI_API_KEY",
                     LLMProvider::Anthropic => "ANTHROPIC_API_KEY",
+                    LLMProvider::DeepSeek => "DEEPSEEK_API_KEY",
                 }
             );
+        }
+
+        // Check for local Ollama fallback (DeepSeek or other local models)
+        let fallback_endpoint = std::env::var("OLLAMA_ENDPOINT")
+            .ok()
+            .or_else(|| {
+                // Check if Ollama is running on default port
+                if std::net::TcpStream::connect("127.0.0.1:11434").is_ok() {
+                    Some("http://127.0.0.1:11434/v1/chat/completions".to_string())
+                } else {
+                    None
+                }
+            });
+
+        let fallback_model = std::env::var("OLLAMA_MODEL")
+            .ok()
+            .or_else(|| fallback_endpoint.as_ref().map(|_| "gpt-oss:20b".to_string()));
+
+        if fallback_endpoint.is_some() {
+            tracing::info!("LLMClient has Ollama fallback configured: {:?}", fallback_model);
         }
 
         Self {
@@ -219,6 +278,8 @@ impl LLMClient {
             client: Client::new(),
             api_key,
             cache: Arc::new(LlmCache::default()),
+            fallback_endpoint,
+            fallback_model,
         }
     }
 
@@ -261,7 +322,7 @@ impl LLMClient {
         tracing::info!("LLM cache miss - generating from provider");
         let start = std::time::Instant::now();
         let content = match self.config.provider {
-            LLMProvider::OpenAI => {
+            LLMProvider::OpenAI | LLMProvider::DeepSeek => {
                 self.generate_openai(system_prompt, user_query, context)
                     .await?
             }
@@ -301,7 +362,7 @@ impl LLMClient {
         tracing::info!("LLM streaming request (cache bypassed)");
 
         match self.config.provider {
-            LLMProvider::OpenAI => {
+            LLMProvider::OpenAI | LLMProvider::DeepSeek => {
                 self.generate_openai_stream(system_prompt, user_query, context)
                     .await
             }
@@ -337,7 +398,7 @@ impl LLMClient {
         conversation_history: &[ConversationMessage],
     ) -> Result<LLMResponse> {
         match self.config.provider {
-            LLMProvider::OpenAI => {
+            LLMProvider::OpenAI | LLMProvider::DeepSeek => {
                 self.generate_openai_with_tools_and_history(
                     system_prompt,
                     user_query,
@@ -382,8 +443,8 @@ impl LLMClient {
         )
         .await?
         {
-            LLMResponse::Text(text) => Ok(text),
-            LLMResponse::ToolCalls(_) => {
+            LLMResponse::Text { content, .. } => Ok(content),
+            LLMResponse::ToolCalls { .. } => {
                 // Legacy function doesn't support chaining, return a message
                 Ok("Action completed. Use the conversation-aware API for tool chaining.".to_string())
             }
@@ -403,7 +464,7 @@ impl LLMClient {
         tools: &[serde_json::Value],
     ) -> Result<LLMResponse> {
         match self.config.provider {
-            LLMProvider::OpenAI => {
+            LLMProvider::OpenAI | LLMProvider::DeepSeek => {
                 self.continue_openai_with_tool_results_and_history(
                     system_prompt,
                     user_query,
@@ -524,27 +585,62 @@ impl LLMClient {
             tools.len(),
             payload.get("tool_choice"));
 
-        let client = self
-            .client
-            .post(&endpoint)
-            .header("Content-Type", "application/json");
+        // Retry loop with exponential backoff for rate limiting (429)
+        let max_retries = 3;
+        let mut last_error = None;
 
-        let client = if let Some(auth) = auth_header {
-            client.header("Authorization", auth)
-        } else {
-            client
-        };
+        for attempt in 0..max_retries {
+            if attempt > 0 {
+                // Exponential backoff: 1s, 2s, 4s
+                let delay_ms = 1000 * (1 << (attempt - 1));
+                tracing::info!("[LLM_API] Rate limited, retrying in {}ms (attempt {}/{})", delay_ms, attempt + 1, max_retries);
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            }
 
-        let response = client.json(&payload).send().await.map_err(|e| {
-            tracing::error!("[LLM_API] Request failed: {}", e);
-            NoraError::LLMError(format!("Failed to send request: {}", e))
-        })?;
+            let client = self
+                .client
+                .post(&endpoint)
+                .header("Content-Type", "application/json");
 
-        tracing::debug!("[LLM_API] Response status: {}", response.status());
+            let client = if let Some(ref auth) = auth_header {
+                client.header("Authorization", auth.clone())
+            } else {
+                client
+            };
 
-        if !response.status().is_success() {
+            let response = match client.json(&payload).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!("[LLM_API] Request failed: {}", e);
+                    last_error = Some(NoraError::LLMError(format!("Failed to send request: {}", e)));
+                    continue;
+                }
+            };
+
+            tracing::debug!("[LLM_API] Response status: {}", response.status());
+
+            if response.status().is_success() {
+                // Success - break out of retry loop and continue processing
+                let json: serde_json::Value = response.json().await.map_err(|e| {
+                    tracing::error!("[LLM_API] Failed to parse response: {}", e);
+                    NoraError::LLMError(format!("Failed to parse response: {}", e))
+                })?;
+
+                // Return early with the successful response processing
+                return self.process_openai_tool_response(json).await;
+            }
+
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+
+            // Only retry on 429 (rate limit) or 5xx (server errors)
+            if status.as_u16() == 429 || status.is_server_error() {
+                tracing::warn!("[LLM_API] Retryable error ({}): {}", status, &body[..body.len().min(200)]);
+                last_error = Some(NoraError::LLMError(format!("OpenAI API error ({}): {}", status, body)));
+                continue;
+            }
+
+            // Non-retryable error
             tracing::error!("[LLM_API] API error ({}): {}", status, body);
             return Err(NoraError::LLMError(format!(
                 "OpenAI API error ({}): {}",
@@ -552,13 +648,83 @@ impl LLMClient {
             )));
         }
 
+        // All retries exhausted - try Ollama fallback if available
+        if let (Some(endpoint), Some(model)) = (&self.fallback_endpoint, &self.fallback_model) {
+            tracing::info!("[LLM_API] Primary provider failed, trying Ollama fallback: {}", model);
+            match self.call_ollama_fallback(endpoint, model, &messages, tools).await {
+                Ok(response) => return Ok(response),
+                Err(e) => {
+                    tracing::warn!("[LLM_API] Ollama fallback also failed: {}", e);
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| NoraError::LLMError("Max retries exceeded".to_string())))
+    }
+
+    /// Try Ollama/local LLM as fallback when primary provider fails
+    async fn call_ollama_fallback(
+        &self,
+        endpoint: &str,
+        model: &str,
+        messages: &[serde_json::Value],
+        tools: &[serde_json::Value],
+    ) -> Result<LLMResponse> {
+        let mut payload = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "temperature": self.config.temperature,
+            "stream": false
+        });
+
+        // Add tools if provided (Ollama supports OpenAI-compatible tool calling)
+        if !tools.is_empty() {
+            payload["tools"] = serde_json::json!(tools);
+            payload["tool_choice"] = serde_json::json!("auto");
+        }
+
+        tracing::info!("[LLM_API] Calling Ollama at {} with model {}", endpoint, model);
+
+        let response = self
+            .client
+            .post(endpoint)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| NoraError::LLMError(format!("Ollama request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(NoraError::LLMError(format!("Ollama error ({}): {}", status, body)));
+        }
+
         let json: serde_json::Value = response.json().await.map_err(|e| {
-            tracing::error!("[LLM_API] Failed to parse response: {}", e);
-            NoraError::LLMError(format!("Failed to parse response: {}", e))
+            NoraError::LLMError(format!("Failed to parse Ollama response: {}", e))
         })?;
 
+        tracing::info!("[LLM_API] Ollama fallback succeeded");
+        self.process_openai_tool_response(json).await
+    }
+
+    /// Helper to process OpenAI tool response JSON
+    async fn process_openai_tool_response(&self, json: serde_json::Value) -> Result<LLMResponse> {
         tracing::debug!("[LLM_API] Response parsed successfully");
         eprintln!("[DEBUG] tool_calls in response: {:?}", json["choices"][0]["message"]["tool_calls"]);
+
+        // Extract token usage from response
+        let usage = json.get("usage").and_then(|u| {
+            Some(TokenUsage {
+                input_tokens: u["prompt_tokens"].as_u64()? as u32,
+                output_tokens: u["completion_tokens"].as_u64()? as u32,
+                total_tokens: u["total_tokens"].as_u64()? as u32,
+            })
+        });
+
+        if let Some(ref u) = usage {
+            tracing::info!("[LLM_API] Token usage: {} input, {} output", u.input_tokens, u.output_tokens);
+        }
 
         // Check if LLM wants to call tools
         if let Some(tool_calls) = json["choices"][0]["message"]["tool_calls"].as_array() {
@@ -586,7 +752,7 @@ impl LLMClient {
 
             if !calls.is_empty() {
                 tracing::info!("[LLM_API] Returning {} tool calls to caller", calls.len());
-                return Ok(LLMResponse::ToolCalls(calls));
+                return Ok(LLMResponse::ToolCalls { calls, usage });
             }
         } else {
             tracing::debug!("[LLM_API] No tool_calls in response");
@@ -603,7 +769,7 @@ impl LLMClient {
             "[LLM_API] Returning text response ({} chars)",
             content.len()
         );
-        Ok(LLMResponse::Text(content))
+        Ok(LLMResponse::Text { content, usage })
     }
 
     async fn continue_openai_with_tool_results_and_history(
@@ -726,41 +892,115 @@ impl LLMClient {
         );
         tracing::info!("[LLM_API] Sending continuation request to OpenAI API...");
 
-        let client = self
-            .client
-            .post(&endpoint)
-            .header("Content-Type", "application/json");
+        // Retry logic with exponential backoff for 429/5xx errors
+        let max_retries = 3;
+        let mut last_error = String::new();
+        let mut json: Option<serde_json::Value> = None;
 
-        let client = if let Some(auth) = auth_header {
-            client.header("Authorization", auth)
-        } else {
-            client
-        };
+        for attempt in 1..=max_retries {
+            let client = self
+                .client
+                .post(&endpoint)
+                .header("Content-Type", "application/json");
 
-        let response = client.json(&payload).send().await.map_err(|e| {
-            tracing::error!("[LLM_API] Continuation request failed: {}", e);
-            NoraError::LLMError(format!("Failed to send request: {}", e))
-        })?;
+            let client = if let Some(ref auth) = auth_header {
+                client.header("Authorization", auth.clone())
+            } else {
+                client
+            };
 
-        tracing::debug!(
-            "[LLM_API] Continuation response status: {}",
-            response.status()
-        );
+            let response = match client.json(&payload).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    last_error = format!("Failed to send request: {}", e);
+                    tracing::error!("[LLM_API] Continuation request failed: {}", e);
+                    continue;
+                }
+            };
 
-        if !response.status().is_success() {
             let status = response.status();
+            if status.is_success() {
+                match response.json::<serde_json::Value>().await {
+                    Ok(j) => {
+                        json = Some(j);
+                        break;
+                    }
+                    Err(e) => {
+                        last_error = format!("Failed to parse response: {}", e);
+                        continue;
+                    }
+                }
+            }
+
             let body = response.text().await.unwrap_or_default();
-            tracing::error!("[LLM_API] Continuation API error ({}): {}", status, body);
-            return Err(NoraError::LLMError(format!(
-                "OpenAI API error ({}): {}",
-                status, body
-            )));
+            last_error = format!("OpenAI API error ({}): {}", status, body);
+
+            // Retry on 429 or 5xx
+            if status.as_u16() == 429 || status.is_server_error() {
+                if attempt < max_retries {
+                    let delay = 1000 * (1 << (attempt - 1)); // 1s, 2s, 4s
+                    tracing::warn!(
+                        "[LLM_API] Continuation got {}, retrying in {}ms (attempt {}/{})",
+                        status, delay, attempt + 1, max_retries
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    continue;
+                }
+            } else {
+                break;
+            }
         }
 
-        let json: serde_json::Value = response.json().await.map_err(|e| {
-            tracing::error!("[LLM_API] Failed to parse continuation response: {}", e);
-            NoraError::LLMError(format!("Failed to parse response: {}", e))
+        // If OpenAI failed, try Ollama fallback
+        if json.is_none() {
+            if let Some(ref fallback_endpoint) = self.fallback_endpoint {
+                if let Some(ref fallback_model) = self.fallback_model {
+                    tracing::info!(
+                        "[LLM_API] Primary provider failed for continuation, trying Ollama fallback: {}",
+                        fallback_model
+                    );
+
+                    let mut fallback_payload = payload.clone();
+                    fallback_payload["model"] = serde_json::json!(fallback_model);
+
+                    match self.client
+                        .post(fallback_endpoint)
+                        .header("Content-Type", "application/json")
+                        .json(&fallback_payload)
+                        .send()
+                        .await
+                    {
+                        Ok(resp) if resp.status().is_success() => {
+                            if let Ok(j) = resp.json::<serde_json::Value>().await {
+                                tracing::info!("[LLM_API] Ollama fallback succeeded for continuation");
+                                json = Some(j);
+                            }
+                        }
+                        Ok(resp) => {
+                            let body = resp.text().await.unwrap_or_default();
+                            tracing::error!("[LLM_API] Ollama fallback failed: {}", body);
+                        }
+                        Err(e) => {
+                            tracing::error!("[LLM_API] Ollama fallback request failed: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        let json = json.ok_or_else(|| {
+            tracing::error!("[LLM_API] All continuation attempts failed: {}", last_error);
+            NoraError::LLMError(last_error)
         })?;
+
+        // Extract token usage
+        let usage = json.get("usage").and_then(|u| {
+            Some(TokenUsage {
+                input_tokens: u["prompt_tokens"].as_u64()? as u32,
+                output_tokens: u["completion_tokens"].as_u64()? as u32,
+                total_tokens: u["total_tokens"].as_u64()? as u32,
+            })
+        });
 
         let message = &json["choices"][0]["message"];
 
@@ -792,7 +1032,7 @@ impl LLMClient {
                     tracing::debug!("[LLM_API] Chained tool call: {} ({})", tc.name, tc.id);
                 }
 
-                return Ok(LLMResponse::ToolCalls(parsed_calls));
+                return Ok(LLMResponse::ToolCalls { calls: parsed_calls, usage });
             }
         }
 
@@ -812,7 +1052,7 @@ impl LLMClient {
             &content[..content.len().min(200)]
         );
 
-        Ok(LLMResponse::Text(content))
+        Ok(LLMResponse::Text { content, usage })
     }
 
     #[allow(dead_code)]
@@ -918,6 +1158,15 @@ impl LLMClient {
         tracing::debug!("[LLM_API] Response parsed successfully");
         eprintln!("[DEBUG] tool_calls in response: {:?}", json["choices"][0]["message"]["tool_calls"]);
 
+        // Extract token usage
+        let usage = json.get("usage").and_then(|u| {
+            Some(TokenUsage {
+                input_tokens: u["prompt_tokens"].as_u64()? as u32,
+                output_tokens: u["completion_tokens"].as_u64()? as u32,
+                total_tokens: u["total_tokens"].as_u64()? as u32,
+            })
+        });
+
         // Check if LLM wants to call tools
         if let Some(tool_calls) = json["choices"][0]["message"]["tool_calls"].as_array() {
             tracing::info!(
@@ -944,7 +1193,7 @@ impl LLMClient {
 
             if !calls.is_empty() {
                 tracing::info!("[LLM_API] Returning {} tool calls to caller", calls.len());
-                return Ok(LLMResponse::ToolCalls(calls));
+                return Ok(LLMResponse::ToolCalls { calls, usage });
             }
         } else {
             tracing::debug!("[LLM_API] No tool_calls in response");
@@ -961,7 +1210,7 @@ impl LLMClient {
             "[LLM_API] Returning text response ({} chars)",
             content.len()
         );
-        Ok(LLMResponse::Text(content))
+        Ok(LLMResponse::Text { content, usage })
     }
 
     #[allow(dead_code)]
@@ -1499,12 +1748,12 @@ impl LLMClient {
             NoraError::LLMError(format!("Anthropic API error: {}", e))
         })?;
 
-        // Convert provider response to LLMResponse
+        // Convert provider response to LLMResponse, preserving usage
         match response {
-            providers::ProviderResponse::Text { content, .. } => {
-                Ok(LLMResponse::Text(content))
+            providers::ProviderResponse::Text { content, usage } => {
+                Ok(LLMResponse::Text { content, usage })
             }
-            providers::ProviderResponse::ToolCalls { calls, .. } => {
+            providers::ProviderResponse::ToolCalls { calls, usage } => {
                 let tool_calls: Vec<ToolCall> = calls
                     .into_iter()
                     .map(|c| ToolCall {
@@ -1513,7 +1762,7 @@ impl LLMClient {
                         arguments: c.arguments,
                     })
                     .collect();
-                Ok(LLMResponse::ToolCalls(tool_calls))
+                Ok(LLMResponse::ToolCalls { calls: tool_calls, usage })
             }
         }
     }
@@ -1615,12 +1864,12 @@ impl LLMClient {
             NoraError::LLMError(format!("Anthropic API error: {}", e))
         })?;
 
-        // Convert provider response to LLMResponse
+        // Convert provider response to LLMResponse, preserving usage
         match response {
-            providers::ProviderResponse::Text { content, .. } => {
-                Ok(LLMResponse::Text(content))
+            providers::ProviderResponse::Text { content, usage } => {
+                Ok(LLMResponse::Text { content, usage })
             }
-            providers::ProviderResponse::ToolCalls { calls, .. } => {
+            providers::ProviderResponse::ToolCalls { calls, usage } => {
                 let tool_calls: Vec<ToolCall> = calls
                     .into_iter()
                     .map(|c| ToolCall {
@@ -1629,7 +1878,7 @@ impl LLMClient {
                         arguments: c.arguments,
                     })
                     .collect();
-                Ok(LLMResponse::ToolCalls(tool_calls))
+                Ok(LLMResponse::ToolCalls { calls: tool_calls, usage })
             }
         }
     }

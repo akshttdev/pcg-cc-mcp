@@ -6,7 +6,7 @@ use axum::{
     http::StatusCode,
     middleware::from_fn_with_state,
     response::Json as ResponseJson,
-    routing::{get, patch, post},
+    routing::{get, patch, post, put},
 };
 use db::models::{
     brand_profile::{BrandProfile, UpsertBrandProfile},
@@ -847,6 +847,67 @@ pub async fn upsert_brand_profile(
     Ok(ResponseJson(ApiResponse::success(profile)))
 }
 
+// ============================================================================
+// VIBE Budget Management
+// ============================================================================
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SetVibeBudgetRequest {
+    /// Budget limit in VIBE (1 VIBE = $0.001 USD). None means unlimited.
+    pub vibe_budget_limit: Option<i64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct VibeBudgetResponse {
+    pub vibe_budget_limit: Option<i64>,
+    pub vibe_spent_amount: i64,
+    pub vibe_remaining: Option<i64>,
+}
+
+/// Get the VIBE budget status for a project
+pub async fn get_vibe_budget(
+    Extension(project): Extension<Project>,
+) -> Result<ResponseJson<ApiResponse<VibeBudgetResponse>>, ApiError> {
+    Ok(ResponseJson(ApiResponse::success(VibeBudgetResponse {
+        vibe_budget_limit: project.vibe_budget_limit,
+        vibe_spent_amount: project.vibe_spent_amount,
+        vibe_remaining: project.remaining_vibe(),
+    })))
+}
+
+/// Set the VIBE budget limit for a project (admin/owner only)
+pub async fn set_vibe_budget(
+    Extension(access_context): Extension<AccessContext>,
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<SetVibeBudgetRequest>,
+) -> Result<ResponseJson<ApiResponse<VibeBudgetResponse>>, ApiError> {
+    // Only admins or project owners can set budget
+    if !access_context.is_admin {
+        access_context
+            .check_project_access(
+                &deployment.db().pool,
+                &project.id.to_string(),
+                ProjectRole::Owner,
+            )
+            .await
+            .map_err(|_| ApiError::Forbidden("Only project owners can set VIBE budget".into()))?;
+    }
+
+    Project::set_vibe_budget(&deployment.db().pool, project.id, payload.vibe_budget_limit).await?;
+
+    // Fetch updated project to return current state
+    let updated_project = Project::find_by_id(&deployment.db().pool, project.id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Project not found".into()))?;
+
+    Ok(ResponseJson(ApiResponse::success(VibeBudgetResponse {
+        vibe_budget_limit: updated_project.vibe_budget_limit,
+        vibe_spent_amount: updated_project.vibe_spent_amount,
+        vibe_remaining: updated_project.remaining_vibe(),
+    })))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let project_id_router = Router::new()
         .route(
@@ -873,7 +934,12 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/brand-profile",
             get(get_brand_profile).put(upsert_brand_profile),
         )
+        .route(
+            "/budget",
+            get(get_vibe_budget).put(set_vibe_budget),
+        )
         .merge(crate::routes::project_boards::router(deployment))
+        .merge(crate::routes::project_controllers::router(deployment))
         .layer(from_fn_with_state(
             deployment.clone(),
             load_project_middleware,

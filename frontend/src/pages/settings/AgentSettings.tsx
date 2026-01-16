@@ -18,9 +18,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Checkbox } from '@/components/ui/checkbox';
-import { JSONEditor } from '@/components/ui/json-editor';
-import { Loader2, Plus, Wallet } from 'lucide-react';
+import { Loader2, Plus, Wallet, Search, X, SortAsc, SortDesc } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -40,46 +38,47 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { agentWalletApi, agentsApi } from '@/lib/api';
+import { agentWalletApi, agentsApi, type AgentSearchParams } from '@/lib/api';
 import type {
   AgentWallet,
   AgentWithParsedFields,
   UpsertAgentWallet,
+  AgentStatus,
 } from 'shared/types';
 import { toast } from 'sonner';
 
-import { ExecutorConfigForm } from '@/components/ExecutorConfigForm';
 import { useProfiles } from '@/hooks/useProfiles';
-import { useUserSystem } from '@/components/config-provider';
-import { showModal } from '@/lib/modals';
+import { AgentDetailDialog } from '@/components/dialogs/agent-detail-dialog';
+
+// Status options for filter
+const STATUS_OPTIONS: { value: AgentStatus | 'all'; label: string }[] = [
+  { value: 'all', label: 'All Statuses' },
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'training', label: 'Training' },
+];
+
+// Sort options
+const SORT_OPTIONS = [
+  { value: 'name', label: 'Name' },
+  { value: 'designation', label: 'Designation' },
+  { value: 'status', label: 'Status' },
+  { value: 'priority', label: 'Priority' },
+  { value: 'tasks_completed', label: 'Tasks Completed' },
+] as const;
 
 export function AgentSettings() {
   const { t } = useTranslation('settings');
-  // Use profiles hook for server state
+  // Use profiles hook to get executor profiles for wallet profile options
   const {
     profilesContent: serverProfilesContent,
-    profilesPath,
     isLoading: profilesLoading,
-    isSaving: profilesSaving,
     error: profilesError,
-    save: saveProfiles,
   } = useProfiles();
 
-  const { reloadSystem } = useUserSystem();
-
-  // Local editor state (draft that may differ from server)
-  const [localProfilesContent, setLocalProfilesContent] = useState('');
-  const [profilesSuccess, setProfilesSuccess] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  // Form-based editor state
-  const [useFormEditor, setUseFormEditor] = useState(true);
-  const [selectedExecutorType, setSelectedExecutorType] =
-    useState<string>('CLAUDE_CODE');
-  const [selectedConfiguration, setSelectedConfiguration] =
-    useState<string>('DEFAULT');
+  // Parsed profiles for wallet profile options
   const [localParsedProfiles, setLocalParsedProfiles] = useState<any>(null);
-  const [isDirty, setIsDirty] = useState(false);
 
   const queryClient = useQueryClient();
   const {
@@ -91,14 +90,49 @@ export function AgentSettings() {
     queryFn: agentWalletApi.list,
   });
 
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<AgentStatus | 'all'>('all');
+  const [sortBy, setSortBy] = useState<AgentSearchParams['sort_by']>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  // Build search params
+  const searchParams = useMemo((): AgentSearchParams => {
+    const params: AgentSearchParams = {};
+    if (searchQuery.trim()) params.q = searchQuery.trim();
+    if (statusFilter !== 'all') params.status = statusFilter;
+    params.sort_by = sortBy;
+    params.sort_dir = sortDir;
+    return params;
+  }, [searchQuery, statusFilter, sortBy, sortDir]);
+
+  const hasFilters = searchQuery.trim() || statusFilter !== 'all';
+
   const {
     data: agentDirectory = [],
     isLoading: agentsLoading,
     error: agentsError,
   } = useQuery<AgentWithParsedFields[], Error>({
-    queryKey: ['agents'],
-    queryFn: agentsApi.list,
+    queryKey: ['agents', 'search', searchParams],
+    queryFn: () => agentsApi.search(searchParams),
   });
+
+  // Agent detail dialog state
+  const [selectedAgent, setSelectedAgent] = useState<AgentWithParsedFields | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+
+  // Clear all filters
+  const clearFilters = useCallback(() => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setSortBy('name');
+    setSortDir('asc');
+  }, []);
+
+  const handleAgentClick = useCallback((agent: AgentWithParsedFields) => {
+    setSelectedAgent(agent);
+    setDetailDialogOpen(true);
+  }, []);
 
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
   const [budgetProfileKey, setBudgetProfileKey] = useState<string>('');
@@ -126,11 +160,9 @@ export function AgentSettings() {
 
   const walletBusy = upsertWalletMutation.isPending;
 
-  // Sync server state to local state when not dirty
+  // Parse profiles for wallet profile options
   useEffect(() => {
-    if (!isDirty && serverProfilesContent) {
-      setLocalProfilesContent(serverProfilesContent);
-      // Parse JSON inside effect to avoid object dependency
+    if (serverProfilesContent) {
       try {
         const parsed = JSON.parse(serverProfilesContent);
         setLocalParsedProfiles(parsed);
@@ -139,7 +171,7 @@ export function AgentSettings() {
         setLocalParsedProfiles(null);
       }
     }
-  }, [serverProfilesContent, isDirty]);
+  }, [serverProfilesContent]);
 
   useEffect(() => {
     if (!budgetModalOpen) {
@@ -150,18 +182,6 @@ export function AgentSettings() {
       setBudgetError(null);
     }
   }, [budgetModalOpen]);
-
-  // Sync raw profiles with parsed profiles
-  const syncRawProfiles = (profiles: unknown) => {
-    setLocalProfilesContent(JSON.stringify(profiles, null, 2));
-  };
-
-  // Mark profiles as dirty
-  const markDirty = (nextProfiles: unknown) => {
-    setLocalParsedProfiles(nextProfiles);
-    syncRawProfiles(nextProfiles);
-    setIsDirty(true);
-  };
 
   const numberFormatter = useMemo(() => new Intl.NumberFormat(), []);
 
@@ -219,6 +239,19 @@ export function AgentSettings() {
 
   const formatAmount = useCallback(
     (value: number) => numberFormatter.format(value),
+    [numberFormatter]
+  );
+
+  // Format VIBE amount with USD equivalent
+  const formatVibeAmount = useCallback(
+    (vibe: number) => {
+      const usdValue = vibe * 0.001; // 1 VIBE = $0.001
+      return (
+        <span title={`$${usdValue.toFixed(4)} USD`}>
+          {numberFormatter.format(vibe)}
+        </span>
+      );
+    },
     [numberFormatter]
   );
 
@@ -281,270 +314,6 @@ export function AgentSettings() {
     upsertWalletMutation,
   ]);
 
-  // Open create dialog
-  const openCreateDialog = async () => {
-    try {
-      const result = await showModal<{
-        action: 'created' | 'canceled';
-        configName?: string;
-        cloneFrom?: string | null;
-      }>('create-configuration', {
-        executorType: selectedExecutorType,
-        existingConfigs: Object.keys(
-          localParsedProfiles?.executors?.[selectedExecutorType] || {}
-        ),
-      });
-
-      if (result.action === 'created' && result.configName) {
-        createConfiguration(
-          selectedExecutorType,
-          result.configName,
-          result.cloneFrom
-        );
-      }
-    } catch (error) {
-      // User cancelled - do nothing
-    }
-  };
-
-  // Create new configuration
-  const createConfiguration = (
-    executorType: string,
-    configName: string,
-    baseConfig?: string | null
-  ) => {
-    if (!localParsedProfiles || !localParsedProfiles.executors) return;
-
-    const base =
-      baseConfig &&
-      localParsedProfiles.executors[executorType]?.[baseConfig]?.[executorType]
-        ? localParsedProfiles.executors[executorType][baseConfig][executorType]
-        : {};
-
-    const updatedProfiles = {
-      ...localParsedProfiles,
-      executors: {
-        ...localParsedProfiles.executors,
-        [executorType]: {
-          ...localParsedProfiles.executors[executorType],
-          [configName]: {
-            [executorType]: base,
-          },
-        },
-      },
-    };
-
-    markDirty(updatedProfiles);
-    setSelectedConfiguration(configName);
-  };
-
-  // Open delete dialog
-  const openDeleteDialog = async (configName: string) => {
-    try {
-      const result = await showModal<'deleted' | 'canceled'>(
-        'delete-configuration',
-        {
-          configName,
-          executorType: selectedExecutorType,
-        }
-      );
-
-      if (result === 'deleted') {
-        await handleDeleteConfiguration(configName);
-      }
-    } catch (error) {
-      // User cancelled - do nothing
-    }
-  };
-
-  // Handle delete configuration
-  const handleDeleteConfiguration = async (configToDelete: string) => {
-    if (!localParsedProfiles) {
-      return;
-    }
-
-    // Clear any previous errors
-    setSaveError(null);
-
-    try {
-      // Validate that the configuration exists
-      if (
-        !localParsedProfiles.executors[selectedExecutorType]?.[configToDelete]
-      ) {
-        return;
-      }
-
-      // Check if this is the last configuration
-      const currentConfigs = Object.keys(
-        localParsedProfiles.executors[selectedExecutorType] || {}
-      );
-      if (currentConfigs.length <= 1) {
-        return;
-      }
-
-      // Remove the configuration from the executor
-      const remainingConfigs = {
-        ...localParsedProfiles.executors[selectedExecutorType],
-      };
-      delete remainingConfigs[configToDelete];
-
-      const updatedProfiles = {
-        ...localParsedProfiles,
-        executors: {
-          ...localParsedProfiles.executors,
-          [selectedExecutorType]: remainingConfigs,
-        },
-      };
-
-      // If no configurations left, create a blank DEFAULT (should not happen due to check above)
-      if (Object.keys(remainingConfigs).length === 0) {
-        updatedProfiles.executors[selectedExecutorType] = {
-          DEFAULT: { [selectedExecutorType]: {} },
-        };
-      }
-
-      try {
-        // Save using hook
-        await saveProfiles(JSON.stringify(updatedProfiles, null, 2));
-
-        // Update local state and reset dirty flag
-        setLocalParsedProfiles(updatedProfiles);
-        setLocalProfilesContent(JSON.stringify(updatedProfiles, null, 2));
-        setIsDirty(false);
-
-        // Select the next available configuration
-        const nextConfigs = Object.keys(
-          updatedProfiles.executors[selectedExecutorType]
-        );
-        const nextSelected = nextConfigs[0] || 'DEFAULT';
-        setSelectedConfiguration(nextSelected);
-
-        // Show success
-        setProfilesSuccess(true);
-        setTimeout(() => setProfilesSuccess(false), 3000);
-
-        // Refresh global system so deleted configs are removed elsewhere
-        reloadSystem();
-      } catch (saveError: unknown) {
-        console.error('Failed to save deletion to backend:', saveError);
-        setSaveError(t('settings.agents.errors.deleteFailed'));
-      }
-    } catch (error) {
-      console.error('Error deleting configuration:', error);
-    }
-  };
-
-  const handleProfilesChange = (value: string) => {
-    setLocalProfilesContent(value);
-    setIsDirty(true);
-
-    // Validate JSON on change
-    if (value.trim()) {
-      try {
-        const parsed = JSON.parse(value);
-        setLocalParsedProfiles(parsed);
-      } catch (err) {
-        // Invalid JSON, keep local content but clear parsed
-        setLocalParsedProfiles(null);
-      }
-    }
-  };
-
-  const handleSaveProfiles = async () => {
-    // Clear any previous errors
-    setSaveError(null);
-
-    try {
-      const contentToSave =
-        useFormEditor && localParsedProfiles
-          ? JSON.stringify(localParsedProfiles, null, 2)
-          : localProfilesContent;
-
-      await saveProfiles(contentToSave);
-      setProfilesSuccess(true);
-      setIsDirty(false);
-      setTimeout(() => setProfilesSuccess(false), 3000);
-
-      // Update the local content if using form editor
-      if (useFormEditor && localParsedProfiles) {
-        setLocalProfilesContent(contentToSave);
-      }
-
-      // Refresh global system so new profiles are available elsewhere
-      reloadSystem();
-    } catch (err: unknown) {
-      console.error('Failed to save profiles:', err);
-      setSaveError(t('settings.agents.errors.saveFailed'));
-    }
-  };
-
-  const handleExecutorConfigChange = (
-    executorType: string,
-    configuration: string,
-    formData: unknown
-  ) => {
-    if (!localParsedProfiles || !localParsedProfiles.executors) return;
-
-    // Update the parsed profiles with the new config
-    const updatedProfiles = {
-      ...localParsedProfiles,
-      executors: {
-        ...localParsedProfiles.executors,
-        [executorType]: {
-          ...localParsedProfiles.executors[executorType],
-          [configuration]: {
-            [executorType]: formData,
-          },
-        },
-      },
-    };
-
-    markDirty(updatedProfiles);
-  };
-
-  const handleExecutorConfigSave = async (formData: unknown) => {
-    if (!localParsedProfiles || !localParsedProfiles.executors) return;
-
-    // Clear any previous errors
-    setSaveError(null);
-
-    // Update the parsed profiles with the saved config
-    const updatedProfiles = {
-      ...localParsedProfiles,
-      executors: {
-        ...localParsedProfiles.executors,
-        [selectedExecutorType]: {
-          ...localParsedProfiles.executors[selectedExecutorType],
-          [selectedConfiguration]: {
-            [selectedExecutorType]: formData,
-          },
-        },
-      },
-    };
-
-    // Update state
-    setLocalParsedProfiles(updatedProfiles);
-
-    // Save the updated profiles directly
-    try {
-      const contentToSave = JSON.stringify(updatedProfiles, null, 2);
-
-      await saveProfiles(contentToSave);
-      setProfilesSuccess(true);
-      setIsDirty(false);
-      setTimeout(() => setProfilesSuccess(false), 3000);
-
-      // Update the local content as well
-      setLocalProfilesContent(contentToSave);
-
-      // Refresh global system so new profiles are available elsewhere
-      reloadSystem();
-    } catch (err: unknown) {
-      console.error('Failed to save profiles:', err);
-      setSaveError(t('settings.agents.errors.saveConfigFailed'));
-    }
-  };
-
   const agentStatusStyles: Record<string, string> = {
     active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
     inactive: 'bg-gray-100 text-gray-600 border-gray-200',
@@ -574,26 +343,95 @@ export function AgentSettings() {
         </Alert>
       )}
 
-      {profilesSuccess && (
-        <Alert className="border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200">
-          <AlertDescription className="font-medium">
-            {t('settings.agents.save.success')}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {saveError && (
-        <Alert variant="destructive">
-          <AlertDescription>{saveError}</AlertDescription>
-        </Alert>
-      )}
-
       <Card>
         <CardHeader>
-          <CardTitle>Autonomous Agents</CardTitle>
-          <CardDescription>
-            Live directory of Nora, Maci, and the social command specialists.
-          </CardDescription>
+          <div className="flex flex-col gap-4">
+            <div>
+              <CardTitle>Autonomous Agents</CardTitle>
+              <CardDescription>
+                Live Directory of all Powerclub Global Agents
+              </CardDescription>
+            </div>
+
+            {/* Search and Filter Controls */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              {/* Search Input */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search agents by name, role, or description..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-9"
+                />
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
+                    onClick={() => setSearchQuery('')}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              {/* Status Filter */}
+              <Select
+                value={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as AgentStatus | 'all')}
+              >
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Sort Controls */}
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as AgentSearchParams['sort_by'])}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                title={sortDir === 'asc' ? 'Sort ascending' : 'Sort descending'}
+              >
+                {sortDir === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
+              </Button>
+
+              {/* Clear Filters */}
+              {hasFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              )}
+            </div>
+
+            {/* Results count */}
+            {!agentsLoading && (
+              <p className="text-sm text-muted-foreground">
+                {agentDirectory.length} agent{agentDirectory.length !== 1 ? 's' : ''} found
+                {hasFilters && ' (filtered)'}
+              </p>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {agentsLoading ? (
@@ -611,7 +449,7 @@ export function AgentSettings() {
               No registered agents yet. Seed the registry to expose Nora’s team.
             </p>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {agentDirectory.map((agent) => {
                 const initials = agent.short_name
                   .split(' ')
@@ -625,64 +463,53 @@ export function AgentSettings() {
                 return (
                   <div
                     key={agent.id}
-                    className="rounded-lg border border-dashed p-4 space-y-3"
+                    onClick={() => handleAgentClick(agent)}
+                    className="group relative rounded-xl border bg-card overflow-hidden transition-all hover:shadow-md hover:border-primary/20 cursor-pointer"
                   >
-                    <div className="flex items-center gap-3">
-                      {agent.avatar_url ? (
-                        <img
-                          src={agent.avatar_url}
-                          alt={agent.short_name}
-                          className="h-10 w-10 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-sm font-semibold">
-                          {initials}
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium truncate">{agent.short_name}</p>
-                        <p className="text-sm text-muted-foreground truncate">
-                          {agent.designation || 'Specialist Agent'}
-                        </p>
-                      </div>
+                    {/* Status indicator */}
+                    <div className="absolute top-3 right-3 z-10">
                       <Badge
                         variant="outline"
-                        className={`text-xs capitalize ${statusClass}`}
+                        className={`text-xs capitalize backdrop-blur-sm ${statusClass}`}
                       >
                         {agent.status}
                       </Badge>
                     </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <span>
-                        Autonomy: {agent.autonomy_level?.replace('_', ' ') || 'manual'}
-                      </span>
-                      {agent.default_model && <span>Model: {agent.default_model}</span>}
+
+                    {/* Agent image */}
+                    <div className="aspect-square w-full bg-muted relative overflow-hidden">
+                      {agent.avatar_url ? (
+                        <img
+                          src={agent.avatar_url}
+                          alt={agent.short_name}
+                          className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+                          <span className="text-4xl font-bold text-primary/40">
+                            {initials}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    {agent.capabilities && agent.capabilities.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {agent.capabilities.slice(0, 4).map((capability) => (
-                          <Badge key={capability} variant="secondary">
-                            {capability}
-                          </Badge>
-                        ))}
-                        {agent.capabilities.length > 4 && (
-                          <Badge variant="outline">
-                            +{agent.capabilities.length - 4}
-                          </Badge>
-                        )}
+
+                    {/* Agent info */}
+                    <div className="p-4 space-y-2">
+                      <div>
+                        <h3 className="font-semibold text-lg leading-tight">
+                          {agent.short_name}
+                        </h3>
+                        <p className="text-sm font-medium text-primary/80">
+                          {agent.designation || 'Specialist Agent'}
+                        </p>
                       </div>
-                    )}
-                    {agent.tools && agent.tools.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Tools: {agent.tools.slice(0, 4).join(', ')}
-                        {agent.tools.length > 4 && '…'}
-                      </p>
-                    )}
-                    {agent.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {agent.description}
-                      </p>
-                    )}
+
+                      {agent.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-3">
+                          {agent.description}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -731,9 +558,12 @@ export function AgentSettings() {
                   <TableRow>
                     <TableHead>Profile</TableHead>
                     <TableHead>Display name</TableHead>
-                    <TableHead className="text-right">Budget</TableHead>
-                    <TableHead className="text-right">Spent</TableHead>
-                    <TableHead className="text-right">Available</TableHead>
+                    <TableHead className="text-right">APT Budget</TableHead>
+                    <TableHead className="text-right">APT Spent</TableHead>
+                    <TableHead className="text-right">APT Available</TableHead>
+                    <TableHead className="text-right text-primary">VIBE Budget</TableHead>
+                    <TableHead className="text-right text-primary">VIBE Spent</TableHead>
+                    <TableHead className="text-right text-primary">VIBE Available</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -743,6 +573,9 @@ export function AgentSettings() {
                       (opt) => opt.profileKey === wallet.profile_key
                     );
                     const available = wallet.budget_limit - wallet.spent_amount;
+                    const vibeAvailable = wallet.vibe_budget_limit != null
+                      ? wallet.vibe_budget_limit - wallet.vibe_spent_amount
+                      : null;
                     return (
                       <TableRow key={wallet.id}>
                         <TableCell className="font-mono text-xs sm:text-sm">
@@ -766,6 +599,25 @@ export function AgentSettings() {
                         >
                           {formatAmount(available)}
                         </TableCell>
+                        <TableCell className="text-right font-medium text-primary">
+                          {wallet.vibe_budget_limit != null
+                            ? formatVibeAmount(wallet.vibe_budget_limit)
+                            : <span className="text-muted-foreground">∞</span>}
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {formatVibeAmount(wallet.vibe_spent_amount)}
+                        </TableCell>
+                        <TableCell
+                          className={
+                            vibeAvailable != null && vibeAvailable <= 0
+                              ? 'text-right text-destructive'
+                              : 'text-right text-primary'
+                          }
+                        >
+                          {vibeAvailable != null
+                            ? formatVibeAmount(vibeAvailable)
+                            : <span className="text-muted-foreground">∞</span>}
+                        </TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="outline"
@@ -786,206 +638,6 @@ export function AgentSettings() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('settings.agents.title')}</CardTitle>
-          <CardDescription>{t('settings.agents.description')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Editor type toggle */}
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="use-form-editor"
-              checked={!useFormEditor}
-              onCheckedChange={(checked) => setUseFormEditor(!checked)}
-              disabled={profilesLoading || !localParsedProfiles}
-            />
-            <Label htmlFor="use-form-editor">
-              {t('settings.agents.editor.formLabel')}
-            </Label>
-          </div>
-
-          {useFormEditor &&
-          localParsedProfiles &&
-          localParsedProfiles.executors ? (
-            // Form-based editor
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="executor-type">
-                    {t('settings.agents.editor.agentLabel')}
-                  </Label>
-                  <Select
-                    value={selectedExecutorType}
-                    onValueChange={(value) => {
-                      setSelectedExecutorType(value);
-                      // Reset configuration selection when executor type changes
-                      setSelectedConfiguration('DEFAULT');
-                    }}
-                  >
-                    <SelectTrigger id="executor-type">
-                      <SelectValue
-                        placeholder={t(
-                          'settings.agents.editor.agentPlaceholder'
-                        )}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.keys(localParsedProfiles.executors).map(
-                        (type) => (
-                          <SelectItem key={type} value={type}>
-                            {type}
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="configuration">
-                    {t('settings.agents.editor.configLabel')}
-                  </Label>
-                  <div className="flex gap-2">
-                    <Select
-                      value={selectedConfiguration}
-                      onValueChange={(value) => {
-                        if (value === '__create__') {
-                          openCreateDialog();
-                        } else {
-                          setSelectedConfiguration(value);
-                        }
-                      }}
-                      disabled={
-                        !localParsedProfiles.executors[selectedExecutorType]
-                      }
-                    >
-                      <SelectTrigger id="configuration">
-                        <SelectValue
-                          placeholder={t(
-                            'settings.agents.editor.configPlaceholder'
-                          )}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.keys(
-                          localParsedProfiles.executors[selectedExecutorType] ||
-                            {}
-                        ).map((configuration) => (
-                          <SelectItem key={configuration} value={configuration}>
-                            {configuration}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value="__create__">
-                          {t('settings.agents.editor.createNew')}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="h-10"
-                      onClick={() => openDeleteDialog(selectedConfiguration)}
-                      disabled={
-                        profilesSaving ||
-                        !localParsedProfiles.executors[selectedExecutorType] ||
-                        Object.keys(
-                          localParsedProfiles.executors[selectedExecutorType] ||
-                            {}
-                        ).length <= 1
-                      }
-                      title={
-                        Object.keys(
-                          localParsedProfiles.executors[selectedExecutorType] ||
-                            {}
-                        ).length <= 1
-                          ? t('settings.agents.editor.deleteTitle')
-                          : t('settings.agents.editor.deleteButton', {
-                              name: selectedConfiguration,
-                            })
-                      }
-                    >
-                      {t('settings.agents.editor.deleteText')}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {localParsedProfiles.executors[selectedExecutorType]?.[
-                selectedConfiguration
-              ]?.[selectedExecutorType] && (
-                <ExecutorConfigForm
-                  executor={selectedExecutorType as any}
-                  value={
-                    localParsedProfiles.executors[selectedExecutorType][
-                      selectedConfiguration
-                    ][selectedExecutorType] || {}
-                  }
-                  onChange={(formData) =>
-                    handleExecutorConfigChange(
-                      selectedExecutorType,
-                      selectedConfiguration,
-                      formData
-                    )
-                  }
-                  onSave={handleExecutorConfigSave}
-                  disabled={profilesSaving}
-                  isSaving={profilesSaving}
-                  isDirty={isDirty}
-                />
-              )}
-            </div>
-          ) : (
-            // Raw JSON editor
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="profiles-editor">
-                  {t('settings.agents.editor.jsonLabel')}
-                </Label>
-                <JSONEditor
-                  id="profiles-editor"
-                  placeholder={t('settings.agents.editor.jsonPlaceholder')}
-                  value={
-                    profilesLoading
-                      ? t('settings.agents.editor.jsonLoading')
-                      : localProfilesContent
-                  }
-                  onChange={handleProfilesChange}
-                  disabled={profilesLoading}
-                  minHeight={300}
-                />
-              </div>
-
-              {!profilesError && profilesPath && (
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-medium">
-                      {t('settings.agents.editor.pathLabel')}
-                    </span>{' '}
-                    <span className="font-mono text-xs">{profilesPath}</span>
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {!useFormEditor && (
-        <div className="sticky bottom-0 z-10 bg-background/80 backdrop-blur-sm border-t py-4">
-          <div className="flex justify-end">
-            <Button
-              onClick={handleSaveProfiles}
-              disabled={!isDirty || profilesSaving || !!profilesError}
-            >
-              {profilesSaving && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {t('settings.agents.save.button')}
-            </Button>
-          </div>
-        </div>
-      )}
       </div>
 
       <Dialog open={budgetModalOpen} onOpenChange={setBudgetModalOpen}>
@@ -1055,26 +707,63 @@ export function AgentSettings() {
             </div>
 
             {currentWallet && (
-              <div className="rounded-md border bg-muted/40 p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Spent this period</span>
-                  <span className="font-medium">
-                    {formatAmount(currentWallet.spent_amount)}
-                  </span>
+              <div className="space-y-3">
+                {/* APT Budget Stats */}
+                <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">APT Budget</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Spent this period</span>
+                    <span className="font-medium">
+                      {formatAmount(currentWallet.spent_amount)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Remaining</span>
+                    <span
+                      className={
+                        currentWallet.budget_limit - currentWallet.spent_amount <= 0
+                          ? 'font-medium text-destructive'
+                          : 'font-medium'
+                      }
+                    >
+                      {formatAmount(
+                        currentWallet.budget_limit - currentWallet.spent_amount
+                      )}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Remaining</span>
-                  <span
-                    className={
-                      currentWallet.budget_limit - currentWallet.spent_amount <= 0
-                        ? 'font-medium text-destructive'
-                        : 'font-medium'
-                    }
-                  >
-                    {formatAmount(
-                      currentWallet.budget_limit - currentWallet.spent_amount
-                    )}
-                  </span>
+                {/* VIBE Budget Stats */}
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+                  <div className="text-xs font-medium text-primary mb-2">VIBE Budget (1 VIBE = $0.001)</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Budget limit</span>
+                    <span className="font-medium text-primary">
+                      {currentWallet.vibe_budget_limit != null
+                        ? `${formatAmount(currentWallet.vibe_budget_limit)} (~$${(currentWallet.vibe_budget_limit * 0.001).toFixed(2)})`
+                        : 'Unlimited'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Spent</span>
+                    <span className="font-medium">
+                      {formatAmount(currentWallet.vibe_spent_amount)} (~${(currentWallet.vibe_spent_amount * 0.001).toFixed(2)})
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Remaining</span>
+                    <span
+                      className={
+                        currentWallet.vibe_budget_limit != null &&
+                        currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount <= 0
+                          ? 'font-medium text-destructive'
+                          : 'font-medium text-primary'
+                      }
+                    >
+                      {currentWallet.vibe_budget_limit != null
+                        ? `${formatAmount(currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount)} (~$${((currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount) * 0.001).toFixed(2)})`
+                        : 'Unlimited'}
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -1097,6 +786,13 @@ export function AgentSettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Agent Detail Dialog */}
+      <AgentDetailDialog
+        agent={selectedAgent}
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
+      />
     </>
   );
 }

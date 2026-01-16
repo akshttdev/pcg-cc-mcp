@@ -21,7 +21,6 @@ pub enum EmailAccountError {
 pub enum EmailProvider {
     Gmail,
     Zoho,
-    Outlook,
     ImapCustom,
 }
 
@@ -30,7 +29,6 @@ impl std::fmt::Display for EmailProvider {
         let s = match self {
             EmailProvider::Gmail => "gmail",
             EmailProvider::Zoho => "zoho",
-            EmailProvider::Outlook => "outlook",
             EmailProvider::ImapCustom => "imap_custom",
         };
         write!(f, "{}", s)
@@ -44,7 +42,6 @@ impl std::str::FromStr for EmailProvider {
         match s.to_lowercase().as_str() {
             "gmail" => Ok(EmailProvider::Gmail),
             "zoho" => Ok(EmailProvider::Zoho),
-            "outlook" => Ok(EmailProvider::Outlook),
             "imap_custom" | "custom" | "imap" => Ok(EmailProvider::ImapCustom),
             _ => Err(format!("Unknown email provider: {}", s)),
         }

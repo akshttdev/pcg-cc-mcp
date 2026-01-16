@@ -1,5 +1,6 @@
 // Simplified authentication service using bcrypt and sessions
 use bcrypt::{DEFAULT_COST, hash, verify};
+use sha2::{Sha256, Digest};
 use uuid::Uuid;
 
 /// Simple auth service for internal use
@@ -20,9 +21,24 @@ impl AuthService {
         verify(password, hash)
     }
 
-    /// Generate a new session ID
+    /// Generate a new session ID using cryptographically secure random bytes
     pub fn generate_session_id() -> String {
+        // Use UUID v4 which provides 122 bits of randomness
         Uuid::new_v4().to_string()
+    }
+
+    /// Hash a session token using SHA256 for fast, secure storage
+    /// Unlike passwords, session tokens need fast hashing since they're checked on every request
+    /// SHA256 is appropriate here because:
+    /// 1. Session tokens are already high-entropy (UUIDs have 122 bits)
+    /// 2. We need fast verification on every authenticated request
+    /// 3. Unlike passwords, session tokens aren't reused across services
+    pub fn hash_session_token(token: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(token.as_bytes());
+        let result = hasher.finalize();
+        // Return as hex string for storage
+        hex::encode(result)
     }
 }
 

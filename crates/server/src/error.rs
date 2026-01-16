@@ -82,6 +82,8 @@ pub enum ApiError {
     TooManyRequests(String),
     #[error("Internal Server Error: {0}")]
     InternalError(String),
+    #[error("Payment Required: {0}")]
+    PaymentRequired(String),
 }
 
 impl From<Git2Error> for ApiError {
@@ -229,6 +231,7 @@ impl IntoResponse for ApiError {
             ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "Forbidden"),
             ApiError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "TooManyRequests"),
             ApiError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "InternalError"),
+            ApiError::PaymentRequired(_) => (StatusCode::PAYMENT_REQUIRED, "PaymentRequired"),
             ApiError::EmailAccount(e) => match e {
                 EmailAccountError::NotFound => (StatusCode::NOT_FOUND, "EmailAccountNotFound"),
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, "EmailAccountError"),
@@ -267,6 +270,7 @@ impl IntoResponse for ApiError {
             ApiError::Forbidden(msg) => msg.clone(),
             ApiError::TooManyRequests(msg) => msg.clone(),
             ApiError::InternalError(msg) => msg.clone(),
+            ApiError::PaymentRequired(msg) => msg.clone(),
             _ => format!("{}: {}", error_type, self),
         };
         let response = ApiResponse::<()>::error(&error_message);

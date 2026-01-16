@@ -81,6 +81,7 @@ vibe-kanban-*.tgz
 
 # Database and data persistence (NEVER commit!)
 dev_assets
+dev_assets_seed_clean/config.json
 dev_assets/db.sqlite
 dev_assets/db.sqlite-shm
 dev_assets/db.sqlite-wal

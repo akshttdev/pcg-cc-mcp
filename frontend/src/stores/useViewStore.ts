@@ -18,12 +18,16 @@ interface ViewStore {
   currentViewType: ViewType;
   currentViewId: string | null;
 
+  // Enhanced cards preference
+  useEnhancedCards: boolean;
+
   // Saved views
   savedViews: Record<string, ViewConfig[]>; // projectId -> views[]
 
   // Actions
   setViewType: (viewType: ViewType) => void;
   setCurrentView: (viewId: string | null) => void;
+  setUseEnhancedCards: (enabled: boolean) => void;
   saveView: (view: ViewConfig) => void;
   deleteView: (projectId: string, viewId: string) => void;
   getSavedViews: (projectId: string) => ViewConfig[];
@@ -35,11 +39,14 @@ export const useViewStore = create<ViewStore>()(
     (set, get) => ({
       currentViewType: 'board',
       currentViewId: null,
+      useEnhancedCards: true, // Default to enhanced cards
       savedViews: {},
 
       setViewType: (viewType) => set({ currentViewType: viewType }),
 
       setCurrentView: (viewId) => set({ currentViewId: viewId }),
+
+      setUseEnhancedCards: (enabled) => set({ useEnhancedCards: enabled }),
 
       saveView: (view) =>
         set((state) => {

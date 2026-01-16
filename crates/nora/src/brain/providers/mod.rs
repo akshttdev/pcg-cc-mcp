@@ -11,5 +11,5 @@ pub use anthropic::AnthropicProvider;
 pub use openai::OpenAIProvider;
 pub use provider_trait::{
     ChatConfig, ChatMessage, ChatRequest, LLMProviderTrait, ProviderError, ProviderResponse,
-    ProviderType, StreamChunk, ToolCallRequest, ToolDefinition,
+    ProviderType, StreamChunk, TokenUsage, ToolCallRequest, ToolDefinition,
 };

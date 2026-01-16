@@ -6,6 +6,9 @@ import { Navbar } from '@/components/layout/navbar';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Projects } from '@/pages/projects';
 import { ProjectTasks } from '@/pages/project-tasks';
+import { ProjectControllerPage } from '@/pages/project-controller';
+import { MyTasksPage } from '@/pages/my-tasks';
+import { GlobalTasksPage } from '@/pages/global-tasks';
 import { NoraPage } from '@/pages/nora';
 import MissionControlPage from '@/pages/mission-control';
 import { WorkflowsPage } from '@/pages/workflows';
@@ -13,6 +16,7 @@ import { SocialPage } from '@/pages/social';
 import { CrmPage } from '@/pages/crm';
 import { VirtualEnvironmentPage } from '@/pages/virtual-environment';
 import { EmbedVirtualEnvironmentPage } from '@/pages/embed/virtual-environment';
+import { OAuthCallbackPage } from '@/pages/oauth/OAuthCallbackPage';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
 
@@ -20,6 +24,7 @@ import {
   AgentSettings,
   GeneralSettings,
   McpSettings,
+  ModelsSettings,
   SettingsLayout,
   ProfileSettings,
   PrivacySettings,
@@ -189,6 +194,10 @@ function AppContent() {
                 <div className="flex-1 overflow-y-auto">
                   <SentryRoutes>
                     <Route path="/login" element={<LoginPage />} />
+                    <Route
+                      path="/oauth/:provider/callback"
+                      element={<ProtectedRoute><OAuthCallbackPage /></ProtectedRoute>}
+                    />
                     <Route path="/" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
                     <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
                     <Route path="/projects/:projectId" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
@@ -212,7 +221,23 @@ function AppContent() {
                       path="/projects/:projectId/tasks/:taskId"
                       element={<ProtectedRoute><ProjectTasks /></ProtectedRoute>}
                     />
-                    <Route path="/nora" element={<ProtectedRoute><NoraPage /></ProtectedRoute>} />
+                    {/* Project Controller - project-specific AI controller */}
+                    <Route
+                      path="/projects/:projectId/control"
+                      element={<ProtectedRoute><ProjectControllerPage /></ProtectedRoute>}
+                    />
+                    {/* Project CRM - scoped to project */}
+                    <Route
+                      path="/projects/:projectId/crm"
+                      element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
+                    />
+                    {/* My Tasks - for non-admin users */}
+                    <Route path="/my-tasks" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
+                    {/* Nora Command - admin only global controller */}
+                    <Route path="/nora" element={<AdminRoute><NoraPage /></AdminRoute>} />
+                    {/* Global Tasks - admin only view of all tasks */}
+                    <Route path="/global-tasks" element={<AdminRoute><GlobalTasksPage /></AdminRoute>} />
+                    {/* Legacy routes - keep for backwards compatibility */}
                     <Route path="/mission-control" element={<ProtectedRoute><MissionControlPage /></ProtectedRoute>} />
                     <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
                     <Route
@@ -241,6 +266,7 @@ function AppContent() {
                       <Route path="privacy" element={<PrivacySettings />} />
                       <Route path="activity" element={<ActivitySettings />} />
                       <Route path="agents" element={<AgentSettings />} />
+                      <Route path="models" element={<ModelsSettings />} />
                       <Route path="mcp" element={<McpSettings />} />
                       <Route path="airtable" element={<AirtableSettings />} />
                     </Route>

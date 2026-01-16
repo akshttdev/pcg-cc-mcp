@@ -223,9 +223,15 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("flux-pro".to_string()),
-            fallback_models: Some(vec!["sdxl".to_string(), "dalle-3".to_string()]),
+            default_model: Some("gpt-oss".to_string()),  // Use local Ollama for chat
+            fallback_models: Some(vec!["gpt-4o".to_string(), "claude-sonnet-4".to_string()]),
             model_config: Some(json!({
+                "provider": "ollama",  // Route to local Ollama
+                "temperature": 0.8,
+                "max_tokens": 4096,
+                "system_prompt_prefix": "You are Maci, the Master Cinematographer.",
+                // Image generation settings (used by CinematicsService)
+                "image_model": "flux-pro",
                 "default_steps": 30,
                 "default_cfg": 7.5,
                 "upscale_factor": 2,
@@ -489,13 +495,16 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("flux-pro".to_string()),
-            fallback_models: Some(vec!["sdxl".to_string(), "dalle-3".to_string()]),
+            default_model: Some("gpt-oss".to_string()),  // Use local Ollama for chat
+            fallback_models: Some(vec!["gpt-4o".to_string(), "claude-sonnet-4".to_string()]),
             model_config: Some(json!({
+                "provider": "ollama",  // Route to local Ollama
                 "temperature": 0.8,
                 "max_tokens": 4096,
-                "default_image_style": "brand_identity",
-                "system_prompt_prefix": "You are Genesis, the Brand Identity Architect."
+                "system_prompt_prefix": "You are Genesis, the Brand Identity Architect.",
+                // Image generation settings
+                "image_model": "flux-pro",
+                "default_image_style": "brand_identity"
             })),
             status: Some(AgentStatus::Active),
             autonomy_level: Some(AutonomyLevel::Supervised),

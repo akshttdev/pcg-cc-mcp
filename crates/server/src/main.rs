@@ -7,6 +7,7 @@ use thiserror::Error;
 use tracing_subscriber::{EnvFilter, prelude::*};
 use utils::{
     assets::asset_dir, browser::open_browser, port_file::write_port_file, sentry::sentry_layer,
+    external_services::{ExternalServicesConfig, initialize_external_services},
 };
 
 #[derive(Debug, Error)]
@@ -46,6 +47,16 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Create asset directory if it doesn't exist
     if !asset_dir().exists() {
         std::fs::create_dir_all(asset_dir())?;
+    }
+
+    // Initialize external services (Ollama for local LLM, ComfyUI for image generation)
+    let external_config = ExternalServicesConfig::default();
+    let service_status = initialize_external_services(&external_config).await;
+    if !service_status.ollama_running {
+        tracing::warn!("Ollama not available - agents will fall back to cloud LLMs (may incur API costs)");
+    }
+    if !service_status.comfyui_running {
+        tracing::warn!("ComfyUI not available - Maci image generation will be disabled");
     }
 
     let deployment = DeploymentImpl::new().await?;

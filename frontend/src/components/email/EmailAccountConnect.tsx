@@ -46,13 +46,6 @@ const providerConfig: Record<EmailProvider, {
     bgColor: 'bg-[#C8202B]',
     description: 'Zoho Mail - Team operations and CRM integration',
   },
-  outlook: {
-    name: 'Outlook',
-    icon: <span className="text-lg font-bold">O</span>,
-    color: 'text-[#0078D4]',
-    bgColor: 'bg-[#0078D4]',
-    description: 'Microsoft Outlook / Office 365',
-  },
   imap_custom: {
     name: 'Custom IMAP',
     icon: <span className="text-lg font-bold">@</span>,
@@ -316,7 +309,7 @@ export function EmailAccountConnect({
   className,
 }: EmailAccountConnectProps) {
   const connectedAccounts = accounts.filter((a) => a.status !== 'revoked');
-  const providers: EmailProvider[] = ['gmail', 'zoho', 'outlook'];
+  const providers: EmailProvider[] = ['gmail', 'zoho'];
 
   const getExistingAccount = (provider: EmailProvider) => {
     return connectedAccounts.find((a) => a.provider === provider);

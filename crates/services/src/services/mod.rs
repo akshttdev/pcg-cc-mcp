@@ -1,6 +1,7 @@
 pub mod agent_registry;
 pub mod airtable_service;
 pub mod analytics;
+pub mod aptos;
 pub mod approvals;
 pub mod artifacts;
 pub mod auth;
@@ -28,3 +29,4 @@ pub mod slot_manager;
 pub mod topos_scanner;
 pub mod worktree_manager;
 pub mod social;
+pub mod vibe_pricing;

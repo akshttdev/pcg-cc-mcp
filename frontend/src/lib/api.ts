@@ -145,6 +145,7 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
     return await fetch(url, {
       ...options,
       headers,
+      credentials: 'include',
     });
   } catch (error) {
     if (isFileProtocol) {
@@ -554,8 +555,137 @@ export const projectsApi = {
   },
 };
 
+// Project Controller Types
+export interface ProjectControllerConfig {
+  id: string;
+  project_id: string;
+  name: string;
+  personality: string;
+  system_prompt: string | null;
+  voice_id: string | null;
+  avatar_url: string | null;
+  model: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdateControllerConfig {
+  name?: string;
+  personality?: string;
+  system_prompt?: string;
+  voice_id?: string;
+  avatar_url?: string;
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+}
+
+export interface ProjectControllerConversation {
+  id: string;
+  project_id: string;
+  user_id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectControllerMessage {
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  tokens_used: number | null;
+  created_at: string;
+}
+
+export interface ControllerChatResponse {
+  message: ProjectControllerMessage;
+  conversation_id: string;
+}
+
+// Project Controller APIs
+export const projectControllersApi = {
+  getConfig: async (projectId: string): Promise<ProjectControllerConfig> => {
+    const response = await makeRequest(`/api/projects/${projectId}/controller`);
+    return handleApiResponse<ProjectControllerConfig>(response);
+  },
+
+  updateConfig: async (
+    projectId: string,
+    data: UpdateControllerConfig
+  ): Promise<ProjectControllerConfig> => {
+    const response = await makeRequest(`/api/projects/${projectId}/controller`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProjectControllerConfig>(response);
+  },
+
+  getConversations: async (
+    projectId: string
+  ): Promise<ProjectControllerConversation[]> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/controller/conversations`
+    );
+    return handleApiResponse<ProjectControllerConversation[]>(response);
+  },
+
+  getConversation: async (
+    projectId: string,
+    conversationId: string
+  ): Promise<{ conversation: ProjectControllerConversation; messages: ProjectControllerMessage[] }> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/controller/conversations/${conversationId}`
+    );
+    return handleApiResponse<{ conversation: ProjectControllerConversation; messages: ProjectControllerMessage[] }>(response);
+  },
+
+  deleteConversation: async (
+    projectId: string,
+    conversationId: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/controller/conversations/${conversationId}`,
+      { method: 'DELETE' }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  sendMessage: async (
+    projectId: string,
+    content: string,
+    conversationId?: string
+  ): Promise<ControllerChatResponse> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/controller/chat`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ content, conversation_id: conversationId }),
+      }
+    );
+    return handleApiResponse<ControllerChatResponse>(response);
+  },
+};
+
+// Assigned Task type for My Tasks
+export interface AssignedTask {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  project_id: string;
+  project_name: string;
+}
+
 // Task Management APIs
 export const tasksApi = {
+  getAssignedToMe: async (): Promise<AssignedTask[]> => {
+    const response = await makeRequest('/api/tasks/assigned-to-me');
+    return handleApiResponse<AssignedTask[]>(response);
+  },
   getAll: async (projectId: string): Promise<TaskWithAttemptStatus[]> => {
     const response = await makeRequest(`/api/tasks?project_id=${projectId}`);
     return handleApiResponse<TaskWithAttemptStatus[]>(response);
@@ -847,6 +977,14 @@ export const commitsApi = {
   },
 };
 
+// Execution Process Logs type
+export interface ExecutionProcessLogs {
+  execution_id: string;
+  logs: string; // JSONL format
+  byte_size: number;
+  inserted_at: Date;
+}
+
 // Execution Process APIs
 export const executionProcessesApi = {
   getExecutionProcesses: async (
@@ -861,6 +999,11 @@ export const executionProcessesApi = {
   getDetails: async (processId: string): Promise<ExecutionProcess> => {
     const response = await makeRequest(`/api/execution-processes/${processId}`);
     return handleApiResponse<ExecutionProcess>(response);
+  },
+
+  getStoredLogs: async (processId: string): Promise<ExecutionProcessLogs | null> => {
+    const response = await makeRequest(`/api/execution-processes/${processId}/logs`);
+    return handleApiResponse<ExecutionProcessLogs | null>(response);
   },
 
   stopExecutionProcess: async (processId: string): Promise<void> => {
@@ -913,30 +1056,112 @@ export const executionSummaryApi = {
   },
 };
 
+// User type for the users API
+export interface UserListItem {
+  id: string;
+  username: string;
+  email: string;
+  full_name: string;
+  avatar_url: string | null;
+  is_active: number;
+  is_admin: number;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+// Users API
+export const usersApi = {
+  // List/search users
+  list: async (params?: {
+    search?: string;
+    is_active?: boolean;
+    is_admin?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<UserListItem[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.is_active !== undefined) searchParams.set('is_active', String(params.is_active));
+    if (params?.is_admin !== undefined) searchParams.set('is_admin', String(params.is_admin));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.offset) searchParams.set('offset', String(params.offset));
+
+    const queryString = searchParams.toString();
+    const url = queryString ? `/api/users?${queryString}` : '/api/users';
+    const response = await makeRequest(url);
+    return handleApiResponse<UserListItem[]>(response);
+  },
+
+  // Get user by ID
+  getById: async (userId: string): Promise<UserListItem> => {
+    const response = await makeRequest(`/api/users/${userId}`);
+    return handleApiResponse<UserListItem>(response);
+  },
+};
+
 // Agent Registry APIs
+// Note: These endpoints return raw data, not wrapped in ApiResponse format
+// Agent search query params
+export interface AgentSearchParams {
+  q?: string;
+  status?: AgentStatus;
+  capability?: string;
+  sort_by?: 'name' | 'designation' | 'status' | 'priority' | 'tasks_completed';
+  sort_dir?: 'asc' | 'desc';
+}
+
 export const agentsApi = {
   // List all agents
   list: async (): Promise<AgentWithParsedFields[]> => {
     const response = await makeRequest('/api/agents');
-    return handleApiResponse<AgentWithParsedFields[]>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to load agents', response.status, response);
+    }
+    return response.json();
+  },
+
+  // Search agents with filters
+  search: async (params: AgentSearchParams): Promise<AgentWithParsedFields[]> => {
+    const searchParams = new URLSearchParams();
+    if (params.q) searchParams.set('q', params.q);
+    if (params.status) searchParams.set('status', params.status);
+    if (params.capability) searchParams.set('capability', params.capability);
+    if (params.sort_by) searchParams.set('sort_by', params.sort_by);
+    if (params.sort_dir) searchParams.set('sort_dir', params.sort_dir);
+
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    const response = await makeRequest(`/api/agents/search${query}`);
+    if (!response.ok) {
+      throw new ApiError('Failed to search agents', response.status, response);
+    }
+    return response.json();
   },
 
   // List active agents only
   listActive: async (): Promise<AgentWithParsedFields[]> => {
     const response = await makeRequest('/api/agents/active');
-    return handleApiResponse<AgentWithParsedFields[]>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to load active agents', response.status, response);
+    }
+    return response.json();
   },
 
   // Get agent by ID
   getById: async (agentId: string): Promise<AgentWithParsedFields> => {
     const response = await makeRequest(`/api/agents/${agentId}`);
-    return handleApiResponse<AgentWithParsedFields>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to load agent', response.status, response);
+    }
+    return response.json();
   },
 
   // Get agent by name
   getByName: async (name: string): Promise<AgentWithParsedFields> => {
     const response = await makeRequest(`/api/agents/by-name/${encodeURIComponent(name)}`);
-    return handleApiResponse<AgentWithParsedFields>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to load agent', response.status, response);
+    }
+    return response.json();
   },
 
   // Create a new agent
@@ -945,7 +1170,10 @@ export const agentsApi = {
       method: 'POST',
       body: JSON.stringify(agent),
     });
-    return handleApiResponse<AgentWithParsedFields>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to create agent', response.status, response);
+    }
+    return response.json();
   },
 
   // Update an agent
@@ -954,7 +1182,10 @@ export const agentsApi = {
       method: 'PUT',
       body: JSON.stringify(agent),
     });
-    return handleApiResponse<AgentWithParsedFields>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to update agent', response.status, response);
+    }
+    return response.json();
   },
 
   // Delete an agent
@@ -962,7 +1193,9 @@ export const agentsApi = {
     const response = await makeRequest(`/api/agents/${agentId}`, {
       method: 'DELETE',
     });
-    return handleApiResponse<void>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to delete agent', response.status, response);
+    }
   },
 
   // Seed core agents (Nora, Maci, Editron)
@@ -970,7 +1203,10 @@ export const agentsApi = {
     const response = await makeRequest('/api/agents/seed', {
       method: 'POST',
     });
-    return handleApiResponse<AgentWithParsedFields[]>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to seed agents', response.status, response);
+    }
+    return response.json();
   },
 
   // Update agent status
@@ -979,7 +1215,10 @@ export const agentsApi = {
       method: 'PUT',
       body: JSON.stringify({ status }),
     });
-    return handleApiResponse<AgentWithParsedFields>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to update agent status', response.status, response);
+    }
+    return response.json();
   },
 
   // Assign wallet to agent
@@ -988,7 +1227,10 @@ export const agentsApi = {
       method: 'PUT',
       body: JSON.stringify({ wallet_address: walletAddress }),
     });
-    return handleApiResponse<AgentWithParsedFields>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to assign wallet', response.status, response);
+    }
+    return response.json();
   },
 
   // Chat with an agent
@@ -997,7 +1239,10 @@ export const agentsApi = {
       method: 'POST',
       body: JSON.stringify(request),
     });
-    return handleApiResponse<AgentChatResponse>(response);
+    if (!response.ok) {
+      throw new ApiError('Failed to chat with agent', response.status, response);
+    }
+    return response.json();
   },
 
   // Chat with an agent (streaming)
@@ -1075,6 +1320,20 @@ export const agentsApi = {
     conversationId: string
   ): Promise<{ id: string; role: string; content: string; createdAt: string }[]> => {
     const response = await makeRequest(`/api/agents/${agentId}/conversations/${conversationId}/messages`);
+    return handleApiResponse(response);
+  },
+
+  // Get conversation by session ID (with messages)
+  getConversationBySession: async (
+    agentId: string,
+    sessionId: string
+  ): Promise<{
+    conversation: { id: string; sessionId: string; messageCount: number };
+    messages: { id: string; role: string; content: string; createdAt: string }[];
+  } | null> => {
+    const response = await makeRequest(
+      `/api/agents/${agentId}/conversations/session/${encodeURIComponent(sessionId)}`
+    );
     return handleApiResponse(response);
   },
 };
@@ -2618,5 +2877,227 @@ export const crmApi = {
       body: JSON.stringify({ score_delta: scoreDelta }),
     });
     return handleApiResponse<CrmContactRecord>(response);
+  },
+};
+
+// Aptos Blockchain Types
+export interface AptosBalance {
+  address: string;
+  balance: number;
+  balance_apt: number;
+  sequence_number: number;
+}
+
+export interface AptosTransaction {
+  version: string;
+  hash: string;
+  sender: string;
+  sequence_number: string;
+  timestamp: string;
+  tx_type: string;
+  success: boolean;
+  gas_used: string;
+  gas_unit_price: string;
+  payload_function: string | null;
+}
+
+export interface FaucetResponse {
+  success: boolean;
+  message: string;
+  tx_hashes: string[];
+}
+
+export interface SendTransactionRequest {
+  sender_private_key: string;
+  sender_address: string;
+  recipient_address: string;
+  amount_apt: number;
+}
+
+export interface SendTransactionResponse {
+  success: boolean;
+  tx_hash: string;
+  message: string;
+}
+
+export interface EstimateGasResponse {
+  gas_estimate: number;
+  gas_unit_price: number;
+  total_gas_apt: number;
+}
+
+// VIBE Token Types
+export interface VibeBalance {
+  address: string;
+  balance: number;
+  balance_vibe: number;
+  equivalent_apt: number;
+  usd_value: number;
+}
+
+export interface SendVibeRequest {
+  sender_private_key: string;
+  sender_address: string;
+  recipient_address: string;
+  amount_vibe: number;
+}
+
+export interface VibeTransferResponse {
+  success: boolean;
+  tx_hash: string;
+  amount_vibe: number;
+  message: string;
+}
+
+// Aptos Testnet API
+export const aptosApi = {
+  // Get account balance from Aptos testnet
+  getBalance: async (address: string): Promise<AptosBalance> => {
+    const response = await makeRequest(`/api/aptos/balance/${encodeURIComponent(address)}`);
+    return handleApiResponse<AptosBalance>(response);
+  },
+
+  // Get recent transactions for an account
+  getTransactions: async (address: string, limit?: number): Promise<AptosTransaction[]> => {
+    const params = limit ? `?limit=${limit}` : '';
+    const response = await makeRequest(`/api/aptos/transactions/${encodeURIComponent(address)}${params}`);
+    return handleApiResponse<AptosTransaction[]>(response);
+  },
+
+  // Fund account from testnet faucet
+  fundFromFaucet: async (address: string, amount?: number): Promise<FaucetResponse> => {
+    const params = amount ? `?amount=${amount}` : '';
+    const response = await makeRequest(`/api/aptos/faucet/${encodeURIComponent(address)}${params}`, {
+      method: 'POST',
+    });
+    return handleApiResponse<FaucetResponse>(response);
+  },
+
+  // Check if account exists on chain
+  accountExists: async (address: string): Promise<boolean> => {
+    const response = await makeRequest(`/api/aptos/exists/${encodeURIComponent(address)}`);
+    return handleApiResponse<boolean>(response);
+  },
+
+  // Send APT to another address
+  sendApt: async (request: SendTransactionRequest): Promise<SendTransactionResponse> => {
+    const response = await makeRequest('/api/aptos/send', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+    return handleApiResponse<SendTransactionResponse>(response);
+  },
+
+  // Estimate gas for a transfer
+  estimateGas: async (address: string): Promise<EstimateGasResponse> => {
+    const response = await makeRequest(`/api/aptos/estimate-gas/${encodeURIComponent(address)}`);
+    return handleApiResponse<EstimateGasResponse>(response);
+  },
+
+  // VIBE Token Methods
+
+  // Get VIBE balance for an address
+  getVibeBalance: async (address: string): Promise<VibeBalance> => {
+    const response = await makeRequest(`/api/vibe/balance/${encodeURIComponent(address)}`);
+    return handleApiResponse<VibeBalance>(response);
+  },
+
+  // Send VIBE tokens to another address
+  sendVibe: async (request: SendVibeRequest): Promise<VibeTransferResponse> => {
+    const response = await makeRequest('/api/vibe/send', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+    return handleApiResponse<VibeTransferResponse>(response);
+  },
+};
+
+// ============================================
+// Model Pricing / Billing Rates API
+// ============================================
+
+export interface ModelPricing {
+  id: string;
+  model: string;
+  provider: string;
+  input_cost_per_million: number;
+  output_cost_per_million: number;
+  multiplier: number;
+  effective_from: string;
+  created_at: string;
+}
+
+export interface CostEstimate {
+  model: string;
+  provider: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_cents: number;
+  cost_vibe: number;
+  cost_usd: number;
+}
+
+export interface UpsertModelPricing {
+  model: string;
+  provider: string;
+  input_cost_per_million: number;
+  output_cost_per_million: number;
+  multiplier?: number;
+}
+
+export const modelPricingApi = {
+  // List all model pricing entries
+  list: async (): Promise<ModelPricing[]> => {
+    const response = await makeRequest('/api/model-pricing');
+    if (!response.ok) {
+      throw new ApiError('Failed to load model pricing', response.status, response);
+    }
+    return response.json();
+  },
+
+  // Get pricing for a specific model
+  get: async (model: string, provider: string): Promise<ModelPricing> => {
+    const response = await makeRequest(`/api/model-pricing/${encodeURIComponent(model)}/${encodeURIComponent(provider)}`);
+    if (!response.ok) {
+      throw new ApiError('Failed to load model pricing', response.status, response);
+    }
+    return response.json();
+  },
+
+  // Estimate cost for token usage
+  estimate: async (model: string, inputTokens: number, outputTokens: number, provider?: string): Promise<CostEstimate> => {
+    const params = new URLSearchParams({
+      model,
+      input_tokens: inputTokens.toString(),
+      output_tokens: outputTokens.toString(),
+    });
+    if (provider) params.set('provider', provider);
+    const response = await makeRequest(`/api/model-pricing/estimate?${params.toString()}`);
+    if (!response.ok) {
+      throw new ApiError('Failed to estimate cost', response.status, response);
+    }
+    return response.json();
+  },
+
+  // Create or update model pricing
+  upsert: async (data: UpsertModelPricing): Promise<ModelPricing> => {
+    const response = await makeRequest('/api/model-pricing', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      throw new ApiError('Failed to save model pricing', response.status, response);
+    }
+    return response.json();
+  },
+
+  // Delete model pricing
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/model-pricing/${id}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new ApiError('Failed to delete model pricing', response.status, response);
+    }
   },
 };

@@ -103,6 +103,8 @@ const FINE_ART_SOCIETY_PROJECT: Project = {
   dev_script: null,
   cleanup_script: null,
   copy_files: null,
+  vibe_budget_limit: null,
+  vibe_spent_amount: 0,
   created_at: new Date(),
   updated_at: new Date(),
 };
@@ -365,7 +367,10 @@ export function VirtualEnvironmentPage() {
   const sendPositionUpdate = useMultiplayerStore((s) => s.sendPositionUpdate);
   const multiplayerIsConnected = useMultiplayerStore((s) => s.isConnected);
   const isMovingRef = useRef(false);
+  const wasMovingRef = useRef(false);
   const lastPositionRef = useRef<[number, number, number]>(INITIAL_PLAYER_POSITION);
+  const lastZoneRef = useRef('ground');
+  const stoppedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleUserPositionChange = useCallback((vector: THREE.Vector3) => {
     const newPos: [number, number, number] = [vector.x, vector.y, vector.z];
@@ -385,6 +390,13 @@ export function VirtualEnvironmentPage() {
     } else if (vector.y >= 65 && vector.y < 78) {
       zone = 'workspace';
     }
+    lastZoneRef.current = zone;
+
+    // Clear any pending "stopped" update since we got new movement
+    if (stoppedTimeoutRef.current) {
+      clearTimeout(stoppedTimeoutRef.current);
+      stoppedTimeoutRef.current = null;
+    }
 
     // Send position to multiplayer
     if (multiplayerIsConnected) {
@@ -394,7 +406,22 @@ export function VirtualEnvironmentPage() {
         zone,
         isMovingRef.current
       );
+
+      // If we were moving but now stopped, schedule a "stopped" confirmation
+      // This ensures remote clients know we stopped even if position updates stop
+      if (wasMovingRef.current && !isMovingRef.current) {
+        stoppedTimeoutRef.current = setTimeout(() => {
+          sendPositionUpdate(
+            { x: newPos[0], y: newPos[1], z: newPos[2] },
+            { y: 0 },
+            lastZoneRef.current,
+            false
+          );
+        }, 150);
+      }
     }
+
+    wasMovingRef.current = isMovingRef.current;
   }, [sendPositionUpdate, multiplayerIsConnected]);
 
   const enterTarget = useMemo(() => {
@@ -671,20 +698,6 @@ export function VirtualEnvironmentPage() {
                 size={220}
               />
             </div>
-          </div>
-
-          {/* Debug Panel - Remove after testing */}
-          <div className="pointer-events-auto absolute top-4 left-4 w-64 rounded-lg border border-red-500/50 bg-black/90 p-3 font-mono text-xs text-red-400">
-            <div className="mb-2 font-bold text-red-300">DEBUG STATE</div>
-            <div>User: {user?.username || 'none'}</div>
-            <div>user.is_admin: {String(user?.is_admin)}</div>
-            <div>isAdmin (derived): {String(isAdmin)}</div>
-            <div>initializedForUser: {initializedForUser || 'null'}</div>
-            <div>inventory: [{inventory.join(', ')}]</div>
-            <div>equipped.head: {equipped.head || 'null'}</div>
-            <div>equipped.primaryHand: {equipped.primaryHand || 'null'}</div>
-            <div>equipped.secondaryHand: {equipped.secondaryHand || 'null'}</div>
-            <div>equipped.back: {equipped.back || 'null'}</div>
           </div>
 
           <div className="pointer-events-auto absolute bottom-4 left-4 w-[min(30rem,calc(100%-2rem))]">

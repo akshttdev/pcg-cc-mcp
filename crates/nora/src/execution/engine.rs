@@ -12,7 +12,10 @@ use super::{
 };
 use crate::profiles::{AgentProfile, AgentWorkflow, WorkflowStage};
 use chrono::{DateTime, Utc};
+use cinematics::{CinematicsService, Cinematographer};
+use db::models::cinematic_brief::CreateCinematicBrief;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -107,6 +110,8 @@ pub struct ExecutionEngine {
     research_contexts: RwLock<HashMap<Uuid, super::research::ResearchContext>>,
     /// Database pool for persisting workflow logs (AgentFlow, AgentFlowEvent)
     db: RwLock<Option<SqlitePool>>,
+    /// Cinematics service for image/video generation (Maci/Spectra agents)
+    cinematics: RwLock<Option<Arc<CinematicsService>>>,
 }
 
 /// Trait for creating tasks on the board
@@ -134,6 +139,7 @@ impl ExecutionEngine {
             research_executor: super::research::ResearchExecutor::new(),
             research_contexts: RwLock::new(HashMap::new()),
             db: RwLock::new(None),
+            cinematics: RwLock::new(None),
         })
     }
 
@@ -154,6 +160,13 @@ impl ExecutionEngine {
         let mut db = self.db.write().await;
         *db = Some(pool);
         tracing::info!("[EXECUTION_ENGINE] Database pool configured for workflow persistence");
+    }
+
+    /// Set the cinematics service for image/video generation
+    pub async fn set_cinematics(&self, cinematics: Arc<CinematicsService>) {
+        let mut cine = self.cinematics.write().await;
+        *cine = Some(cinematics);
+        tracing::info!("[EXECUTION_ENGINE] Cinematics service configured for image/video generation");
     }
 
     /// Emit an event through the coordination manager (for SSE streaming)
@@ -941,8 +954,23 @@ impl ExecutionEngine {
             return Ok(result);
         }
 
-        // For non-research agents, use the original simulated output (for now)
-        // TODO: Add executors for other agent types (Maci -> ComfyUI, Editron -> video tools, etc.)
+        // Check if this is a cinematics agent (Maci/Spectra)
+        let is_cinematics_agent = matches!(
+            agent.agent_id.as_str(),
+            "master-cinematographer" | "maci" | "spectra"
+        );
+
+        if is_cinematics_agent {
+            tracing::info!(
+                "[EXECUTION_ENGINE] Using CinematicsService for {} stage '{}'",
+                agent.codename,
+                stage.name
+            );
+
+            return self.execute_cinematics_stage(execution_id, stage_index, stage, inputs).await;
+        }
+
+        // For other non-research agents, use simulated output
         tracing::debug!(
             "[EXECUTION_ENGINE] Stage context: agent={}, stage={}",
             agent.codename,
@@ -956,6 +984,155 @@ impl ExecutionEngine {
             "simulated": true,
             "note": "Non-research agent - using simulated output"
         }))
+    }
+
+    /// Execute a cinematics stage using ComfyUI
+    async fn execute_cinematics_stage(
+        &self,
+        execution_id: Uuid,
+        stage_index: usize,
+        stage: &WorkflowStage,
+        inputs: &HashMap<String, serde_json::Value>,
+    ) -> Result<serde_json::Value, String> {
+        let cinematics = {
+            let cine = self.cinematics.read().await;
+            cine.clone()
+        };
+
+        let Some(cinematics) = cinematics else {
+            tracing::warn!("[EXECUTION_ENGINE] CinematicsService not configured, using simulated output");
+            return Ok(json!({
+                "stage": stage.name,
+                "status": "completed",
+                "error": "CinematicsService not configured",
+                "simulated": true
+            }));
+        };
+
+        let db = {
+            let db_lock = self.db.read().await;
+            db_lock.clone()
+        };
+
+        let Some(pool) = db else {
+            return Err("Database not configured for cinematics".to_string());
+        };
+
+        // Get project_id from execution
+        let project_id = {
+            let executions = self.executions.read().await;
+            executions.get(&execution_id)
+                .and_then(|e| e.project_id)
+        };
+
+        let Some(project_id) = project_id else {
+            return Err("No project_id for cinematics execution".to_string());
+        };
+
+        match stage.name.as_str() {
+            "Prompt Blocking" => {
+                // Stage 1: Create cinematic brief and plan shots
+                let prompt = inputs.get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Cinematic scene");
+
+                tracing::info!("[CINEMATICS] Creating brief for prompt: {}", prompt);
+
+                let brief = cinematics.create_brief(CreateCinematicBrief {
+                    project_id,
+                    requester_id: "execution_engine".to_string(),
+                    nora_session_id: None,
+                    title: prompt.to_string(),
+                    summary: format!("AI-generated cinematic for: {}", prompt),
+                    script: None,
+                    asset_ids: vec![],
+                    duration_seconds: Some(4),
+                    fps: None,
+                    style_tags: vec![],
+                    metadata: None,
+                }).await.map_err(|e| format!("Failed to create brief: {}", e))?;
+
+                tracing::info!("[CINEMATICS] Created brief {} with title: {}", brief.id, brief.title);
+
+                // Store brief_id in artifacts for next stage
+                self.artifacts.store(
+                    Artifact::new(
+                        execution_id,
+                        ArtifactType::StageData,
+                        "cinematics_brief",
+                        json!({ "brief_id": brief.id.to_string() }),
+                    ),
+                ).await;
+
+                Ok(json!({
+                    "brief_id": brief.id.to_string(),
+                    "title": brief.title,
+                    "shots_planned": 4,
+                    "duration": brief.duration_seconds,
+                    "status": "Planning complete"
+                }))
+            }
+            "Render Pass" => {
+                // Stage 2: Trigger ComfyUI rendering
+                let brief_id = self.artifacts.get_all_stage_outputs(execution_id).await
+                    .values()
+                    .find_map(|v| v.get("brief_id").and_then(|b| b.as_str()))
+                    .ok_or("No brief_id from Prompt Blocking stage")?
+                    .to_string();
+
+                let brief_uuid = Uuid::parse_str(&brief_id)
+                    .map_err(|e| format!("Invalid brief_id: {}", e))?;
+
+                tracing::info!("[CINEMATICS] Starting ComfyUI render for brief: {}", brief_id);
+
+                // This calls ComfyUI's /prompt API and polls for completion
+                let rendered_brief = cinematics.trigger_render(brief_uuid).await
+                    .map_err(|e| format!("ComfyUI render failed: {}", e))?;
+
+                let asset_count = rendered_brief.output_assets.0.as_array()
+                    .map(|arr| arr.len())
+                    .unwrap_or(0);
+
+                tracing::info!("[CINEMATICS] Render complete: {} assets generated", asset_count);
+
+                Ok(json!({
+                    "brief_id": rendered_brief.id.to_string(),
+                    "status": format!("{:?}", rendered_brief.status),
+                    "assets": rendered_brief.output_assets.0.clone(),
+                    "render_complete": true
+                }))
+            }
+            "Prep for Editron" => {
+                // Stage 3: Assets are registered, package metadata
+                let render_output = self.artifacts.get_all_stage_outputs(execution_id).await
+                    .values()
+                    .find(|v| v.get("render_complete").is_some())
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
+
+                let assets = render_output.get("assets")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.len())
+                    .unwrap_or(0);
+
+                tracing::info!("[CINEMATICS] Preparing {} assets for Editron pickup", assets);
+
+                Ok(json!({
+                    "ready_for_editron": true,
+                    "asset_count": assets,
+                    "status": "Assets registered and ready for video editing"
+                }))
+            }
+            _ => {
+                // Unknown stage, return generic success
+                tracing::warn!("[CINEMATICS] Unknown stage: {}", stage.name);
+                Ok(json!({
+                    "stage": stage.name,
+                    "status": "completed",
+                    "note": "Unknown cinematics stage"
+                }))
+            }
+        }
     }
 
     /// Create a single task on the board for the entire workflow

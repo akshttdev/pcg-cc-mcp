@@ -68,6 +68,7 @@ import {
 import { EmailAccountConnect } from '@/components/email/EmailAccountConnect';
 import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
 import type { LifecycleStage } from '@/types/crm';
+import type { EmailProvider } from '@/types/email';
 
 export function CrmPage() {
   const queryClient = useQueryClient();
@@ -78,6 +79,7 @@ export function CrmPage() {
   const [editingContact, setEditingContact] = useState<CrmContactRecord | null>(null);
   const [activeTab, setActiveTab] = useState('contacts');
   const [searchParams, setSearchParams] = useSearchParams();
+  const [connectingProvider, setConnectingProvider] = useState<EmailProvider | null>(null);
 
   const {
     data: projects = [],
@@ -182,20 +184,20 @@ export function CrmPage() {
     return contactsQuery.data ?? [];
   }, [searchQuery, searchQuery_result.data, contactsQuery.data]);
 
-  const handleConnectEmail = async (provider: string) => {
+  const handleConnectEmail = async (provider: EmailProvider) => {
     if (!selectedProjectId) return;
     try {
+      setConnectingProvider(provider);
       const result = await emailApi.initiateOAuth(
         selectedProjectId,
         provider,
         `${window.location.origin}/oauth/${provider}/callback`
       );
-      // Include project ID in state for callback
-      const stateWithProject = `${selectedProjectId}:${result.state}`;
-      const authUrl = result.auth_url.replace(result.state, stateWithProject);
-      window.location.href = authUrl;
+      window.location.href = result.auth_url;
     } catch (error) {
       console.error('Failed to initiate OAuth:', error);
+    } finally {
+      setConnectingProvider(null);
     }
   };
 
@@ -414,7 +416,7 @@ export function CrmPage() {
               onConnect={handleConnectEmail}
               onDisconnect={handleDisconnectEmail}
               onSync={handleSyncEmail}
-              isConnecting={null}
+              isConnecting={connectingProvider}
             />
           </TabsContent>
         </Tabs>
@@ -814,7 +816,7 @@ function mapEmailAccounts(records: EmailAccountRecord[]) {
   return records.map((record) => ({
     id: record.id,
     project_id: record.project_id,
-    provider: record.provider as 'gmail' | 'zoho' | 'outlook' | 'imap_custom',
+    provider: record.provider as 'gmail' | 'zoho' | 'imap_custom',
     account_type: (record.account_type || 'primary') as
       | 'primary'
       | 'team'

@@ -8,7 +8,15 @@ export type DirectoryEntry = { name: string, path: string, is_directory: boolean
 
 export type DirectoryListResponse = { entries: Array<DirectoryEntry>, current_path: string, };
 
-export type Project = { id: string, name: string, git_repo_path: string, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, created_at: Date, updated_at: Date, };
+export type Project = { id: string, name: string, git_repo_path: string, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, 
+/**
+ * VIBE budget limit (1 VIBE = $0.001 USD), None means unlimited
+ */
+vibe_budget_limit: number | null, 
+/**
+ * VIBE spent amount
+ */
+vibe_spent_amount: number, created_at: Date, updated_at: Date, };
 
 export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, };
 
@@ -34,7 +42,23 @@ export type CreateProjectAsset = { project_id: string, pod_id?: string, board_id
 
 export type UpdateProjectAsset = { pod_id?: string, board_id?: string, category?: string, scope?: string, name?: string, storage_path?: string, checksum?: string, byte_size?: bigint, mime_type?: string, metadata?: string, };
 
-export type AgentWallet = { id: string, profile_key: string, display_name: string, budget_limit: number, spent_amount: number, created_at: Date, updated_at: Date, };
+export type AgentWallet = { id: string, profile_key: string, display_name: string, 
+/**
+ * APT budget limit in octas (legacy, not used)
+ */
+budget_limit: number, 
+/**
+ * APT spent amount in octas (legacy, not used)
+ */
+spent_amount: number, 
+/**
+ * VIBE budget limit (1 VIBE = $0.001 USD)
+ */
+vibe_budget_limit: number | null, 
+/**
+ * VIBE spent amount
+ */
+vibe_spent_amount: number, created_at: Date, updated_at: Date, };
 
 export type AgentWalletTransaction = { id: string, wallet_id: string, direction: string, amount: number, description: string, metadata: string | null, task_id: string | null, process_id: string | null, created_at: Date, };
 

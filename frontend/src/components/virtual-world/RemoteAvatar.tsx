@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import type { RemotePlayer } from '@/types/multiplayer';
-import { CrownEquipment, FireCapeEquipment, GodBookEquipment } from './equipment';
+import { CrownEquipment, FireCapeEquipment, GodBookEquipment, BluntEquipmentStatic } from './equipment';
 
 interface RemoteAvatarProps {
   player: RemotePlayer;
@@ -230,7 +230,8 @@ export function RemoteAvatar({ player }: RemoteAvatarProps) {
             <sphereGeometry args={[0.1, 12, 12]} />
             <meshStandardMaterial color={colors.dark} metalness={0.7} />
           </mesh>
-          {/* Blunt - only for admin (note: needs arm refs which we don't pass here, so skip for remotes) */}
+          {/* Blunt/Herbal Remedy - static version for remote players */}
+          {player.equipment?.primaryHand === 'blunt' && <BluntEquipmentStatic />}
         </group>
 
         {/* Left Leg */}

@@ -1,20 +1,24 @@
 import { useEffect, useState, useRef } from 'react';
 import type { PatchType } from 'shared/types';
+import { executionProcessesApi } from '@/lib/api';
 
 type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
 
 interface UseLogStreamResult {
   logs: LogEntry[];
   error: string | null;
+  isLoading: boolean;
 }
 
 export const useLogStream = (processId: string): UseLogStreamResult => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const wsRef = useRef<WebSocket | null>(null);
   const retryCountRef = useRef<number>(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isIntentionallyClosed = useRef<boolean>(false);
+  const loadedHistoricLogs = useRef<boolean>(false);
 
   useEffect(() => {
     if (!processId) {
@@ -24,6 +28,43 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
     // Clear logs when process changes
     setLogs([]);
     setError(null);
+    setIsLoading(true);
+    loadedHistoricLogs.current = false;
+
+    // First, try to load stored logs from REST API
+    const loadStoredLogs = async () => {
+      try {
+        const storedLogs = await executionProcessesApi.getStoredLogs(processId);
+        if (storedLogs && storedLogs.logs) {
+          const entries: LogEntry[] = [];
+          const lines = storedLogs.logs.split('\n').filter(line => line.trim());
+
+          for (const line of lines) {
+            try {
+              const logMsg = JSON.parse(line);
+              if (logMsg.Stdout) {
+                entries.push({ type: 'STDOUT', content: logMsg.Stdout });
+              } else if (logMsg.Stderr) {
+                entries.push({ type: 'STDERR', content: logMsg.Stderr });
+              }
+            } catch {
+              // Skip malformed lines
+            }
+          }
+
+          if (entries.length > 0) {
+            setLogs(entries);
+            loadedHistoricLogs.current = true;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load stored logs, will try WebSocket', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadStoredLogs();
 
     const open = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -36,8 +77,10 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
 
       ws.onopen = () => {
         setError(null);
-        // Reset logs on new connection since server replays history
-        setLogs([]);
+        // Only reset logs if we haven't loaded historic logs from REST API
+        if (!loadedHistoricLogs.current) {
+          setLogs([]);
+        }
         retryCountRef.current = 0;
       };
 
@@ -108,5 +151,5 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
     };
   }, [processId]);
 
-  return { logs, error };
+  return { logs, error, isLoading };
 };

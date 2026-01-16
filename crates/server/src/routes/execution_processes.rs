@@ -10,6 +10,7 @@ use axum::{
     routing::{get, post},
 };
 use db::models::execution_process::{ExecutionProcess, ExecutionProcessError};
+use db::models::execution_process_logs::ExecutionProcessLogs;
 use deployment::Deployment;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use serde::Deserialize;
@@ -47,6 +48,20 @@ pub async fn get_execution_process_by_id(
     State(_deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<ExecutionProcess>>, ApiError> {
     Ok(ResponseJson(ApiResponse::success(execution_process)))
+}
+
+/// GET /api/execution-processes/:id/logs - Get stored logs for a completed execution
+pub async fn get_stored_logs(
+    Extension(execution_process): Extension<ExecutionProcess>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Option<ExecutionProcessLogs>>>, ApiError> {
+    let logs = ExecutionProcessLogs::find_by_execution_id(
+        &deployment.db().pool,
+        execution_process.id,
+    )
+    .await?;
+
+    Ok(ResponseJson(ApiResponse::success(logs)))
 }
 
 pub async fn stream_raw_logs_ws(
@@ -248,6 +263,7 @@ async fn handle_execution_processes_ws(
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let task_attempt_id_router = Router::new()
         .route("/", get(get_execution_process_by_id))
+        .route("/logs", get(get_stored_logs))
         .route("/stop", post(stop_execution_process))
         .route("/raw-logs/ws", get(stream_raw_logs_ws))
         .route("/normalized-logs/ws", get(stream_normalized_logs_ws))

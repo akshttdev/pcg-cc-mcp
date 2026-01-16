@@ -29,3 +29,5 @@ url = "2.5"
 sentry-tracing = { version = "0.41.0", features = ["backtrace"] }
 futures-util = "0.3"
 bcrypt = "0.15"
+sha2 = "0.10"
+hex = "0.4"

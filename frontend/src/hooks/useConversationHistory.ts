@@ -11,6 +11,7 @@ import {
 import { useExecutionProcesses } from './useExecutionProcesses';
 import { useEffect, useMemo, useRef } from 'react';
 import { streamJsonPatchEntries } from '@/utils/streamJsonPatchEntries';
+import { executionProcessesApi } from '@/lib/api';
 
 export type PatchTypeWithKey = PatchType & {
   patchKey: string;
@@ -70,9 +71,61 @@ export const useConversationHistory = ({
     executionProcesses.current = executionProcessesRaw;
   }, [executionProcessesRaw]);
 
-  const loadEntriesForHistoricExecutionProcess = (
+  const loadEntriesForHistoricExecutionProcess = async (
     executionProcess: ExecutionProcess
-  ) => {
+  ): Promise<PatchType[]> => {
+    // For completed executions, try REST API first (faster and more reliable)
+    if (executionProcess.status !== 'running') {
+      try {
+        const storedLogs = await executionProcessesApi.getStoredLogs(executionProcess.id);
+        if (storedLogs && storedLogs.logs) {
+          // Parse JSONL logs into PatchType entries
+          const entries: PatchType[] = [];
+          const lines = storedLogs.logs.split('\n').filter(line => line.trim());
+
+          for (const line of lines) {
+            try {
+              const logMsg = JSON.parse(line);
+
+              // Handle raw logs (Stdout/Stderr) for scripts
+              if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
+                if (logMsg.Stdout) {
+                  entries.push({ type: 'STDOUT', content: logMsg.Stdout });
+                } else if (logMsg.Stderr) {
+                  entries.push({ type: 'STDERR', content: logMsg.Stderr });
+                }
+              } else {
+                // Handle normalized logs for coding agents
+                if (logMsg.Stdout) {
+                  // Parse the stdout content which contains normalized JSON
+                  try {
+                    const normalized = JSON.parse(logMsg.Stdout);
+                    if (normalized.type === 'normalized_entry') {
+                      entries.push({
+                        type: 'NORMALIZED_ENTRY',
+                        content: normalized.content,
+                      });
+                    }
+                  } catch {
+                    // Not a normalized entry, skip
+                  }
+                }
+              }
+            } catch {
+              // Skip malformed lines
+            }
+          }
+
+          if (entries.length > 0) {
+            return entries;
+          }
+        }
+      } catch (err) {
+        console.warn(`REST API failed for ${executionProcess.id}, falling back to WebSocket`, err);
+      }
+    }
+
+    // Fallback to WebSocket streaming (for running processes or if REST failed)
     let url = '';
     if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
       url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
@@ -87,7 +140,7 @@ export const useConversationHistory = ({
           resolve(allEntries);
         },
         onError: (err) => {
-          console.warn!(
+          console.warn(
             `Error loading entries for historic execution process ${executionProcess.id}`,
             err
           );

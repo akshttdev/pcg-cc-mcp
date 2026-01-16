@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 import { NoraAssistant, NoraCoordinationPanel, NoraVoiceControls, NoraPlansPanel } from '@/components/nora';
-import { Crown, Users, Mic, Settings, MessageSquare, Activity, RefreshCw, Zap, Shuffle } from 'lucide-react';
+import { Crown, Users, Mic, Settings, MessageSquare, Activity, RefreshCw, Zap, Shuffle, Bot, Cpu, Clock, LayoutGrid } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   applyNoraMode,
@@ -12,6 +14,19 @@ import {
   runRapidPlaybook,
   syncNoraContext,
 } from '@/lib/api';
+import {
+  AgentCard,
+  AgentCardSkeleton,
+  ExecutionTimeline,
+  LiveCommsPanel,
+  generateMockEvents,
+} from '@/components/mission-control';
+import {
+  useMissionControlDashboard,
+} from '@/hooks/useMissionControl';
+import { useExecutionEvents } from '@/hooks/useExecutionEvents';
+import { SlotUtilizationBadge, CompactSlotIndicator } from '@/components/parallel-execution';
+import { PendingApprovalsIndicator } from '@/components/autonomy';
 
 export function NoraPage() {
   const [activeTab, setActiveTab] = useState('assistant');
@@ -19,6 +34,15 @@ export function NoraPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPlaybookRunning, setIsPlaybookRunning] = useState(false);
   const [isApplyingMode, setIsApplyingMode] = useState(false);
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
+
+  // Mission Control data
+  const { data: dashboard, isLoading: dashboardLoading, refetch: refetchDashboard } = useMissionControlDashboard();
+  const { activeExecutions, completedExecutions, connected: eventsConnected, activeCount } = useExecutionEvents();
+  const [mockEvents] = useState(generateMockEvents);
+
+  // Combine dashboard active count with real-time execution count
+  const totalActiveCount = (dashboard?.total_active ?? 0) + activeCount;
 
   useEffect(() => {
     void (async () => {
@@ -220,144 +244,282 @@ export function NoraPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="analytics" className="h-full">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-blue-600" />
-                    Interaction Metrics
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Total Interactions</span>
-                      <span className="font-medium">1,247</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Voice Interactions</span>
-                      <span className="font-medium">432</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Executive Decisions</span>
-                      <span className="font-medium">89</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Task Coordinations</span>
-                      <span className="font-medium">156</span>
-                    </div>
+          <TabsContent value="analytics" className="h-full overflow-hidden">
+            {/* Mission Control Dashboard */}
+            <div className="h-full flex flex-col">
+              {/* Status Bar */}
+              <div className="flex items-center justify-between mb-4 px-1">
+                <div className="flex items-center gap-6 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">{totalActiveCount}</span>
+                    <span className="text-muted-foreground">Active Agents</span>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="w-5 h-5 text-green-600" />
-                    Team Coordination
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Active Agents</span>
-                      <span className="font-medium">8</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Successful Handoffs</span>
-                      <span className="font-medium">234</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Conflicts Resolved</span>
-                      <span className="font-medium">12</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Approvals Processed</span>
-                      <span className="font-medium">67</span>
-                    </div>
+                  <Separator orientation="vertical" className="h-5" />
+                  <div className="flex items-center gap-2">
+                    <Cpu className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      {dashboard?.by_project.length ?? 0} Projects
+                    </span>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Crown className="w-5 h-5 text-purple-600" />
-                    Executive Performance
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Response Accuracy</span>
-                      <span className="font-medium text-green-600">96.7%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Avg Response Time</span>
-                      <span className="font-medium">1.2s</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">User Satisfaction</span>
-                      <span className="font-medium text-green-600">4.8/5</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Uptime</span>
-                      <span className="font-medium text-green-600">99.9%</span>
-                    </div>
+                  <Separator orientation="vertical" className="h-5" />
+                  <div className="flex items-center gap-2">
+                    <div className={`h-2 w-2 rounded-full ${eventsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="text-muted-foreground text-xs">
+                      {eventsConnected ? 'Live' : 'Disconnected'}
+                    </span>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+                <div className="flex items-center gap-2">
+                  <PendingApprovalsIndicator />
+                  <Button variant="outline" size="sm" onClick={() => refetchDashboard()}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
 
-              <Card className="md:col-span-2 lg:col-span-3">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-blue-600" />
-                    Recent Executive Actions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {[
-                      {
-                        time: '14:32',
-                        action: 'Strategic Planning Session',
-                        description: 'Coordinated quarterly planning with development team',
-                        status: 'completed'
-                      },
-                      {
-                        time: '13:45',
-                        action: 'Resource Allocation',
-                        description: 'Optimized resource distribution across active projects',
-                        status: 'completed'
-                      },
-                      {
-                        time: '12:20',
-                        action: 'Conflict Resolution',
-                        description: 'Resolved priority conflict between PCG Dashboard and voice integration',
-                        status: 'completed'
-                      },
-                      {
-                        time: '11:15',
-                        action: 'Performance Analysis',
-                        description: 'Generated team performance insights for management review',
-                        status: 'completed'
-                      }
-                    ].map((item, index) => (
-                      <div key={index} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-                        <div className="text-sm font-mono text-gray-600">{item.time}</div>
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{item.action}</div>
-                          <div className="text-xs text-gray-600">{item.description}</div>
-                        </div>
-                        <div className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                          {item.status}
-                        </div>
+              {/* Main Grid */}
+              <div className="flex-1 grid grid-cols-12 gap-4 overflow-hidden">
+                {/* Left: Active Agents */}
+                <div className="col-span-3 flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      <Bot className="h-4 w-4" />
+                      Active Agents
+                    </h3>
+                    {dashboard?.total_active !== undefined && (
+                      <Badge variant="secondary">{dashboard.total_active}</Badge>
+                    )}
+                  </div>
+                  <div className="flex-1 overflow-auto space-y-2 pr-2">
+                    {dashboardLoading ? (
+                      <>
+                        <AgentCardSkeleton />
+                        <AgentCardSkeleton />
+                      </>
+                    ) : dashboard?.active_executions.length === 0 ? (
+                      <Card className="border-dashed">
+                        <CardContent className="py-6 text-center text-muted-foreground text-sm">
+                          No active executions
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      dashboard?.active_executions.map((execution) => (
+                        <AgentCard
+                          key={execution.process.id}
+                          execution={execution}
+                          isSelected={selectedExecutionId === execution.process.id}
+                          onClick={() =>
+                            setSelectedExecutionId(
+                              selectedExecutionId === execution.process.id
+                                ? null
+                                : execution.process.id
+                            )
+                          }
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Center: Workflows & Timeline */}
+                <div className="col-span-6 flex flex-col overflow-hidden">
+                  <Tabs defaultValue="workflows" className="h-full flex flex-col">
+                    <TabsList className="w-fit">
+                      <TabsTrigger value="workflows" className="gap-2">
+                        <Activity className="h-4 w-4" />
+                        Workflows
+                        {activeCount > 0 && (
+                          <Badge variant="secondary" className="ml-1 h-5 px-1.5">
+                            {activeCount}
+                          </Badge>
+                        )}
+                      </TabsTrigger>
+                      <TabsTrigger value="timeline" className="gap-2">
+                        <Clock className="h-4 w-4" />
+                        Timeline
+                      </TabsTrigger>
+                      <TabsTrigger value="projects" className="gap-2">
+                        <LayoutGrid className="h-4 w-4" />
+                        By Project
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="workflows" className="flex-1 mt-3 overflow-hidden">
+                      <Card className="h-full">
+                        <CardContent className="p-4 overflow-auto h-full">
+                          {activeExecutions.length === 0 && completedExecutions.length === 0 && (dashboard?.active_workflows?.length ?? 0) === 0 ? (
+                            <div className="h-full flex items-center justify-center text-muted-foreground">
+                              <div className="text-center">
+                                <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                <p>No workflow executions yet</p>
+                                <p className="text-xs mt-1">Ask Nora to run a workflow to see activity here</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {activeExecutions.length > 0 && (
+                                <div>
+                                  <h4 className="text-xs font-medium text-muted-foreground mb-2">ACTIVE</h4>
+                                  <div className="space-y-2">
+                                    {activeExecutions.map((exec) => (
+                                      <div key={exec.executionId} className="p-3 border rounded-lg bg-muted/50">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="flex items-center gap-2">
+                                            <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                                            <span className="font-medium">{exec.agentCodename}</span>
+                                          </div>
+                                          <Badge variant="outline">{exec.workflowName ?? 'Custom'}</Badge>
+                                        </div>
+                                        <div className="text-sm text-muted-foreground">
+                                          Stage {exec.currentStage + 1}/{exec.totalStages || '?'}: {exec.stageName}
+                                        </div>
+                                        {exec.totalStages > 0 && (
+                                          <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+                                            <div
+                                              className="h-full bg-primary transition-all duration-500"
+                                              style={{ width: `${((exec.currentStage + 1) / exec.totalStages) * 100}%` }}
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {completedExecutions.length > 0 && (
+                                <div>
+                                  <h4 className="text-xs font-medium text-muted-foreground mb-2">RECENT</h4>
+                                  <div className="space-y-2">
+                                    {completedExecutions.slice(0, 5).map((exec) => (
+                                      <div key={exec.executionId} className="p-3 border rounded-lg">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <div className="flex items-center gap-2">
+                                            <div className={`h-2 w-2 rounded-full ${exec.status === 'completed' ? 'bg-green-500' : 'bg-red-500'}`} />
+                                            <span className="font-medium">{exec.agentCodename}</span>
+                                          </div>
+                                          <Badge variant={exec.status === 'completed' ? 'secondary' : 'destructive'}>
+                                            {exec.status}
+                                          </Badge>
+                                        </div>
+                                        <div className="text-sm text-muted-foreground flex items-center gap-4">
+                                          <span>{exec.workflowName ?? 'Custom workflow'}</span>
+                                          {exec.durationMs && (
+                                            <span className="text-xs">
+                                              {exec.durationMs < 1000
+                                                ? `${exec.durationMs}ms`
+                                                : `${(exec.durationMs / 1000).toFixed(1)}s`}
+                                            </span>
+                                          )}
+                                          {exec.tasksCreated > 0 && (
+                                            <span className="text-xs">{exec.tasksCreated} tasks</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {/* Database-backed workflows */}
+                              {dashboard?.active_workflows && dashboard.active_workflows.length > 0 && (
+                                <div>
+                                  <h4 className="text-xs font-medium text-muted-foreground mb-2">WORKFLOW HISTORY</h4>
+                                  <div className="space-y-2">
+                                    {dashboard.active_workflows.map((workflow) => (
+                                      <div key={workflow.flow.id} className="p-3 border rounded-lg">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <div className="flex items-center gap-2">
+                                            <div className={`h-2 w-2 rounded-full ${
+                                              workflow.flow.status === 'completed' ? 'bg-green-500' :
+                                              workflow.flow.status === 'failed' ? 'bg-red-500' :
+                                              'bg-yellow-500 animate-pulse'
+                                            }`} />
+                                            <span className="font-medium">{workflow.task_title}</span>
+                                          </div>
+                                          <Badge variant={
+                                            workflow.flow.status === 'completed' ? 'secondary' :
+                                            workflow.flow.status === 'failed' ? 'destructive' :
+                                            'outline'
+                                          }>
+                                            {workflow.flow.status}
+                                          </Badge>
+                                        </div>
+                                        <div className="text-sm text-muted-foreground flex items-center gap-4">
+                                          {workflow.project_name && <span>{workflow.project_name}</span>}
+                                          <span className="text-xs">{workflow.events_count} events</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="timeline" className="flex-1 mt-3 overflow-hidden">
+                      <Card className="h-full">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium">Execution Timeline</CardTitle>
+                        </CardHeader>
+                        <CardContent className="overflow-auto">
+                          <ExecutionTimeline executions={dashboard?.active_executions ?? []} />
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="projects" className="flex-1 mt-3 overflow-hidden">
+                      <div className="grid grid-cols-2 gap-3 h-full overflow-auto">
+                        {dashboard?.by_project.map((project) => (
+                          <Card key={project.project_id}>
+                            <CardHeader className="pb-2">
+                              <div className="flex items-center justify-between">
+                                <CardTitle className="text-sm font-medium truncate">
+                                  {project.project_name}
+                                </CardTitle>
+                                <SlotUtilizationBadge
+                                  capacity={{
+                                    project_id: project.project_id,
+                                    max_concurrent_agents: project.capacity.max_concurrent_agents,
+                                    max_concurrent_browser_agents: project.capacity.max_concurrent_browser_agents,
+                                    active_agent_slots: project.capacity.active_agent_slots,
+                                    active_browser_slots: project.capacity.active_browser_slots,
+                                    available_agent_slots: project.capacity.max_concurrent_agents - project.capacity.active_agent_slots,
+                                    available_browser_slots: project.capacity.max_concurrent_browser_agents - project.capacity.active_browser_slots,
+                                  }}
+                                />
+                              </div>
+                            </CardHeader>
+                            <CardContent className="pt-0">
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Active</span>
+                                  <span className="font-medium">{project.active_count}</span>
+                                </div>
+                                <CompactSlotIndicator projectId={project.project_id} />
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
                       </div>
-                    ))}
+                    </TabsContent>
+                  </Tabs>
+                </div>
+
+                {/* Right: Live Feed */}
+                <div className="col-span-3 flex flex-col overflow-hidden">
+                  <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                    <Activity className="h-4 w-4" />
+                    Live Activity
+                  </h3>
+                  <div className="flex-1 min-h-0">
+                    <LiveCommsPanel events={mockEvents} className="h-full" />
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
           </TabsContent>
 
