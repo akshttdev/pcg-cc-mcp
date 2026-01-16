@@ -2,6 +2,25 @@
 //!
 //! This module provides utilities for creating LLM clients based on agent
 //! database configurations, enabling each agent to use their optimal LLM provider.
+//!
+//! ## Supported Models via Ollama (Local)
+//!
+//! ### DeepSeek Models
+//! - `deepseek-chat` - General purpose chat model
+//! - `deepseek-coder` - Specialized for coding tasks
+//! - `deepseek-reasoner` / `deepseek-r1` - Advanced reasoning model
+//!
+//! ### GPT-OSS Models
+//! - `gpt-oss:20b` - 20B parameter open source GPT
+//! - `gpt-oss:120b` - 120B parameter open source GPT
+//!
+//! ### Other Open Source Models
+//! - `llama3.3` - Meta's Llama 3.3
+//! - `mistral` - Mistral AI models
+//! - `qwen` - Alibaba's Qwen models
+//! - `phi` - Microsoft Phi models
+//!
+//! All models run locally via Ollama on port 11434 (default).
 
 use db::models::agent::Agent;
 use serde::{Deserialize, Serialize};
@@ -48,12 +67,14 @@ impl Default for AgentModelConfig {
 /// - "claude-3-5-sonnet-20241022" → Anthropic
 /// - "gpt-4o" → OpenAI
 /// - "gpt-4-turbo" → OpenAI
-/// - "gpt-oss" → Ollama (local)
+/// - "deepseek-chat" → Ollama (local DeepSeek models)
+/// - "gpt-oss" → Ollama (local GPT OSS models)
 /// - "llama3.3" → Ollama (local)
 pub fn infer_provider_from_model(model: &str) -> LLMProvider {
     let model_lower = model.to_lowercase();
 
     // Check Ollama models FIRST (before generic gpt check)
+    // Ollama supports: DeepSeek, GPT-OSS, Llama, Qwen, Mistral, Phi, etc.
     if model_lower.starts_with("deepseek")
         || model_lower.starts_with("gpt-oss")
         || model_lower.starts_with("gptoss")
@@ -73,7 +94,7 @@ pub fn infer_provider_from_model(model: &str) -> LLMProvider {
         LLMProvider::OpenAI
     } else {
         // Default to Ollama for unknown models (local-first approach)
-        // This includes: gpt-oss, llama, mistral, codellama, deepseek, etc.
+        // Supports: DeepSeek, GPT-OSS, Llama, Mistral, CodeLlama, and more
         tracing::info!(
             "Model '{}' not recognized as cloud provider, using Ollama (local)",
             model
@@ -121,9 +142,19 @@ pub fn normalize_model_name(model: &str, provider: &LLMProvider) -> String {
             }
         }
         LLMProvider::Ollama => {
-            // Ollama model names are passed through as-is
-            // Common models: gpt-oss, llama3.3, codellama, mistral, etc.
-            model.to_string()
+            // Handle common Ollama model aliases
+            // Ollama supports both DeepSeek and GPT-OSS models
+            match model_lower.as_str() {
+                // DeepSeek models via Ollama
+                "deepseek" | "deepseek-chat" | "deepseek-v3" => "deepseek-chat".to_string(),
+                "deepseek-coder" | "deepseek-coder-v2" => "deepseek-coder".to_string(),
+                "deepseek-reasoner" | "deepseek-r1" => "deepseek-reasoner".to_string(),
+                // GPT-OSS models via Ollama
+                "gpt-oss" | "gptoss" => "gpt-oss:20b".to_string(),
+                "gpt-oss-120b" => "gpt-oss:120b".to_string(),
+                // Other models passed through as-is: llama3.3, mistral, qwen, etc.
+                _ => model.to_string(),
+            }
         }
     }
 }

@@ -138,7 +138,7 @@ impl Default for LLMConfig {
     fn default() -> Self {
         Self {
             provider: LLMProvider::Ollama,
-            model: "gpt-oss".to_string(),
+            model: "gpt-oss:20b".to_string(), // Can also use "deepseek-chat", "llama3.3", etc.
             temperature: 0.2,
             max_tokens: 600,
             system_prompt: r#"You are Nora, the executive AI assistant for PowerClub Global. Respond in confident British English.
@@ -316,6 +316,7 @@ impl LLMClient {
         match self.config.provider {
             LLMProvider::Ollama => {
                 // Ollama's OpenAI-compatible endpoint
+                // Supports DeepSeek, GPT-OSS, Llama, and other local models
                 std::env::var("OLLAMA_BASE_URL")
                     .unwrap_or_else(|_| "http://localhost:11434".to_string())
                     + "/v1/chat/completions"
