@@ -73,8 +73,8 @@ RUN groupadd -g 1001 appgroup && \
 # Clone and install from source as per official guide
 RUN git clone https://github.com/resemble-ai/chatterbox.git /tmp/chatterbox \
     && cd /tmp/chatterbox \
-    && python3.11 -m pip install --no-cache-dir -e . \
-    && rm -rf /tmp/chatterbox/.git
+    && python3.11 -m pip install --no-cache-dir . \
+    && rm -rf /tmp/chatterbox
 
 # Copy binary and frontend assets from builder
 COPY --from=builder /app/target/release/server /usr/local/bin/server
