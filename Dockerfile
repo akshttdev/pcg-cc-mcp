@@ -48,6 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     software-properties-common \
     git \
+    zstd \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
