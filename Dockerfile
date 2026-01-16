@@ -35,6 +35,10 @@ RUN cargo build --release --bin server
 # Runtime stage - Use CUDA-enabled base for GPU support
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS runtime
 
+# Set timezone non-interactively to avoid tzdata prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
 # Install runtime dependencies including Python 3.11 for Chatterbox
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
