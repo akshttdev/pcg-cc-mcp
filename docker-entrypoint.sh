@@ -10,6 +10,28 @@ BACKUP_LATEST="/app/backups/backup_latest.sqlite"
 
 echo "🚀 Starting PCG-CC-MCP..."
 
+# Start Ollama service in background
+echo "🤖 Starting Ollama service..."
+ollama serve > /tmp/ollama.log 2>&1 &
+OLLAMA_PID=$!
+echo "✅ Ollama started (PID: $OLLAMA_PID)"
+
+# Wait for Ollama to be ready
+echo "⏳ Waiting for Ollama to be ready..."
+for i in $(seq 1 30); do
+    if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+        echo "✅ Ollama is ready"
+        break
+    fi
+    sleep 1
+done
+
+# Start Chatterbox TTS server in background
+echo "🎤 Starting Chatterbox TTS service..."
+python3 /app/scripts/chatterbox_server.py > /tmp/chatterbox.log 2>&1 &
+CHATTERBOX_PID=$!
+echo "✅ Chatterbox started (PID: $CHATTERBOX_PID)"
+
 # Ensure directories exist
 mkdir -p /app/dev_assets
 

@@ -5,7 +5,9 @@ FROM node:24-alpine AS builder
 RUN apk add --no-cache \
     curl \
     build-base \
-    perl
+    perl \
+    python3 \
+    py3-pip
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -30,24 +32,52 @@ RUN npm run generate-types
 RUN cd frontend && npm install --ignore-scripts && npm run build
 RUN cargo build --release --bin server
 
-# Runtime stage
-FROM alpine:latest AS runtime
+# Runtime stage - Use CUDA-enabled base for GPU support
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS runtime
 
-# Install runtime dependencies
-RUN apk add --no-cache \
+# Install runtime dependencies including Python 3.11 for Chatterbox
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tini \
-    libgcc \
     wget \
-    sqlite
+    curl \
+    sqlite3 \
+    software-properties-common \
+    git \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.11 as default
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+# Install Ollama for local LLM inference
+RUN curl -fsSL https://ollama.ai/install.sh | sh
 
 # Create app user for security
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -m -s /bin/bash appuser
+
+# Install Chatterbox TTS (Python 3.11 required)
+# Clone and install from source as per official guide
+RUN git clone https://github.com/resemble-ai/chatterbox.git /tmp/chatterbox \
+    && cd /tmp/chatterbox \
+    && python3.11 -m pip install --no-cache-dir -e . \
+    && rm -rf /tmp/chatterbox/.git
 
 # Copy binary and frontend assets from builder
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 COPY --from=builder /app/frontend/dist /app/frontend/dist
+
+# Copy Python scripts for Chatterbox server
+COPY scripts/chatterbox_server.py /app/scripts/chatterbox_server.py
+RUN chmod +x /app/scripts/chatterbox_server.py
 
 # Copy dev_assets as SEED (not to final location) - preserves existing data
 COPY --from=builder /app/dev_assets /app/dev_assets_seed
@@ -57,8 +87,18 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create necessary directories and set permissions
-RUN mkdir -p /repos /app/dev_assets /app/backups && \
-    chown -R appuser:appgroup /repos /app
+RUN mkdir -p /repos /app/dev_assets /app/backups /app/scripts /root/.ollama \
+    && chown -R appuser:appgroup /repos /app \
+    && chown -R appuser:appgroup /root/.ollama
+
+# Pre-pull Ollama models (GPT-OSS and DeepSeek) as root before switching user
+# This ensures models are available when the container starts
+RUN ollama serve & \
+    sleep 5 && \
+    ollama pull gpt-oss:20b && \
+    ollama pull deepseek-chat && \
+    pkill ollama && \
+    sleep 2
 
 # Switch to non-root user
 USER appuser
@@ -68,7 +108,10 @@ ENV HOST=0.0.0.0
 ENV PORT=3001
 ENV FRONTEND_PORT=3000
 ENV BACKEND_PORT=3001
-EXPOSE 3001
+ENV OLLAMA_BASE_URL=http://localhost:11434
+ENV CHATTERBOX_PORT=8100
+ENV CHATTERBOX_DEVICE=cuda
+EXPOSE 3001 11434 8100
 
 # Set working directory
 WORKDIR /app
