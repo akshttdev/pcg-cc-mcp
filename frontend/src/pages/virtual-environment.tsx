@@ -33,7 +33,6 @@ import { ENTRY_TRIGGER_DISTANCE } from '@/lib/virtual-world/constants';
 import { cn } from '@/lib/utils';
 import { useProjectList } from '@/hooks/api/useProjectList';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEquipmentStore } from '@/stores/useEquipmentStore';
 import type { Project } from 'shared/types';
 
 // Topos directory items for the Data Sphere visualization
@@ -272,11 +271,6 @@ export function VirtualEnvironmentPage() {
   // Get current user info
   const { user } = useAuth();
   const isAdmin = user?.is_admin ?? false;
-
-  // Debug: Equipment store state
-  const equipped = useEquipmentStore((s) => s.equipped);
-  const inventory = useEquipmentStore((s) => s.inventory);
-  const initializedForUser = useEquipmentStore((s) => s.initializedForUser);
 
   // Fetch projects from the Dashboard API
   const { data: apiProjects = [], isLoading: projectsLoading, error: projectsError } = useProjectList();
