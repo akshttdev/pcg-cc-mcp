@@ -69,12 +69,11 @@ RUN curl -fsSL https://ollama.ai/install.sh | sh
 RUN groupadd -g 1001 appgroup && \
     useradd -u 1001 -g appgroup -m -s /bin/bash appuser
 
-# Install Chatterbox TTS (Python 3.11 required)
-# Clone and install from source as per official guide
-RUN git clone https://github.com/resemble-ai/chatterbox.git /tmp/chatterbox \
-    && cd /tmp/chatterbox \
-    && python3.11 -m pip install --no-cache-dir . \
-    && rm -rf /tmp/chatterbox
+# Upgrade pip, setuptools, and wheel for Python 3.11
+RUN python3.11 -m pip install --upgrade pip setuptools wheel
+
+# Install Chatterbox TTS via pip (simpler and more reliable)
+RUN python3.11 -m pip install --no-cache-dir chatterbox-tts
 
 # Copy binary and frontend assets from builder
 COPY --from=builder /app/target/release/server /usr/local/bin/server
