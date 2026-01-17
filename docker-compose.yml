@@ -67,7 +67,10 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - app-network
+      app-network:
+        aliases:
+          - app
+          - pcg-cc-mcp
 
   # Automated database backup service
   db-backup:
@@ -137,7 +140,12 @@ services:
       app:
         condition: service_healthy
     networks:
-      - app-network
+      app-network:
+        aliases:
+          - cloudflared
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
 
 volumes:
   repos_data:
