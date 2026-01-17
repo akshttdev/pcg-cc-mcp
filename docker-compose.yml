@@ -24,13 +24,13 @@ services:
       - PCG_ASSET_DIR=/app/dev_assets
       # Ollama Configuration (Local LLM)
       - OLLAMA_BASE_URL=http://localhost:11434
-      - OLLAMA_MODEL=gpt-oss:20b
+      - OLLAMA_MODEL=deepseek-chat
       # Chatterbox TTS Configuration (Local Voice)
       - CHATTERBOX_PORT=8100
       - CHATTERBOX_DEVICE=cuda
       # NORA AI Assistant Configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - NORA_LLM_MODEL=${NORA_LLM_MODEL:-gpt-oss:20b}
+      - NORA_LLM_MODEL=${NORA_LLM_MODEL:-deepseek-chat}
       - NORA_LLM_TEMPERATURE=${NORA_LLM_TEMPERATURE:-0.7}
       - NORA_LLM_MAX_TOKENS=${NORA_LLM_MAX_TOKENS:-2000}
       # NORA Voice/TTS/STT Configuration (Optional - enables voice features)

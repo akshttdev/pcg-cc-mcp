@@ -95,12 +95,13 @@ RUN mkdir -p /repos /app/dev_assets /app/backups /app/scripts /root/.ollama \
     && chown -R appuser:appgroup /repos /app \
     && chown -R appuser:appgroup /root/.ollama
 
-# Pre-pull Ollama models (GPT-OSS and DeepSeek) as root before switching user
+# Pre-pull Ollama models as root before switching user
 # This ensures models are available when the container starts
+# Using actual Ollama model names from their registry
 RUN ollama serve & \
     sleep 5 && \
-    ollama pull gpt-oss:20b && \
     ollama pull deepseek-chat && \
+    ollama pull llama3.3 && \
     pkill ollama && \
     sleep 2
 
