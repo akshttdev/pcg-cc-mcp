@@ -143,9 +143,6 @@ services:
       app-network:
         aliases:
           - cloudflared
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
 
 volumes:
   repos_data:
