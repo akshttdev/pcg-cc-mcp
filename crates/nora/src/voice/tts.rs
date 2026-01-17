@@ -667,18 +667,26 @@ impl OpenAITTS {
     }
 }
 
-/// System TTS implementation (fallback)
+/// System TTS implementation (uses Chatterbox as backend)
 #[derive(Debug)]
 pub struct SystemTTS {
-    #[allow(dead_code)]
     config: TTSConfig,
+    client: reqwest::Client,
+    endpoint: String,
 }
 
 impl SystemTTS {
     pub async fn new(config: &TTSConfig) -> VoiceResult<Self> {
-        info!("Initializing system TTS (fallback)");
+        // Get Chatterbox endpoint from environment or use default
+        let endpoint = std::env::var("CHATTERBOX_URL")
+            .unwrap_or_else(|_| "http://localhost:8100".to_string());
+
+        info!("Initializing system TTS with Chatterbox backend: {}", endpoint);
+        
         Ok(Self {
             config: config.clone(),
+            client: reqwest::Client::new(),
+            endpoint,
         })
     }
 }
@@ -688,33 +696,98 @@ impl TextToSpeech for SystemTTS {
     async fn synthesize_speech(&self, request: SpeechRequest) -> VoiceResult<SpeechResponse> {
         let start_time = Instant::now();
 
-        info!("Synthesizing speech with system TTS");
+        info!("Synthesizing speech with system TTS (Chatterbox backend)");
 
-        // This is a placeholder implementation
-        // In a real implementation, you would use system TTS libraries
-        // For now, we'll return a dummy response
-        let dummy_audio = vec![0u8; 1024]; // 1KB of silence
-        let audio_data = base64::engine::general_purpose::STANDARD.encode(&dummy_audio);
+        // Determine voice based on profile
+        let voice = match request.voice_profile {
+            VoiceProfile::BritishExecutiveFemale => "british_female",
+            VoiceProfile::BritishExecutiveMale => "british_male",
+            VoiceProfile::BritishProfessionalFemale => "british_female",
+            VoiceProfile::BritishProfessionalMale => "british_male",
+            VoiceProfile::SystemDefault => "british_female",
+        };
 
+        // Build the TTS request payload for Chatterbox
+        let payload = serde_json::json!({
+            "text": request.text,
+            "voice": voice,
+            "speed": request.speed,
+            "exaggeration": if request.executive_tone { 0.3 } else { 0.5 }
+        });
+
+        let response = self
+            .client
+            .post(format!("{}/tts", self.endpoint))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| VoiceError::NetworkError(e))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            warn!("System TTS (Chatterbox) error: {}", error_text);
+            return Err(VoiceError::TTSError(format!(
+                "System TTS error: {}",
+                error_text
+            )));
+        }
+
+        // Get the content type to determine format
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("audio/wav");
+
+        let format = if content_type.contains("mpeg") || content_type.contains("mp3") {
+            AudioFormat::Mp3
+        } else {
+            AudioFormat::Wav
+        };
+
+        let audio_bytes = response
+            .bytes()
+            .await
+            .map_err(|e| VoiceError::NetworkError(e))?;
+
+        let audio_data = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
         let processing_time = start_time.elapsed().as_millis() as u64;
 
-        warn!("System TTS returning dummy audio data - implement actual TTS integration");
+        info!(
+            "System TTS (Chatterbox) completed in {}ms ({} bytes)",
+            processing_time,
+            audio_bytes.len()
+        );
 
         Ok(SpeechResponse {
             audio_data,
             duration_ms: self.estimate_duration(&request.text),
-            sample_rate: 16000,
-            format: AudioFormat::Wav,
+            sample_rate: 24000, // Chatterbox default sample rate
+            format,
             processing_time_ms: processing_time,
         })
     }
 
     async fn get_available_voices(&self) -> VoiceResult<Vec<String>> {
-        Ok(vec!["system_default".to_string()])
+        Ok(vec![
+            "system_default".to_string(),
+            "british_female".to_string(),
+            "british_male".to_string(),
+        ])
     }
 
     async fn is_ready(&self) -> bool {
-        true // System TTS is always available as fallback
+        // Check if Chatterbox server is reachable
+        match self
+            .client
+            .get(format!("{}/health", self.endpoint))
+            .send()
+            .await
+        {
+            Ok(response) => response.status().is_success(),
+            Err(_) => false,
+        }
     }
 }
 
