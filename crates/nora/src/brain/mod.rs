@@ -138,7 +138,7 @@ impl Default for LLMConfig {
     fn default() -> Self {
         Self {
             provider: LLMProvider::Ollama,
-            model: "deepseek-chat".to_string(), // Can also use "llama3.3", "llama3", etc.
+            model: "deepseek-r1:8b".to_string(), // Can also use "llama3.3", "llama3", etc.
             temperature: 0.2,
             max_tokens: 600,
             system_prompt: r#"You are Nora, the executive AI assistant for PowerClub Global. Respond in confident British English.

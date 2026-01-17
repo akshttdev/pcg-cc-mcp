@@ -100,7 +100,7 @@ RUN mkdir -p /repos /app/dev_assets /app/backups /app/scripts /root/.ollama \
 # Using actual Ollama model names from their registry
 RUN ollama serve & \
     sleep 5 && \
-    ollama pull deepseek-chat && \
+    ollama pull deepseek-r1:8b && \
     ollama pull llama3.3 && \
     pkill ollama && \
     sleep 2
