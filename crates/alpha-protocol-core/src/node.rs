@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 
 use crate::identity::NodeIdentity;
 use crate::mesh::{MeshNode, MeshEvent, MeshMessage, PeerInfo};
-use crate::relay::{NatsRelay, RelayConfig, RelayEvent};
+use crate::relay::{NatsRelay, RelayConfig, RelayEvent, PeerAnnouncement};
 
 /// Node configuration
 #[derive(Debug, Clone)]
@@ -207,11 +207,25 @@ impl AlphaNode {
                             let _ = event_tx.send(NodeEvent::RelayDisconnected);
                         }
                         RelayEvent::MessageReceived { subject, payload } => {
+                            // Try parsing as MeshMessage first
                             if let Ok(message) = serde_json::from_slice::<MeshMessage>(&payload) {
                                 let _ = event_tx.send(NodeEvent::MessageReceived {
                                     from: subject,
                                     message,
                                 });
+                            } else if let Ok(announcement) = serde_json::from_slice::<PeerAnnouncement>(&payload) {
+                                // Convert PeerAnnouncement to MeshMessage
+                                let message = MeshMessage::PeerAnnouncement {
+                                    wallet_address: announcement.wallet_address,
+                                    capabilities: announcement.capabilities,
+                                    resources: None,
+                                };
+                                let _ = event_tx.send(NodeEvent::MessageReceived {
+                                    from: format!("{} ({})", subject, announcement.node_id),
+                                    message,
+                                });
+                            } else {
+                                tracing::debug!("Could not parse relay message from {}: {:?}", subject, String::from_utf8_lossy(&payload));
                             }
                         }
                         RelayEvent::Error(e) => {
