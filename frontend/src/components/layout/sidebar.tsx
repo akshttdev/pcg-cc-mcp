@@ -26,6 +26,8 @@ import {
   ListTodo,
   BarChart3,
   Bot,
+  Network,
+  Globe,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -53,8 +55,10 @@ interface NavItem {
 // Primary navigation - always visible (role-filtered)
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Nora Command', icon: Crown, to: '/nora', id: 'nora', adminOnly: true },
+  { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi', adminOnly: true },
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
+  { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh' },
   { label: 'Virtual World', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'Settings', icon: Settings, to: '/settings', id: 'settings' },
 ];
@@ -380,16 +384,23 @@ export function Sidebar({ className }: SidebarProps) {
                   className={cn(
                     "w-full justify-start px-3 py-2 h-auto font-medium",
                     isActive && "bg-accent text-accent-foreground",
-                    item.id === 'nora' && "bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/30 dark:hover:bg-purple-950/50"
+                    item.id === 'nora' && "bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/30 dark:hover:bg-purple-950/50",
+                    item.id === 'topsi' && "bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/30 dark:hover:bg-cyan-950/50"
                   )}
                 >
                   <Icon className={cn(
                     "h-4 w-4 mr-3",
-                    item.id === 'nora' && "text-purple-600"
+                    item.id === 'nora' && "text-purple-600",
+                    item.id === 'topsi' && "text-cyan-600"
                   )} />
                   <span className="text-sm">{item.label}</span>
                   {item.id === 'nora' && (
                     <span className="ml-auto text-[10px] bg-purple-600 text-white px-1.5 py-0.5 rounded">
+                      ADMIN
+                    </span>
+                  )}
+                  {item.id === 'topsi' && (
+                    <span className="ml-auto text-[10px] bg-cyan-600 text-white px-1.5 py-0.5 rounded">
                       ADMIN
                     </span>
                   )}

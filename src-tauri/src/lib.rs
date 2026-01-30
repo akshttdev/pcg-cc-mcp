@@ -5,8 +5,10 @@
 
 use alpha_protocol_core::identity::WalletInfo;
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::State;
 use tokio::sync::{mpsc, oneshot, RwLock};
+use sysinfo::{System, Disks};
 
 /// Node initialization parameters (all Send + Sync)
 #[derive(Debug, Clone)]
@@ -22,6 +24,7 @@ enum NodeCommand {
     Start { resp: oneshot::Sender<Result<String, String>> },
     GetPeers { resp: oneshot::Sender<Vec<PeerInfoData>> },
     GetInfo { resp: oneshot::Sender<Option<NodeInfoData>> },
+    GetMeshStats { resp: oneshot::Sender<MeshStatsData> },
     Announce { resp: oneshot::Sender<Result<(), String>> },
     Broadcast { topic: String, message: String, resp: oneshot::Sender<Result<(), String>> },
     SendDirect { recipient: String, message: String, resp: oneshot::Sender<Result<(), String>> },
@@ -42,6 +45,52 @@ pub struct NodeInfoData {
     pub address: String,
     pub public_key: String,
     pub peer_count: usize,
+}
+
+/// Bandwidth statistics
+#[derive(Debug, Clone, serde::Serialize, Default)]
+pub struct BandwidthStats {
+    pub available: f64,      // Mbps available to contribute
+    pub contributing: f64,   // Mbps currently contributing
+    pub consuming: f64,      // Mbps currently consuming
+}
+
+/// System resource information
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ResourceStats {
+    pub cpu_cores: usize,
+    pub cpu_usage: f64,
+    pub memory_total: u64,      // GB
+    pub memory_used: u64,       // GB
+    pub storage_available: u64, // GB
+}
+
+/// Complete mesh statistics
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MeshStatsData {
+    pub node_id: String,
+    pub status: String,  // "online", "offline", "connecting"
+    pub peers_connected: usize,
+    pub peers: Vec<PeerInfoData>,
+    pub bandwidth: BandwidthStats,
+    pub resources: ResourceStats,
+    pub relay_connected: bool,
+    pub uptime: u64,  // seconds
+    pub vibe_balance: f64,
+    pub transactions: Vec<TransactionLog>,
+    pub active_tasks: u32,
+    pub completed_tasks_today: u32,
+}
+
+/// Transaction log entry for mesh operations
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TransactionLog {
+    pub id: String,
+    pub timestamp: String,
+    pub tx_type: String,  // task_distributed, task_received, execution_completed, etc.
+    pub description: String,
+    pub vibe_amount: Option<f64>,
+    pub peer_node: Option<String>,
 }
 
 /// Handle to communicate with the node task
@@ -79,6 +128,15 @@ impl NodeHandle {
         }
     }
 
+    async fn get_mesh_stats(&self) -> Option<MeshStatsData> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        if self.cmd_tx.send(NodeCommand::GetMeshStats { resp: resp_tx }).is_ok() {
+            resp_rx.await.ok()
+        } else {
+            None
+        }
+    }
+
     async fn announce(&self) -> Result<(), String> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.cmd_tx.send(NodeCommand::Announce { resp: resp_tx }).map_err(|e| e.to_string())?;
@@ -104,6 +162,8 @@ pub struct AppState {
     node_handle: Arc<RwLock<Option<NodeHandle>>>,
     /// Wallet info
     wallet: Arc<RwLock<Option<WalletInfo>>>,
+    /// Node start time for uptime tracking
+    start_time: Arc<RwLock<Option<Instant>>>,
 }
 
 impl Default for AppState {
@@ -111,6 +171,7 @@ impl Default for AppState {
         Self {
             node_handle: Arc::new(RwLock::new(None)),
             wallet: Arc::new(RwLock::new(None)),
+            start_time: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -149,7 +210,7 @@ async fn run_node_loop(params: NodeParams, mut cmd_rx: mpsc::UnboundedReceiver<N
         }
     };
 
-    let (event_tx, mut _event_rx) = mpsc::unbounded_channel::<NodeEvent>();
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<NodeEvent>();
 
     let mut builder = AlphaNodeBuilder::new()
         .with_mnemonic(&params.mnemonic);
@@ -177,9 +238,96 @@ async fn run_node_loop(params: NodeParams, mut cmd_rx: mpsc::UnboundedReceiver<N
     let short_id = identity.short_id();
     let address = identity.address().to_string();
     let public_key = identity.public_key_hex();
+    let capabilities = params.capabilities.clone();
+
+    // Track node state
+    let mut node_started = false;
+    let mut start_time: Option<Instant> = None;
+    let mut relay_connected = false;
+    let mut transactions: Vec<TransactionLog> = Vec::new();
+    let mut vibe_balance: f64 = 0.0;
+    let mut active_tasks: u32 = 0;
+    let mut completed_tasks_today: u32 = 0;
+    const MAX_TRANSACTIONS: usize = 100;
 
     loop {
         tokio::select! {
+            // Process node events (messages, peer updates, etc.)
+            Some(event) = event_rx.recv() => {
+                match event {
+                    NodeEvent::MessageReceived { from, message } => {
+                        // Convert mesh messages to transaction logs
+                        let tx = match message {
+                            alpha_protocol_core::mesh::MeshMessage::TaskAvailable { task_id, task_type, reward_vibe, .. } => {
+                                active_tasks += 1;
+                                Some(TransactionLog {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    timestamp: chrono::Utc::now().to_rfc3339(),
+                                    tx_type: "task_received".to_string(),
+                                    description: format!("Task received: {} ({})", task_id, task_type),
+                                    vibe_amount: Some(reward_vibe),
+                                    peer_node: Some(from.clone()),
+                                })
+                            }
+                            alpha_protocol_core::mesh::MeshMessage::TaskCompleted { task_id, .. } => {
+                                if active_tasks > 0 { active_tasks -= 1; }
+                                completed_tasks_today += 1;
+                                // Earn vibe for completing task
+                                let earned = 10.0; // Base reward
+                                vibe_balance += earned;
+                                Some(TransactionLog {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    timestamp: chrono::Utc::now().to_rfc3339(),
+                                    tx_type: "execution_completed".to_string(),
+                                    description: format!("Task completed: {}", task_id),
+                                    vibe_amount: Some(earned),
+                                    peer_node: Some(from.clone()),
+                                })
+                            }
+                            alpha_protocol_core::mesh::MeshMessage::TaskClaimed { task_id, worker_peer_id } => {
+                                Some(TransactionLog {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    timestamp: chrono::Utc::now().to_rfc3339(),
+                                    tx_type: "task_distributed".to_string(),
+                                    description: format!("Task {} assigned to {}", task_id, worker_peer_id),
+                                    vibe_amount: None,
+                                    peer_node: Some(worker_peer_id),
+                                })
+                            }
+                            // Ignore heartbeats and announcements in transaction log
+                            _ => None,
+                        };
+
+                        if let Some(tx) = tx {
+                            transactions.push(tx);
+                            if transactions.len() > MAX_TRANSACTIONS {
+                                transactions.remove(0);
+                            }
+                        }
+                    }
+                    NodeEvent::RelayConnected => {
+                        relay_connected = true;
+                        tracing::info!("Relay connected");
+                    }
+                    NodeEvent::RelayDisconnected => {
+                        relay_connected = false;
+                        tracing::info!("Relay disconnected");
+                    }
+                    NodeEvent::PeerConnected(peer) => {
+                        tracing::info!("Peer connected: {}", peer.peer_id);
+                    }
+                    NodeEvent::PeerDisconnected(peer_id) => {
+                        tracing::info!("Peer disconnected: {}", peer_id);
+                    }
+                    NodeEvent::Started { peer_id, address } => {
+                        tracing::info!("Node started: {} at {}", peer_id, address);
+                    }
+                    NodeEvent::Error(e) => {
+                        tracing::error!("Node error: {}", e);
+                    }
+                }
+            }
+
             Some(cmd) = cmd_rx.recv() => {
                 match cmd {
                     NodeCommand::Start { resp } => {
@@ -187,6 +335,11 @@ async fn run_node_loop(params: NodeParams, mut cmd_rx: mpsc::UnboundedReceiver<N
                             let result = n.start().await
                                 .map(|_| format!("Node started: {}", short_id))
                                 .map_err(|e| format!("Failed to start: {}", e));
+                            if result.is_ok() {
+                                node_started = true;
+                                start_time = Some(Instant::now());
+                                relay_connected = true; // Relay connects on start
+                            }
                             let _ = resp.send(result);
                         } else {
                             let _ = resp.send(Err("Node not available".to_string()));
@@ -221,6 +374,76 @@ async fn run_node_loop(params: NodeParams, mut cmd_rx: mpsc::UnboundedReceiver<N
                         }
                     }
 
+                    NodeCommand::GetMeshStats { resp } => {
+                        // Get system resources
+                        let mut sys = System::new_all();
+                        sys.refresh_all();
+
+                        let cpu_usage = sys.global_cpu_usage() as f64;
+                        let cpu_cores = sys.cpus().len();
+                        let memory_total = sys.total_memory() / 1_073_741_824; // bytes to GB
+                        let memory_used = sys.used_memory() / 1_073_741_824;
+
+                        // Get available disk space
+                        let disks = Disks::new_with_refreshed_list();
+                        let storage_available = disks
+                            .iter()
+                            .map(|d| d.available_space())
+                            .sum::<u64>() / 1_073_741_824;
+
+                        let resources = ResourceStats {
+                            cpu_cores,
+                            cpu_usage,
+                            memory_total,
+                            memory_used,
+                            storage_available,
+                        };
+
+                        // Get peers
+                        let peers = if let Some(ref n) = node {
+                            let peer_list = n.peers().await;
+                            peer_list.into_iter().map(|p| PeerInfoData {
+                                peer_id: p.peer_id,
+                                address: p.addresses.first().cloned().unwrap_or_default(),
+                                capabilities: p.capabilities,
+                            }).collect()
+                        } else {
+                            vec![]
+                        };
+
+                        let status = if node_started {
+                            "online".to_string()
+                        } else if node.is_some() {
+                            "connecting".to_string()
+                        } else {
+                            "offline".to_string()
+                        };
+
+                        let uptime = start_time
+                            .map(|t| t.elapsed().as_secs())
+                            .unwrap_or(0);
+
+                        let stats = MeshStatsData {
+                            node_id: short_id.clone(),
+                            status,
+                            peers_connected: peers.len(),
+                            peers,
+                            bandwidth: BandwidthStats {
+                                available: 100.0, // TODO: Detect actual bandwidth
+                                contributing: 0.0, // TODO: Track actual contribution
+                                consuming: 0.0,    // TODO: Track actual consumption
+                            },
+                            resources,
+                            relay_connected,
+                            uptime,
+                            vibe_balance,
+                            transactions: transactions.clone(),
+                            active_tasks,
+                            completed_tasks_today,
+                        };
+                        let _ = resp.send(stats);
+                    }
+
                     NodeCommand::Announce { resp } => {
                         if let Some(ref mut n) = node {
                             let result = n.announce()
@@ -235,7 +458,7 @@ async fn run_node_loop(params: NodeParams, mut cmd_rx: mpsc::UnboundedReceiver<N
                         if let Some(ref mut n) = node {
                             let mesh_message = MeshMessage::PeerAnnouncement {
                                 wallet_address: address.clone(),
-                                capabilities: vec!["compute".to_string()],
+                                capabilities: capabilities.clone(),
                                 resources: None,
                             };
                             let result = n.broadcast(&topic, &mesh_message)
@@ -411,6 +634,43 @@ async fn get_node_info(state: State<'_, AppState>) -> Result<NodeInfoData, Strin
     }
 }
 
+/// Get comprehensive mesh network statistics
+#[tauri::command]
+async fn get_mesh_stats(state: State<'_, AppState>) -> Result<MeshStatsData, String> {
+    let handle_guard = state.node_handle.read().await;
+    if let Some(handle) = handle_guard.as_ref() {
+        handle.get_mesh_stats().await.ok_or_else(|| "Mesh stats not available".to_string())
+    } else {
+        // Return offline stats with system resources even if node not initialized
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
+        Ok(MeshStatsData {
+            node_id: "not_initialized".to_string(),
+            status: "offline".to_string(),
+            peers_connected: 0,
+            peers: vec![],
+            bandwidth: BandwidthStats::default(),
+            resources: ResourceStats {
+                cpu_cores: sys.cpus().len(),
+                cpu_usage: sys.global_cpu_usage() as f64,
+                memory_total: sys.total_memory() / 1_073_741_824,
+                memory_used: sys.used_memory() / 1_073_741_824,
+                storage_available: {
+                    let disks = Disks::new_with_refreshed_list();
+                    disks.iter().map(|d| d.available_space()).sum::<u64>() / 1_073_741_824
+                },
+            },
+            relay_connected: false,
+            uptime: 0,
+            vibe_balance: 0.0,
+            transactions: vec![],
+            active_tasks: 0,
+            completed_tasks_today: 0,
+        })
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -426,6 +686,7 @@ pub fn run() {
             send_direct_message,
             announce,
             get_node_info,
+            get_mesh_stats,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

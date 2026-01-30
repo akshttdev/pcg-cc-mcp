@@ -118,10 +118,12 @@ async fn main() -> anyhow::Result<()> {
     node.start().await?;
     println!("✅ Node started!\n");
 
-    // Announce to the network
+    // Announce to the network (may fail if no peers yet, that's OK)
     println!("📢 Announcing to network...");
-    node.announce()?;
-    println!("✅ Announced!\n");
+    match node.announce() {
+        Ok(_) => println!("✅ Announced!\n"),
+        Err(e) => println!("⚠️  Announce pending (no peers yet): {}\n", e),
+    }
 
     println!("👂 Listening for events... (Ctrl+C to quit)\n");
 

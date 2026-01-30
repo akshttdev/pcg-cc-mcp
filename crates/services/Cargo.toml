@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = []
 cloud = []
+apn = ["dep:alpha-protocol-core"]
 
 [dependencies]
 utils = { path = "../utils" }
@@ -67,3 +68,6 @@ sha3 = "0.10"
 hex = "0.4"
 urlencoding = "2.1"
 aes-gcm = "0.10"
+
+# Alpha Protocol Network
+alpha-protocol-core = { path = "../alpha-protocol-core", optional = true }

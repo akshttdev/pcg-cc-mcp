@@ -10,12 +10,15 @@ import { ProjectControllerPage } from '@/pages/project-controller';
 import { MyTasksPage } from '@/pages/my-tasks';
 import { GlobalTasksPage } from '@/pages/global-tasks';
 import { NoraPage } from '@/pages/nora';
+import { TopsiPage } from '@/pages/topsi';
+import { TopsiWidget } from '@/components/topsi';
 import MissionControlPage from '@/pages/mission-control';
 import { WorkflowsPage } from '@/pages/workflows';
 import { SocialPage } from '@/pages/social';
 import { CrmPage } from '@/pages/crm';
 import { VirtualEnvironmentPage } from '@/pages/virtual-environment';
 import { EmbedVirtualEnvironmentPage } from '@/pages/embed/virtual-environment';
+import MeshPage from '@/pages/mesh';
 import { OAuthCallbackPage } from '@/pages/oauth/OAuthCallbackPage';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
@@ -235,6 +238,7 @@ function AppContent() {
                     <Route path="/my-tasks" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
                     {/* Nora Command - admin only global controller */}
                     <Route path="/nora" element={<AdminRoute><NoraPage /></AdminRoute>} />
+                    <Route path="/topsi" element={<AdminRoute><TopsiPage /></AdminRoute>} />
                     {/* Global Tasks - admin only view of all tasks */}
                     <Route path="/global-tasks" element={<AdminRoute><GlobalTasksPage /></AdminRoute>} />
                     {/* Legacy routes - keep for backwards compatibility */}
@@ -255,6 +259,10 @@ function AppContent() {
                     <Route
                       path="/virtual-environment"
                       element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/mesh"
+                      element={<ProtectedRoute><MeshPage /></ProtectedRoute>}
                     />
                     <Route path="/settings/*" element={<ProtectedRoute><SettingsLayout /></ProtectedRoute>}>
                       <Route index element={<Navigate to="general" replace />} />
@@ -279,6 +287,8 @@ function AppContent() {
                 </div>
               </div>
             </div>
+            {/* Topsi floating chat widget - available on all pages */}
+            <TopsiWidget />
             <ShortcutsHelp />
             <CommandPalette />
             <KeyboardShortcutsOverlay />

@@ -14,6 +14,10 @@ crate-type = ["lib", "staticlib", "cdylib"]
 name = "apn_node"
 path = "src/bin/apn_node.rs"
 
+[[bin]]
+name = "apn_send"
+path = "src/bin/apn_send.rs"
+
 [features]
 default = []
 tauri = ["dep:tauri"]

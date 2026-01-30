@@ -1,6 +1,7 @@
 pub mod agent_registry;
 pub mod airtable_service;
 pub mod analytics;
+pub mod apn_bridge;
 pub mod aptos;
 pub mod approvals;
 pub mod artifacts;
