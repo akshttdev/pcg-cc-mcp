@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT CAST(COUNT(*) AS INTEGER) as \"count!: i64\" FROM topology_edges WHERE from_node_id = $1 AND status = 'active'",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b48e168613170f79f0815a18bc5e39317bf6587bf128c1c4083ddc095df2e2de"
+}

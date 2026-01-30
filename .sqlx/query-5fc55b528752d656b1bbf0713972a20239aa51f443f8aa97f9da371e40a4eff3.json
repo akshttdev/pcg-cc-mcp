@@ -1,0 +1,104 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                entity_type as \"entity_type!: EntityType\",\n                canonical_name,\n                slug,\n                external_ids,\n                bio,\n                title,\n                company,\n                photo_url,\n                social_profiles,\n                social_analysis,\n                data_completeness as \"data_completeness!: f64\",\n                last_researched_at as \"last_researched_at: DateTime<Utc>\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            FROM entities\n            WHERE LOWER(canonical_name) = LOWER($1)",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "entity_type!: EntityType",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "canonical_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "slug",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "external_ids",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "bio",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "company",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "photo_url",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "social_profiles",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "social_analysis",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "data_completeness!: f64",
+        "ordinal": 11,
+        "type_info": "Float"
+      },
+      {
+        "name": "last_researched_at: DateTime<Utc>",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 14,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "5fc55b528752d656b1bbf0713972a20239aa51f443f8aa97f9da371e40a4eff3"
+}

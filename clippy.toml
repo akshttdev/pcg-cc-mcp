@@ -1,0 +1,12 @@
+# PCG Dashboard Clippy Configuration
+# Aligned with duck-rs quality standards
+
+# Allow expect/unwrap in tests only
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 25
+
+# Max function lines before warning
+too-many-lines-threshold = 100

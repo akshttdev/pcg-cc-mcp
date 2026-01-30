@@ -1,0 +1,54 @@
+[package]
+name = "topiclips"
+version = "0.0.1"
+edition = "2021"
+description = "TopiClips - AI-generated artistic video clips from topology evolution (Beeple Everydays from Topsi)"
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { workspace = true }
+serde_json = "1.0"
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Type generation and schemas
+ts-rs = { workspace = true }
+
+# HTTP client for LLM APIs
+reqwest = { version = "0.11", features = ["json"] }
+
+# Database integration
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+db = { path = "../db" }
+
+# Cinematics integration
+cinematics = { path = "../cinematics" }
+
+# Topsi integration
+topsi = { path = "../topsi" }
+
+# Shared utilities
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Async traits
+async-trait = "0.1"
+
+# Regex for pattern matching
+regex = "1.10"
+
+[[bin]]
+name = "topiclips-genesis"
+path = "src/bin/genesis.rs"
+
+[dev-dependencies]
+tokio-test = "0.4"

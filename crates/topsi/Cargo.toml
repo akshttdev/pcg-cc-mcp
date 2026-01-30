@@ -1,0 +1,49 @@
+[package]
+name = "topsi"
+version = "0.0.96"
+edition = "2021"
+description = "Topsi - Topological Super Intelligence for project topology management"
+
+[dependencies]
+# Async runtime and web framework
+tokio = { workspace = true, features = ["full"] }
+axum = { workspace = true }
+futures = "0.3"
+
+# Serialization
+serde = { workspace = true }
+serde_json = "1.0"
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Type generation and schemas
+ts-rs = { workspace = true }
+schemars = { workspace = true }
+
+# HTTP client for external APIs
+reqwest = { version = "0.11", features = ["json"] }
+
+# Database integration
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
+db = { path = "../db" }
+
+# Shared utilities
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Async traits
+async-trait = "0.1"
+
+# Collections for graph algorithms
+indexmap = { version = "2.0", features = ["serde"] }
+
+# LLM integration (reuse Nora's LLMClient)
+nora = { path = "../nora" }
+
+[dev-dependencies]
+tokio-test = "0.4"

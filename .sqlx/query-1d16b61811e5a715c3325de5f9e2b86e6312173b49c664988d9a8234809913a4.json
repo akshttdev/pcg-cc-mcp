@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO workflow_qa_runs (\n                id, workflow_id, stage_name, artifact_id, checklist_items,\n                confidence_level, overall_score, decision,\n                retry_guidance, escalation_reason, agent_id,\n                execution_time_ms, tokens_used\n            ) VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13\n            )\n            RETURNING\n                id as \"id!: Uuid\",\n                workflow_id as \"workflow_id!: Uuid\",\n                stage_name,\n                artifact_id as \"artifact_id: Uuid\",\n                checklist_items,\n                confidence_level as \"confidence_level!: ConfidenceLevel\",\n                overall_score as \"overall_score!: f64\",\n                decision as \"decision!: QADecision\",\n                retry_guidance,\n                escalation_reason,\n                agent_id as \"agent_id: Uuid\",\n                execution_time_ms,\n                tokens_used,\n                created_at as \"created_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "workflow_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "stage_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "artifact_id: Uuid",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "checklist_items",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "confidence_level!: ConfidenceLevel",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "overall_score!: f64",
+        "ordinal": 6,
+        "type_info": "Float"
+      },
+      {
+        "name": "decision!: QADecision",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "retry_guidance",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "escalation_reason",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "agent_id: Uuid",
+        "ordinal": 10,
+        "type_info": "Blob"
+      },
+      {
+        "name": "execution_time_ms",
+        "ordinal": 11,
+        "type_info": "Integer"
+      },
+      {
+        "name": "tokens_used",
+        "ordinal": 12,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 13,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 13
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "1d16b61811e5a715c3325de5f9e2b86e6312173b49c664988d9a8234809913a4"
+}

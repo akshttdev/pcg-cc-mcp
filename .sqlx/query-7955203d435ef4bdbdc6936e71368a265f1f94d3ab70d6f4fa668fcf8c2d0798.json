@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE topiclip_daily_schedule\n            SET\n                current_streak = 0,\n                updated_at = datetime('now', 'subsec')\n            WHERE id = $1\n            RETURNING\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                scheduled_time as \"scheduled_time!: String\",\n                timezone,\n                is_enabled as \"is_enabled!: bool\",\n                current_streak as \"current_streak!: i64\",\n                longest_streak as \"longest_streak!: i64\",\n                total_clips_generated as \"total_clips_generated!: i64\",\n                last_generation_date,\n                min_significance_threshold,\n                force_daily as \"force_daily!: bool\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "scheduled_time!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "timezone",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_enabled!: bool",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "current_streak!: i64",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "longest_streak!: i64",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_clips_generated!: i64",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "last_generation_date",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "min_significance_threshold",
+        "ordinal": 9,
+        "type_info": "Float"
+      },
+      {
+        "name": "force_daily!: bool",
+        "ordinal": 10,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 12,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "7955203d435ef4bdbdc6936e71368a265f1f94d3ab70d6f4fa668fcf8c2d0798"
+}

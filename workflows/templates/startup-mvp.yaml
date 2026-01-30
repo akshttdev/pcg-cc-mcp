@@ -1,0 +1,228 @@
+name: startup-mvp-accelerated
+version: 1
+description: "Accelerated MVP-focused startup journey for rapid market validation"
+trigger:
+  type: manual
+  conditions:
+    - indicator: engagement_type
+      operator: equals
+      value: mvp_accelerated
+
+variables:
+  default_timeline_weeks: 6
+  quality_threshold: 80
+  focus: market_validation
+
+agents:
+  specialized:
+    - name: Strategist
+      phase_assignments: [discovery]
+    - name: Designer
+      phase_assignments: [brand_lite, build]
+    - name: Developer
+      phase_assignments: [build]
+    - name: Writer
+      phase_assignments: [brand_lite, content]
+
+  quality:
+    - name: QA-Strategy
+      gates: [discovery]
+    - name: QA-Tech
+      gates: [build]
+
+  orchestrator:
+    name: Nora
+
+phases:
+  - name: discovery_lite
+    display_name: "Phase 1: Rapid Discovery"
+    duration: "3-5 days"
+    owner: agent
+    agents: [Strategist]
+    quality_gate: QA-Strategy
+
+    tasks:
+      - id: market_validation
+        name: "Market Validation Sprint"
+        agent: Strategist
+        duration: "2-3 days"
+        actions:
+          - competitor_quick_scan
+          - target_customer_definition
+          - value_proposition_canvas
+          - mvp_scope_definition
+        outputs:
+          - market_validation_brief
+          - mvp_feature_list
+          - positioning_statement
+
+    checkpoint:
+      name: discovery_verification
+      owner: QA-Strategy
+      criteria:
+        - problem_solution_fit: validated
+        - target_customer_defined: clear
+        - mvp_scope: realistic
+      human_approval: strategy_lead
+      handoff_to: brand_lite
+
+  - name: brand_lite
+    display_name: "Phase 2: Brand Essentials"
+    duration: "4-5 days"
+    owner: agent
+    agents: [Designer, Writer]
+    quality_gate: null
+    human_touchpoint: creative_lead
+
+    tasks:
+      - id: visual_essentials
+        name: "Visual Essentials"
+        agent: Designer
+        duration: "3 days"
+        actions:
+          - logo_single_concept
+          - color_palette_minimal
+          - typography_selection
+        outputs:
+          - logo_primary
+          - color_system_basic
+          - typography_pair
+
+      - id: verbal_essentials
+        name: "Verbal Essentials"
+        agent: Writer
+        duration: "2 days"
+        parallel_with: [visual_essentials]
+        actions:
+          - tagline_quick_development
+          - boilerplate_25_word
+          - voice_guidelines_basic
+        outputs:
+          - tagline
+          - short_boilerplate
+          - voice_basics
+
+    checkpoint:
+      name: brand_lite_verification
+      human_approval: creative_lead
+      handoff_to: build
+
+  - name: build
+    display_name: "Phase 3: MVP Build"
+    duration: "2-3 weeks"
+    owner: agent
+    agents: [Developer, Designer]
+    quality_gate: QA-Tech
+    human_touchpoint: technical_lead
+
+    tasks:
+      - id: mvp_architecture
+        name: "MVP Architecture"
+        agent: Developer
+        duration: "1 day"
+        actions:
+          - minimal_stack_selection
+          - rapid_setup
+        outputs:
+          - architecture_decision
+          - repo_initialized
+
+      - id: mvp_design
+        name: "MVP Design"
+        agent: Designer
+        duration: "3-4 days"
+        parallel_with: [mvp_architecture]
+        actions:
+          - key_screens_design
+          - mobile_first_responsive
+        outputs:
+          - key_screen_designs
+          - component_basics
+
+      - id: mvp_development
+        name: "MVP Development"
+        agent: Developer
+        duration: "10-14 days"
+        depends_on: [mvp_architecture, mvp_design]
+        actions:
+          - core_feature_build
+          - essential_integrations
+          - basic_testing
+        outputs:
+          - functional_mvp
+          - deployment_ready
+
+    checkpoint:
+      name: mvp_verification
+      owner: QA-Tech
+      criteria:
+        - core_features_work: 100%
+        - performance_acceptable: true
+        - mobile_responsive: true
+      human_approval: technical_lead
+      handoff_to: soft_launch
+
+  - name: content
+    display_name: "Phase 4: Essential Content"
+    duration: "1 week"
+    owner: agent
+    agents: [Writer]
+    parallel_with: build
+
+    tasks:
+      - id: essential_copy
+        name: "Essential Website Copy"
+        agent: Writer
+        duration: "3-4 days"
+        actions:
+          - homepage_copy
+          - core_page_copy
+          - cta_optimization
+        outputs:
+          - website_copy_essential
+
+  - name: soft_launch
+    display_name: "Phase 5: Soft Launch"
+    duration: "3-5 days"
+    owner: agent
+    agents: [Developer, Optimizer]
+    human_touchpoint: launch_manager
+
+    tasks:
+      - id: deployment
+        name: "MVP Deployment"
+        agent: Developer
+        duration: "1 day"
+        actions:
+          - production_deployment
+          - analytics_setup
+          - error_monitoring
+        outputs:
+          - live_mvp
+          - monitoring_active
+
+      - id: feedback_collection
+        name: "Feedback Collection Setup"
+        agent: Optimizer
+        duration: "1 day"
+        actions:
+          - feedback_widget_setup
+          - user_interview_scheduling
+          - metrics_baseline
+        outputs:
+          - feedback_system_active
+          - baseline_metrics
+
+    checkpoint:
+      name: launch_verification
+      criteria:
+        - site_live: true
+        - feedback_collection_active: true
+        - baseline_established: true
+      human_approval: launch_manager
+
+success_metrics:
+  time_to_market: "< 6 weeks"
+  core_features_functional: 100%
+  feedback_collection_rate: "active"
+  iteration_readiness: "immediate"

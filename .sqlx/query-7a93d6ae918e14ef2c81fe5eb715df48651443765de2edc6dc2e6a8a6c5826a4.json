@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE topology_nodes SET\n                capabilities = COALESCE($2, capabilities),\n                status = COALESCE($3, status),\n                metadata = COALESCE($4, metadata),\n                weight = COALESCE($5, weight),\n                updated_at = datetime('now', 'subsec')\n            WHERE id = $1\n            RETURNING\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                node_type as \"node_type!: TopologyNodeType\",\n                ref_id,\n                capabilities,\n                status as \"status!: TopologyNodeStatus\",\n                metadata,\n                weight,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "node_type!: TopologyNodeType",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "ref_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "capabilities",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: TopologyNodeStatus",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "weight",
+        "ordinal": 7,
+        "type_info": "Float"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "7a93d6ae918e14ef2c81fe5eb715df48651443765de2edc6dc2e6a8a6c5826a4"
+}

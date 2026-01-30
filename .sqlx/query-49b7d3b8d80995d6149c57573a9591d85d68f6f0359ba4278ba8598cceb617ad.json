@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE topology_clusters SET\n                name = COALESCE($2, name),\n                purpose = COALESCE($3, purpose),\n                node_ids = COALESCE($4, node_ids),\n                leader_node_id = COALESCE($5, leader_node_id),\n                metadata = COALESCE($6, metadata)\n            WHERE id = $1\n            RETURNING\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                name,\n                purpose,\n                node_ids,\n                leader_node_id as \"leader_node_id: Uuid\",\n                is_active as \"is_active!: bool\",\n                formed_at as \"formed_at!: DateTime<Utc>\",\n                dissolved_at as \"dissolved_at: DateTime<Utc>\",\n                metadata",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "purpose",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "node_ids",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "leader_node_id: Uuid",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_active!: bool",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "formed_at!: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "dissolved_at: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "49b7d3b8d80995d6149c57573a9591d85d68f6f0359ba4278ba8598cceb617ad"
+}

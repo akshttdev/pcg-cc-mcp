@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                name,\n                purpose,\n                node_ids,\n                leader_node_id as \"leader_node_id: Uuid\",\n                is_active as \"is_active!: bool\",\n                formed_at as \"formed_at!: DateTime<Utc>\",\n                dissolved_at as \"dissolved_at: DateTime<Utc>\",\n                metadata\n            FROM topology_clusters\n            WHERE project_id = $1 AND is_active = 1\n            ORDER BY formed_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "purpose",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "node_ids",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "leader_node_id: Uuid",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_active!: bool",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "formed_at!: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "dissolved_at: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "ad025f1a8ec1b39605a12020bb6dda2ebeb390d874e46b2f9582a19499e136e1"
+}

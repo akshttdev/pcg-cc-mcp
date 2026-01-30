@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO topiclip_captured_events (\n                id, session_id, event_type, event_data,\n                narrative_role, significance_score,\n                assigned_symbol, symbol_prompt,\n                affected_node_ids, affected_edge_ids, occurred_at\n            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)\n            RETURNING\n                id as \"id!: Uuid\",\n                session_id as \"session_id!: Uuid\",\n                event_type as \"event_type!: String\",\n                event_data as \"event_data!: Json<Value>\",\n                narrative_role,\n                significance_score,\n                assigned_symbol,\n                symbol_prompt,\n                affected_node_ids as \"affected_node_ids: Json<Value>\",\n                affected_edge_ids as \"affected_edge_ids: Json<Value>\",\n                occurred_at as \"occurred_at!: String\",\n                created_at as \"created_at!: DateTime<Utc>\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "session_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "event_type!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "event_data!: Json<Value>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "narrative_role",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "significance_score",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "assigned_symbol",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "symbol_prompt",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "affected_node_ids: Json<Value>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "affected_edge_ids: Json<Value>",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "occurred_at!: String",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "400aa7cd10d6da2d35e38f1a440a57b92a0319cbf7a3438f2dc46ac33f18f1e6"
+}

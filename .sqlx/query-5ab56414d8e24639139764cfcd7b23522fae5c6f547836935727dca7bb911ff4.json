@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE topology_issues SET\n                resolved_at = datetime('now', 'subsec'),\n                resolution_notes = $2\n            WHERE id = $1\n            RETURNING\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                issue_type as \"issue_type!: TopologyIssueType\",\n                severity as \"severity!: TopologyIssueSeverity\",\n                affected_nodes,\n                affected_edges,\n                description,\n                suggested_action,\n                resolved_at as \"resolved_at: DateTime<Utc>\",\n                resolution_notes,\n                created_at as \"created_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "issue_type!: TopologyIssueType",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "severity!: TopologyIssueSeverity",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "affected_nodes",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "affected_edges",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "suggested_action",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "resolved_at: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "resolution_notes",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "5ab56414d8e24639139764cfcd7b23522fae5c6f547836935727dca7bb911ff4"
+}

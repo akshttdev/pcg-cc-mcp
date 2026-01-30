@@ -1,0 +1,182 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE side_events SET\n                description = COALESCE($2, description),\n                event_date = COALESCE($3, event_date),\n                start_time = COALESCE($4, start_time),\n                end_time = COALESCE($5, end_time),\n                venue_name = COALESCE($6, venue_name),\n                venue_address = COALESCE($7, venue_address),\n                relevance_score = COALESCE($8, relevance_score),\n                relevance_reason = COALESCE($9, relevance_reason),\n                is_featured = COALESCE($10, is_featured),\n                status = COALESCE($11, status),\n                updated_at = datetime('now', 'subsec')\n            WHERE id = $1\n            RETURNING\n                id as \"id!: Uuid\",\n                conference_workflow_id as \"conference_workflow_id!: Uuid\",\n                platform as \"platform: SideEventPlatform\",\n                platform_event_id,\n                name,\n                description,\n                event_date,\n                start_time,\n                end_time,\n                venue_name,\n                venue_address,\n                latitude,\n                longitude,\n                event_url,\n                registration_url,\n                organizer_name,\n                organizer_url,\n                relevance_score,\n                relevance_reason,\n                capacity,\n                registered_count,\n                is_featured as \"is_featured!: bool\",\n                requires_registration as \"requires_registration!: bool\",\n                is_free as \"is_free!: bool\",\n                price_info,\n                status as \"status!: SideEventStatus\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "conference_workflow_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "platform: SideEventPlatform",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "platform_event_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "event_date",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "start_time",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "end_time",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "venue_name",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "venue_address",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "latitude",
+        "ordinal": 11,
+        "type_info": "Float"
+      },
+      {
+        "name": "longitude",
+        "ordinal": 12,
+        "type_info": "Float"
+      },
+      {
+        "name": "event_url",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "registration_url",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "organizer_name",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "organizer_url",
+        "ordinal": 16,
+        "type_info": "Text"
+      },
+      {
+        "name": "relevance_score",
+        "ordinal": 17,
+        "type_info": "Float"
+      },
+      {
+        "name": "relevance_reason",
+        "ordinal": 18,
+        "type_info": "Text"
+      },
+      {
+        "name": "capacity",
+        "ordinal": 19,
+        "type_info": "Integer"
+      },
+      {
+        "name": "registered_count",
+        "ordinal": 20,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_featured!: bool",
+        "ordinal": 21,
+        "type_info": "Integer"
+      },
+      {
+        "name": "requires_registration!: bool",
+        "ordinal": 22,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_free!: bool",
+        "ordinal": 23,
+        "type_info": "Integer"
+      },
+      {
+        "name": "price_info",
+        "ordinal": 24,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: SideEventStatus",
+        "ordinal": 25,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 26,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 27,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "6e306f2ddd68da36840e35fabb3dafe2e42b8c29777e2eef659086e254b4004a"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT severity, CAST(COUNT(*) AS INTEGER) as \"count!: i64\"\n               FROM topology_issues\n               WHERE project_id = $1 AND resolved_at IS NULL\n               GROUP BY severity",
+  "describe": {
+    "columns": [
+      {
+        "name": "severity",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "count!: i64",
+        "ordinal": 1,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "c11cf76b1d94f6e3f961f9fcd08fc76e836e0502c99f2f9a6dacc5893ff9cd26"
+}

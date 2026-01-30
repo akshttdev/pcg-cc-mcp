@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) as count FROM entity_appearances\n            WHERE conference_board_id = $1\n            AND appearance_type IN ('speaker', 'keynote', 'panelist', 'workshop_leader')",
+  "describe": {
+    "columns": [
+      {
+        "name": "count",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5056cb71cc20c85de7229538ac51d6153234825aa32449c67bd1c4697bfb6f61"
+}

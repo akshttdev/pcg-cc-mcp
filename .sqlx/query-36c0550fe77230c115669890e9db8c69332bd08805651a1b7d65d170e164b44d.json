@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE conference_workflows SET\n                status = $2,\n                updated_at = datetime('now', 'subsec')\n            WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "36c0550fe77230c115669890e9db8c69332bd08805651a1b7d65d170e164b44d"
+}

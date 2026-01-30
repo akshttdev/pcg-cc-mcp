@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COALESCE(MAX(day_number), 0) as \"day_number!: i64\"\n            FROM topiclip_sessions WHERE project_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "day_number!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "697cee75a421814df5636c8ca042e40f566b06e0e6599275d2f3a094bf2c9202"
+}

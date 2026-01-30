@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM topology_routes WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "8dcc0021f23fbe29ab23be9c5f9d5105c118c3020440d5fc77c05306fa612242"
+}

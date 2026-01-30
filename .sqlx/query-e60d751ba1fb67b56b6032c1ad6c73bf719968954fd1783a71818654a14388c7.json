@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE entity_appearances SET\n                talk_title = COALESCE($2, talk_title),\n                talk_description = COALESCE($3, talk_description),\n                talk_slot = COALESCE($4, talk_slot),\n                research_artifact_id = COALESCE($5, research_artifact_id),\n                status = COALESCE($6, status)\n            WHERE id = $1\n            RETURNING\n                id as \"id!: Uuid\",\n                entity_id as \"entity_id!: Uuid\",\n                conference_board_id as \"conference_board_id!: Uuid\",\n                appearance_type as \"appearance_type!: AppearanceType\",\n                talk_title,\n                talk_description,\n                talk_slot,\n                research_artifact_id as \"research_artifact_id: Uuid\",\n                status as \"status!: AppearanceStatus\",\n                created_at as \"created_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "entity_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "conference_board_id!: Uuid",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "appearance_type!: AppearanceType",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "talk_title",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "talk_description",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "talk_slot",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "research_artifact_id: Uuid",
+        "ordinal": 7,
+        "type_info": "Blob"
+      },
+      {
+        "name": "status!: AppearanceStatus",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "e60d751ba1fb67b56b6032c1ad6c73bf719968954fd1783a71818654a14388c7"
+}

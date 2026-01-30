@@ -1,0 +1,182 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO conference_workflows (\n                id, conference_board_id, conference_name, start_date, end_date,\n                location, timezone, website, status, target_platform_ids, config_overrides\n            ) VALUES (\n                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11\n            )\n            RETURNING\n                id as \"id!: Uuid\",\n                conference_board_id as \"conference_board_id!: Uuid\",\n                conference_name,\n                start_date,\n                end_date,\n                location,\n                timezone,\n                website,\n                status as \"status!: WorkflowStatus\",\n                current_stage,\n                current_stage_started_at as \"current_stage_started_at: DateTime<Utc>\",\n                research_flow_id as \"research_flow_id: Uuid\",\n                content_flow_id as \"content_flow_id: Uuid\",\n                graphics_flow_id as \"graphics_flow_id: Uuid\",\n                last_qa_score,\n                last_qa_run_id as \"last_qa_run_id: Uuid\",\n                speakers_count as \"speakers_count!: i64\",\n                sponsors_count as \"sponsors_count!: i64\",\n                side_events_count as \"side_events_count!: i64\",\n                social_posts_scheduled as \"social_posts_scheduled!: i64\",\n                social_posts_published as \"social_posts_published!: i64\",\n                target_platform_ids,\n                config_overrides,\n                last_error,\n                retry_count as \"retry_count!: i64\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\",\n                completed_at as \"completed_at: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "conference_board_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "conference_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "start_date",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "end_date",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "location",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "timezone",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "website",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: WorkflowStatus",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "current_stage",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "current_stage_started_at: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "research_flow_id: Uuid",
+        "ordinal": 11,
+        "type_info": "Blob"
+      },
+      {
+        "name": "content_flow_id: Uuid",
+        "ordinal": 12,
+        "type_info": "Blob"
+      },
+      {
+        "name": "graphics_flow_id: Uuid",
+        "ordinal": 13,
+        "type_info": "Blob"
+      },
+      {
+        "name": "last_qa_score",
+        "ordinal": 14,
+        "type_info": "Float"
+      },
+      {
+        "name": "last_qa_run_id: Uuid",
+        "ordinal": 15,
+        "type_info": "Blob"
+      },
+      {
+        "name": "speakers_count!: i64",
+        "ordinal": 16,
+        "type_info": "Integer"
+      },
+      {
+        "name": "sponsors_count!: i64",
+        "ordinal": 17,
+        "type_info": "Integer"
+      },
+      {
+        "name": "side_events_count!: i64",
+        "ordinal": 18,
+        "type_info": "Integer"
+      },
+      {
+        "name": "social_posts_scheduled!: i64",
+        "ordinal": 19,
+        "type_info": "Integer"
+      },
+      {
+        "name": "social_posts_published!: i64",
+        "ordinal": 20,
+        "type_info": "Integer"
+      },
+      {
+        "name": "target_platform_ids",
+        "ordinal": 21,
+        "type_info": "Text"
+      },
+      {
+        "name": "config_overrides",
+        "ordinal": 22,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_error",
+        "ordinal": 23,
+        "type_info": "Text"
+      },
+      {
+        "name": "retry_count!: i64",
+        "ordinal": 24,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 25,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 26,
+        "type_info": "Text"
+      },
+      {
+        "name": "completed_at: DateTime<Utc>",
+        "ordinal": 27,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "0b6a829060c6c008284f15fea61cb9000fb64fbf316be52a94032e88b9ae84ff"
+}

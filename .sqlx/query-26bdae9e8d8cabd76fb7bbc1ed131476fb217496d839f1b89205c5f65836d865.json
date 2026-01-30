@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM topology_edges WHERE project_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "26bdae9e8d8cabd76fb7bbc1ed131476fb217496d839f1b89205c5f65836d865"
+}

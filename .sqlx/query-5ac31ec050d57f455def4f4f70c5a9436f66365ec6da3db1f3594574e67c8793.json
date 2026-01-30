@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                from_node_id as \"from_node_id!: Uuid\",\n                to_node_id as \"to_node_id!: Uuid\",\n                edge_type as \"edge_type!: TopologyEdgeType\",\n                weight,\n                status as \"status!: TopologyEdgeStatus\",\n                metadata,\n                created_at as \"created_at!: DateTime<Utc>\"\n            FROM topology_edges\n            WHERE from_node_id = $1 AND status = 'active'\n            ORDER BY weight DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_node_id!: Uuid",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "to_node_id!: Uuid",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "edge_type!: TopologyEdgeType",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "weight",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "status!: TopologyEdgeStatus",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "5ac31ec050d57f455def4f4f70c5a9436f66365ec6da3db1f3594574e67c8793"
+}

@@ -19,6 +19,7 @@ import { CrmPage } from '@/pages/crm';
 import { VirtualEnvironmentPage } from '@/pages/virtual-environment';
 import { EmbedVirtualEnvironmentPage } from '@/pages/embed/virtual-environment';
 import MeshPage from '@/pages/mesh';
+import VibePage from '@/pages/vibe';
 import { OAuthCallbackPage } from '@/pages/oauth/OAuthCallbackPage';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
@@ -263,6 +264,10 @@ function AppContent() {
                     <Route
                       path="/mesh"
                       element={<ProtectedRoute><MeshPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/vibe"
+                      element={<ProtectedRoute><VibePage /></ProtectedRoute>}
                     />
                     <Route path="/settings/*" element={<ProtectedRoute><SettingsLayout /></ProtectedRoute>}>
                       <Route index element={<Navigate to="general" replace />} />

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT node_type, CAST(COUNT(*) AS INTEGER) as \"count!: i64\"\n               FROM topology_nodes\n               WHERE project_id = $1\n               GROUP BY node_type",
+  "describe": {
+    "columns": [
+      {
+        "name": "node_type",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "count!: i64",
+        "ordinal": 1,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "54e7d69440d906bec9b8f899d8ae14e481a57282d00d0e7934c6849d0929d7cd"
+}
