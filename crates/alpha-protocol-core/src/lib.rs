@@ -27,6 +27,8 @@ pub mod wire;
 pub mod mesh;
 pub mod relay;
 pub mod node;
+pub mod economics;
+pub mod mining;
 
 // Re-exports
 pub use identity::{NodeIdentity, WalletInfo};
@@ -34,6 +36,12 @@ pub use crypto::{encrypt, decrypt, SessionKey};
 pub use wire::{Message, MessageType};
 pub use mesh::{MeshNode, PeerInfo, MeshMessage};
 pub use node::{AlphaNode, NodeConfig};
+pub use economics::{
+    ResourceContribution, ResourceTracker, RewardRates,
+    NodeReputation, StakePool, ContributionProof,
+    calculate_rewards, vibe_to_display, display_to_vibe,
+    VibeAmount,
+};
 
 /// Protocol version
 pub const PROTOCOL_VERSION: &str = "alpha/1.0.0";
