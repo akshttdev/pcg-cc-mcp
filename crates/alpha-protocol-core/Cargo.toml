@@ -1,0 +1,84 @@
+[package]
+name = "alpha-protocol-core"
+version = "0.1.0"
+edition = "2021"
+description = "Alpha Protocol Network - Sovereign mesh networking core"
+authors = ["OKB Ventures"]
+license = "MIT"
+
+[lib]
+name = "alpha_protocol_core"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[[bin]]
+name = "apn_node"
+path = "src/bin/apn_node.rs"
+
+[features]
+default = []
+tauri = ["dep:tauri"]
+mobile = []
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.45", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Crypto & Identity (Ed25519 + X25519)
+bip39 = "2.1"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+sha2 = "0.10"
+blake3 = "1.5"
+hex = "0.4"
+rand = "0.8"
+
+# Encryption (ChaCha20-Poly1305)
+chacha20poly1305 = "0.10"
+
+# P2P Mesh Network (libp2p)
+libp2p = { version = "0.54", features = [
+    "tokio",
+    "tcp",
+    "noise",              # Encrypted transport
+    "yamux",              # Multiplexing
+    "gossipsub",          # Pub/sub messaging
+    "kad",                # Kademlia DHT
+    "mdns",               # Local network discovery
+    "identify",           # Peer identification
+    "ping",               # Connection health
+    "request-response",   # Request/response protocol
+    "macros",             # Derive macros for NetworkBehaviour
+] }
+
+# NATS relay fallback
+async-nats = "0.37"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Storage
+sled = "0.34"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# System info
+num_cpus = "1.16"
+
+# Futures
+futures = "0.3"
+
+# Tauri integration (optional)
+tauri = { version = "2", optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"

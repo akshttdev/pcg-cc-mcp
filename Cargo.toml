@@ -9,7 +9,9 @@ members = [
     "crates/local-deployment",
     "crates/deployment",
     "crates/nora",
-    "crates/cinematics"
+    "crates/cinematics",
+    "crates/alpha-protocol-core",
+    "src-tauri"
 ]
 
 [workspace.dependencies]
