@@ -185,6 +185,14 @@ impl AlphaNode {
                 &self.config.capabilities,
             ).await?;
 
+            // Spawn relay listener (subscribes to incoming messages)
+            let relay_for_run = relay.clone_for_listener();
+            tokio::spawn(async move {
+                if let Err(e) = relay_for_run.run().await {
+                    tracing::error!("Relay listener error: {}", e);
+                }
+            });
+
             self.relay = Some(relay);
 
             // Spawn relay event handler

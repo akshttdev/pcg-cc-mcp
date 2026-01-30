@@ -82,6 +82,16 @@ impl NatsRelay {
         }
     }
 
+    /// Clone the relay for spawning the listener task
+    /// This shares the same NATS client connection
+    pub fn clone_for_listener(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            client: self.client.clone(),
+            message_tx: self.message_tx.clone(),
+        }
+    }
+
     /// Connect to the NATS server
     pub async fn connect(&mut self) -> Result<()> {
         let options = ConnectOptions::new()
