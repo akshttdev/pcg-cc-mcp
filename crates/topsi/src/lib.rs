@@ -33,6 +33,7 @@ pub use topology::{
     routing::RoutePlanner,
     clusters::ClusterManager,
     invariants::{InvariantChecker, InvariantViolation},
+    voice::VoiceTopology,
 };
 pub use prioritization::{
     Goal as PrioritizationGoal, GoalState, GoalType,

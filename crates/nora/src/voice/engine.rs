@@ -215,13 +215,42 @@ impl VoiceEngine {
     ) -> VoiceResult<Arc<dyn SpeechToText + Send + Sync>> {
         match config.stt.provider {
             STTProvider::Whisper => {
+                // First check for local Whisper server (Sovereign Stack preference)
+                if std::env::var("WHISPER_URL").is_ok() {
+                    info!("Creating Local Whisper STT provider (Sovereign Stack)");
+                    let local_stt = super::stt::LocalWhisperSTT::new(&config.stt).await?;
+                    if local_stt.is_ready().await {
+                        return Ok(Arc::new(local_stt));
+                    }
+                    warn!("Local Whisper server not ready, checking OpenAI fallback...");
+                }
                 // Check if OpenAI API key is available
                 if std::env::var("OPENAI_API_KEY").is_ok() {
                     info!("Creating Whisper STT provider with OpenAI API key");
                     Ok(Arc::new(super::stt::WhisperSTT::new(&config.stt).await?))
                 } else {
-                    warn!("OpenAI API key not found, falling back to System STT");
-                    warn!("Set OPENAI_API_KEY environment variable to enable Whisper STT");
+                    // Try local Whisper as last resort
+                    info!("Trying Local Whisper STT (no API key configured)");
+                    let local_stt = super::stt::LocalWhisperSTT::new(&config.stt).await?;
+                    if local_stt.is_ready().await {
+                        info!("Local Whisper server is available - using it");
+                        return Ok(Arc::new(local_stt));
+                    }
+                    warn!("No STT provider available, falling back to System STT");
+                    warn!("To enable speech-to-text:");
+                    warn!("  - Start local Whisper: python scripts/whisper_server.py");
+                    warn!("  - Or set OPENAI_API_KEY for cloud Whisper");
+                    Ok(Arc::new(super::stt::SystemSTT::new(&config.stt).await?))
+                }
+            }
+            STTProvider::LocalWhisper => {
+                info!("Creating Local Whisper STT provider");
+                let local_stt = super::stt::LocalWhisperSTT::new(&config.stt).await?;
+                if local_stt.is_ready().await {
+                    Ok(Arc::new(local_stt))
+                } else {
+                    warn!("Local Whisper server not running at WHISPER_URL");
+                    warn!("Start with: python scripts/whisper_server.py");
                     Ok(Arc::new(super::stt::SystemSTT::new(&config.stt).await?))
                 }
             }

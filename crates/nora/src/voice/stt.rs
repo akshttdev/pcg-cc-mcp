@@ -503,3 +503,141 @@ impl SpeechToText for SystemSTT {
         Ok(vec!["en".to_string(), "en-GB".to_string()])
     }
 }
+
+/// Local Whisper STT implementation (uses local whisper_server.py)
+#[derive(Debug)]
+pub struct LocalWhisperSTT {
+    config: STTConfig,
+    client: reqwest::Client,
+    server_url: String,
+}
+
+impl LocalWhisperSTT {
+    pub async fn new(config: &STTConfig) -> VoiceResult<Self> {
+        let server_url = std::env::var("WHISPER_URL")
+            .unwrap_or_else(|_| "http://localhost:8101".to_string());
+
+        info!("Initializing Local Whisper STT with server: {}", server_url);
+
+        Ok(Self {
+            config: config.clone(),
+            client: reqwest::Client::new(),
+            server_url,
+        })
+    }
+
+    async fn check_server_health(&self) -> bool {
+        match self.client
+            .get(format!("{}/health", self.server_url))
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            Ok(response) => response.status().is_success(),
+            Err(_) => false,
+        }
+    }
+}
+
+#[async_trait]
+impl SpeechToText for LocalWhisperSTT {
+    async fn transcribe_audio(&self, audio_data: &str) -> VoiceResult<TranscriptionResult> {
+        let start_time = Instant::now();
+
+        info!("Transcribing audio with Local Whisper server");
+
+        // Build request body
+        let language = if self.config.language == "en-GB" {
+            "en".to_string()
+        } else {
+            self.config.language.clone()
+        };
+
+        let request_body = serde_json::json!({
+            "audio_b64": audio_data,
+            "language": language,
+        });
+
+        let response = self.client
+            .post(format!("{}/transcribe", self.server_url))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .timeout(std::time::Duration::from_secs(60))
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_connect() {
+                    VoiceError::STTError(format!(
+                        "Local Whisper server not running at {}. Start with: python scripts/whisper_server.py",
+                        self.server_url
+                    ))
+                } else {
+                    VoiceError::NetworkError(e)
+                }
+            })?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(VoiceError::STTError(format!(
+                "Local Whisper server error: {}",
+                error_text
+            )));
+        }
+
+        let whisper_response: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| VoiceError::STTError(format!("Failed to parse response: {}", e)))?;
+
+        let text = whisper_response["text"].as_str().unwrap_or("").to_string();
+        let confidence = whisper_response["confidence"].as_f64().unwrap_or(0.9) as f32;
+        let detected_language = whisper_response["language"]
+            .as_str()
+            .unwrap_or("en")
+            .to_string();
+
+        let processing_time = start_time.elapsed().as_millis() as u64;
+
+        info!(
+            "Local Whisper transcription completed in {}ms: '{}'",
+            processing_time, text
+        );
+
+        Ok(TranscriptionResult {
+            text,
+            confidence,
+            language: detected_language,
+            processing_time_ms: processing_time,
+            word_timestamps: vec![], // Local Whisper server doesn't provide word timestamps yet
+        })
+    }
+
+    async fn transcribe_streaming(
+        &self,
+        _audio_stream: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    ) -> VoiceResult<tokio::sync::mpsc::Receiver<TranscriptionResult>> {
+        Err(VoiceError::STTError(
+            "Local Whisper streaming not implemented yet".to_string(),
+        ))
+    }
+
+    async fn is_ready(&self) -> bool {
+        self.check_server_health().await
+    }
+
+    async fn get_supported_languages(&self) -> VoiceResult<Vec<String>> {
+        Ok(vec![
+            "en".to_string(),
+            "en-GB".to_string(),
+            "es".to_string(),
+            "fr".to_string(),
+            "de".to_string(),
+            "it".to_string(),
+            "pt".to_string(),
+            "ru".to_string(),
+            "ja".to_string(),
+            "ko".to_string(),
+            "zh".to_string(),
+        ])
+    }
+}

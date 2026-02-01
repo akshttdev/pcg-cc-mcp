@@ -257,6 +257,8 @@ pub enum TTSProvider {
 #[serde(rename_all = "camelCase")]
 pub enum STTProvider {
     Whisper,
+    /// Local Whisper server (no API key needed)
+    LocalWhisper,
     Azure,
     Google,
     System,

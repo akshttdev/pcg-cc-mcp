@@ -199,13 +199,13 @@ pub fn get_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "respond_to_user",
-                "description": "Generate a conversational response to the user. Use this when you want to speak directly to the user, introduce yourself, answer questions about yourself, or provide information that doesn't require other tools.",
+                "description": "Send YOUR response to the user. IMPORTANT: You must compose and write out your complete response in the 'message' parameter. This is how you communicate with users - by writing your actual response text here. For example, if a user asks 'tell me a story', you should write an actual story in the message parameter, NOT just echo 'tell me a story'. Always use this tool to deliver your response to the user.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "message": {
                             "type": "string",
-                            "description": "The message to send to the user. This should be natural, conversational text."
+                            "description": "YOUR complete response text that will be spoken/shown to the user. Write your actual response here - if asked for a story, write the story; if asked a question, write your answer; if greeting, write your greeting."
                         }
                     },
                     "required": ["message"]
