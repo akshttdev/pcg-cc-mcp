@@ -24,11 +24,29 @@ export function NetworkView() {
   useEffect(() => {
     const fetchPeers = async () => {
       try {
+        // Try fetching from master node API first (for APN Core clients)
+        const masterUrl = 'http://192.168.1.77:8080/api/status';
+
+        try {
+          const response = await fetch(masterUrl);
+          if (response.ok) {
+            const data = await response.json();
+            setPeers(data.peers || []);
+            setError('');
+            setLoading(false);
+            return;
+          }
+        } catch (fetchErr) {
+          // If fetch fails, fall back to local Tauri command
+          console.log('Falling back to local node data');
+        }
+
+        // Fallback: use local Tauri command (if running on master node)
         const networkPeers = await invoke<NetworkPeer[]>('get_network_peers');
         setPeers(networkPeers);
         setError('');
       } catch (e: any) {
-        setError(e.toString());
+        setError('Cannot connect to Pythia Master Node. Make sure the API server is running at http://192.168.1.77:8080');
       } finally {
         setLoading(false);
       }
@@ -60,9 +78,12 @@ export function NetworkView() {
 
   return (
     <section className="card">
-      <h2>Network Nodes ({peers.length})</h2>
+      <h2>Alpha Protocol Network - Pythia Orchestrated</h2>
+      <p className="muted" style={{ marginBottom: '1rem' }}>
+        Connected Nodes: {peers.length} | Master: Pythia (192.168.1.77)
+      </p>
       {peers.length === 0 ? (
-        <p className="muted">No peers connected to the network yet</p>
+        <p className="muted">No peers connected to Pythia yet. Waiting for APN Core clients to join...</p>
       ) : (
         <div className="peers-list">
           {peers.map((peer) => (
