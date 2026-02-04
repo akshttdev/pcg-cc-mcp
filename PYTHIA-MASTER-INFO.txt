@@ -1,0 +1,33 @@
+═══════════════════════════════════════════════════════════════════
+              🌟 PYTHIA MASTER NODE CONNECTION INFO
+═══════════════════════════════════════════════════════════════════
+
+MASTER NODE IDENTITY:
+  Name:       Pythia Master Node  
+  Node ID:    apn_84417c5a
+  Wallet:     0x84417c5a481ce974b6b345ef16484df544ca1f53493ab9a9580b2f5c79691c6c
+  LibP2P ID:  12D3KooWJv8rvaEgQneTud2WVN9NjPZ4p3BQHsxtagtiBh1Lc8nU
+
+RECOVERY PHRASE:
+  aerobic scrap cover flush zebra broom repeat plate depth hybrid make among
+
+BOOTSTRAP MULTIADDR:
+  /ip4/153.66.61.104/tcp/4001/p2p/12D3KooWJv8rvaEgQneTud2WVN9NjPZ4p3BQHsxtagtiBh1Lc8nU
+
+───────────────────────────────────────────────────────────────────
+
+FOR DEVICE 3 TO CONNECT:
+
+1. Pull latest code:
+   git fetch origin && git checkout new && git pull origin new
+
+2. Build binary:
+   cargo build --release --bin apn_node
+
+3. Connect:
+   ./target/release/apn_node \
+     --port 4002 \
+     --relay nats://nonlocal.info:4222 \
+     --bootstrap /ip4/153.66.61.104/tcp/4001/p2p/12D3KooWJv8rvaEgQneTud2WVN9NjPZ4p3BQHsxtagtiBh1Lc8nU
+
+═══════════════════════════════════════════════════════════════════
