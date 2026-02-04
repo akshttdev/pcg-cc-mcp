@@ -1,0 +1,110 @@
+═══════════════════════════════════════════════════════════════════
+        🚀 ALPHA PROTOCOL NETWORK - BOOTSTRAP INFORMATION
+═══════════════════════════════════════════════════════════════════
+
+QUICK CONNECT - COPY AND PASTE THIS:
+
+/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+
+───────────────────────────────────────────────────────────────────
+
+MASTER NODE DETAILS:
+
+  Node ID:    apn_7bb626c3
+  Wallet:     0x7bb626c38d1d4668f6459c2134bc8b44f3db7e5b35d7c6be443b8e9973561d42
+  LibP2P ID:  12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+
+  Local IP:   192.168.1.77
+  P2P Port:   4001
+  NATS Relay: nats://nonlocal.info:4222
+
+───────────────────────────────────────────────────────────────────
+
+FULL CONNECTION COMMAND:
+
+./target/release/apn_node \
+  --port 4002 \
+  --relay nats://nonlocal.info:4222 \
+  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5 \
+  --heartbeat-interval 30
+
+───────────────────────────────────────────────────────────────────
+
+AUTOMATED SETUP (RECOMMENDED):
+
+1. Clone repository:
+   git clone https://github.com/KingBodhi/pcg-cc-mcp.git
+   cd pcg-cc-mcp
+   git checkout new
+
+2. Run setup:
+   ./setup-peer-node.sh
+
+3. Paste bootstrap address when prompted
+
+───────────────────────────────────────────────────────────────────
+
+NETWORK CONFIGURATION:
+
+  Protocol:     Alpha Protocol Network (APN)
+  Encryption:   libp2p Noise (end-to-end)
+  NAT Traversal: NATS relay at nonlocal.info:4222
+  Heartbeat:    30 seconds (configurable)
+  Resources:    Auto-detected (CPU, RAM, GPU, Storage)
+
+───────────────────────────────────────────────────────────────────
+
+FIREWALL NOTES:
+
+If connecting from external network:
+  - Replace 192.168.1.77 with public IP
+  - Ensure port 4001 is open on master node
+  - NATS relay port 4222 must be accessible
+
+For local network:
+  - Use the address as shown above
+  - No firewall changes needed (uses NATS relay)
+
+───────────────────────────────────────────────────────────────────
+
+VERIFICATION:
+
+After connecting, check for these log messages:
+  ✅ "🟢 Node started"
+  ✅ "🌐 Relay connected"
+  ✅ "🔗 Peer connected"
+  ✅ "Collected resources"
+
+View logs:
+  tail -f /tmp/apn_peer.log
+
+───────────────────────────────────────────────────────────────────
+
+TROUBLESHOOTING:
+
+Connection fails:
+  → Verify master node is online: ping 192.168.1.77
+  → Check bootstrap address is correct (copy/paste exactly)
+  → Test NATS relay: telnet nonlocal.info 4222
+
+Build fails:
+  → Update Rust: rustup update
+  → Clean build: cargo clean && cargo build --release
+
+No resources shown:
+  → Normal if no GPU present
+  → CPU, RAM, Storage will still report
+
+───────────────────────────────────────────────────────────────────
+
+MORE INFORMATION:
+
+  Quick Start:     APN-QUICKSTART.md
+  Full Guide:      DEPLOYMENT-GUIDE.md
+  Master Details:  PYTHIA-MASTER-INFO-ENHANCED.txt
+  Network Status:  ./check-network-capacity.sh
+
+═══════════════════════════════════════════════════════════════════
+
+Last Updated: 2026-02-04
+Status: Production Ready ✅
