@@ -1,0 +1,104 @@
+═══════════════════════════════════════════════════════════════
+  CONNECT YOUR DEVICE TO PYTHIA - ALPHA PROTOCOL NETWORK
+═══════════════════════════════════════════════════════════════
+
+📋 MASTER NODE INFO:
+   Node ID:  apn_814d37f4
+   Peer ID:  12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
+   IP:       192.168.1.77
+   Port:     4001
+   Status:   🟢 ONLINE
+
+═══════════════════════════════════════════════════════════════
+
+🚀 FASTEST WAY TO CONNECT (2 commands):
+
+wget -O connect.sh https://raw.githubusercontent.com/KingBodhi/pcg-cc-mcp/new/connect-to-pythia.sh
+bash connect.sh
+
+OR if you already have the repo:
+
+cd pcg-cc-mcp && git checkout new && git pull && ./connect-to-pythia.sh
+
+═══════════════════════════════════════════════════════════════
+
+📋 MANUAL CONNECTION STEPS:
+
+1. Clone/Update Repository:
+   git clone https://github.com/KingBodhi/pcg-cc-mcp.git
+   cd pcg-cc-mcp
+   git checkout new
+   git pull origin new
+
+2. Stop Old Nodes:
+   pkill -f apn_node
+
+3. Build Binary:
+   cargo build --release --bin apn_node
+
+4. Start Node:
+   ./target/release/apn_node \
+     --port 4002 \
+     --relay nats://nonlocal.info:4222 \
+     --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt \
+     --heartbeat-interval 30 \
+     > /tmp/apn_peer.log 2>&1 &
+
+5. Monitor:
+   tail -f /tmp/apn_peer.log
+
+═══════════════════════════════════════════════════════════════
+
+✅ WHAT YOUR NODE WILL DO:
+
+- Report CPU cores and usage
+- Report RAM total and available
+- Report storage capacity
+- Report GPU model (if present)
+- Send heartbeat every 30 seconds
+- Participate in distributed tasks
+
+═══════════════════════════════════════════════════════════════
+
+🔍 VERIFY CONNECTION:
+
+Look for these messages in /tmp/apn_peer.log:
+   ✅ "Node started"
+   ✅ "Relay connected"
+   ✅ "Collected resources"
+   ✅ "Peer connected"
+
+═══════════════════════════════════════════════════════════════
+
+🆘 TROUBLESHOOTING:
+
+Problem: "Connection refused"
+Solution: ping 192.168.1.77
+          (If fails, check network/firewall)
+
+Problem: "Build failed"
+Solution: rustup update && cargo clean
+
+Problem: Node keeps dying
+Solution: Check logs: tail -100 /tmp/apn_peer.log
+
+Problem: Can't see other peers
+Solution: Wait 60 seconds for discovery
+          Check relay is connected
+
+═══════════════════════════════════════════════════════════════
+
+📞 NEED HELP?
+
+Check full documentation:
+- APN-QUICKSTART.md
+- DEPLOYMENT-GUIDE.md
+- CONNECT-YOUR-DEVICE.md
+
+═══════════════════════════════════════════════════════════════
+
+Last Updated: 2026-02-04
+Master Node: Pythia (apn_814d37f4)
+Status: 🟢 READY FOR CONNECTIONS
+
+═══════════════════════════════════════════════════════════════
