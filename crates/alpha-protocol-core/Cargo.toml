@@ -18,6 +18,10 @@ path = "src/bin/apn_node.rs"
 name = "apn_send"
 path = "src/bin/apn_send.rs"
 
+[[bin]]
+name = "apn_api_server"
+path = "src/bin/apn_api_server.rs"
+
 [features]
 default = []
 tauri = ["dep:tauri"]
@@ -81,6 +85,11 @@ sysinfo = "0.32"
 
 # Futures
 futures = "0.3"
+
+# Web server (for API server binary)
+axum = "0.8"
+tower-http = { version = "0.5", features = ["cors"] }
+regex = "1.11"
 
 # Tauri integration (optional)
 tauri = { version = "2", optional = true }
