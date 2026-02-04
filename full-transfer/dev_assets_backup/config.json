@@ -1,0 +1,37 @@
+{
+  "config_version": "v8",
+  "theme": "DARK",
+  "executor_profile": {
+    "executor": "CODEX"
+  },
+  "disclaimer_acknowledged": true,
+  "onboarding_acknowledged": true,
+  "github_login_acknowledged": true,
+  "telemetry_acknowledged": true,
+  "notifications": {
+    "sound_enabled": true,
+    "push_enabled": true,
+    "sound_file": "ABSTRACT_SOUND4"
+  },
+  "editor": {
+    "editor_type": "VS_CODE",
+    "custom_command": null
+  },
+  "github": {
+    "pat": null,
+    "oauth_token": null,
+    "username": null,
+    "primary_email": null,
+    "default_pr_base": "main"
+  },
+  "analytics_enabled": false,
+  "workspace_dir": null,
+  "last_app_version": "0.0.96",
+  "show_release_notes": false,
+  "language": "BROWSER",
+  "aptos_wallet": {
+    "account_address": "0xc42a0b10f87abdfc7fa5b40b50fb6191530cfe6b5c41c8da789cc6a5c05cd85e",
+    "public_key": "0x2d4094865b9995b22fcbab1e697ee1fc59dd01f5277fb39f8eb884d93ad16d33",
+    "private_key": "0x06e46f7cefb1b8b5b3f0430be10d158fcadb70559356a81e302cc2ea09b1c294"
+  }
+}

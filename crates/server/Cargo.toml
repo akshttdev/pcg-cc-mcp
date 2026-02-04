@@ -20,7 +20,7 @@ utils = { path = "../utils" }
 services = { path = "../services" }
 nora = { path = "../nora" }
 cinematics = { path = "../cinematics" }
-topsi = { path = "../topsi" }
+# topsi = { path = "../topsi" }  # Temporarily commented - missing crate
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["io"] }
 axum = { workspace = true }

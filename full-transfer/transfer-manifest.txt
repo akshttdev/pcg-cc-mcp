@@ -1,0 +1,5 @@
+Transfer Date: Wed Nov 19 15:50:12 CST 2025
+Database: db.sqlite
+Repos: repos_data/
+Assets: dev_assets_backup/
+Config: env-backup
