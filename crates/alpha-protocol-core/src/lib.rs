@@ -29,13 +29,15 @@ pub mod relay;
 pub mod node;
 pub mod economics;
 pub mod mining;
+pub mod resources;
 
 // Re-exports
 pub use identity::{NodeIdentity, WalletInfo};
 pub use crypto::{encrypt, decrypt, SessionKey};
-pub use wire::{Message, MessageType};
+pub use wire::{Message, MessageType, NodeResources};
 pub use mesh::{MeshNode, PeerInfo, MeshMessage};
 pub use node::{AlphaNode, NodeConfig};
+pub use resources::collect_resources;
 pub use economics::{
     ResourceContribution, ResourceTracker, RewardRates,
     NodeReputation, StakePool, ContributionProof,

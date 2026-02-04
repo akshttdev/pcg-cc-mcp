@@ -179,10 +179,14 @@ impl AlphaNode {
             let mut relay = NatsRelay::new(relay_config, relay_tx);
             relay.connect().await?;
 
+            // Collect resources for initial announcement
+            let resources = crate::resources::collect_resources().await.ok();
+
             // Announce on relay
             relay.announce(
                 self.identity.address(),
                 &self.config.capabilities,
+                resources.as_ref(),
             ).await?;
 
             // Spawn relay listener (subscribes to incoming messages)
@@ -282,14 +286,47 @@ impl AlphaNode {
         Ok(())
     }
 
-    /// Announce capabilities to the network
-    pub fn announce(&mut self) -> Result<()> {
+    /// Announce capabilities to the network with resources
+    pub async fn announce(&mut self) -> Result<()> {
+        // Collect system resources
+        let resources = crate::resources::collect_resources().await.ok();
+
+        // Announce on mesh
         if let Some(mesh) = self.mesh.as_mut() {
             mesh.announce(
                 self.identity.address().to_string(),
                 self.config.capabilities.clone(),
+                resources.clone(),
             )?;
         }
+
+        // Announce on relay
+        if let Some(relay) = &self.relay {
+            relay.announce(
+                self.identity.address(),
+                &self.config.capabilities,
+                resources.as_ref(),
+            ).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Send heartbeat with current resource status
+    pub async fn send_heartbeat(&mut self) -> Result<()> {
+        // Collect fresh resources
+        let resources = crate::resources::collect_resources().await.ok();
+
+        // Send via mesh
+        if let Some(mesh) = self.mesh.as_mut() {
+            mesh.send_heartbeat(resources.clone())?;
+        }
+
+        // Send via relay
+        if let Some(relay) = &self.relay {
+            relay.send_heartbeat(resources.as_ref()).await?;
+        }
+
         Ok(())
     }
 
