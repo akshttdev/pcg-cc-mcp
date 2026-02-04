@@ -233,6 +233,77 @@ fn get_system_info() -> SystemInfo {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NetworkPeer {
+    node_id: String,
+    wallet_address: String,
+    capabilities: Vec<String>,
+    resources: Option<alpha_protocol_core::wire::NodeResources>,
+}
+
+/// Get all network peers from master node log
+#[tauri::command]
+async fn get_network_peers() -> Result<Vec<NetworkPeer>, String> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use regex::Regex;
+
+    let log_path = "/tmp/apn_node.log";
+    let mut peers = std::collections::HashMap::new();
+
+    if let Ok(file) = File::open(log_path) {
+        let reader = BufReader::new(file);
+        let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+
+        // Regex to match peer announcements
+        let peer_regex = Regex::new(
+            r#"Message from apn\.discovery \(([^)]+)\): PeerAnnouncement \{ wallet_address: "([^"]+)", capabilities: \[([^\]]+)\], resources: Some\(NodeResources \{ cpu_cores: (\d+), ram_mb: (\d+), storage_gb: (\d+), gpu_available: (true|false), gpu_model: (Some\("([^"]+)"\)|None)"#
+        ).map_err(|e| e.to_string())?;
+
+        for line in lines.iter().rev().take(1000) {
+            if let Some(caps) = peer_regex.captures(line) {
+                let node_id = caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+                let wallet = caps.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
+                let caps_str = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+
+                let cpu_cores: u32 = caps.get(4).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                let ram_mb: u64 = caps.get(5).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                let storage_gb: u64 = caps.get(6).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                let gpu_available = caps.get(7).map(|m| m.as_str() == "true").unwrap_or(false);
+                let gpu_model = if gpu_available {
+                    caps.get(9).map(|m| m.as_str().to_string())
+                } else {
+                    None
+                };
+
+                let capabilities: Vec<String> = caps_str
+                    .split(',')
+                    .map(|s| s.trim().trim_matches('"').to_string())
+                    .collect();
+
+                if !peers.contains_key(&node_id) {
+                    peers.insert(node_id.clone(), NetworkPeer {
+                        node_id,
+                        wallet_address: wallet,
+                        capabilities,
+                        resources: Some(alpha_protocol_core::wire::NodeResources {
+                            cpu_cores,
+                            ram_mb,
+                            storage_gb,
+                            gpu_available,
+                            gpu_model,
+                            hashrate: None,
+                            bandwidth_mbps: None,
+                        }),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(peers.into_values().collect())
+}
+
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter("info,alpha_protocol_core=debug")
@@ -253,6 +324,7 @@ fn main() {
             start_node,
             stop_node,
             get_system_info,
+            get_network_peers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { NetworkView } from './NetworkView';
 
 interface NodeStatus {
   node_id: string | null;
@@ -196,6 +197,9 @@ function App() {
           </div>
           <p className="muted">{status?.system.cpu_cores || 0} CPU cores available</p>
         </section>
+
+        {/* Network Nodes */}
+        <NetworkView />
 
         {/* Controls */}
         <section className="card">

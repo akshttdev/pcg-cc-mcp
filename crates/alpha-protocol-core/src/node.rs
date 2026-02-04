@@ -222,12 +222,33 @@ impl AlphaNode {
                                 let message = MeshMessage::PeerAnnouncement {
                                     wallet_address: announcement.wallet_address,
                                     capabilities: announcement.capabilities,
-                                    resources: None,
+                                    resources: announcement.resources.clone(),
                                 };
                                 let _ = event_tx.send(NodeEvent::MessageReceived {
                                     from: format!("{} ({})", subject, announcement.node_id),
                                     message,
                                 });
+                            } else if subject.contains("heartbeat") {
+                                // Parse heartbeat message
+                                if let Ok(heartbeat) = serde_json::from_slice::<serde_json::Value>(&payload) {
+                                    if let (Some(node_id), Some(resources)) = (
+                                        heartbeat.get("node_id").and_then(|v| v.as_str()),
+                                        heartbeat.get("resources")
+                                    ) {
+                                        if !resources.is_null() {
+                                            if let Ok(res) = serde_json::from_value::<crate::wire::NodeResources>(resources.clone()) {
+                                                let message = MeshMessage::Heartbeat {
+                                                    timestamp: chrono::Utc::now().timestamp(),
+                                                    resources: Some(res),
+                                                };
+                                                let _ = event_tx.send(NodeEvent::MessageReceived {
+                                                    from: format!("apn.heartbeat ({})", node_id),
+                                                    message,
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
                             } else {
                                 tracing::debug!("Could not parse relay message from {}: {:?}", subject, String::from_utf8_lossy(&payload));
                             }

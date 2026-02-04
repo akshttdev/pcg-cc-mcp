@@ -225,7 +225,10 @@ impl NatsRelay {
         // Subscribe to discovery
         let mut discovery_subscriber = client.subscribe(subjects::DISCOVERY.to_string()).await?;
 
-        tracing::info!("Relay listening on: {}, {}, {}", dm_subject, signal_subject, subjects::DISCOVERY);
+        // Subscribe to heartbeat
+        let mut heartbeat_subscriber = client.subscribe(subjects::HEARTBEAT.to_string()).await?;
+
+        tracing::info!("Relay listening on: {}, {}, {}, {}", dm_subject, signal_subject, subjects::DISCOVERY, subjects::HEARTBEAT);
 
         loop {
             tokio::select! {
@@ -244,6 +247,13 @@ impl NatsRelay {
                 }
 
                 Some(msg) = discovery_subscriber.next() => {
+                    let _ = self.message_tx.send(RelayEvent::MessageReceived {
+                        subject: msg.subject.to_string(),
+                        payload: msg.payload.to_vec(),
+                    });
+                }
+
+                Some(msg) = heartbeat_subscriber.next() => {
                     let _ = self.message_tx.send(RelayEvent::MessageReceived {
                         subject: msg.subject.to_string(),
                         payload: msg.payload.to_vec(),
