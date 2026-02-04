@@ -25,7 +25,7 @@ chmod +x setup-peer-node.sh
 
 **Bootstrap address when prompted:**
 ```
-/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 ```
 
 ## 📚 Documentation
@@ -58,7 +58,7 @@ cargo build --release --bin apn_node
 ./target/release/apn_node \
   --port 4002 \
   --relay nats://nonlocal.info:4222 \
-  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5 \
+  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
   --heartbeat-interval 30
 ```
 

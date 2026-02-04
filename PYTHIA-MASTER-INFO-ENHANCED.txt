@@ -5,15 +5,15 @@
 
 MASTER NODE IDENTITY:
   Name:       Pythia Master Node (Enhanced)
-  Node ID:    apn_7bb626c3
-  Wallet:     0x7bb626c38d1d4668f6459c2134bc8b44f3db7e5b35d7c6be443b8e9973561d42
-  LibP2P ID:  12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+  Node ID:    apn_814d37f4
+  Wallet:     0x814d37f4ab0c7ef2d9c7aa5f3de9fc5c0f79b3b576b77f84edc9e773eed71c92
+  LibP2P ID:  12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 
 RECOVERY PHRASE:
-  guilt spirit tone fashion giant measure airport bean source analyst reflect rapid
+  slush index float shaft flight citizen swear chunk correct veteran eyebrow blind
 
 BOOTSTRAP MULTIADDR:
-  /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+  /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 
   (Use public IP if connecting from external network)
 
@@ -24,7 +24,7 @@ FOR ALL PEER DEVICES TO CONNECT:
 ./target/release/apn_node \
   --port 4002 \
   --relay nats://nonlocal.info:4222 \
-  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5 \
+  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt \
   --heartbeat-interval 30
 
 ───────────────────────────────────────────────────────────────────
@@ -46,18 +46,18 @@ FEATURES ENABLED:
   ✅ Automatic capacity sharing
 
 MONITORING:
-  tail -f /tmp/apn_enhanced.log  # View live logs
-  ./check-network-capacity.sh     # Check network capacity
+  tail -f /tmp/apn_node.log           # View live logs
+  ./check-network-capacity.sh         # Check network capacity
 
 CONTROL:
-  kill $(cat /tmp/apn_enhanced.pid)  # Stop node
+  kill $(cat /tmp/apn_node.pid)       # Stop node
 
 ═══════════════════════════════════════════════════════════════════
 
 QUICK SETUP FOR OTHER DEVICES:
 
 1. Clone repository:
-   git clone <repo-url>
+   git clone https://github.com/KingBodhi/pcg-cc-mcp.git
    cd pcg-cc-mcp
 
 2. Pull latest changes:
@@ -71,3 +71,6 @@ QUICK SETUP FOR OTHER DEVICES:
    (Script will prompt for bootstrap address and device name)
 
 ═══════════════════════════════════════════════════════════════════
+
+Last Updated: 2026-02-04 14:47 UTC
+Status: MASTER NODE REBUILT ✅

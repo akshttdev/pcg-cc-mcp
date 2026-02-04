@@ -13,7 +13,7 @@ chmod +x setup-peer-node.sh
 **When prompted, paste this bootstrap address:**
 
 ```
-/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 ```
 
 **Done!** Your device is now connected. 🎉

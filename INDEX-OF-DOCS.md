@@ -44,7 +44,7 @@ cd pcg-cc-mcp && git checkout new
 
 ### Bootstrap Address
 ```
-/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 ```
 
 ### Check Status

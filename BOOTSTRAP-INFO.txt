@@ -4,15 +4,15 @@
 
 QUICK CONNECT - COPY AND PASTE THIS:
 
-/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 
 ───────────────────────────────────────────────────────────────────
 
 MASTER NODE DETAILS:
 
-  Node ID:    apn_7bb626c3
-  Wallet:     0x7bb626c38d1d4668f6459c2134bc8b44f3db7e5b35d7c6be443b8e9973561d42
-  LibP2P ID:  12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+  Node ID:    apn_814d37f4
+  Wallet:     0x814d37f4ab0c7ef2d9c7aa5f3de9fc5c0f79b3b576b77f84edc9e773eed71c92
+  LibP2P ID:  12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 
   Local IP:   192.168.1.77
   P2P Port:   4001
@@ -25,7 +25,7 @@ FULL CONNECTION COMMAND:
 ./target/release/apn_node \
   --port 4002 \
   --relay nats://nonlocal.info:4222 \
-  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5 \
+  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt \
   --heartbeat-interval 30
 
 ───────────────────────────────────────────────────────────────────
@@ -54,16 +54,9 @@ NETWORK CONFIGURATION:
 
 ───────────────────────────────────────────────────────────────────
 
-FIREWALL NOTES:
+RECOVERY PHRASE (SAVE THIS):
 
-If connecting from external network:
-  - Replace 192.168.1.77 with public IP
-  - Ensure port 4001 is open on master node
-  - NATS relay port 4222 must be accessible
-
-For local network:
-  - Use the address as shown above
-  - No firewall changes needed (uses NATS relay)
+  slush index float shaft flight citizen swear chunk correct veteran eyebrow blind
 
 ───────────────────────────────────────────────────────────────────
 
@@ -106,5 +99,6 @@ MORE INFORMATION:
 
 ═══════════════════════════════════════════════════════════════════
 
-Last Updated: 2026-02-04
+Last Updated: 2026-02-04 14:47 UTC
 Status: Production Ready ✅
+Master Node: REBUILT AND ONLINE

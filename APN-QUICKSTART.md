@@ -33,7 +33,7 @@ The script will prompt you for:
 When prompted, paste this exact address:
 
 ```
-/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5
+/ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 ```
 
 **Note:** If connecting from outside the local network, use the public IP instead of `192.168.1.77`
@@ -79,7 +79,7 @@ cargo build --release --bin apn_node
 ./target/release/apn_node \
   --port 4002 \
   --relay nats://nonlocal.info:4222 \
-  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWPoBpKG7vzM2ufLtHDVqenRKUvUu8DizsADhqqW7Z9du5 \
+  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
   --heartbeat-interval 30
 ```
 

@@ -3,16 +3,16 @@
 ═══════════════════════════════════════════════════════════════════
 
 MASTER NODE IDENTITY:
-  Name:       Pythia Master Node  
-  Node ID:    apn_c83344a2
-  Wallet:     0xc83344a2c0f48909d4aa4b1e358bac400df6d92b720b1a709d0ebbac2b0d4ecc
-  LibP2P ID:  12D3KooWJp3scpgSZZAjU75jLAuzaEikb8WL4QaQWzCjQp9F46XF
+  Name:       Pythia Master Node
+  Node ID:    apn_814d37f4
+  Wallet:     ║
+  LibP2P ID:  12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 
 RECOVERY PHRASE:
-  hold one ketchup twin cradle type carbon nature hand blouse demise donor
+  slush index float shaft flight citizen swear chunk correct veteran eyebrow blind
 
 BOOTSTRAP MULTIADDR:
-  /ip4/153.66.61.104/tcp/4001/p2p/12D3KooWJp3scpgSZZAjU75jLAuzaEikb8WL4QaQWzCjQp9F46XF
+  /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt
 
 ───────────────────────────────────────────────────────────────────
 
@@ -21,6 +21,14 @@ FOR ALL DEVICES TO CONNECT:
 ./target/release/apn_node \
   --port 4002 \
   --relay nats://nonlocal.info:4222 \
-  --bootstrap /ip4/153.66.61.104/tcp/4001/p2p/12D3KooWJp3scpgSZZAjU75jLAuzaEikb8WL4QaQWzCjQp9F46XF
+  --bootstrap /ip4/192.168.1.77/tcp/4001/p2p/12D3KooWGaopz8uKs5ikXxD4yy5wQDn5yue2Q38T81pMtLbxMVvt \
+  --heartbeat-interval 30
 
 ═══════════════════════════════════════════════════════════════════
+
+FEATURES ENABLED:
+  ✅ Resource reporting (CPU, RAM, GPU, Storage)
+  ✅ Heartbeat broadcasts (30s interval)
+  ✅ NATS relay for NAT traversal
+  ✅ libp2p mesh networking
+
