@@ -8,6 +8,11 @@ services:
       dockerfile: Dockerfile
     container_name: pcg-cc-mcp
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     # Enable GPU access for Chatterbox TTS and Ollama acceleration
     deploy:
       resources:
@@ -56,6 +61,8 @@ services:
       - repos_data:/repos
       # Access backups for restore on container startup
       - ./backups:/app/backups
+      # Share frontend dist with nginx
+      - frontend-dist:/app/frontend/dist
     ports:
       - "3001:3001"        # Main application API
       - "11434:11434"      # Ollama API (local LLM)
@@ -128,16 +135,79 @@ services:
     depends_on:
       - app
 
+  # APN Bridge Server - HTTP API bridge to Alpha Protocol Network
+  apn-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.apn-bridge
+    container_name: pcg-apn-bridge
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      - NODE_ID=apn_09465b95
+      - WALLET_ADDRESS=0x09465b9572fb354fdf4e34040386f180d1ff0c2a3a668333bedee17b266a4b74
+      - RELAY_URL=nats://nonlocal.info:4222
+    networks:
+      app-network:
+        aliases:
+          - apn-bridge
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Nginx - Reverse proxy router
+  nginx:
+    image: nginx:alpine
+    container_name: pcg-nginx
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - frontend-dist:/app/frontend/dist:ro
+    ports:
+      - "8080:80"  # Exposed on 8080 to avoid conflict with host nginx
+    depends_on:
+      app:
+        condition: service_healthy
+      apn-bridge:
+        condition: service_healthy
+    networks:
+      app-network:
+        aliases:
+          - nginx
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   # Cloudflare Tunnel for secure port forwarding
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: pcg-cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
-      app:
+      nginx:
         condition: service_healthy
     networks:
       app-network:
@@ -146,6 +216,8 @@ services:
 
 volumes:
   repos_data:
+    driver: local
+  frontend-dist:
     driver: local
 
 networks:
