@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get APN Core - Alpha Protocol Network</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 60px 20px 40px;
+        }
+
+        h1 {
+            font-size: 3em;
+            background: linear-gradient(45deg, #00ff88, #00ccff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+
+        .version {
+            color: #00ff88;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .alpha-notice {
+            background: rgba(255, 200, 0, 0.15);
+            border: 2px solid #ffc800;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 30px auto;
+            max-width: 800px;
+            text-align: center;
+        }
+
+        .alpha-notice h3 {
+            color: #ffc800;
+            margin-bottom: 10px;
+        }
+
+        .install-section {
+            background: rgba(20, 20, 40, 0.8);
+            border: 2px solid #00ff88;
+            border-radius: 12px;
+            padding: 40px;
+            margin: 40px 0;
+        }
+
+        .install-section h2 {
+            color: #00ff88;
+            margin-bottom: 30px;
+            font-size: 2em;
+            text-align: center;
+        }
+
+        .method-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            justify-content: center;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid #00ff88;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .tab:hover, .tab.active {
+            background: rgba(0, 255, 136, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .install-content {
+            display: none;
+        }
+
+        .install-content.active {
+            display: block;
+        }
+
+        .code-block {
+            background: #000;
+            border: 1px solid #00ff88;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+            color: #00ff88;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 16px;
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+            border-radius: 4px;
+            color: #00ff88;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: rgba(0, 255, 136, 0.4);
+        }
+
+        .step {
+            margin: 30px 0;
+            padding: 20px;
+            background: rgba(0, 204, 255, 0.05);
+            border-left: 4px solid #00ccff;
+            border-radius: 4px;
+        }
+
+        .step h3 {
+            color: #00ccff;
+            margin-bottom: 15px;
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background: #00ccff;
+            color: #000;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .download-card {
+            background: rgba(20, 20, 40, 0.8);
+            border: 2px solid #00ff88;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 20px 0;
+            transition: all 0.3s ease;
+        }
+
+        .download-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
+        }
+
+        .platform-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .download-btn {
+            background: linear-gradient(45deg, #00ff88, #00ccff);
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .download-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0, 255, 136, 0.5);
+        }
+
+        .download-btn.secondary {
+            background: rgba(0, 255, 136, 0.2);
+            color: #00ff88;
+        }
+
+        .coming-soon {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+
+        .badge.available {
+            background: rgba(0, 255, 136, 0.3);
+            color: #00ff88;
+        }
+
+        .badge.soon {
+            background: rgba(255, 200, 0, 0.2);
+            border-color: #ffc800;
+            color: #ffc800;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: #888;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 60px;
+        }
+
+        footer a {
+            color: #00ff88;
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+
+            .method-tabs {
+                flex-direction: column;
+            }
+
+            .install-section {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Get APN Core</h1>
+            <div class="subtitle">Join the Alpha Protocol Network</div>
+            <div class="version">Version 0.1.0 (Alpha Release)</div>
+        </header>
+
+        <div class="alpha-notice">
+            <h3>🚀 Alpha Release - Install from Source</h3>
+            <p>APN Core is in active development. Install directly from GitHub for the latest features.<br>
+            Pre-built binaries coming soon!</p>
+        </div>
+
+        <div class="install-section">
+            <h2>Choose Your Installation Method</h2>
+
+            <div class="method-tabs">
+                <div class="tab active" onclick="showMethod('github')">📦 From GitHub (Recommended)</div>
+                <div class="tab" onclick="showMethod('binary')">💾 Download Binary</div>
+            </div>
+
+            <!-- GitHub Installation -->
+            <div id="github" class="install-content active">
+                <div class="step">
+                    <h3><span class="step-number">1</span>Install Prerequisites</h3>
+                    <p>You'll need Node.js, Rust, and system dependencies for your platform:</p>
+
+                    <h4 style="color: #00ccff; margin-top: 20px;">🐧 Linux (Ubuntu/Debian)</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre>sudo apt update
+sudo apt install -y curl git build-essential libwebkit2gtk-4.1-dev \
+  libappindicator3-dev librsvg2-dev patchelf
+
+# Install Node.js
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env</pre>
+                    </div>
+
+                    <h4 style="color: #00ccff; margin-top: 20px;">🍎 macOS</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre># Install Xcode Command Line Tools
+xcode-select --install
+
+# Install Homebrew (if not already installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Node.js and Rust
+brew install node
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh</pre>
+                    </div>
+
+                    <h4 style="color: #00ccff; margin-top: 20px;">🪟 Windows</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre># Install from PowerShell (Run as Administrator)
+
+# Install Node.js from https://nodejs.org/
+# Install Rust from https://rustup.rs/
+# Install Visual Studio Build Tools from https://visualstudio.microsoft.com/downloads/</pre>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <h3><span class="step-number">2</span>Clone the Repository</h3>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre>git clone https://github.com/KingBodhi/pcg-cc-mcp.git
+cd pcg-cc-mcp/apn-app</pre>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <h3><span class="step-number">3</span>Build and Run</h3>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre># Install dependencies
+npm install
+
+# Build frontend
+npm run build
+
+# Run in development mode
+npm run tauri dev
+
+# Or build production installer
+npm run tauri build</pre>
+                    </div>
+                    <p style="margin-top: 15px; color: #aaa;">
+                        Production builds will be in <code>src-tauri/target/release/bundle/</code>
+                    </p>
+                </div>
+
+                <div class="step">
+                    <h3><span class="step-number">4</span>First Launch</h3>
+                    <p>When you first launch APN Core:</p>
+                    <ul style="margin: 15px 0 15px 30px; line-height: 2;">
+                        <li>Your sovereign identity will be generated</li>
+                        <li><strong style="color: #ffc800;">SAVE YOUR 12-WORD RECOVERY PHRASE!</strong></li>
+                        <li>The app will connect to the Alpha Protocol Network</li>
+                        <li>Start contributing and earning VIBE tokens</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Binary Downloads -->
+            <div id="binary" class="install-content">
+                <div class="download-card">
+                    <span class="platform-icon">🐧</span>
+                    <h3>Linux <span class="badge available">Available</span></h3>
+                    <p>Ubuntu 20.04+, Debian, and compatible distributions</p>
+                    <a href="/downloads/linux/APN-Core.AppImage" class="download-btn">
+                        Download AppImage (~70 MB)
+                    </a>
+                    <a href="/downloads/linux/apn-core.deb" class="download-btn secondary">
+                        Download .deb Package
+                    </a>
+                    <div style="margin-top: 15px; color: #aaa; font-size: 0.9em;">
+                        <strong>Usage:</strong> <code>chmod +x APN-Core.AppImage && ./APN-Core.AppImage</code>
+                    </div>
+                </div>
+
+                <div class="download-card coming-soon">
+                    <span class="platform-icon">🍎</span>
+                    <h3>macOS <span class="badge soon">Coming Soon</span></h3>
+                    <p>macOS 10.15+ (Intel & Apple Silicon)</p>
+                    <a href="#" class="download-btn">
+                        Download DMG (~60 MB)
+                    </a>
+                    <div style="margin-top: 15px; color: #888; font-size: 0.9em;">
+                        Universal binary for Intel and M1/M2/M3
+                    </div>
+                </div>
+
+                <div class="download-card coming-soon">
+                    <span class="platform-icon">🪟</span>
+                    <h3>Windows <span class="badge soon">Coming Soon</span></h3>
+                    <p>Windows 10/11 (64-bit)</p>
+                    <a href="#" class="download-btn">
+                        Download Installer (~50 MB)
+                    </a>
+                    <div style="margin-top: 15px; color: #888; font-size: 0.9em;">
+                        Includes automatic updates
+                    </div>
+                </div>
+
+                <div style="text-align: center; margin-top: 30px; padding: 20px; background: rgba(0, 204, 255, 0.1); border-radius: 8px;">
+                    <p style="color: #00ccff;">
+                        💡 <strong>Tip:</strong> While we prepare installers for all platforms,
+                        install from GitHub above for immediate access!
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>&copy; 2026 Alpha Protocol Network. All rights reserved.</p>
+            <p style="margin-top: 10px;">
+                <a href="https://github.com/KingBodhi/pcg-cc-mcp">GitHub</a> |
+                <a href="/docs">Documentation</a> |
+                <a href="/support">Support</a> |
+                <a href="https://discord.gg/yourserver">Discord</a>
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        function showMethod(method) {
+            // Hide all content
+            document.querySelectorAll('.install-content').forEach(el => {
+                el.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(el => {
+                el.classList.remove('active');
+            });
+
+            // Show selected content
+            document.getElementById(method).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function copyCode(button) {
+            const codeBlock = button.nextElementSibling;
+            const code = codeBlock.textContent;
+
+            navigator.clipboard.writeText(code).then(() => {
+                button.textContent = 'Copied!';
+                button.style.background = 'rgba(0, 255, 136, 0.4)';
+
+                setTimeout(() => {
+                    button.textContent = 'Copy';
+                    button.style.background = 'rgba(0, 255, 136, 0.2)';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

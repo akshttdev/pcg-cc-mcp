@@ -336,15 +336,15 @@ async fn main() {
         )
         .with_state(Arc::clone(&state));
 
-    let addr = "0.0.0.0:8080";
+    let addr = "0.0.0.0:8081";
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║   Alpha Protocol Network - API Server                   ║");
     println!("╠══════════════════════════════════════════════════════════╣");
-    println!("║   HTTP API:      http://0.0.0.0:8080/api/status        ║");
-    println!("║   Web Dashboard: http://0.0.0.0:8080/                   ║");
+    println!("║   HTTP API:      http://0.0.0.0:8081/api/status        ║");
+    println!("║   Web Dashboard: http://0.0.0.0:8081/                   ║");
     println!("║                                                          ║");
     println!("║   Access from any device on your network:              ║");
-    println!("║   http://192.168.1.77:8080/                            ║");
+    println!("║   http://192.168.1.77:8081/                            ║");
     println!("╚══════════════════════════════════════════════════════════╝");
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
