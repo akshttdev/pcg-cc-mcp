@@ -57,8 +57,17 @@
 ### Monitoring:
 - 📊 View your contribution stats
 - 🌐 See other nodes in the network
-- 💰 Track VIBE token earnings
+- 💰 Track VIBE token earnings (Auto-distributed every 5 minutes!)
 - 📈 Monitor system resource usage
+
+### 💰 VIBE Rewards System:
+- **Automatic Earnings:** Get paid in VIBE for being online
+- **Heartbeat Rewards:** 0.1 VIBE base per heartbeat (every 30s)
+- **Multipliers:** 2x for GPU, 1.5x for high CPU, 1.3x for high RAM
+- **On-Chain:** All rewards distributed on Aptos blockchain
+- **No Action Needed:** Just run the app and earn!
+
+**See [SETUP-REWARDS.md](SETUP-REWARDS.md) for complete reward configuration guide.**
 
 ## Running APN Core
 
@@ -81,8 +90,16 @@ npm run tauri build
 
 ### Connecting to Pythia:
 The app automatically connects to:
-- **Master Node API:** http://192.168.1.77:8080
-- **NATS Relay:** nats://nonlocal.info:4222
+- **NATS Relay:** nats://nonlocal.info:4222 (for peer discovery and heartbeats)
+- **Master Node API:** http://192.168.1.77:58297 (for reward tracking)
+
+**IMPORTANT:** Make sure you're running the latest code from the `new` branch:
+```bash
+git checkout new
+git pull origin new
+cd apn-app
+npm run tauri build
+```
 
 ## Features
 
