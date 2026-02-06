@@ -98,6 +98,14 @@ pub struct RewardRates {
     pub uptime_rate: VibeAmount,
     /// Vibe per completed task (base rate)
     pub task_rate: VibeAmount,
+    /// Vibe per heartbeat (every 30s)
+    pub heartbeat_base: VibeAmount,
+    /// GPU multiplier for heartbeat rewards
+    pub gpu_multiplier: f64,
+    /// High CPU multiplier (>16 cores)
+    pub high_cpu_multiplier: f64,
+    /// High RAM multiplier (>32GB)
+    pub high_ram_multiplier: f64,
 }
 
 impl Default for RewardRates {
@@ -110,6 +118,10 @@ impl Default for RewardRates {
             relay_rate: display_to_vibe(0.0001),   // 0.0001 VIBE per relay
             uptime_rate: display_to_vibe(0.1),     // 0.1 VIBE per hour
             task_rate: display_to_vibe(1.0),       // 1.0 VIBE per task (base)
+            heartbeat_base: display_to_vibe(0.1),  // 0.1 VIBE per heartbeat
+            gpu_multiplier: 2.0,                   // 2x for GPU nodes
+            high_cpu_multiplier: 1.5,              // 1.5x for >16 cores
+            high_ram_multiplier: 1.3,              // 1.3x for >32GB RAM
         }
     }
 }

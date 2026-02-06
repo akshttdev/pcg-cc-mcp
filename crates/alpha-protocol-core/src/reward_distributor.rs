@@ -72,7 +72,7 @@ impl RewardDistributor {
         tracing::info!("🔐 Loading rewards wallet...");
 
         // Import rewards wallet from mnemonic
-        let wallet = NodeIdentity::from_mnemonic(&self.config.rewards_wallet_mnemonic)
+        let wallet = NodeIdentity::from_mnemonic_phrase(&self.config.rewards_wallet_mnemonic)
             .context("Failed to load rewards wallet")?;
 
         tracing::info!("✅ Rewards wallet loaded: {}", wallet.address());
@@ -181,6 +181,9 @@ impl RewardDistributor {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Rewards wallet not loaded"))?;
 
+        let wallet_address = rewards_wallet.address().to_string();
+        let total_rewards_i64 = total_rewards as i64;
+
         // Create batch record
         sqlx::query!(
             r#"
@@ -191,9 +194,9 @@ impl RewardDistributor {
             "#,
             batch_id,
             batch_number,
-            total_rewards as i64,
+            total_rewards_i64,
             total_amount,
-            rewards_wallet.address()
+            wallet_address
         )
         .execute(&self.db)
         .await?;
@@ -347,7 +350,7 @@ impl RewardDistributor {
             rewards_wallet: self
                 .rewards_wallet
                 .as_ref()
-                .map(|w| w.address())
+                .map(|w| w.address().to_string())
                 .unwrap_or_default(),
         })
     }

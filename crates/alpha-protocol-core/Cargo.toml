@@ -22,6 +22,14 @@ path = "src/bin/apn_send.rs"
 name = "apn_api_server"
 path = "src/bin/apn_api_server.rs"
 
+[[bin]]
+name = "apn_reward_tracker"
+path = "src/bin/apn_reward_tracker.rs"
+
+[[bin]]
+name = "apn_reward_distributor"
+path = "src/bin/apn_reward_distributor.rs"
+
 [features]
 default = []
 tauri = ["dep:tauri"]
@@ -90,6 +98,12 @@ futures = "0.3"
 axum = "0.8"
 tower-http = { version = "0.5", features = ["cors"] }
 regex = "1.11"
+
+# Database (for reward services)
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+db = { path = "../db" }
+dotenv = "0.15"
 
 # Tauri integration (optional)
 tauri = { version = "2", optional = true }

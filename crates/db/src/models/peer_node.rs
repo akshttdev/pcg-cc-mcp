@@ -103,6 +103,21 @@ impl PeerNode {
             .ok_or(sqlx::Error::RowNotFound)
     }
 
+    /// Find peer by id (UUID)
+    pub async fn find_by_id(
+        pool: &SqlitePool,
+        id: Uuid,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as::<_, PeerNode>(
+            r#"
+            SELECT * FROM peer_nodes WHERE id = ?
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+    }
+
     /// Find peer by node_id
     pub async fn find_by_node_id(
         pool: &SqlitePool,

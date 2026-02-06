@@ -46,7 +46,7 @@ pub use economics::{
     calculate_rewards, vibe_to_display, display_to_vibe,
     VibeAmount,
 };
-pub use reward_tracker::{RewardTracker as PeerRewardTracker, RewardTrackerStats};
+pub use reward_tracker::{RewardTracker as PeerRewardTracker, RewardTrackerStats, RewardTrackerConfig};
 pub use reward_distributor::{RewardDistributor, DistributorConfig, DistributorStats};
 
 /// Protocol version

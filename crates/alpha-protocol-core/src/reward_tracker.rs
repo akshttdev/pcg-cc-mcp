@@ -16,29 +16,24 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 
-use crate::economics::{display_to_vibe, VibeAmount};
+use crate::economics::{display_to_vibe, VibeAmount, RewardRates};
 use crate::relay::PeerAnnouncement;
-use crate::resources::NodeResources;
+use crate::wire::NodeResources;
 
-/// Reward rates (in VIBE)
-pub struct RewardRates {
-    /// VIBE per heartbeat (every 30s)
-    pub heartbeat_reward: VibeAmount,
-    /// GPU multiplier
-    pub gpu_multiplier: f64,
-    /// High CPU multiplier (>16 cores)
-    pub high_cpu_multiplier: f64,
-    /// High RAM multiplier (>32GB)
-    pub high_ram_multiplier: f64,
+/// Configuration for the reward tracker
+#[derive(Debug, Clone)]
+pub struct RewardTrackerConfig {
+    pub nats_url: String,
+    pub reward_interval_secs: u64,
+    pub db_path: String,
 }
 
-impl Default for RewardRates {
+impl Default for RewardTrackerConfig {
     fn default() -> Self {
         Self {
-            heartbeat_reward: display_to_vibe(0.1), // 0.1 VIBE per heartbeat
-            gpu_multiplier: 2.0,                      // 2x for GPU nodes
-            high_cpu_multiplier: 1.5,                 // 1.5x for >16 cores
-            high_ram_multiplier: 1.3,                 // 1.3x for >32GB RAM
+            nats_url: "nats://nonlocal.info:4222".to_string(),
+            reward_interval_secs: 60,
+            db_path: "sqlite:dev_assets/db.sqlite".to_string(),
         }
     }
 }
@@ -56,20 +51,47 @@ struct PeerState {
 
 /// Reward Tracker Service
 pub struct RewardTracker {
-    nats: NatsClient,
+    nats: Option<NatsClient>,
     db: SqlitePool,
     rates: RewardRates,
     peers: Arc<RwLock<HashMap<String, PeerState>>>,
+    config: RewardTrackerConfig,
 }
 
 impl RewardTracker {
+    /// Create a new reward tracker from an existing NATS client
     pub fn new(nats: NatsClient, db: SqlitePool) -> Self {
         Self {
-            nats,
+            nats: Some(nats),
             db,
             rates: RewardRates::default(),
             peers: Arc::new(RwLock::new(HashMap::new())),
+            config: RewardTrackerConfig::default(),
         }
+    }
+
+    /// Create a new reward tracker with config (will connect to NATS later)
+    pub fn new_with_config(db: SqlitePool, config: RewardTrackerConfig, rates: RewardRates) -> Self {
+        Self {
+            nats: None,
+            db,
+            rates,
+            peers: Arc::new(RwLock::new(HashMap::new())),
+            config,
+        }
+    }
+
+    /// Initialize the tracker (connect to NATS)
+    pub async fn init(&mut self) -> Result<()> {
+        if self.nats.is_none() {
+            tracing::info!("📡 Connecting to NATS: {}", self.config.nats_url);
+            let nats_client = async_nats::connect(&self.config.nats_url)
+                .await
+                .context("Failed to connect to NATS")?;
+            self.nats = Some(nats_client);
+            tracing::info!("✅ Connected to NATS");
+        }
+        Ok(())
     }
 
     /// Start the reward tracker service
@@ -98,8 +120,9 @@ impl RewardTracker {
 
     /// Listen to heartbeats on NATS
     async fn listen_heartbeats(&self) -> Result<()> {
-        let mut sub = self
-            .nats
+        let nats = self.nats.as_ref().ok_or_else(|| anyhow::anyhow!("NATS not initialized"))?;
+
+        let mut sub = nats
             .subscribe("apn.heartbeat")
             .await
             .context("Failed to subscribe to apn.heartbeat")?;
@@ -122,7 +145,7 @@ impl RewardTracker {
             .context("Failed to parse heartbeat")?;
 
         let node_id = announcement.wallet_address[2..10].to_string(); // Extract node_id from wallet
-        let wallet = announcement.wallet_address;
+        let wallet = announcement.wallet_address.clone();
 
         tracing::debug!("💓 Heartbeat from {}", node_id);
 
@@ -143,7 +166,7 @@ impl RewardTracker {
 
         // Calculate reward for this heartbeat
         let multiplier = self.calculate_multiplier(&peer.resources);
-        let reward = (self.rates.heartbeat_reward as f64 * multiplier) as VibeAmount;
+        let reward = (self.rates.heartbeat_base as f64 * multiplier) as VibeAmount;
         peer.pending_rewards += reward;
 
         tracing::debug!(
@@ -262,7 +285,7 @@ impl RewardTracker {
                 peer_node_id: peer_node.id,
                 contribution_id: None,
                 reward_type: RewardType::Heartbeat,
-                base_amount: self.rates.heartbeat_reward as i64,
+                base_amount: self.rates.heartbeat_base as i64,
                 multiplier,
                 description: Some(format!(
                     "{} heartbeats",
