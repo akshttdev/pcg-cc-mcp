@@ -192,8 +192,11 @@ async fn main() -> anyhow::Result<()> {
                 }
             } => {
                 // Send heartbeat
+                tracing::debug!("Sending heartbeat...");
                 if let Err(e) = node.send_heartbeat().await {
-                    tracing::debug!("Heartbeat failed: {}", e);
+                    tracing::error!("Heartbeat failed: {}", e);
+                } else {
+                    tracing::debug!("Heartbeat sent successfully");
                 }
             }
             _ = tokio::signal::ctrl_c() => {

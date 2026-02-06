@@ -77,5 +77,9 @@ async fn main() -> anyhow::Result<()> {
     println!("👂 Listening for heartbeats on apn.heartbeat...\n");
     tracker.start().await?;
 
+    // Keep the service running forever
+    tokio::signal::ctrl_c().await?;
+    println!("\n👋 Shutting down reward tracker...");
+
     Ok(())
 }

@@ -338,14 +338,28 @@ impl AlphaNode {
         // Collect fresh resources
         let resources = crate::resources::collect_resources().await.ok();
 
-        // Send via mesh
+        // Send via mesh (don't fail if mesh has insufficient peers)
         if let Some(mesh) = self.mesh.as_mut() {
-            mesh.send_heartbeat(resources.clone())?;
+            if let Err(e) = mesh.send_heartbeat(resources.clone()) {
+                tracing::debug!("Mesh heartbeat failed (expected if no peers): {}", e);
+            }
         }
 
-        // Send via relay
+        // Send via relay (with full peer announcement format for reward tracker)
         if let Some(relay) = &self.relay {
-            relay.send_heartbeat(resources.as_ref()).await?;
+            // Build PeerAnnouncement for reward tracking
+            let announcement = crate::relay::PeerAnnouncement {
+                node_id: format!("apn_{}", &self.identity.address()[2..10]),
+                wallet_address: self.identity.address().to_string(),
+                capabilities: self.config.capabilities.clone(),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                resources: resources.clone(),
+            };
+
+            let payload = serde_json::to_vec(&announcement)?;
+            relay.publish("apn.heartbeat", &payload).await?;
+
+            tracing::debug!("💓 Published heartbeat to apn.heartbeat");
         }
 
         Ok(())

@@ -144,7 +144,7 @@ impl RewardTracker {
         let announcement: PeerAnnouncement = serde_json::from_slice(payload)
             .context("Failed to parse heartbeat")?;
 
-        let node_id = announcement.wallet_address[2..10].to_string(); // Extract node_id from wallet
+        let node_id = format!("apn_{}", &announcement.wallet_address[2..10]); // Extract node_id from wallet
         let wallet = announcement.wallet_address.clone();
 
         tracing::debug!("💓 Heartbeat from {}", node_id);
