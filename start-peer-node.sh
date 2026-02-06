@@ -46,3 +46,16 @@ else
     cat /tmp/apn_peer.log
     exit 1
 fi
+
+echo ""
+echo "💰 VIBE EARNINGS ACTIVATED!"
+echo ""
+echo "You are now earning VIBE for:"
+echo "  • Being online (heartbeat rewards)"
+echo "  • Completing tasks"
+echo "  • Contributing compute/bandwidth"
+echo ""
+echo "Track earnings: http://dashboard.powerclubglobal.com/vibe"
+echo "Trade VIBE:     https://vibe-token.vercel.app"
+echo ""
+echo "🏴 Sovereign Stack + Bitcoin Incentives = VIBE! 🏴"

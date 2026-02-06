@@ -10,11 +10,11 @@ cd pcg-cc-mcp
 # 2. Build the APN node
 cargo build --release -p alpha-protocol-core
 
-# 3. Join the mesh!
+# 3. Join the mesh and start earning VIBE!
 ./start-peer-node.sh
 ```
 
-**That's it!** You're now part of the sovereign mesh! 🏴
+**That's it! Start earning VIBE immediately!** You're now part of the sovereign mesh! 🏴
 
 ## What Just Happened
 
