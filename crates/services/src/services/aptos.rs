@@ -16,11 +16,10 @@ const GAS_UNIT_PRICE: u64 = 100;
 const MAX_GAS_AMOUNT: u64 = 10000;
 
 // VIBE Token Configuration
-// VIBE is a fungible asset on Aptos - address will be set after deployment
-// For devnet testing, we simulate VIBE using a conversion from APT
-// 1 VIBE = $0.001 USD, 1 APT ≈ $10 USD (approximate), so 1 APT = 10,000 VIBE
-const VIBE_TOKEN_ADDRESS: &str = "0x0"; // Placeholder - will be updated after VIBE contract deployment
-const APT_TO_VIBE_RATE: u64 = 10_000; // 1 APT = 10,000 VIBE (assuming $10/APT and $0.001/VIBE)
+// VIBE is a fungible asset on Aptos - deployed at address below
+// 1 VIBE = $0.01 USD, 1 APT ≈ $10 USD (approximate), so 1 APT = 1,000 VIBE
+const VIBE_TOKEN_ADDRESS: &str = "0x24cb561c64c32942eb8600d5135f0185c23bcd06cd8cf33422ce2f9b77d65388";
+const APT_TO_VIBE_RATE: u64 = 1_000; // 1 APT = 1,000 VIBE (assuming $10/APT and $0.01/VIBE)
 const VIBE_DECIMALS: u8 = 8; // Same as APT for simplicity
 
 #[derive(Debug, Clone)]
@@ -98,7 +97,7 @@ pub struct VibeBalance {
     pub balance_vibe: f64,
     /// Equivalent APT value (for reference)
     pub equivalent_apt: f64,
-    /// USD value (1 VIBE = $0.001)
+    /// USD value (1 VIBE = $0.01)
     pub usd_value: f64,
 }
 

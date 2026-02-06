@@ -30,7 +30,7 @@ pub struct Project {
     pub dev_script: Option<String>,
     pub cleanup_script: Option<String>,
     pub copy_files: Option<String>,
-    /// VIBE budget limit (1 VIBE = $0.001 USD), None means unlimited
+    /// VIBE budget limit (1 VIBE = $0.01 USD), None means unlimited
     #[ts(type = "number | null")]
     pub vibe_budget_limit: Option<i64>,
     /// VIBE spent amount

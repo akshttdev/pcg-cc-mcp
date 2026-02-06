@@ -38,8 +38,8 @@ Contribute Resources → Earn VIBE → Trade or Use Services
 
 ### Current Tokenomics
 - **Total Supply:** 1,000,000,000 VIBE (1 Billion)
-- **Current Price:** $0.001 USD
-- **Market Cap:** $1,000,000 USD
+- **Current Price:** $0.01 USD
+- **Market Cap:** $10,000,000 USD
 - **Status:** LIVE and tradeable
 
 ### Distribution
@@ -55,7 +55,7 @@ Contribute Resources → Earn VIBE → Trade or Use Services
 Heartbeat (every 30s):     0.1 VIBE
 Hour of uptime:            12 VIBE
 Day of uptime:             288 VIBE
-Month of uptime:           ~8,640 VIBE ≈ $8.64/month
+Month of uptime:           ~8,640 VIBE ≈ $86.40/month
 ```
 
 ### Task Execution Bonuses
@@ -74,7 +74,7 @@ GPU available:             2x multiplier
 SSD storage:               1.2x multiplier
 ```
 
-**Mac Studio with M2 Ultra could earn: ~15,000 VIBE/month! ($15/month)**
+**Mac Studio with M2 Ultra could earn: ~15,000 VIBE/month! ($150/month)**
 
 ## Tracking Your Earnings
 
@@ -165,16 +165,16 @@ GPU_MEMORY=12
 **Mac Studio M2 Ultra (Example):**
 ```
 Hardware: $4,000
-Monthly earnings: 15,000 VIBE ≈ $15
-Yearly earnings: 180,000 VIBE ≈ $180
-ROI: ~22 years at current price
+Monthly earnings: 15,000 VIBE ≈ $150
+Yearly earnings: 180,000 VIBE ≈ $1,800
+ROI: ~2.2 years at current price
 
 BUT:
 - Price appreciation potential
 - Task bonuses not included
 - Network growth multipliers
 - Storage/bandwidth income
-- REALISTIC: 5-10 year ROI as network scales
+- REALISTIC: 1-2 year ROI as network scales
 ```
 
 ## VIBE Wallet
@@ -255,19 +255,19 @@ Uptime: 18 hours/day (sleeps 6h)
 Tasks completed: ~50/day
 
 Monthly Earnings:
-- Base rewards:        6,480 VIBE ($6.48)
-- Task bonuses:        3,000 VIBE ($3.00)
-- GPU multiplier (2x): 5,000 VIBE ($5.00)
-- Resource bonus:      1,500 VIBE ($1.50)
+- Base rewards:        6,480 VIBE ($64.80)
+- Task bonuses:        3,000 VIBE ($30.00)
+- GPU multiplier (2x): 5,000 VIBE ($50.00)
+- Resource bonus:      1,500 VIBE ($15.00)
 
-Total: 15,980 VIBE ≈ $16/month
+Total: 15,980 VIBE ≈ $160/month
 
 Her electricity cost: ~$12/month
-Net profit: $4/month
-
-But when VIBE hits $0.01:
-Same earnings = $160/month
 Net profit: $148/month! 🚀
+
+If VIBE reaches $0.10:
+Same earnings = $1,600/month
+Net profit: $1,588/month! 🚀🚀
 ```
 
 ## FAQ
