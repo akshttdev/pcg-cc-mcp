@@ -1,0 +1,49 @@
+{
+  "productName": "PCG Dashboard",
+  "version": "0.0.55",
+  "identifier": "com.powerclubglobal.dashboard",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../dist"
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
+    "resources": [],
+    "externalBin": [],
+    "copyright": "© 2026 PowerClub Global",
+    "category": "Network",
+    "shortDescription": "Alpha Protocol Network Dashboard",
+    "longDescription": "Dashboard for managing and visualizing the Alpha Protocol Network mesh nodes, tasks, and resources"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PCG Dashboard",
+        "width": 1400,
+        "height": 900,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": false
+  }
+}

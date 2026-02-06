@@ -11,7 +11,8 @@ members = [
     "crates/nora",
     "crates/cinematics",
     "crates/alpha-protocol-core",
-    "apn-app/src-tauri"
+    "apn-app/src-tauri",
+    "frontend/src-tauri"
 ]
 
 [workspace.dependencies]
