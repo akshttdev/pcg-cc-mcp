@@ -72,6 +72,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 sysinfo = "0.32"
 hostname = "0.4"
 tokio-stream = "0.1"
+async-nats = "0.37"
+alpha-protocol-core = { path = "../alpha-protocol-core" }
 
 [dev-dependencies]
 tempfile = "3.8"

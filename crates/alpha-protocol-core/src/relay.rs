@@ -61,6 +61,9 @@ pub mod subjects {
     /// Task announcements
     pub const TASKS: &str = "apn.tasks";
 
+    /// Heartbeat/status updates
+    pub const HEARTBEAT: &str = "apn.heartbeat";
+
     /// Direct messages: apn.dm.<recipient_node_id>
     pub fn direct_message(recipient: &str) -> String {
         format!("apn.dm.{}", recipient)
@@ -153,12 +156,13 @@ impl NatsRelay {
     }
 
     /// Announce this node to the network
-    pub async fn announce(&self, wallet_address: &str, capabilities: &[String]) -> Result<()> {
+    pub async fn announce(&self, wallet_address: &str, capabilities: &[String], resources: Option<&crate::wire::NodeResources>) -> Result<()> {
         let announcement = PeerAnnouncement {
             node_id: self.config.node_id.clone(),
             wallet_address: wallet_address.to_string(),
             capabilities: capabilities.to_vec(),
             timestamp: chrono::Utc::now().to_rfc3339(),
+            resources: resources.cloned(),
         };
 
         let payload = serde_json::to_vec(&announcement)?;
@@ -169,6 +173,21 @@ impl NatsRelay {
         // Broadcast to discovery
         self.publish(subjects::DISCOVERY, &payload).await?;
 
+        Ok(())
+    }
+
+    /// Send heartbeat with resource status
+    pub async fn send_heartbeat(&self, resources: Option<&crate::wire::NodeResources>) -> Result<()> {
+        let heartbeat = serde_json::json!({
+            "node_id": self.config.node_id,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "resources": resources,
+        });
+
+        let payload = serde_json::to_vec(&heartbeat)?;
+        self.publish(subjects::HEARTBEAT, &payload).await?;
+
+        tracing::debug!("Heartbeat sent with resources");
         Ok(())
     }
 
@@ -206,7 +225,10 @@ impl NatsRelay {
         // Subscribe to discovery
         let mut discovery_subscriber = client.subscribe(subjects::DISCOVERY.to_string()).await?;
 
-        tracing::info!("Relay listening on: {}, {}, {}", dm_subject, signal_subject, subjects::DISCOVERY);
+        // Subscribe to heartbeat
+        let mut heartbeat_subscriber = client.subscribe(subjects::HEARTBEAT.to_string()).await?;
+
+        tracing::info!("Relay listening on: {}, {}, {}, {}", dm_subject, signal_subject, subjects::DISCOVERY, subjects::HEARTBEAT);
 
         loop {
             tokio::select! {
@@ -230,6 +252,13 @@ impl NatsRelay {
                         payload: msg.payload.to_vec(),
                     });
                 }
+
+                Some(msg) = heartbeat_subscriber.next() => {
+                    let _ = self.message_tx.send(RelayEvent::MessageReceived {
+                        subject: msg.subject.to_string(),
+                        payload: msg.payload.to_vec(),
+                    });
+                }
             }
         }
     }
@@ -247,6 +276,7 @@ pub struct PeerAnnouncement {
     pub wallet_address: String,
     pub capabilities: Vec<String>,
     pub timestamp: String,
+    pub resources: Option<crate::wire::NodeResources>,
 }
 
 #[cfg(test)]

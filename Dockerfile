@@ -28,8 +28,9 @@ RUN npm install -g pnpm && pnpm install
 COPY . .
 
 # Build application
+ENV SQLX_OFFLINE=true
 RUN npm run generate-types
-RUN cd frontend && npm install --ignore-scripts && npm run build
+RUN cd frontend && npm install --ignore-scripts && npx vite build --mode production
 RUN cargo build --release --bin server
 
 # Runtime stage - Use CUDA-enabled base for GPU support

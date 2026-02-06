@@ -29,19 +29,25 @@ pub mod relay;
 pub mod node;
 pub mod economics;
 pub mod mining;
+pub mod resources;
+pub mod reward_tracker;
+pub mod reward_distributor;
 
 // Re-exports
 pub use identity::{NodeIdentity, WalletInfo};
 pub use crypto::{encrypt, decrypt, SessionKey};
-pub use wire::{Message, MessageType};
+pub use wire::{Message, MessageType, NodeResources};
 pub use mesh::{MeshNode, PeerInfo, MeshMessage};
 pub use node::{AlphaNode, NodeConfig};
+pub use resources::collect_resources;
 pub use economics::{
     ResourceContribution, ResourceTracker, RewardRates,
     NodeReputation, StakePool, ContributionProof,
     calculate_rewards, vibe_to_display, display_to_vibe,
     VibeAmount,
 };
+pub use reward_tracker::{RewardTracker as PeerRewardTracker, RewardTrackerStats, RewardTrackerConfig};
+pub use reward_distributor::{RewardDistributor, DistributorConfig, DistributorStats};
 
 /// Protocol version
 pub const PROTOCOL_VERSION: &str = "alpha/1.0.0";

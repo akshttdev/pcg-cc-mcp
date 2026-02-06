@@ -33,6 +33,8 @@ async fn main() -> anyhow::Result<()> {
     let mut relay_url = DEFAULT_NATS_RELAY.to_string();
     let mut bootstrap_peers: Vec<String> = vec![];
     let mut mnemonic: Option<String> = None;
+    let mut heartbeat_interval: u64 = 30; // seconds
+    let mut enable_heartbeat = true;
 
     // Parse args
     let mut i = 1;
@@ -65,6 +67,16 @@ async fn main() -> anyhow::Result<()> {
             }
             "--new" => {
                 mnemonic = None;
+                i += 1;
+            }
+            "--heartbeat-interval" => {
+                heartbeat_interval = args.get(i + 1)
+                    .ok_or_else(|| anyhow::anyhow!("--heartbeat-interval requires a value"))?
+                    .parse()?;
+                i += 2;
+            }
+            "--no-heartbeat" => {
+                enable_heartbeat = false;
                 i += 1;
             }
             "--help" | "-h" => {
@@ -120,10 +132,18 @@ async fn main() -> anyhow::Result<()> {
 
     // Announce to the network (may fail if no peers yet, that's OK)
     println!("📢 Announcing to network...");
-    match node.announce() {
+    match node.announce().await {
         Ok(_) => println!("✅ Announced!\n"),
         Err(e) => println!("⚠️  Announce pending (no peers yet): {}\n", e),
     }
+
+    // Setup heartbeat interval
+    let mut heartbeat_timer = if enable_heartbeat {
+        println!("💓 Heartbeat enabled (interval: {}s)\n", heartbeat_interval);
+        Some(tokio::time::interval(std::time::Duration::from_secs(heartbeat_interval)))
+    } else {
+        None
+    };
 
     println!("👂 Listening for events... (Ctrl+C to quit)\n");
 
@@ -164,6 +184,21 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+            Some(_) = async {
+                if let Some(ref mut timer) = heartbeat_timer {
+                    Some(timer.tick().await)
+                } else {
+                    None
+                }
+            } => {
+                // Send heartbeat
+                tracing::debug!("Sending heartbeat...");
+                if let Err(e) = node.send_heartbeat().await {
+                    tracing::error!("Heartbeat failed: {}", e);
+                } else {
+                    tracing::debug!("Heartbeat sent successfully");
+                }
+            }
             _ = tokio::signal::ctrl_c() => {
                 println!("\n👋 Shutting down...");
                 break;
@@ -183,6 +218,8 @@ fn print_help() {
     println!("  --bootstrap <ADDR>  Bootstrap peer multiaddr (can be used multiple times)");
     println!("  --new               Generate new identity (default)");
     println!("  --import <PHRASE>   Import from mnemonic phrase (quoted)");
+    println!("  --heartbeat-interval <SECS>  Heartbeat interval in seconds (default: 30)");
+    println!("  --no-heartbeat      Disable heartbeat broadcasts");
     println!("  -h, --help          Show this help\n");
     println!("Examples:");
     println!("  # Start with new identity on default port");

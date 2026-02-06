@@ -72,6 +72,7 @@ pub enum MeshMessage {
     /// Heartbeat
     Heartbeat {
         timestamp: i64,
+        resources: Option<crate::wire::NodeResources>,
     },
     /// Mining share
     MiningShare {
@@ -250,14 +251,24 @@ impl MeshNode {
     }
 
     /// Broadcast peer announcement
-    pub fn announce(&mut self, wallet_address: String, capabilities: Vec<String>) -> Result<()> {
+    pub fn announce(&mut self, wallet_address: String, capabilities: Vec<String>, resources: Option<crate::wire::NodeResources>) -> Result<()> {
         let message = MeshMessage::PeerAnnouncement {
             wallet_address,
             capabilities,
-            resources: Some(crate::wire::NodeResources::default()),
+            resources,
         };
 
         self.publish(topics::PEERS, &message)
+    }
+
+    /// Send heartbeat with current resource status
+    pub fn send_heartbeat(&mut self, resources: Option<crate::wire::NodeResources>) -> Result<()> {
+        let message = MeshMessage::Heartbeat {
+            timestamp: chrono::Utc::now().timestamp(),
+            resources,
+        };
+
+        self.publish(topics::HEARTBEAT, &message)
     }
 
     /// Get list of connected peers

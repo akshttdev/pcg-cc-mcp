@@ -18,7 +18,7 @@ pub struct AgentWallet {
     /// APT spent amount in octas (legacy, not used)
     #[ts(type = "number")]
     pub spent_amount: i64,
-    /// VIBE budget limit (1 VIBE = $0.001 USD)
+    /// VIBE budget limit (1 VIBE = $0.01 USD)
     #[ts(type = "number | null")]
     pub vibe_budget_limit: Option<i64>,
     /// VIBE spent amount

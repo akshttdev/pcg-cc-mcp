@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download APN Core - Alpha Protocol Network</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 60px 20px 40px;
+        }
+
+        h1 {
+            font-size: 3em;
+            background: linear-gradient(45deg, #00ff88, #00ccff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+
+        .version {
+            color: #00ff88;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .downloads {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+
+        .download-card {
+            background: rgba(20, 20, 40, 0.8);
+            border: 2px solid #00ff88;
+            border-radius: 12px;
+            padding: 30px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .download-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.1) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .download-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
+        }
+
+        .download-card:hover::before {
+            opacity: 1;
+        }
+
+        .platform-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .platform-name {
+            font-size: 1.8em;
+            margin-bottom: 10px;
+            color: #00ff88;
+        }
+
+        .platform-desc {
+            color: #aaa;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .file-info {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .file-size {
+            color: #00ccff;
+            font-size: 0.9em;
+        }
+
+        .download-btn {
+            background: linear-gradient(45deg, #00ff88, #00ccff);
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .download-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0, 255, 136, 0.5);
+        }
+
+        .alternative-download {
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .alternative-download a {
+            color: #00ccff;
+            text-decoration: none;
+            font-size: 0.9em;
+        }
+
+        .alternative-download a:hover {
+            text-decoration: underline;
+        }
+
+        .requirements {
+            background: rgba(255, 200, 0, 0.1);
+            border: 1px solid #ffc800;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 40px 0;
+        }
+
+        .requirements h2 {
+            color: #ffc800;
+            margin-bottom: 15px;
+        }
+
+        .requirements ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .requirements li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+        }
+
+        .requirements li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #00ff88;
+            font-weight: bold;
+        }
+
+        .features {
+            background: rgba(0, 204, 255, 0.1);
+            border: 1px solid #00ccff;
+            border-radius: 8px;
+            padding: 30px;
+            margin: 40px 0;
+        }
+
+        .features h2 {
+            color: #00ccff;
+            margin-bottom: 20px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .feature {
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+
+        .feature-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .feature h3 {
+            color: #00ff88;
+            margin-bottom: 10px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: #888;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 60px;
+        }
+
+        footer a {
+            color: #00ff88;
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Download APN Core</h1>
+            <div class="subtitle">Sovereign Vibe Node for the Alpha Protocol Network</div>
+            <div class="version">Version 0.1.0 (Alpha)</div>
+        </header>
+
+        <div class="downloads">
+            <!-- Windows -->
+            <div class="download-card">
+                <span class="platform-icon">🪟</span>
+                <h2 class="platform-name">Windows</h2>
+                <p class="platform-desc">For Windows 10 and Windows 11 (64-bit)</p>
+                <div class="file-info">
+                    <div>Installer: <strong>APN-Core-Setup.exe</strong></div>
+                    <div class="file-size">~50 MB</div>
+                </div>
+                <a href="/downloads/windows/APN-Core-Setup.exe" class="download-btn">
+                    Download for Windows
+                </a>
+                <div class="alternative-download">
+                    <a href="/downloads/windows/APN-Core.msi">MSI Installer</a>
+                </div>
+            </div>
+
+            <!-- macOS -->
+            <div class="download-card">
+                <span class="platform-icon">🍎</span>
+                <h2 class="platform-name">macOS</h2>
+                <p class="platform-desc">For macOS 10.15+ (Intel & Apple Silicon)</p>
+                <div class="file-info">
+                    <div>Installer: <strong>APN-Core.dmg</strong></div>
+                    <div class="file-size">~60 MB</div>
+                </div>
+                <a href="/downloads/macos/APN-Core.dmg" class="download-btn">
+                    Download for macOS
+                </a>
+                <div class="alternative-download">
+                    Universal Binary (Intel + M1/M2/M3)
+                </div>
+            </div>
+
+            <!-- Linux -->
+            <div class="download-card">
+                <span class="platform-icon">🐧</span>
+                <h2 class="platform-name">Linux</h2>
+                <p class="platform-desc">For Ubuntu, Debian, and compatible distros</p>
+                <div class="file-info">
+                    <div>Installer: <strong>APN-Core.AppImage</strong></div>
+                    <div class="file-size">~70 MB</div>
+                </div>
+                <a href="/downloads/linux/APN-Core.AppImage" class="download-btn">
+                    Download AppImage
+                </a>
+                <div class="alternative-download">
+                    <a href="/downloads/linux/apn-core.deb">.deb package</a> |
+                    <a href="/downloads/linux/apn-core.rpm">.rpm package</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="features">
+            <h2>✨ Features</h2>
+            <div class="feature-grid">
+                <div class="feature">
+                    <div class="feature-icon">💰</div>
+                    <h3>Earn VIBE Tokens</h3>
+                    <p>Contribute your compute power and earn VIBE tokens passively</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Sovereign Identity</h3>
+                    <p>Ed25519 keypair with BIP39 recovery phrase</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Auto-Start</h3>
+                    <p>Runs in the background on system startup</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🌐</div>
+                    <h3>Mesh Networking</h3>
+                    <p>LibP2P-based peer-to-peer connectivity</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">📊</div>
+                    <h3>Resource Monitor</h3>
+                    <p>Track your contributions and earnings</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🎮</div>
+                    <h3>GPU Support</h3>
+                    <p>Utilize your GPU for higher earnings</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="requirements">
+            <h2>⚙️ System Requirements</h2>
+            <ul>
+                <li><strong>CPU:</strong> 2+ cores recommended (4+ cores ideal)</li>
+                <li><strong>RAM:</strong> 4GB minimum (8GB+ recommended)</li>
+                <li><strong>Storage:</strong> 50GB+ available space</li>
+                <li><strong>GPU:</strong> Optional (NVIDIA GPUs supported)</li>
+                <li><strong>Network:</strong> Broadband internet connection</li>
+                <li><strong>OS:</strong> Windows 10/11, macOS 10.15+, Ubuntu 20.04+</li>
+            </ul>
+        </div>
+
+        <div class="features">
+            <h2>🚀 Getting Started</h2>
+            <div style="padding: 20px;">
+                <ol style="list-style: decimal; padding-left: 20px; line-height: 2;">
+                    <li><strong>Download</strong> the installer for your operating system</li>
+                    <li><strong>Install</strong> APN Core on your device</li>
+                    <li><strong>Launch</strong> the application (it will auto-generate your identity)</li>
+                    <li><strong>Save</strong> your 12-word recovery phrase securely</li>
+                    <li><strong>Start</strong> contributing and earning VIBE tokens!</li>
+                </ol>
+                <p style="margin-top: 20px; color: #ffc800;">
+                    ⚠️ <strong>Important:</strong> Your recovery phrase is your private key. Keep it safe and never share it!
+                </p>
+            </div>
+        </div>
+
+        <footer>
+            <p>&copy; 2026 Alpha Protocol Network. All rights reserved.</p>
+            <p>
+                <a href="/docs">Documentation</a> |
+                <a href="/support">Support</a> |
+                <a href="/github">GitHub</a> |
+                <a href="/discord">Discord</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

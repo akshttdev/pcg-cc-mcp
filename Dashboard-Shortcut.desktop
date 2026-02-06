@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PCG Dashboard (Web)
+Comment=Open Alpha Protocol Network Dashboard in Browser
+Exec=/home/pythia/pcg-cc-mcp/open-dashboard.sh
+Icon=/home/pythia/pcg-cc-mcp/frontend/src-tauri/icons/icon.png
+Terminal=false
+Categories=Network;System;WebBrowser;
+StartupWMClass=dashboard-web

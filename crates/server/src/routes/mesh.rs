@@ -14,6 +14,7 @@ use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use std::time::Duration;
 
 use crate::{DeploymentImpl, error::ApiError};
 
@@ -79,6 +80,76 @@ pub struct TransactionLog {
     pub vibe_amount: Option<f64>,
     pub peer_node: Option<String>,
     pub task_id: Option<Uuid>,
+}
+
+/// Peer announcement from NATS (matches alpha_protocol_core::relay::PeerAnnouncement)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NatsPeerAnnouncement {
+    node_id: String,
+    wallet_address: String,
+    capabilities: Vec<String>,
+    timestamp: String,
+    resources: Option<alpha_protocol_core::wire::NodeResources>,
+}
+
+/// Fetch peers from master node log
+async fn fetch_peers_from_log() -> (Vec<PeerInfo>, bool) {
+    use std::io::{BufRead, BufReader};
+    use std::fs::File;
+    use regex::Regex;
+
+    let log_path = "/tmp/apn_node.log";
+    let mut peers = std::collections::HashMap::new();
+    let mut relay_connected = false;
+
+    if let Ok(file) = File::open(log_path) {
+        let reader = BufReader::new(file);
+
+        // Regex to match peer announcements with resources
+        let peer_regex = Regex::new(
+            r#"Message from apn\.discovery \(([^)]+)\): PeerAnnouncement \{ wallet_address: "([^"]+)", capabilities: \[([^\]]+)\], resources: (.+?) \}"#
+        ).unwrap();
+
+        // Check for relay connection
+        let relay_regex = Regex::new(r"Relay connected|🌐 Relay connected").unwrap();
+
+        let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+
+        for line in lines.iter().rev().take(1000) {
+            // Check relay status
+            if relay_regex.is_match(line) {
+                relay_connected = true;
+            }
+
+            // Parse peer announcements
+            if let Some(caps) = peer_regex.captures(line) {
+                let node_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                let wallet = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                let caps_str = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+
+                // Parse capabilities
+                let capabilities: Vec<String> = caps_str
+                    .split(',')
+                    .map(|s| s.trim().trim_matches('"').to_string())
+                    .collect();
+
+                // Only add if not already present (keep most recent)
+                if !peers.contains_key(node_id) {
+                    peers.insert(node_id.to_string(), PeerInfo {
+                        peer_id: node_id.to_string(),
+                        address: wallet.to_string(),
+                        latency_ms: None,
+                        connection_type: "NATS".to_string(),
+                        bandwidth_mbps: None,
+                        reputation: 1.0,
+                        capabilities,
+                    });
+                }
+            }
+        }
+    }
+
+    (peers.into_values().collect(), relay_connected)
 }
 
 /// Get mesh network statistics
@@ -181,18 +252,38 @@ pub async fn get_mesh_stats(
     // Calculate Vibe balance from completed tasks
     let vibe_balance = completed_today.0 as f64 * 10.0;
 
-    // Generate node ID from hostname
-    let hostname = hostname::get()
-        .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
+    // Fetch real peer data from master node log
+    let (peers, relay_connected) = fetch_peers_from_log().await;
 
-    let node_id = format!("omega-{}", &hostname[..hostname.len().min(8)]);
+    // Try to get node ID from log, fallback to hostname
+    let node_id = if let Ok(log_content) = tokio::fs::read_to_string("/tmp/apn_node.log").await {
+        if let Some(line) = log_content.lines().find(|l| l.contains("Node ID:")) {
+            if let Some(id) = line.split("Node ID:").nth(1) {
+                id.trim().to_string()
+            } else {
+                let hostname = hostname::get()
+                    .map(|h| h.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "unknown".to_string());
+                format!("omega-{}", &hostname[..hostname.len().min(8)])
+            }
+        } else {
+            let hostname = hostname::get()
+                .map(|h| h.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "unknown".to_string());
+            format!("omega-{}", &hostname[..hostname.len().min(8)])
+        }
+    } else {
+        let hostname = hostname::get()
+            .map(|h| h.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+        format!("omega-{}", &hostname[..hostname.len().min(8)])
+    };
 
     let stats = MeshStats {
         node_id,
-        status: "online".to_string(),
-        peers_connected: 0, // Will be populated when APN is fully integrated
-        peers: vec![],
+        status: if relay_connected { "online".to_string() } else { "offline".to_string() },
+        peers_connected: peers.len(),
+        peers,
         bandwidth: BandwidthStats {
             upload_bytes: 0,
             download_bytes: 0,
@@ -205,7 +296,7 @@ pub async fn get_mesh_stats(
             disk_percent,
             available_compute: 100.0 - cpu_percent,
         },
-        relay_connected: false, // Will be true when NATS relay is connected
+        relay_connected,
         uptime: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -223,8 +314,8 @@ pub async fn get_mesh_stats(
 pub async fn get_mesh_peers(
     State(_deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PeerInfo>>>, ApiError> {
-    // Will be populated when APN is fully integrated
-    Ok(ResponseJson(ApiResponse::success(vec![])))
+    let (peers, _) = fetch_peers_from_log().await;
+    Ok(ResponseJson(ApiResponse::success(peers)))
 }
 
 /// Get transaction history

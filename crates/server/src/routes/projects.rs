@@ -853,7 +853,7 @@ pub async fn upsert_brand_profile(
 
 #[derive(Debug, serde::Deserialize)]
 pub struct SetVibeBudgetRequest {
-    /// Budget limit in VIBE (1 VIBE = $0.001 USD). None means unlimited.
+    /// Budget limit in VIBE (1 VIBE = $0.01 USD). None means unlimited.
     pub vibe_budget_limit: Option<i64>,
 }
 

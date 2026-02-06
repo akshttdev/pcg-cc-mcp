@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir \
+    fastapi==0.109.0 \
+    uvicorn[standard]==0.27.0 \
+    pydantic==2.5.3
+
+# Copy APN Bridge Server script
+COPY apn_bridge_server.py /app/apn_bridge_server.py
+
+# Make script executable
+RUN chmod +x /app/apn_bridge_server.py
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+
+# Run the server
+CMD ["python3", "apn_bridge_server.py"]
