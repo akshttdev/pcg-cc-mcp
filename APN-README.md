@@ -62,6 +62,30 @@ When prompted, use this bootstrap address:
 - **Mesh Topology**: Direct P2P connections when possible
 - **Gossipsub**: Efficient message broadcasting
 
+### 💰 VIBE Rewards System
+- **Automatic Earnings**: Get paid in VIBE tokens for being online
+- **Heartbeat Rewards**: 0.1 VIBE base per heartbeat (every 30s)
+- **Resource Multipliers**:
+  - GPU: 2x multiplier
+  - High CPU (>16 cores): 1.5x multiplier
+  - High RAM (>32GB): 1.3x multiplier
+- **Automatic Distribution**: Rewards batched and sent to your wallet every 5 minutes
+- **On-Chain**: All VIBE tokens distributed on Aptos blockchain (Testnet)
+
+**Example Earnings:**
+- Basic node (no GPU): ~0.12 VIBE/min = 7.2 VIBE/hour = 173 VIBE/day
+- GPU node (24 cores + RTX 3080 Ti): ~0.6 VIBE/min = 36 VIBE/hour = 864 VIBE/day
+- Mac Studio (20 cores, 64GB RAM): ~0.2 VIBE/min = 12 VIBE/hour = 288 VIBE/day
+
+**Track Your Earnings:**
+```bash
+# Check your balance
+curl http://192.168.1.77:58297/api/peers/YOUR_WALLET_ADDRESS/balance | jq
+
+# View network stats
+curl http://192.168.1.77:58297/api/network/stats | jq
+```
+
 ---
 
 ## 🏗 Architecture
@@ -355,8 +379,22 @@ Resources reported are **read-only system metrics**:
 After connecting:
 1. **Monitor Your Node**: Use `./check-network-capacity.sh`
 2. **View Network**: See all connected peers and their resources
-3. **Ready for Tasks**: Your node can now receive distributed compute tasks
-4. **Contribute Resources**: Help power the distributed network
+3. **Start Earning VIBE**: Your node automatically earns rewards for being online
+4. **Check Your Balance**: Use the API to see your pending rewards
+5. **Receive Distributions**: Rewards automatically sent to your wallet every 5 minutes
+6. **Ready for Tasks**: Your node can receive distributed compute tasks
+
+**Check Your Earnings:**
+```bash
+# Get your wallet address from logs
+grep "Address:" /tmp/apn_peer.log
+
+# Check your VIBE balance
+curl http://192.168.1.77:58297/api/peers/YOUR_WALLET_ADDRESS/balance | jq
+
+# View detailed rewards history
+curl "http://192.168.1.77:58297/api/peers/YOUR_WALLET_ADDRESS/rewards?limit=10" | jq
+```
 
 ---
 
@@ -375,6 +413,7 @@ This is an active development project. For issues or improvements:
 
 ---
 
-**Version**: Enhanced with Resource Reporting
-**Last Updated**: 2026-02-04
+**Version**: Enhanced with Resource Reporting + VIBE Rewards
+**Last Updated**: 2026-02-06
 **Status**: Production Ready ✅
+**Rewards**: ACTIVE - Earn VIBE for being online! 💰
