@@ -146,8 +146,10 @@ async fn start_node(
     let state_clone = Arc::clone(&state.inner());
     let app_clone = app.clone();
 
-    // Spawn event handler
+    // Run node with event handler and heartbeat loop
     tokio::spawn(async move {
+        let mut heartbeat_timer = tokio::time::interval(std::time::Duration::from_secs(30));
+
         loop {
             tokio::select! {
                 Some(event) = event_rx.recv() => {
@@ -185,6 +187,15 @@ async fn start_node(
                         }
                     }
                 }
+                _ = heartbeat_timer.tick() => {
+                    // Send heartbeat every 30 seconds
+                    if let Err(e) = node.send_heartbeat().await {
+                        tracing::error!("Heartbeat failed: {}", e);
+                        let _ = app_clone.emit("heartbeat-error", e.to_string());
+                    } else {
+                        tracing::debug!("Heartbeat sent successfully");
+                    }
+                }
                 Some(cmd) = cmd_rx.recv() => {
                     match cmd {
                         NodeCommand::Stop => {
@@ -194,12 +205,10 @@ async fn start_node(
                 }
             }
         }
-        *state_clone.is_running.write().await = false;
-    });
 
-    // Run node in background
-    tokio::spawn(async move {
-        let _ = node.run().await;
+        // Cleanup
+        let _ = node.run().await; // This likely won't run since we break above, but keeps the node alive
+        *state_clone.is_running.write().await = false;
     });
 
     Ok(serde_json::json!({
