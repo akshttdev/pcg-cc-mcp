@@ -62,6 +62,8 @@ pub mod crm_contact;
 pub mod model_pricing;
 pub mod vibe_deposit;
 pub mod vibe_transaction;
+pub mod peer_node;
+pub mod peer_reward;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

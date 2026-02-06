@@ -107,3 +107,4 @@ session_logs/
 .dev-server.log
 .cc.log
 *.pid
+NETWORK-REWARDS-WALLET.txt
