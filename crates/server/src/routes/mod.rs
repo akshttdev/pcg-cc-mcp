@@ -65,6 +65,7 @@ pub mod model_pricing;
 pub mod vibe_treasury;
 pub mod topsi;
 pub mod mesh;
+pub mod peer_rewards;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -151,6 +152,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(vibe_treasury::router(&deployment))
         .merge(topsi::topsi_routes())
         .merge(mesh::router(&deployment))
+        .merge(peer_rewards::router(&deployment))
         .merge(protected_routes)
         .merge(admin_routes)
         .with_state(deployment);

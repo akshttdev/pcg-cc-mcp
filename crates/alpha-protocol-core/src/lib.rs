@@ -31,6 +31,7 @@ pub mod economics;
 pub mod mining;
 pub mod resources;
 pub mod reward_tracker;
+pub mod reward_distributor;
 
 // Re-exports
 pub use identity::{NodeIdentity, WalletInfo};
@@ -46,6 +47,7 @@ pub use economics::{
     VibeAmount,
 };
 pub use reward_tracker::{RewardTracker as PeerRewardTracker, RewardTrackerStats};
+pub use reward_distributor::{RewardDistributor, DistributorConfig, DistributorStats};
 
 /// Protocol version
 pub const PROTOCOL_VERSION: &str = "alpha/1.0.0";
