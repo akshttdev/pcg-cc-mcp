@@ -55,14 +55,14 @@ pub struct TTSConfig {
 impl TTSConfig {
     pub fn british_executive() -> Self {
         Self {
-            provider: TTSProvider::Chatterbox, // Use local Chatterbox as primary
-            voice_id: "british_female".to_string(), // British voice reference
+            provider: TTSProvider::Chatterbox, // Use local Coqui TTS (on Chatterbox port)
+            voice_id: "p225".to_string(), // VCTK p225 - young British female
             speed: 1.0,
             volume: 0.85,
             pitch: 1.0,
             quality: TTSQuality::High,
             british_voice_preferences: vec![
-                "british_female".to_string(),    // Chatterbox British voice
+                "p225".to_string(),              // Coqui VCTK young British female
                 "fable".to_string(),             // OpenAI British-leaning female
                 "nova".to_string(),              // OpenAI warm female
                 "echo".to_string(),              // OpenAI clear male

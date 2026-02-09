@@ -30,9 +30,12 @@ services:
       # Ollama Configuration (Local LLM)
       - OLLAMA_BASE_URL=http://localhost:11434
       - OLLAMA_MODEL=deepseek-r1
-      # Chatterbox TTS Configuration (Local Voice)
-      - CHATTERBOX_PORT=8100
+      # Chatterbox TTS Configuration (Local Voice) - Using host Coqui TTS
+      - CHATTERBOX_URL=http://172.17.0.1:8102
+      - CHATTERBOX_PORT=8102
       - CHATTERBOX_DEVICE=cuda
+      # Local Whisper STT (Sovereign Stack) - Using host Whisper server
+      - WHISPER_URL=http://172.17.0.1:8101
       # NORA AI Assistant Configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - NORA_LLM_MODEL=${NORA_LLM_MODEL:-deepseek-r1}
