@@ -21,6 +21,7 @@ import {
   Tag,
   AlertCircle,
   ArrowRight,
+  Coins,
 } from 'lucide-react';
 
 interface ActivityTimelineProps {
@@ -107,6 +108,34 @@ function formatActionText(activity: ActivityLog): string {
   }
 }
 
+interface ParsedMetadata {
+  message?: string;
+  vibe_cost?: number;
+  planning_vibe_cost?: number;
+  execution_vibe_cost?: number;
+  verification_vibe_cost?: number;
+  breakdown?: { planning?: number; execution?: number };
+  [key: string]: unknown;
+}
+
+function parseMetadata(activity: ActivityLog): ParsedMetadata | null {
+  if (!activity.metadata) return null;
+  try {
+    return JSON.parse(activity.metadata) as ParsedMetadata;
+  } catch {
+    return null;
+  }
+}
+
+function getVibeCost(metadata: ParsedMetadata | null): number | null {
+  if (!metadata) return null;
+  return metadata.vibe_cost ??
+         metadata.planning_vibe_cost ??
+         metadata.execution_vibe_cost ??
+         metadata.verification_vibe_cost ??
+         (metadata.breakdown ? (metadata.breakdown.planning ?? 0) + (metadata.breakdown.execution ?? 0) : null);
+}
+
 export function ActivityTimeline({ taskId }: ActivityTimelineProps) {
   const { data: activities = [], isLoading, error } = useQuery({
     queryKey: ['taskActivity', taskId],
@@ -152,6 +181,8 @@ export function ActivityTimeline({ taskId }: ActivityTimelineProps) {
               const ActorIcon = actorConfig.icon;
               const ActionIcon = ACTION_ICON_MAP[activity.action.toLowerCase()] || Edit;
               const stateChanges = parseStateChanges(activity);
+              const metadata = parseMetadata(activity);
+              const vibeCost = getVibeCost(metadata);
 
               return (
                 <div key={activity.id} className="relative">
@@ -190,33 +221,64 @@ export function ActivityTimeline({ taskId }: ActivityTimelineProps) {
                       </div>
                     </CardHeader>
 
-                    {stateChanges.length > 0 && (
+                    {(stateChanges.length > 0 || metadata) && (
                       <CardContent className="pt-0">
-                        <div className="space-y-2">
-                          {stateChanges.map((change, i) => (
-                            <div
-                              key={i}
-                              className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1.5"
-                            >
-                              <span className="font-medium text-muted-foreground capitalize">
-                                {change.field}:
-                              </span>
-                              <Badge variant="outline" className="text-xs">
-                                {change.from}
-                              </Badge>
-                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                              <Badge variant="outline" className="text-xs">
-                                {change.to}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
+                        {/* Display message from metadata */}
+                        {metadata?.message && (
+                          <div className="text-sm text-foreground mb-3 bg-muted/30 rounded-md px-3 py-2">
+                            {metadata.message}
+                          </div>
+                        )}
 
-                        {activity.metadata && (
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            <pre className="whitespace-pre-wrap break-words">
-                              {JSON.stringify(JSON.parse(activity.metadata), null, 2)}
-                            </pre>
+                        {/* Display Vibe cost prominently */}
+                        {vibeCost !== null && vibeCost > 0 && (
+                          <div className="flex items-center gap-2 mb-3">
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 flex items-center gap-1">
+                              <Coins className="h-3 w-3" />
+                              {vibeCost.toLocaleString()} VIBE
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">
+                              (${(vibeCost * 0.001).toFixed(2)} USD)
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Display breakdown if available */}
+                        {metadata?.breakdown && (
+                          <div className="flex gap-2 mb-3 text-xs">
+                            {metadata.breakdown.planning && (
+                              <Badge variant="outline" className="text-purple-600 dark:text-purple-400">
+                                Planning: {metadata.breakdown.planning.toLocaleString()} VIBE
+                              </Badge>
+                            )}
+                            {metadata.breakdown.execution && (
+                              <Badge variant="outline" className="text-blue-600 dark:text-blue-400">
+                                Execution: {metadata.breakdown.execution.toLocaleString()} VIBE
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        {/* State changes */}
+                        {stateChanges.length > 0 && (
+                          <div className="space-y-2">
+                            {stateChanges.map((change, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center gap-2 text-sm bg-muted/50 rounded px-2 py-1.5"
+                              >
+                                <span className="font-medium text-muted-foreground capitalize">
+                                  {change.field}:
+                                </span>
+                                <Badge variant="outline" className="text-xs">
+                                  {typeof change.from === 'object' ? JSON.stringify(change.from) : String(change.from)}
+                                </Badge>
+                                <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                                <Badge variant="outline" className="text-xs">
+                                  {typeof change.to === 'object' ? JSON.stringify(change.to) : String(change.to)}
+                                </Badge>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </CardContent>
