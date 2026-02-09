@@ -113,8 +113,8 @@ pub struct STTConfig {
 impl STTConfig {
     pub fn high_accuracy() -> Self {
         Self {
-            provider: STTProvider::Whisper,
-            model: "medium".to_string(),
+            provider: STTProvider::LocalWhisper,  // Force local Whisper (Sovereign Stack)
+            model: "base".to_string(),  // Use base model for local Whisper
             language: "en-GB".to_string(),
             british_dialect_support: true,
             executive_vocabulary: true,

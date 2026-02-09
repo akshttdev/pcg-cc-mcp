@@ -74,9 +74,9 @@ pub struct NetworkStatsResponse {
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         // Peer-specific endpoints
-        .route("/peers/:wallet/balance", get(get_peer_balance))
-        .route("/peers/:wallet/rewards", get(list_peer_rewards))
-        .route("/peers/:wallet/stats", get(get_peer_stats))
+        .route("/peers/{wallet}/balance", get(get_peer_balance))
+        .route("/peers/{wallet}/rewards", get(list_peer_rewards))
+        .route("/peers/{wallet}/stats", get(get_peer_stats))
         // Network-wide endpoints
         .route("/peers", get(list_all_peers))
         .route("/network/stats", get(get_network_stats))

@@ -40,28 +40,28 @@
 //! - **TTS**: Chatterbox (local Python server)
 //! - **Transport**: APN mesh network (libp2p)
 
-pub mod channels;
+// pub mod channels;  // Not yet implemented
 pub mod config;
 pub mod engine;
-pub mod gateway;
-pub mod router;
+// pub mod gateway;  // Not yet implemented
+// pub mod router;  // Not yet implemented
 pub mod stt;
 pub mod tts;
 
 use chrono::{DateTime, Utc};
-pub use channels::{
-    AudioChunk, BrowserChannel, BrowserVoiceMessage, ChannelType, GlassesChannel,
-    MeshVoiceMessage, MeshVoicePayload, VoiceChannel, VoiceChannelEvent, VoiceChannelSession,
-};
+// pub use channels::{
+//     AudioChunk, BrowserChannel, BrowserVoiceMessage, ChannelType, GlassesChannel,
+//     MeshVoiceMessage, MeshVoicePayload, VoiceChannel, VoiceChannelEvent, VoiceChannelSession,
+// };
 pub use config::{AudioConfig, STTConfig, STTProvider, TTSConfig, TTSProvider, VoiceConfig};
 pub use engine::VoiceEngine;
-pub use gateway::{
-    CommandContext, CommandHandler, CommandResponse, ConversationTurn, GatewaySession,
-    Speaker, VoiceGateway, VoiceGatewayConfig, VoiceGatewayEvent,
-};
-pub use router::{
-    ControlAction, IntentMatch, StatusTarget, VoiceCommandRouter, VoiceIntent,
-};
+// pub use gateway::{
+//     CommandContext, CommandHandler, CommandResponse, ConversationTurn, GatewaySession,
+//     Speaker, VoiceGateway, VoiceGatewayConfig, VoiceGatewayEvent,
+// };
+// pub use router::{
+//     ControlAction, IntentMatch, StatusTarget, VoiceCommandRouter, VoiceIntent,
+// };
 use serde::{Deserialize, Serialize};
 pub use stt::{SpeechToText, TranscriptionResult};
 use ts_rs::TS;

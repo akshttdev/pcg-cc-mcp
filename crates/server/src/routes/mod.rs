@@ -63,7 +63,7 @@ pub mod onboarding;
 pub mod multiplayer;
 pub mod model_pricing;
 pub mod vibe_treasury;
-pub mod topsi;
+// pub mod topsi;  // Disabled - topsi crate not available
 pub mod mesh;
 pub mod peer_rewards;
 
@@ -150,7 +150,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(tasks::global_router(&deployment))
         .merge(model_pricing::router(&deployment))
         .merge(vibe_treasury::router(&deployment))
-        .merge(topsi::topsi_routes())
+        // .merge(topsi::topsi_routes())  // Disabled - topsi crate not available
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(protected_routes)
