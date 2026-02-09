@@ -151,9 +151,13 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
-      - NODE_ID=apn_09465b95
-      - WALLET_ADDRESS=0x09465b9572fb354fdf4e34040386f180d1ff0c2a3a668333bedee17b266a4b74
-      - RELAY_URL=nats://nonlocal.info:4222
+      - NODE_ID=${APN_NODE_ID:-apn_dashboard}
+      - WALLET_ADDRESS=${APN_WALLET_ADDRESS:-0x09465b9572fb354fdf4e34040386f180d1ff0c2a3a668333bedee17b266a4b74}
+      - RELAY_URL=${APN_RELAY_URL:-nats://nonlocal.info:4222}
+      # Master nodes to sync with (comma-separated node IDs)
+      - MASTER_NODES=${APN_MASTER_NODES:-}
+      # Node capabilities
+      - CAPABILITIES=${APN_CAPABILITIES:-relay,dashboard}
     networks:
       app-network:
         aliases:
