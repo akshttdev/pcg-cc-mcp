@@ -31,6 +31,7 @@ reqwest = { version = "0.11", features = ["json"] }
 # Database integration
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid"] }
 db = { path = "../db" }
+services = { path = "../services" }
 
 # Shared utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }

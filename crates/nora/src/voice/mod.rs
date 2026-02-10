@@ -135,6 +135,11 @@ pub struct VoiceInteraction {
     pub interaction_id: String,
     pub session_id: String,
     pub interaction_type: VoiceInteractionType,
+    // User/device tracking
+    pub user_id: Option<String>,
+    pub device_id: Option<String>,
+    pub device_type: Option<String>, // "glasses", "phone", "browser"
+    // Audio data
     pub audio_input: Option<String>, // Base64 encoded
     pub transcription: Option<String>,
     pub response_text: String,

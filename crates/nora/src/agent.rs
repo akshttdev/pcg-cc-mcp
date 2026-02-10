@@ -480,20 +480,10 @@ impl NoraAgent {
     }
 
     async fn process_voice_interaction(&self, request: &NoraRequest) -> Result<String> {
-        let original = request.content.trim();
-        let lowered = original.to_lowercase();
-
-        let response = if lowered.contains("hello") || lowered.contains("hi") {
-            "Hello! Lovely to hear your voice. How can I help you today?".to_string()
-        } else if lowered.contains("project") || lowered.contains("roadmap") {
-            self.describe_roadmap().await
-        } else if lowered.contains("capabilities") {
-            "Great question! I'm your executive assistant - I handle strategic planning, team coordination, and performance analysis. I'm brilliant at multi-agent coordination and decision support. What would you like to know more about?".to_string()
-        } else {
-            self.generate_llm_response(request, original).await
-        };
-
-        Ok(response)
+        // Voice interactions should use the same LLM function-calling path as text
+        // This ensures Nora can execute commands via voice, not just give canned responses
+        tracing::info!("[VOICE] Processing voice interaction with full LLM function calling");
+        self.process_text_with_tools(request).await
     }
 
     /// Process text interaction with function calling support

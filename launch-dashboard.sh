@@ -21,7 +21,12 @@ else
     echo "→ Starting PCG backend server on port 58297..."
     cd "$SCRIPT_DIR"
     # Set BACKEND_PORT to 58297 to match nginx configuration
-    BACKEND_PORT=58297 nohup ./target/release/server > /tmp/pcg_backend.log 2>&1 &
+    # Disable auto-start of ComfyUI to prevent server from hanging
+    # Configure Topsi to use Ollama for LLM (qwen2.5:7b supports function calling)
+    AUTO_START_COMFYUI=false BACKEND_PORT=58297 \
+    TOPSI_LLM_PROVIDER=ollama TOPSI_LLM_MODEL=qwen2.5:7b \
+    OLLAMA_BASE_URL=http://localhost:11434 \
+    nohup ./target/release/server > /tmp/pcg_backend.log 2>&1 &
     SERVER_PID=$!
     echo $SERVER_PID > /tmp/pcg_backend.pid
     sleep 4

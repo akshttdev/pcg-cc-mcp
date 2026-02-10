@@ -407,6 +407,7 @@ pub async fn initialize_topsi_on_startup(state: &DeploymentImpl) -> Result<Strin
 /// Get Topsi status
 pub async fn get_topsi_status(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<TopsiStatusResponse>, ApiError> {
     let topsi_instance = TOPSI_INSTANCE
         .get()
@@ -426,8 +427,10 @@ pub async fn get_topsi_status(
             None
         };
 
-        // Get user context from request (simplified - in production would extract from auth)
-        let user_context = get_user_context_from_state(&state).await;
+        // Get user context from request headers (auth token or cookie)
+        let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+        let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+        let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
         let scope = topsi.access_control.get_access_scope(&user_context).await;
 
         let (access_scope_str, projects_visible) = match &scope {
@@ -460,6 +463,7 @@ pub async fn get_topsi_status(
 /// Chat with Topsi
 pub async fn chat_with_topsi(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
     Json(request): Json<TopsiChatRequest>,
 ) -> Result<Json<TopsiResponse>, ApiError> {
     tracing::info!("Received chat request: {:?}", request.message);
@@ -474,8 +478,10 @@ pub async fn chat_with_topsi(
         return Err(ApiError::BadRequest("Topsi is not active".to_string()));
     }
 
-    // Get user context
-    let user_context = get_user_context_from_state(&state).await;
+    // Get REAL user context from authentication
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     let topsi_request = TopsiRequest::new(TopsiRequestType::Chat {
         message: request.message,
@@ -495,6 +501,7 @@ pub async fn chat_with_topsi(
 /// Get topology overview (all accessible projects)
 pub async fn get_topology_overview(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<TopologyOverviewResponse>, ApiError> {
     let topsi_instance = get_topsi_instance().await?;
     let instance = topsi_instance.read().await;
@@ -502,7 +509,10 @@ pub async fn get_topology_overview(
         .as_ref()
         .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
 
-    let user_context = get_user_context_from_state(&state).await;
+    // SECURITY: Extract real user from auth headers
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     let topsi_request = TopsiRequest::new(TopsiRequestType::GetTopology {
         project_id: None,
@@ -537,6 +547,7 @@ pub async fn get_topology_overview(
 /// Get topology for a specific project
 pub async fn get_project_topology(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<TopologyOverviewResponse>, ApiError> {
     let topsi_instance = get_topsi_instance().await?;
@@ -545,7 +556,10 @@ pub async fn get_project_topology(
         .as_ref()
         .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
 
-    let user_context = get_user_context_from_state(&state).await;
+    // SECURITY: Extract real user from auth headers
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     // Verify access
     if !topsi.access_control.can_access_project(&user_context, project_id).await {
@@ -578,6 +592,7 @@ pub async fn get_project_topology(
 /// Detect issues across accessible projects
 pub async fn detect_issues(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<IssuesResponse>, ApiError> {
     let topsi_instance = get_topsi_instance().await?;
     let instance = topsi_instance.read().await;
@@ -585,7 +600,10 @@ pub async fn detect_issues(
         .as_ref()
         .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
 
-    let user_context = get_user_context_from_state(&state).await;
+    // SECURITY: Extract real user from auth headers
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     let topsi_request = TopsiRequest::new(TopsiRequestType::DetectIssues {
         project_id: None,
@@ -618,6 +636,7 @@ pub async fn detect_issues(
 /// Detect issues for a specific project
 pub async fn detect_project_issues(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
     Path(project_id): Path<Uuid>,
 ) -> Result<Json<IssuesResponse>, ApiError> {
     let topsi_instance = get_topsi_instance().await?;
@@ -626,7 +645,10 @@ pub async fn detect_project_issues(
         .as_ref()
         .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
 
-    let user_context = get_user_context_from_state(&state).await;
+    // SECURITY: Extract real user from auth headers
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     // Verify access
     if !topsi.access_control.can_access_project(&user_context, project_id).await {
@@ -667,6 +689,7 @@ pub async fn detect_project_issues(
 /// Get accessible projects for current user
 pub async fn get_accessible_projects(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<AccessibleProjectsResponse>, ApiError> {
     let topsi_instance = get_topsi_instance().await?;
     let instance = topsi_instance.read().await;
@@ -674,7 +697,10 @@ pub async fn get_accessible_projects(
         .as_ref()
         .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
 
-    let user_context = get_user_context_from_state(&state).await;
+    // SECURITY: Extract real user from auth headers
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     let projects = topsi
         .access_control
@@ -699,6 +725,7 @@ pub async fn get_accessible_projects(
 /// Execute a Topsi command
 pub async fn execute_command(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
     Json(request): Json<CommandRequest>,
 ) -> Result<Json<TopsiResponse>, ApiError> {
     let topsi_instance = get_topsi_instance().await?;
@@ -707,7 +734,10 @@ pub async fn execute_command(
         .as_ref()
         .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
 
-    let user_context = get_user_context_from_state(&state).await;
+    // SECURITY: Extract real user from auth headers
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     let topsi_request = TopsiRequest::new(TopsiRequestType::ExecuteCommand {
         command: request.command,
@@ -737,15 +767,38 @@ pub async fn get_topsi_instance() -> Result<Arc<RwLock<Option<TopsiAgent>>>, Api
 }
 
 /// Get user context from state (simplified - would extract from auth in production)
-async fn get_user_context_from_state(_state: &DeploymentImpl) -> UserContext {
-    // In production, this would extract user info from the request auth header
-    // For now, create a default admin context for development
-    // TODO: Integrate with actual auth system
+async fn get_user_context_from_req(
+    state: &DeploymentImpl,
+    auth_header: Option<&str>,
+    cookie_header: Option<&str>,
+) -> UserContext {
+    use crate::middleware::access_control::get_current_user;
 
-    // Check if there's a logged-in user from the auth middleware
-    // For now, default to admin for development
-    UserContext::admin("dev-admin-user")
-        .with_email("admin@pcg.local")
+    // Try to get authenticated user from session/token
+    match get_current_user(state, auth_header, cookie_header).await {
+        Ok(access_ctx) => {
+            // Convert AccessContext to Topsi UserContext
+            if access_ctx.is_admin {
+                UserContext::admin(access_ctx.user_id.to_string())
+                    .with_session(Uuid::new_v4().to_string())
+            } else {
+                UserContext::user(access_ctx.user_id.to_string())
+                    .with_session(Uuid::new_v4().to_string())
+            }
+        }
+        Err(_) => {
+            // No authentication - return restricted context
+            UserContext::user("anonymous")
+                .with_session(Uuid::new_v4().to_string())
+        }
+    }
+}
+
+// Legacy function - kept for backward compatibility but marked deprecated
+#[deprecated(note = "Use get_user_context_from_req instead")]
+async fn get_user_context_from_state(_state: &DeploymentImpl) -> UserContext {
+    // Return anonymous user context
+    UserContext::user("anonymous")
         .with_session(Uuid::new_v4().to_string())
 }
 
@@ -902,8 +955,10 @@ async fn get_or_init_voice_engine() -> Result<Arc<RwLock<Option<VoiceEngine>>>, 
             tracing::info!("Initializing Topsi voice engine...");
 
             // Check for Chatterbox availability, fall back to OpenAI if not available
+            let chatterbox_port = std::env::var("CHATTERBOX_PORT").unwrap_or_else(|_| "8102".to_string());
+            let chatterbox_url = format!("http://localhost:{}/health", chatterbox_port);
             let chatterbox_available = reqwest::Client::new()
-                .get("http://localhost:8100/health")
+                .get(&chatterbox_url)
                 .timeout(std::time::Duration::from_secs(2))
                 .send()
                 .await
@@ -1012,6 +1067,7 @@ pub async fn transcribe_speech(
 /// Handle full voice interaction: transcribe -> process with Topsi -> synthesize response
 pub async fn voice_interaction(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
     Json(request): Json<TopsiVoiceInteraction>,
 ) -> Result<Json<TopsiVoiceInteraction>, ApiError> {
     let start = std::time::Instant::now();
@@ -1049,7 +1105,10 @@ pub async fn voice_interaction(
         return Err(ApiError::BadRequest("Topsi is not active".to_string()));
     }
 
-    let user_context = get_user_context_from_state(&state).await;
+    // SECURITY: Extract real user from auth headers
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
     let topsi_request = TopsiRequest::new(TopsiRequestType::Chat {
         message: input_text,
     });

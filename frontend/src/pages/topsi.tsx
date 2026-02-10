@@ -446,6 +446,21 @@ export function TopsiPage() {
     }
   }, [status?.isActive, fetchTopology, fetchIssues, fetchProjects]);
 
+  // Listen for Topsi action completion events to auto-refresh data
+  useEffect(() => {
+    const handleTopsiAction = () => {
+      // Refresh projects and topology when Topsi completes an action
+      if (status?.isActive) {
+        fetchProjects();
+        fetchTopology();
+        fetchIssues();
+      }
+    };
+
+    window.addEventListener('topsi-action-complete', handleTopsiAction);
+    return () => window.removeEventListener('topsi-action-complete', handleTopsiAction);
+  }, [status?.isActive, fetchProjects, fetchTopology, fetchIssues]);
+
   const formatUptime = (ms?: number) => {
     if (!ms) return 'N/A';
     const seconds = Math.floor(ms / 1000);

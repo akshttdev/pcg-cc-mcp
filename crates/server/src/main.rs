@@ -112,6 +112,24 @@ async fn main() -> Result<(), VibeKanbanError> {
         }
     });
 
+    // Start sovereign storage auto-sync service
+    match server::sovereign_storage::SovereignStorageConfig::from_env() {
+        Ok(config) if config.enabled => {
+            let mut service = server::sovereign_storage::SovereignStorageService::new(config);
+            tokio::spawn(async move {
+                if let Err(e) = service.start().await {
+                    tracing::error!("Failed to start sovereign storage auto-sync: {}", e);
+                }
+            });
+        }
+        Ok(_) => {
+            tracing::info!("Sovereign storage auto-sync is disabled (set SOVEREIGN_STORAGE_ENABLED=true to enable)");
+        }
+        Err(e) => {
+            tracing::warn!("Failed to load sovereign storage config: {}", e);
+        }
+    }
+
     let app_router = routes::router(deployment);
 
     let port = std::env::var("BACKEND_PORT")

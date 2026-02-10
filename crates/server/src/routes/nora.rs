@@ -12,6 +12,7 @@ use axum::{
     routing::{get, post, patch},
 };
 use chrono::{DateTime, Utc};
+use db::models::agent_conversation::{AgentConversation, AgentConversationMessage};
 use db::models::project::Project;
 use deployment::Deployment;
 use futures::stream::Stream;
@@ -318,6 +319,9 @@ pub fn nora_routes() -> Router<DeploymentImpl> {
         .route("/nora/voice/synthesize", post(synthesize_speech))
         .route("/nora/voice/transcribe", post(transcribe_speech))
         .route("/nora/voice/interaction", post(voice_interaction))
+        .route("/nora/voice/analytics/users/{user_id}", get(get_user_voice_analytics))
+        .route("/nora/voice/analytics/users", get(get_all_users_voice_analytics))
+        .route("/nora/voice/conversations/{session_id}", get(get_session_conversation))
         .route("/nora/tools/execute", post(execute_executive_tool))
         .route("/nora/tools/available", get(get_available_tools))
         .route("/nora/context/sync", post(sync_live_context_handler))
@@ -592,6 +596,21 @@ pub struct NoraTaskResponse {
     pub status: String,
     pub priority: String,
     pub created_at: String,
+}
+
+/// Voice analytics summary for a user
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceAnalyticsSummary {
+    pub user_id: Option<String>,
+    pub total_interactions: i64,
+    pub total_messages: i64,
+    pub average_response_time_ms: f64,
+    pub first_interaction: DateTime<Utc>,
+    pub last_interaction: DateTime<Utc>,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub unique_sessions: i64,
 }
 
 /// Initialize Nora executive assistant
@@ -1220,7 +1239,7 @@ pub async fn transcribe_speech(
 
 /// Handle voice interaction
 pub async fn voice_interaction(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
     Json(request): Json<VoiceInteraction>,
 ) -> Result<Json<VoiceInteraction>, ApiError> {
     // Apply rate limiting
@@ -1280,7 +1299,191 @@ pub async fn voice_interaction(
     processed_interaction.processing_time_ms = processing_time_ms;
     processed_interaction.timestamp = chrono::Utc::now();
 
+    // Persist conversation to database
+    let pool = &state.db().pool;
+    let conversation_result = AgentConversation::get_or_create(
+        pool,
+        nora.id,
+        &processed_interaction.session_id,
+        None, // project_id
+    )
+    .await;
+
+    if let Ok(conversation) = conversation_result {
+        // Update conversation with user_id if provided
+        if let Some(user_id) = &processed_interaction.user_id {
+            if conversation.user_id.is_none() {
+                let _ = sqlx::query("UPDATE agent_conversations SET user_id = ? WHERE id = ?")
+                    .bind(user_id)
+                    .bind(conversation.id)
+                    .execute(pool)
+                    .await;
+            }
+        }
+
+        // Save user message (transcription) and assistant response
+        if let Some(transcription) = &processed_interaction.transcription {
+            let _ = AgentConversationMessage::add_user_message(
+                pool,
+                conversation.id,
+                transcription,
+            )
+            .await;
+
+            let _ = AgentConversationMessage::add_assistant_message(
+                pool,
+                conversation.id,
+                &processed_interaction.response_text,
+                None, // model
+                None, // provider
+                None, // input_tokens
+                None, // output_tokens
+                Some(processing_time_ms as i64),
+            )
+            .await;
+        }
+    } else {
+        tracing::warn!("Failed to persist voice conversation to database: {:?}", conversation_result.err());
+    }
+
     Ok(Json(processed_interaction))
+}
+
+/// Get voice analytics for a specific user
+pub async fn get_user_voice_analytics(
+    Path(user_id): Path<String>,
+    State(state): State<DeploymentImpl>,
+) -> Result<Json<VoiceAnalyticsSummary>, ApiError> {
+    let pool = &state.db().pool;
+    let nora_instance = get_nora_instance().await?;
+    let instance = nora_instance.read().await;
+    let nora = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
+
+    // Query analytics for the specific user
+    let result = sqlx::query!(
+        r#"
+        SELECT
+            user_id as "user_id: Option<String>",
+            COUNT(DISTINCT id) as "total_interactions!: i64",
+            SUM(message_count) as "total_messages!: i64",
+            AVG(julianday(last_message_at) - julianday(created_at)) * 86400000 as "average_response_time_ms!: f64",
+            MIN(created_at) as "first_interaction!: DateTime<Utc>",
+            MAX(updated_at) as "last_interaction!: DateTime<Utc>",
+            SUM(COALESCE(total_input_tokens, 0)) as "total_input_tokens!: i64",
+            SUM(COALESCE(total_output_tokens, 0)) as "total_output_tokens!: i64",
+            COUNT(DISTINCT session_id) as "unique_sessions!: i64"
+        FROM agent_conversations
+        WHERE agent_id = ? AND user_id = ? AND status = 'active'
+        "#,
+        nora.id,
+        user_id
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch user voice analytics: {}", e);
+        ApiError::InternalError(format!("Failed to fetch analytics: {}", e))
+    })?;
+
+    Ok(Json(VoiceAnalyticsSummary {
+        user_id: result.user_id.flatten(),
+        total_interactions: result.total_interactions,
+        total_messages: result.total_messages,
+        average_response_time_ms: result.average_response_time_ms,
+        first_interaction: result.first_interaction,
+        last_interaction: result.last_interaction,
+        total_input_tokens: result.total_input_tokens,
+        total_output_tokens: result.total_output_tokens,
+        unique_sessions: result.unique_sessions,
+    }))
+}
+
+/// Get voice analytics for all users
+pub async fn get_all_users_voice_analytics(
+    State(state): State<DeploymentImpl>,
+) -> Result<Json<Vec<VoiceAnalyticsSummary>>, ApiError> {
+    let pool = &state.db().pool;
+    let nora_instance = get_nora_instance().await?;
+    let instance = nora_instance.read().await;
+    let nora = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
+
+    // Query analytics grouped by user
+    let results = sqlx::query!(
+        r#"
+        SELECT
+            user_id as "user_id: Option<String>",
+            COUNT(DISTINCT id) as "total_interactions!: i64",
+            SUM(message_count) as "total_messages!: i64",
+            AVG(julianday(last_message_at) - julianday(created_at)) * 86400000 as "average_response_time_ms!: f64",
+            MIN(created_at) as "first_interaction!: DateTime<Utc>",
+            MAX(updated_at) as "last_interaction!: DateTime<Utc>",
+            SUM(COALESCE(total_input_tokens, 0)) as "total_input_tokens!: i64",
+            SUM(COALESCE(total_output_tokens, 0)) as "total_output_tokens!: i64",
+            COUNT(DISTINCT session_id) as "unique_sessions!: i64"
+        FROM agent_conversations
+        WHERE agent_id = ? AND status = 'active' AND user_id IS NOT NULL
+        GROUP BY user_id
+        ORDER BY MAX(updated_at) DESC
+        "#,
+        nora.id
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch all users voice analytics: {}", e);
+        ApiError::InternalError(format!("Failed to fetch analytics: {}", e))
+    })?;
+
+    let analytics: Vec<VoiceAnalyticsSummary> = results
+        .into_iter()
+        .map(|r| VoiceAnalyticsSummary {
+            user_id: r.user_id.flatten(),
+            total_interactions: r.total_interactions,
+            total_messages: r.total_messages,
+            average_response_time_ms: r.average_response_time_ms,
+            first_interaction: r.first_interaction,
+            last_interaction: r.last_interaction,
+            total_input_tokens: r.total_input_tokens,
+            total_output_tokens: r.total_output_tokens,
+            unique_sessions: r.unique_sessions,
+        })
+        .collect();
+
+    Ok(Json(analytics))
+}
+
+/// Get conversation history for a specific session
+pub async fn get_session_conversation(
+    Path(session_id): Path<String>,
+    State(state): State<DeploymentImpl>,
+) -> Result<Json<Vec<AgentConversationMessage>>, ApiError> {
+    let pool = &state.db().pool;
+    let nora_instance = get_nora_instance().await?;
+    let instance = nora_instance.read().await;
+    let nora = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
+
+    let conversation = AgentConversation::find_by_agent_session(pool, nora.id, &session_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to find conversation: {}", e);
+            ApiError::InternalError(format!("Failed to find conversation: {}", e))
+        })?
+        .ok_or_else(|| ApiError::NotFound("Conversation not found".to_string()))?;
+
+    let messages = AgentConversationMessage::find_by_conversation(pool, conversation.id, None)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch conversation messages: {}", e);
+            ApiError::InternalError(format!("Failed to fetch messages: {}", e))
+        })?;
+
+    Ok(Json(messages))
 }
 
 /// Get the current Nora voice configuration

@@ -341,8 +341,8 @@ pub async fn create_project(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateProject>,
 ) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
-    // Only admins can create projects
-    access_context.require_admin()?;
+    // Authenticated users can create their own projects
+    // No admin requirement - regular users can create projects too!
 
     let id = Uuid::new_v4();
     let CreateProject {
@@ -445,6 +445,23 @@ pub async fn create_project(
     .await
     {
         Ok(project) => {
+            // Add the creator as project owner in project_members
+            let member_id = Uuid::new_v4();
+            if let Err(e) = sqlx::query(
+                r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
+                   VALUES (?, ?, ?, ?, ?)"#
+            )
+            .bind(member_id.as_bytes().to_vec())
+            .bind(project.id.to_string()) // project_id is TEXT
+            .bind(access_context.user_id.as_bytes().to_vec())
+            .bind("owner")
+            .bind(access_context.user_id.as_bytes().to_vec())
+            .execute(&deployment.db().pool)
+            .await {
+                tracing::error!("Failed to add project member for new project {}: {}", project.id, e);
+                return Err(ProjectError::CreateFailed(format!("Project created but failed to grant access: {}", e)).into());
+            }
+
             if let Err(e) =
                 ProjectBoard::ensure_default_boards(&deployment.db().pool, project.id).await
             {

@@ -140,6 +140,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
       const res = await fetch('/api/topsi/voice/interaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Send auth cookies
         body: JSON.stringify({
           sessionId,
           textInput: userMessage,
@@ -158,6 +159,12 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         if (hasAudio && isSpeakerOn) {
           playAudio(responseData.audioResponse);
         }
+
+        // Emit event to notify other components to refresh
+        // This triggers refresh of projects, tasks, etc. when Topsi makes changes
+        window.dispatchEvent(new CustomEvent('topsi-action-complete', {
+          detail: { responseText, timestamp: new Date() }
+        }));
       } else {
         addMessage('assistant', 'Sorry, I encountered an error processing your request.');
       }
@@ -255,6 +262,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
       const res = await fetch('/api/topsi/voice/interaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Send auth cookies
         body: JSON.stringify({
           sessionId,
           audioInput: base64Audio,
@@ -279,6 +287,11 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         if (hasAudio && isSpeakerOn) {
           await playAudio(responseData.audioResponse);
         }
+
+        // Emit event to notify other components to refresh
+        window.dispatchEvent(new CustomEvent('topsi-action-complete', {
+          detail: { responseText, timestamp: new Date() }
+        }));
 
         // If in call mode, continue listening after response
         if (isInCall && !isMuted) {

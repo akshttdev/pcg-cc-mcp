@@ -492,6 +492,7 @@ impl TopsiAgent {
 
             let result = match call.name.as_str() {
                 "list_projects" => self.tool_list_projects(&call.arguments, scope).await,
+                "create_project" => self.tool_create_project(&call.arguments, user_context).await,
                 "list_nodes" => self.tool_list_nodes(&call.arguments, scope).await,
                 "list_edges" => self.tool_list_edges(&call.arguments, scope).await,
                 "find_path" => self.tool_find_path(&call.arguments, scope).await,
@@ -499,6 +500,8 @@ impl TopsiAgent {
                 "get_topology_summary" => self.tool_get_topology_summary(&call.arguments, scope).await,
                 "create_cluster" => self.tool_create_cluster(&call.arguments, user_context, scope).await,
                 "verify_access" => self.tool_verify_access(&call.arguments, scope).await,
+                "create_task" => self.tool_create_task(&call.arguments, user_context, scope).await,
+                "list_agents" => self.tool_list_agents(&call.arguments).await,
                 "respond_to_user" => self.tool_respond_to_user(&call.arguments).await,
                 _ => Err(TopsiError::ToolError(format!(
                     "Unknown tool: {}",
@@ -893,6 +896,358 @@ impl TopsiAgent {
     }
 
     /// Generate a conversational response to the user
+    /// Create a new project for the user
+    async fn tool_create_project(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Err(TopsiError::ToolError("Database not connected".to_string()));
+        };
+
+        // Extract arguments
+        let name = args.get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| TopsiError::ToolError("Missing project name".to_string()))?;
+
+        let mut path = args.get("path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                // Default path: ~/projects/<sanitized-name>
+                let sanitized = name.to_lowercase().replace(" ", "-");
+                format!("~/projects/{}", sanitized)
+            });
+
+        // Create the project using the Project model
+        use db::models::project::{Project, CreateProject};
+
+        // Check if path already exists and make it unique if needed
+        let base_path = path.clone();
+        let mut attempt = 0;
+        while let Ok(Some(_)) = Project::find_by_git_repo_path(pool, &path).await {
+            attempt += 1;
+            // Append a suffix to make it unique
+            let sanitized_name = name.to_lowercase().replace(" ", "-");
+            path = format!("~/projects/{}-{}", sanitized_name, attempt);
+            if attempt > 10 {
+                return Err(TopsiError::ToolError(
+                    format!("Could not find unique path after {} attempts", attempt)
+                ));
+            }
+        }
+
+        if path != base_path {
+            tracing::info!("Original path {} was taken, using {} instead", base_path, path);
+        }
+
+        let project_id = uuid::Uuid::new_v4();
+        let create_project = CreateProject {
+            name: name.to_string(),
+            git_repo_path: path.clone(),
+            setup_script: None,
+            dev_script: None,
+            cleanup_script: None,
+            copy_files: None,
+            use_existing_repo: false,
+        };
+
+        let project = Project::create(pool, &create_project, project_id)
+            .await
+            .map_err(|e| TopsiError::ToolError(format!("Failed to create project: {}", e)))?;
+
+        // Add the creator as project owner in project_members
+        let member_id = uuid::Uuid::new_v4();
+        sqlx::query(
+            r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
+               VALUES (?, ?, ?, ?, ?)"#
+        )
+        .bind(member_id.as_bytes().to_vec())
+        .bind(project.id.to_string()) // project_id is TEXT
+        .bind(user_context.user_id.as_bytes().to_vec())
+        .bind("owner")
+        .bind(user_context.user_id.as_bytes().to_vec()) // granted_by is the user themselves
+        .execute(pool)
+        .await
+        .map_err(|e| TopsiError::ToolError(format!("Failed to add project member: {}", e)))?;
+
+        tracing::info!("Created project '{}' (ID: {}) for user {}",
+            project.name, project.id, user_context.user_id);
+
+        Ok(serde_json::json!({
+            "success": true,
+            "project_id": project.id.to_string(),
+            "name": project.name,
+            "path": project.git_repo_path.display().to_string(),
+            "message": format!("Project '{}' created successfully at {}",
+                project.name,
+                project.git_repo_path.display()
+            )
+        }))
+    }
+
+    /// Create a task in a project
+    async fn tool_create_task(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+        scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Err(TopsiError::ToolError("Database not connected".to_string()));
+        };
+
+        // Extract or infer project_id
+        let project_id = if let Some(pid_str) = args.get("project_id").and_then(|v| v.as_str()) {
+            // Check if it's a placeholder string (LLMs sometimes use these)
+            if pid_str.contains("<") || pid_str.contains(">") || pid_str == "null" || pid_str.is_empty() {
+                // Treat as missing, will infer below
+                None
+            } else {
+                // Try to parse as UUID
+                uuid::Uuid::parse_str(pid_str).ok()
+            }
+        } else {
+            None
+        };
+
+        let project_id = if let Some(pid) = project_id {
+            pid
+        } else {
+            // No project_id provided - try to infer from user's accessible projects
+            // IMPORTANT: Re-fetch from database to get freshly created projects
+            use db::models::project::Project;
+
+            let projects = if user_context.is_admin {
+                // Admins can see all projects
+                Project::find_all(pool).await.unwrap_or_default()
+            } else {
+                // Regular users - fetch their projects from project_members table
+                let user_id_bytes = user_context.user_id.as_bytes().to_vec();
+                let project_ids: Vec<String> = sqlx::query_scalar(
+                    r#"SELECT DISTINCT project_id FROM project_members WHERE user_id = ?"#
+                )
+                .bind(&user_id_bytes)
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default();
+
+                let mut projects = Vec::new();
+                for pid_str in project_ids {
+                    if let Ok(pid) = uuid::Uuid::parse_str(&pid_str) {
+                        if let Ok(Some(p)) = Project::find_by_id(pool, pid).await {
+                            projects.push(p);
+                        }
+                    }
+                }
+                projects
+            };
+
+            if projects.is_empty() {
+                // No projects exist - auto-create one based on the task
+                // Infer project name from task title
+                let task_title = args.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled Task");
+                let project_name = if task_title.len() > 30 {
+                    format!("{} Project", &task_title[..30])
+                } else {
+                    format!("{} Project", task_title)
+                };
+
+                use db::models::project::{Project, CreateProject};
+
+                // Generate unique path for auto-created project
+                let sanitized = project_name.to_lowercase().replace(" ", "-");
+                let mut path = format!("~/projects/{}", sanitized);
+                let mut attempt = 0;
+                while let Ok(Some(_)) = Project::find_by_git_repo_path(pool, &path).await {
+                    attempt += 1;
+                    path = format!("~/projects/{}-{}", sanitized, attempt);
+                    if attempt > 10 {
+                        return Err(TopsiError::ToolError(
+                            "Could not find unique path for auto-created project".to_string()
+                        ));
+                    }
+                }
+
+                let create_project = CreateProject {
+                    name: project_name.clone(),
+                    git_repo_path: path.clone(),
+                    setup_script: None,
+                    dev_script: None,
+                    cleanup_script: None,
+                    copy_files: None,
+                    use_existing_repo: false,
+                };
+
+                let new_project_id = uuid::Uuid::new_v4();
+                match Project::create(pool, &create_project, new_project_id).await {
+                    Ok(project) => {
+                        // Add the creator as project owner in project_members
+                        let member_id = uuid::Uuid::new_v4();
+                        if let Err(e) = sqlx::query(
+                            r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
+                               VALUES (?, ?, ?, ?, ?)"#
+                        )
+                        .bind(member_id.as_bytes().to_vec())
+                        .bind(project.id.to_string()) // project_id is TEXT
+                        .bind(user_context.user_id.as_bytes().to_vec())
+                        .bind("owner")
+                        .bind(user_context.user_id.as_bytes().to_vec())
+                        .execute(pool)
+                        .await {
+                            tracing::error!("Failed to add project member for auto-created project: {}", e);
+                            return Err(TopsiError::ToolError(
+                                format!("Project created but failed to grant access: {}", e)
+                            ));
+                        }
+
+                        tracing::info!("Auto-created project '{}' (ID: {}) for task '{}' by user {}",
+                            project.name, project.id, task_title, user_context.user_id);
+                        project.id
+                    }
+                    Err(e) => {
+                        return Err(TopsiError::ToolError(
+                            format!("No projects found and failed to auto-create project '{}': {}", project_name, e)
+                        ));
+                    }
+                }
+            } else if projects.len() == 1 {
+                // Only one project - use it automatically
+                projects[0].id
+            } else {
+                // Multiple projects - return helpful context for Topsi to decide
+                let project_list: Vec<String> = projects.iter()
+                    .map(|p| format!("  - {} (ID: {})", p.name, p.id))
+                    .collect();
+
+                return Err(TopsiError::ToolError(
+                    format!(
+                        "Multiple projects available. Please analyze which project this task belongs to and call create_task again with project_id, or create a new project if this is a new idea:\n\nAvailable projects:\n{}",
+                        project_list.join("\n")
+                    )
+                ));
+            }
+        };
+
+        let title = args.get("title")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| TopsiError::ToolError("Missing title".to_string()))?;
+
+        let description = args.get("description")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| TopsiError::ToolError("Missing description".to_string()))?;
+
+        let agent_name = args.get("agent_name").and_then(|v| v.as_str());
+
+        // Verify access to project
+        match scope {
+            AccessScope::Admin => {}, // Admin can create in any project
+            AccessScope::Projects(ids) => {
+                if !ids.contains(&project_id) {
+                    return Err(TopsiError::ToolError(
+                        "You don't have access to this project".to_string()
+                    ));
+                }
+            },
+            AccessScope::SingleProject(id) => {
+                if *id != project_id {
+                    return Err(TopsiError::ToolError(
+                        "You don't have access to this project".to_string()
+                    ));
+                }
+            },
+            AccessScope::None => {
+                return Err(TopsiError::ToolError(
+                    "You don't have permission to create tasks".to_string()
+                ));
+            }
+        }
+
+        // Create the task using the Task model
+        use db::models::task::{Task, CreateTask};
+
+        let create_task = CreateTask {
+            project_id,
+            pod_id: None,
+            board_id: None,
+            title: title.to_string(),
+            description: Some(description.to_string()),
+            parent_task_attempt: None,
+            image_ids: None,
+            priority: None,
+            assignee_id: None,
+            assigned_agent: agent_name.map(|s| s.to_string()),
+            agent_id: None,
+            assigned_mcps: None,
+            created_by: "topsi".to_string(),
+            requires_approval: None,
+            parent_task_id: None,
+            tags: None,
+            due_date: None,
+            custom_properties: None,
+            scheduled_start: None,
+            scheduled_end: None,
+        };
+
+        let task_id = uuid::Uuid::new_v4();
+        let task = Task::create(pool, &create_task, task_id)
+            .await
+            .map_err(|e| TopsiError::ToolError(format!("Failed to create task: {}", e)))?;
+
+        Ok(serde_json::json!({
+            "success": true,
+            "task_id": task.id.to_string(),
+            "title": task.title,
+            "status": format!("{:?}", task.status),
+            "assigned_agent": task.assigned_agent,
+            "project_id": task.project_id.to_string(),
+            "message": format!("Task '{}' created successfully{}",
+                task.title,
+                agent_name.map(|a| format!(" and assigned to {}", a)).unwrap_or_default()
+            )
+        }))
+    }
+
+    /// List all available agents
+    async fn tool_list_agents(
+        &self,
+        _args: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({
+                "error": "Database not connected",
+                "agents": []
+            }));
+        };
+
+        // Get registered agents from the agent registry
+        use services::services::agent_registry::AgentRegistryService;
+
+        let agents = AgentRegistryService::get_active_agents(pool)
+            .await
+            .unwrap_or_default();
+
+        let agent_list: Vec<serde_json::Value> = agents
+            .iter()
+            .map(|agent| {
+                serde_json::json!({
+                    "id": agent.id.to_string(),
+                    "name": agent.short_name,
+                    "designation": agent.designation,
+                    "description": agent.description,
+                    "capabilities": agent.capabilities,
+                    "status": format!("{:?}", agent.status)
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "agents": agent_list,
+            "total": agents.len()
+        }))
+    }
+
     async fn tool_respond_to_user(
         &self,
         args: &serde_json::Value,

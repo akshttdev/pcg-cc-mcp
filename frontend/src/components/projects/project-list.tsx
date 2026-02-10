@@ -199,6 +199,16 @@ export function ProjectList() {
     fetchProjects();
   }, [fetchProjects]);
 
+  // Listen for Topsi action completion to auto-refresh projects
+  useEffect(() => {
+    const handleTopsiAction = () => {
+      fetchProjects();
+    };
+
+    window.addEventListener('topsi-action-complete', handleTopsiAction);
+    return () => window.removeEventListener('topsi-action-complete', handleTopsiAction);
+  }, [fetchProjects]);
+
   return (
     <div className="space-y-6 p-8 pb-16 md:pb-8 h-full overflow-auto">
       <div className="flex justify-between items-center">

@@ -10,6 +10,7 @@ members = [
     "crates/deployment",
     "crates/nora",
     "crates/cinematics",
+    "crates/topsi",
     "crates/alpha-protocol-core",
     "apn-app/src-tauri",
     "frontend/src-tauri"

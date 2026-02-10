@@ -194,6 +194,73 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        // ==================== PROJECT MANAGEMENT TOOLS ====================
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_project",
+                "description": "Create a new project for the user. Projects are workspaces where tasks and agents operate.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Project name (e.g., 'My Test Project', 'Website Redesign')"
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional: Git repository path. If not provided, will create in ~/projects/<name>"
+                        }
+                    },
+                    "required": ["name"]
+                }
+            }
+        }),
+        // ==================== TASK & AGENT ORCHESTRATION TOOLS ====================
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_task",
+                "description": "Create a new task and optionally assign it to an agent. SMART CONTEXT: If project_id is not specified, Topsi will automatically: (1) use the only project if user has exactly one, (2) create a new project if user has none, or (3) analyze available projects and suggest the best match if multiple exist.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {
+                            "type": "string",
+                            "description": "Project ID to create the task in. OPTIONAL - omit to let Topsi intelligently choose or create a project based on context."
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Task title (brief description)"
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Detailed task description with instructions"
+                        },
+                        "agent_name": {
+                            "type": "string",
+                            "description": "Agent to assign the task to (e.g., 'Scout', 'Nora', 'Maci'). Optional."
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "Initial status: 'todo', 'in_progress', or 'done'. Defaults to 'todo'."
+                        }
+                    },
+                    "required": ["title", "description"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_agents",
+                "description": "List all available agents in the system. Use this to see what agents can be orchestrated.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }),
         // Chat/response tool for conversational replies
         json!({
             "type": "function",
