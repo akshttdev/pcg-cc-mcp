@@ -48,6 +48,10 @@ const artifactTypeIcons: Partial<Record<ArtifactType, React.ReactNode>> = {
   strategy_document: <FileText className="h-4 w-4 text-purple-500" />,
   content_draft: <FileText className="h-4 w-4 text-yellow-500" />,
   visual_brief: <Image className="h-4 w-4 text-pink-500" />,
+  media_ingest_manifest: <Upload className="h-4 w-4 text-green-500" />,
+  media_analysis_report: <FileText className="h-4 w-4 text-orange-500" />,
+  video_edit_session: <Video className="h-4 w-4 text-blue-500" />,
+  render_deliverable: <Video className="h-4 w-4 text-red-500" />,
 };
 
 function ArtifactCard({

@@ -1,0 +1,158 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE tasks\n               SET title = $3, description = $4, status = $5, parent_task_attempt = $6,\n                   pod_id = $7,\n                   board_id = $8,\n                   priority = $9, assignee_id = $10, assigned_agent = $11, assigned_mcps = $12,\n                   requires_approval = $13, approval_status = $14, parent_task_id = $15,\n                   tags = $16, due_date = $17,\n                   custom_properties = $18,\n                   scheduled_start = $19,\n                   scheduled_end = $20,\n                   updated_at = datetime('now', 'subsec')\n               WHERE id = $1 AND project_id = $2\n               RETURNING\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                pod_id as \"pod_id: Uuid\",\n                board_id as \"board_id: Uuid\",\n                title as \"title!\",\n                description,\n                status as \"status!: TaskStatus\",\n                parent_task_attempt as \"parent_task_attempt: Uuid\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\",\n                priority as \"priority!: Priority\",\n                assignee_id,\n                assigned_agent,\n                agent_id as \"agent_id: Uuid\",\n                assigned_mcps,\n                created_by as \"created_by!\",\n                requires_approval as \"requires_approval!: bool\",\n                approval_status as \"approval_status: ApprovalStatus\",\n                parent_task_id as \"parent_task_id: Uuid\",\n                tags,\n                due_date as \"due_date: DateTime<Utc>\",\n                custom_properties as \"custom_properties: Json<Value>\",\n                scheduled_start as \"scheduled_start: DateTime<Utc>\",\n                scheduled_end as \"scheduled_end: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "pod_id: Uuid",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "board_id: Uuid",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "title!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: TaskStatus",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_task_attempt: Uuid",
+        "ordinal": 7,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "priority!: Priority",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "assignee_id",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "assigned_agent",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "agent_id: Uuid",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "assigned_mcps",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_by!",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "requires_approval!: bool",
+        "ordinal": 16,
+        "type_info": "Integer"
+      },
+      {
+        "name": "approval_status: ApprovalStatus",
+        "ordinal": 17,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_task_id: Uuid",
+        "ordinal": 18,
+        "type_info": "Text"
+      },
+      {
+        "name": "tags",
+        "ordinal": 19,
+        "type_info": "Text"
+      },
+      {
+        "name": "due_date: DateTime<Utc>",
+        "ordinal": 20,
+        "type_info": "Text"
+      },
+      {
+        "name": "custom_properties: Json<Value>",
+        "ordinal": 21,
+        "type_info": "Text"
+      },
+      {
+        "name": "scheduled_start: DateTime<Utc>",
+        "ordinal": 22,
+        "type_info": "Text"
+      },
+      {
+        "name": "scheduled_end: DateTime<Utc>",
+        "ordinal": 23,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 20
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "cc8fde3c1d0c4280dc15030510f6a5195a94f38c09e823a2dd540e624b22e00e"
+}

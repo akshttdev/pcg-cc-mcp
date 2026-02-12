@@ -741,12 +741,21 @@ impl EditAssemblyEngine {
     }
 
     /// Calculate source in/out points
+    ///
+    /// Priority order:
+    /// 1. If in_point was set by Visual QC (> 0.0), use it as the starting point
+    /// 2. If a hero_moment exists, center around it
+    /// 3. Fallback to beginning of usable range
     fn calculate_source_range(&self, footage: &FootageClip, target_duration: f64, _config: &AssemblyConfig) -> (f64, f64) {
         let usable = footage.usable_duration();
 
         if usable <= target_duration {
             // Use full clip
             (footage.in_point, footage.out_point)
+        } else if footage.in_point > 0.0 {
+            // QC-optimized in-point: start from this point
+            let end = (footage.in_point + target_duration).min(footage.out_point);
+            (footage.in_point, end)
         } else if let Some(hero) = footage.hero_moment {
             // Center around hero moment
             let half = target_duration / 2.0;

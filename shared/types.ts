@@ -662,13 +662,13 @@ export type TaskArtifact = { task_id: string, artifact_id: string, artifact_role
 
 export type LinkArtifactToTask = { task_id: string, artifact_id: string, artifact_role: ArtifactRole | null, display_order: number | null, pinned: boolean | null, added_by: string | null, };
 
-export type ArtifactType = "plan" | "screenshot" | "walkthrough" | "diff_summary" | "test_result" | "checkpoint" | "error_report" | "research_report" | "strategy_document" | "content_calendar" | "competitor_analysis" | "content_draft" | "visual_brief" | "schedule_manifest" | "engagement_log" | "verification_report" | "browser_recording" | "compliance_score" | "platform_screenshot" | "subagent_result" | "aggregated_research";
+export type ArtifactType = "plan" | "screenshot" | "walkthrough" | "diff_summary" | "test_result" | "checkpoint" | "error_report" | "research_report" | "strategy_document" | "content_calendar" | "competitor_analysis" | "content_draft" | "visual_brief" | "schedule_manifest" | "engagement_log" | "verification_report" | "browser_recording" | "compliance_score" | "platform_screenshot" | "subagent_result" | "aggregated_research" | "media_ingest_manifest" | "media_analysis_report" | "video_edit_session" | "render_deliverable";
 
 export type ArtifactPhase = "planning" | "execution" | "verification";
 
 export type ArtifactReviewStatus = "none" | "pending" | "approved" | "rejected" | "revision_requested";
 
-export type ExecutionArtifact = { id: string, execution_process_id: string, artifact_type: ArtifactType, title: string, content: string | null, file_path: string | null, metadata: string | null, created_at: string, };
+export type ExecutionArtifact = { id: string, execution_process_id: string | null, artifact_type: ArtifactType, title: string, content: string | null, file_path: string | null, metadata: string | null, created_at: string, };
 
 export type BrandVoice = "formal" | "casual" | "playful" | "authoritative";
 

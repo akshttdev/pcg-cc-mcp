@@ -7,8 +7,9 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 
 use super::provider_trait::{
-    ChatConfig, ChatMessage, ChatRequest, LLMProviderTrait, MessageRole, ProviderError,
-    ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest, ToolDefinition,
+    ChatConfig, ChatMessage, ChatRequest, ContentBlock, LLMProviderTrait, MessageRole,
+    ProviderError, ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest,
+    ToolDefinition,
 };
 
 /// OpenAI API provider
@@ -52,9 +53,32 @@ impl OpenAIProvider {
             MessageRole::Tool => "tool",
         };
 
+        // Multi-modal: serialize content blocks in OpenAI format (image_url with data URI)
+        let content_value = if let Some(ref blocks) = msg.content_blocks {
+            let content_array: Vec<serde_json::Value> = blocks
+                .iter()
+                .map(|block| match block {
+                    ContentBlock::Text { text } => {
+                        serde_json::json!({ "type": "text", "text": text })
+                    }
+                    ContentBlock::ImageBase64 { media_type, data } => {
+                        serde_json::json!({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": format!("data:{};base64,{}", media_type, data)
+                            }
+                        })
+                    }
+                })
+                .collect();
+            serde_json::json!(content_array)
+        } else {
+            serde_json::json!(msg.content)
+        };
+
         let mut obj = serde_json::json!({
             "role": role,
-            "content": msg.content
+            "content": content_value
         });
 
         // Add tool_call_id for tool responses
@@ -391,5 +415,44 @@ mod tests {
         assert!(provider.validate_model("gpt-4o-mini"));
         assert!(provider.validate_model("gpt-4-turbo"));
         assert!(!provider.validate_model("claude-3-opus"));
+    }
+
+    #[test]
+    fn test_vision_content_blocks_serialization() {
+        let provider = OpenAIProvider::new();
+
+        let msg = ChatMessage::user_with_images(
+            "Score this frame",
+            vec![("dGVzdA==".to_string(), "image/jpeg".to_string())],
+        );
+        let json = provider.message_to_openai(&msg);
+
+        assert_eq!(json["role"], "user");
+        let content = &json["content"];
+        assert!(content.is_array());
+        let blocks = content.as_array().unwrap();
+        assert_eq!(blocks.len(), 2); // 1 image + 1 text
+
+        // First block should be the image_url
+        assert_eq!(blocks[0]["type"], "image_url");
+        assert_eq!(
+            blocks[0]["image_url"]["url"],
+            "data:image/jpeg;base64,dGVzdA=="
+        );
+
+        // Second block should be the text
+        assert_eq!(blocks[1]["type"], "text");
+        assert_eq!(blocks[1]["text"], "Score this frame");
+    }
+
+    #[test]
+    fn test_plain_text_message_no_content_blocks() {
+        let provider = OpenAIProvider::new();
+
+        let msg = ChatMessage::user("Just text");
+        let json = provider.message_to_openai(&msg);
+
+        // Plain text should be a simple string
+        assert_eq!(json["content"], "Just text");
     }
 }

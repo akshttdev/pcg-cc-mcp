@@ -112,6 +112,8 @@ pub struct ExecutionEngine {
     db: RwLock<Option<SqlitePool>>,
     /// Cinematics service for image/video generation (Maci/Spectra agents)
     cinematics: RwLock<Option<Arc<CinematicsService>>>,
+    /// Executive tools for media pipeline agents (Editron)
+    executive_tools: RwLock<Option<Arc<crate::tools::ExecutiveTools>>>,
 }
 
 /// Trait for creating tasks on the board
@@ -140,6 +142,7 @@ impl ExecutionEngine {
             research_contexts: RwLock::new(HashMap::new()),
             db: RwLock::new(None),
             cinematics: RwLock::new(None),
+            executive_tools: RwLock::new(None),
         })
     }
 
@@ -167,6 +170,13 @@ impl ExecutionEngine {
         let mut cine = self.cinematics.write().await;
         *cine = Some(cinematics);
         tracing::info!("[EXECUTION_ENGINE] Cinematics service configured for image/video generation");
+    }
+
+    /// Set executive tools for media pipeline agents (Editron)
+    pub async fn set_executive_tools(&self, tools: Arc<crate::tools::ExecutiveTools>) {
+        let mut et = self.executive_tools.write().await;
+        *et = Some(tools);
+        tracing::info!("[EXECUTION_ENGINE] Executive tools configured for media pipeline agents");
     }
 
     /// Emit an event through the coordination manager (for SSE streaming)
@@ -970,6 +980,64 @@ impl ExecutionEngine {
             return self.execute_cinematics_stage(execution_id, stage_index, stage, inputs).await;
         }
 
+        // Check if this is a media pipeline agent (Editron)
+        let is_media_agent = matches!(
+            agent.agent_id.as_str(),
+            "editron-post" | "editron"
+        );
+
+        if is_media_agent {
+            tracing::info!(
+                "[EXECUTION_ENGINE] Using ExecutiveTools for {} stage '{}'",
+                agent.codename,
+                stage.name
+            );
+
+            let tools = self.executive_tools.read().await;
+            if let Some(exec_tools) = tools.as_ref() {
+                // Build a tool call by mapping stage description to an Editron tool
+                let project_id = {
+                    let executions = self.executions.read().await;
+                    executions.get(&execution_id).and_then(|i| i.project_id)
+                };
+
+                // Collect previous stage outputs for chaining
+                let previous = self.artifacts.get_all_stage_outputs(execution_id).await;
+
+                match self.build_editron_tool(stage, inputs, project_id, &previous).await {
+                    Some(tool) => {
+                        // Box::pin to break async recursion cycle:
+                        // execute_stage → execute_tool_implementation → ExecuteWorkflow → engine.execute → execute_stage
+                        let tools_clone = exec_tools.clone();
+                        let result: std::result::Result<serde_json::Value, crate::NoraError> =
+                            Box::pin(async move {
+                                tools_clone.execute_tool_implementation(tool).await
+                            }).await;
+                        match result {
+                            Ok(output) => return Ok(output),
+                            Err(e) => {
+                                tracing::warn!(
+                                    "[EXECUTION_ENGINE] Media tool execution failed: {}, falling through to simulated",
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    None => {
+                        tracing::debug!(
+                            "[EXECUTION_ENGINE] No Editron tool matched for stage '{}', using simulated",
+                            stage.name
+                        );
+                    }
+                }
+            } else {
+                tracing::warn!(
+                    "[EXECUTION_ENGINE] No ExecutiveTools available for {} - using simulated output",
+                    agent.codename
+                );
+            }
+        }
+
         // For other non-research agents, use simulated output
         tracing::debug!(
             "[EXECUTION_ENGINE] Stage context: agent={}, stage={}",
@@ -1133,6 +1201,207 @@ impl ExecutionEngine {
                 }))
             }
         }
+    }
+
+    /// Map an Editron workflow stage to a concrete tool call
+    async fn build_editron_tool(
+        &self,
+        stage: &WorkflowStage,
+        inputs: &HashMap<String, serde_json::Value>,
+        project_id: Option<Uuid>,
+        previous_outputs: &HashMap<u32, serde_json::Value>,
+    ) -> Option<crate::tools::NoraExecutiveTool> {
+        let stage_lower = stage.name.to_lowercase();
+        let desc_lower = stage.description.to_lowercase();
+        let project_str = project_id.map(|id| id.to_string());
+
+        // Match "Batch Intake" stage or descriptions mentioning ingest/download/dropbox/checksum/sync
+        if stage_lower.contains("batch") || stage_lower.contains("intake")
+            || desc_lower.contains("ingest") || desc_lower.contains("download")
+            || desc_lower.contains("dropbox") || desc_lower.contains("checksum")
+        {
+            let source_url = inputs.get("source_url")
+                .or_else(|| inputs.get("dropbox_url"))
+                .and_then(|v| v.as_str())?
+                .to_string();
+
+            // Skip checksums for local paths (avoids reading multi-GB files just to hash them)
+            let is_local = source_url.starts_with('/') || source_url.starts_with("file://");
+            let checksum_required = inputs.get("checksum_required")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(!is_local);
+
+            return Some(crate::tools::NoraExecutiveTool::IngestMediaBatch {
+                source_url,
+                reference_name: inputs.get("reference_name").and_then(|v| v.as_str()).map(String::from),
+                storage_tier: inputs.get("storage_tier").and_then(|v| v.as_str()).unwrap_or("hot").to_string(),
+                checksum_required,
+                project_id: project_str,
+                task_id: None,
+            });
+        }
+
+        // Match "Sonic Engineering" — must be checked BEFORE the generic "analysis" block
+        // because the description contains "analyzes" which would match the generic block.
+        // NOTE: desc conditions must NOT match "Smart Assembly" which also mentions beat-lock/music
+        if stage_lower.contains("sonic") || stage_lower.contains("audio engineering")
+            || desc_lower.contains("bpm detection") || desc_lower.contains("beat grid")
+            || desc_lower.contains("energy curve")
+        {
+            let audio_path = inputs.get("audio_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("/Users/sirakstudios/Downloads/MA_YesteryBeat_Nostalgia_Main_MP3.mp3")
+                .to_string();
+
+            return Some(crate::tools::NoraExecutiveTool::AnalyzeBeatGrid {
+                audio_path,
+                bpm_hint: inputs.get("bpm_hint").and_then(|v| v.as_f64()),
+                beats_per_bar: inputs.get("beats_per_bar").and_then(|v| v.as_u64()).map(|v| v as u32),
+                project_id: project_str,
+            });
+        }
+
+        // Match "Visual QC" — must be checked BEFORE the generic "analysis" block
+        // Runs Spectra visual QC: extract keyframes, score composition, select optimal in-points
+        if stage_lower.contains("qc") || stage_lower.contains("visual")
+            || desc_lower.contains("composition") || desc_lower.contains("keyframe")
+            || desc_lower.contains("in-point") || desc_lower.contains("vision api")
+        {
+            let batch_id = previous_outputs.values()
+                .find_map(|v| {
+                    v.get("batch_id").and_then(|b| b.as_str())
+                        .or_else(|| v.get("batch").and_then(|b| b.get("id")).and_then(|id| id.as_str()))
+                })?
+                .to_string();
+
+            return Some(crate::tools::NoraExecutiveTool::RunVisualQc {
+                batch_id,
+                candidates_per_clip: inputs.get("candidates_per_clip")
+                    .and_then(|v| v.as_u64()).map(|v| v as u32),
+                min_composition_score: inputs.get("min_composition_score")
+                    .and_then(|v| v.as_f64()),
+                target_aspect_ratio: inputs.get("aspect_ratios")
+                    .and_then(|v| v.as_array())
+                    .and_then(|arr| arr.first())
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                project_id: project_str,
+            });
+        }
+
+        // Match "Scene Analysis" stage or descriptions mentioning analyze/ffmpeg/analysis/storyboard
+        if stage_lower.contains("analysis") || stage_lower.contains("scene")
+            || desc_lower.contains("analyze") || desc_lower.contains("analysis")
+            || desc_lower.contains("storyboard") || desc_lower.contains("ffmpeg")
+        {
+            // Find batch_id from previous stage outputs
+            let batch_id = previous_outputs.values()
+                .find_map(|v| {
+                    v.get("batch_id").and_then(|b| b.as_str())
+                        .or_else(|| v.get("batch").and_then(|b| b.get("id")).and_then(|id| id.as_str()))
+                })?
+                .to_string();
+
+            return Some(crate::tools::NoraExecutiveTool::AnalyzeMediaBatch {
+                batch_id,
+                brief: inputs.get("brief").and_then(|v| v.as_str())
+                    .unwrap_or("Identify hero shots, crowd moments, and key narrative beats")
+                    .to_string(),
+                passes: inputs.get("passes").and_then(|v| v.as_u64()).unwrap_or(2) as u32,
+                deliverable_targets: inputs.get("deliverable_targets")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_else(|| vec!["recap".to_string()]),
+                project_id: project_str,
+                task_id: None,
+            });
+        }
+
+        // Match "Smart Assembly" / "Iterative Edit" or descriptions mentioning assembly/edit/timeline/clips/cuts
+        // Uses AssembleRecapEdit for real scene analysis + beat-locked assembly + Premiere XML
+        if stage_lower.contains("assembly") || stage_lower.contains("edit")
+            || desc_lower.contains("assembly") || desc_lower.contains("timeline")
+            || desc_lower.contains("beat-lock") || desc_lower.contains("match clips")
+        {
+            let batch_id = previous_outputs.values()
+                .find_map(|v| {
+                    v.get("batch_id").and_then(|b| b.as_str())
+                        .or_else(|| v.get("batch").and_then(|b| b.get("id")).and_then(|id| id.as_str()))
+                })?
+                .to_string();
+
+            // Use AssembleRecapEdit for real scene analysis + beat-locked assembly + XML
+            let audio_path = inputs.get("audio_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("/Users/sirakstudios/Downloads/MA_YesteryBeat_Nostalgia_Main_MP3.mp3")
+                .to_string();
+
+            return Some(crate::tools::NoraExecutiveTool::AssembleRecapEdit {
+                batch_id,
+                audio_path,
+                bpm_hint: inputs.get("bpm_hint").and_then(|v| v.as_f64()),
+                target_aspect_ratio: inputs.get("aspect_ratios")
+                    .and_then(|v| v.as_array())
+                    .and_then(|arr| arr.first())
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                project_id: project_str,
+            });
+        }
+
+        // Match "Export + Color" / "Delivery" or descriptions mentioning render/export/premiere/xml
+        // Prefers ExecuteRenderScript (from AssembleRecapEdit output), falls back to RenderVideoDeliverables
+        if stage_lower.contains("export") || stage_lower.contains("render") || stage_lower.contains("delivery")
+            || desc_lower.contains("render") || desc_lower.contains("export")
+            || desc_lower.contains("premiere") || desc_lower.contains("delivery")
+        {
+            // Try to find render_script from AssembleRecapEdit output
+            if let Some(render_script) = previous_outputs.values()
+                .find_map(|v| v.get("render_script").and_then(|s| s.as_str()))
+            {
+                let render_output = previous_outputs.values()
+                    .find_map(|v| v.get("render_output").and_then(|s| s.as_str()))
+                    .unwrap_or("output.mp4")
+                    .to_string();
+                let xml_path = previous_outputs.values()
+                    .find_map(|v| v.get("xml_path").and_then(|s| s.as_str()))
+                    .unwrap_or("")
+                    .to_string();
+
+                return Some(crate::tools::NoraExecutiveTool::ExecuteRenderScript {
+                    render_script: render_script.to_string(),
+                    render_output,
+                    xml_path,
+                });
+            }
+
+            // Fallback: try edit_session_id for the old RenderVideoDeliverables path
+            if let Some(edit_session_id) = previous_outputs.values()
+                .find_map(|v| v.get("edit_session_id").and_then(|b| b.as_str()))
+            {
+                let priority = match inputs.get("priority").and_then(|v| v.as_str()).unwrap_or("standard") {
+                    "rush" | "urgent" | "high" => crate::tools::VideoRenderPriority::Rush,
+                    "low" => crate::tools::VideoRenderPriority::Low,
+                    _ => crate::tools::VideoRenderPriority::Standard,
+                };
+
+                return Some(crate::tools::NoraExecutiveTool::RenderVideoDeliverables {
+                    edit_session_id: edit_session_id.to_string(),
+                    destinations: inputs.get("destinations")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_else(|| vec!["local".to_string()]),
+                    formats: inputs.get("formats")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_else(|| vec!["mp4".to_string()]),
+                    priority,
+                    project_id: project_str,
+                    task_id: None,
+                });
+            }
+
+            return None;
+        }
+
+        None
     }
 
     /// Create a single task on the board for the entire workflow

@@ -102,16 +102,40 @@ impl MediaPipelineService {
 
         self.persist_batch(&batch).await?;
 
-        let service = self.clone();
-        let req_clone = request.clone();
-        tokio::spawn(async move {
-            if let Err(err) = service.process_download(batch.id, req_clone).await {
-                tracing::error!("Media ingest failed for {}: {}", batch.id, err);
-                let _ = service
-                    .update_batch_status(batch.id, MediaBatchStatus::Failed, Some(err.to_string()))
-                    .await;
+        if request.source_url.starts_with('/') || request.source_url.starts_with("file://") {
+            // Local directory — process inline so batch is Ready before returning
+            let batch_id = batch.id;
+            match self.process_local_directory(batch_id, request).await {
+                Ok(ready_batch) => return Ok(ready_batch),
+                Err(err) => {
+                    tracing::error!("Local ingest failed for {}: {}", batch_id, err);
+                    let _ = self
+                        .update_batch_status(
+                            batch_id,
+                            MediaBatchStatus::Failed,
+                            Some(err.to_string()),
+                        )
+                        .await;
+                    return Err(err);
+                }
             }
-        });
+        } else {
+            // Remote URL — download as before
+            let service = self.clone();
+            let req_clone = request.clone();
+            tokio::spawn(async move {
+                if let Err(err) = service.process_download(batch.id, req_clone).await {
+                    tracing::error!("Media ingest failed for {}: {}", batch.id, err);
+                    let _ = service
+                        .update_batch_status(
+                            batch.id,
+                            MediaBatchStatus::Failed,
+                            Some(err.to_string()),
+                        )
+                        .await;
+                }
+            });
+        }
 
         Ok(batch)
     }
@@ -236,6 +260,28 @@ impl MediaPipelineService {
         Ok(job)
     }
 
+    /// Load a media batch and verify it's ready for Visual QC
+    pub async fn load_batch_for_qc(
+        &self,
+        batch_id: Uuid,
+    ) -> Result<MediaBatch, MediaPipelineError> {
+        let batch = self.load_batch(batch_id).await?;
+        if batch.status != MediaBatchStatus::Ready {
+            return Err(MediaPipelineError::BatchNotReady(batch.id));
+        }
+        Ok(batch)
+    }
+
+    /// Get the directory path for a batch (public accessor for QC engine)
+    pub fn get_batch_dir(&self, batch_id: Uuid) -> PathBuf {
+        self.batch_dir(batch_id)
+    }
+
+    /// Get a working directory for visual QC under the pipeline root
+    pub fn visual_qc_work_dir(&self, batch_id: Uuid) -> PathBuf {
+        self.inner.root.join("visual_qc").join(batch_id.to_string())
+    }
+
     async fn process_download(
         &self,
         batch_id: Uuid,
@@ -290,6 +336,134 @@ impl MediaPipelineService {
         }
 
         Ok(())
+    }
+
+    async fn process_local_directory(
+        &self,
+        batch_id: Uuid,
+        request: MediaBatchIngestRequest,
+    ) -> Result<MediaBatch, MediaPipelineError> {
+        // Strip file:// prefix if present
+        let dir_path = if let Some(stripped) = request.source_url.strip_prefix("file://") {
+            PathBuf::from(stripped)
+        } else {
+            PathBuf::from(&request.source_url)
+        };
+
+        if !dir_path.exists() {
+            return Err(MediaPipelineError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Directory not found: {}", dir_path.display()),
+            )));
+        }
+
+        self.update_batch_status(batch_id, MediaBatchStatus::Downloading, None)
+            .await?;
+
+        let mut batch = self.load_batch(batch_id).await?;
+        let batch_dir = self.batch_dir(batch_id);
+        fs::create_dir_all(&batch_dir).await?;
+
+        let mut assets = Vec::new();
+        let media_extensions = [
+            "mp4", "mov", "mxf", "avi", "mkv", "m4v", "mts", "mpg", "wmv",
+        ];
+
+        // Collect directories to scan (root + immediate subdirectories)
+        let mut dirs_to_scan = vec![dir_path.clone()];
+        let mut root_entries = fs::read_dir(&dir_path).await?;
+        while let Some(entry) = root_entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs_to_scan.push(path);
+            }
+        }
+
+        // Scan all directories for media files
+        for scan_dir in &dirs_to_scan {
+            let mut entries = fs::read_dir(scan_dir).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_lowercase())
+                    .unwrap_or_default();
+
+                if !media_extensions.contains(&ext.as_str()) {
+                    continue;
+                }
+
+                let metadata = entry.metadata().await?;
+                let filename = path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                // Symlink into batch directory for uniform access
+                let link_dest = batch_dir.join(&filename);
+                if !link_dest.exists() {
+                    tokio::fs::symlink(&path, &link_dest)
+                        .await
+                        .unwrap_or_else(|e| {
+                            tracing::warn!("Symlink failed for {}: {}", filename, e)
+                        });
+                }
+
+                // Compute checksum if requested
+                let checksum = if request.checksum_required {
+                    Self::compute_file_checksum(&path).await.ok()
+                } else {
+                    None
+                };
+
+                assets.push(MediaAsset {
+                    filename: filename.clone(),
+                    relative_path: format!("{}/{}", batch_id, filename),
+                    size_bytes: metadata.len(),
+                    checksum_sha256: checksum,
+                });
+            }
+        }
+
+        if assets.is_empty() {
+            return Err(MediaPipelineError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("No media files found in {}", dir_path.display()),
+            )));
+        }
+
+        tracing::info!(
+            "[MEDIA_PIPELINE] Local ingest: {} files ({} bytes total) from {} ({} dirs scanned)",
+            assets.len(),
+            assets.iter().map(|a| a.size_bytes).sum::<u64>(),
+            dir_path.display(),
+            dirs_to_scan.len()
+        );
+
+        batch.files = assets;
+        batch.status = MediaBatchStatus::Ready;
+        batch.updated_at = Utc::now();
+        batch.last_error = None;
+
+        if let Some(pool) = self.db_pool() {
+            self.persist_media_files(pool, batch.id, &batch.files)
+                .await?;
+        }
+        self.persist_batch(&batch).await?;
+
+        Ok(batch)
+    }
+
+    async fn compute_file_checksum(path: &Path) -> Result<String, MediaPipelineError> {
+        let data = fs::read(path).await?;
+        let mut hasher = Sha256::new();
+        hasher.update(&data);
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
     async fn progress_render(&self, job_id: Uuid) -> Result<(), MediaPipelineError> {

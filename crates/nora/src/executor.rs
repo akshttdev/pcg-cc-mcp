@@ -46,6 +46,11 @@ impl TaskExecutor {
         Self { pool, backend_url }
     }
 
+    /// Expose the database pool for direct use by tool tracking helpers
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     /// Delegate a task to an agent and trigger execution
     /// This is the main entry point for Nora to assign work to other agents like AURI
     pub async fn delegate_and_execute_task(

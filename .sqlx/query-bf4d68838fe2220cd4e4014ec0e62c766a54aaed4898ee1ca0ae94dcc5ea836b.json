@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE peer_nodes\n            SET cpu_cores = ?,\n                ram_mb = ?,\n                storage_gb = ?,\n                gpu_available = ?,\n                gpu_model = ?,\n                updated_at = datetime('now', 'subsec')\n            WHERE node_id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "bf4d68838fe2220cd4e4014ec0e62c766a54aaed4898ee1ca0ae94dcc5ea836b"
+}

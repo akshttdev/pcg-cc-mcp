@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE peer_nodes\n            SET last_heartbeat_at = datetime('now', 'subsec'),\n                updated_at = datetime('now', 'subsec')\n            WHERE node_id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "694765276c398c281d0ad9576cc7394cbf9fe97716dc0c198c43d9ce42719c1f"
+}

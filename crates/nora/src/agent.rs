@@ -298,13 +298,16 @@ impl NoraAgent {
         let execution_engine = self.execution_engine.clone();
         let task_creator_executor = executor.clone();
         let db_pool_for_engine = pool.clone();
+        let tools_for_engine = self.executive_tools.clone();
         tokio::spawn(async move {
             execution_engine
                 .set_task_creator(task_creator_executor)
                 .await;
             // Also wire database for workflow log persistence (AgentFlow, AgentFlowEvent)
             execution_engine.set_database(db_pool_for_engine).await;
-            tracing::info!("[NORA] TaskCreator and database wired to ExecutionEngine for workflow task creation and log persistence");
+            // Wire executive tools so media agents (Editron) can execute real tool implementations
+            execution_engine.set_executive_tools(tools_for_engine).await;
+            tracing::info!("[NORA] TaskCreator, database, and ExecutiveTools wired to ExecutionEngine");
         });
 
         // Configure workflow orchestrator with database and executor
@@ -320,9 +323,17 @@ impl NoraAgent {
         self
     }
 
+    /// Set the media pipeline service for Editron production tools.
+    /// IMPORTANT: Call this BEFORE `with_database()`, which spawns background tasks
+    /// that clone the executive_tools Arc, making Arc::get_mut impossible afterward.
     pub fn with_media_pipeline(mut self, pipeline: MediaPipelineService) -> Self {
         if let Some(tools) = Arc::get_mut(&mut self.executive_tools) {
             tools.set_media_pipeline(pipeline);
+        } else {
+            tracing::warn!(
+                "Cannot set media pipeline: executive_tools Arc is already shared. \
+                 Ensure with_media_pipeline() is called before with_database()."
+            );
         }
         self
     }
@@ -2755,6 +2766,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                     .to_string(),
                 checksum_required: true,
                 project_id: context.project_id.map(|id| id.to_string()),
+                task_id: context.inputs.get("task_id").and_then(|v| v.as_str()).map(String::from),
             };
 
             let result = tools.execute_tool_implementation(tool).await?;

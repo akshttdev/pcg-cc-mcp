@@ -239,6 +239,7 @@ impl AgentWorkflowExecutor {
                 .to_string(),
             checksum_required: true,
             project_id: context.project_id.map(|id| id.to_string()),
+            task_id: context.inputs.get("task_id").and_then(|v| v.as_str()).map(String::from),
         };
 
         let result = self.tools.execute_tool_implementation(tool).await?;
@@ -271,6 +272,7 @@ impl AgentWorkflowExecutor {
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_else(|| vec!["recap".to_string()]),
             project_id: context.project_id.map(|id| id.to_string()),
+            task_id: context.inputs.get("task_id").and_then(|v| v.as_str()).map(String::from),
         };
 
         let result = self.tools.execute_tool_implementation(tool).await?;
@@ -305,6 +307,7 @@ impl AgentWorkflowExecutor {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(true),
             project_id: context.project_id.map(|id| id.to_string()),
+            task_id: context.inputs.get("task_id").and_then(|v| v.as_str()).map(String::from),
         };
 
         let result = self.tools.execute_tool_implementation(tool).await?;
@@ -343,6 +346,7 @@ impl AgentWorkflowExecutor {
                 .unwrap_or_else(|| vec!["mp4".to_string()]),
             priority,
             project_id: context.project_id.map(|id| id.to_string()),
+            task_id: context.inputs.get("task_id").and_then(|v| v.as_str()).map(String::from),
         };
 
         let result = self.tools.execute_tool_implementation(tool).await?;

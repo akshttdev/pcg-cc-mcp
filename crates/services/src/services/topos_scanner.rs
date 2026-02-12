@@ -275,7 +275,8 @@ mod tests {
     #[test]
     fn test_is_configured_without_env() {
         // Should return false if TOPOS_DIR is not set
-        std::env::remove_var("TOPOS_DIR");
+        // SAFETY: This test is single-threaded and only modifies a test-specific env var
+        unsafe { std::env::remove_var("TOPOS_DIR") };
         assert!(!ToposScannerService::is_configured());
     }
 }

@@ -37,6 +37,7 @@ pub mod edit_assembly;
 pub mod premiere_xml;
 pub mod premiere_prproj;
 pub mod artlist;
+// visual_qc lives as a standalone module at services::services::visual_qc
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -62,6 +63,10 @@ pub use edit_assembly::{
 };
 pub use premiere_xml::PremiereXmlExporter;
 pub use premiere_prproj::{PrprojRecutEngine, PrprojClipEntry, PrprojRecutResult};
+pub use super::visual_qc::{
+    VisualQcEngine, VisualQcConfig, VisualQcResult, ClipQcResult, AnalyzedFrame,
+    SubjectRegion, CropRegion,
+};
 
 #[derive(Debug, Error)]
 pub enum EditronError {
@@ -343,6 +348,8 @@ pub struct EditronService {
     music_library: Arc<RwLock<MusicLibrary>>,
     // Music platform clients
     artlist_client: Arc<RwLock<Option<ArtlistClient>>>,
+    // Visual QC engine (Spectra)
+    visual_qc: Arc<VisualQcEngine>,
 }
 
 impl EditronService {
@@ -385,6 +392,10 @@ impl EditronService {
             MusicLibrary::new(&music_dir, &ffmpeg_path)
         ));
 
+        let visual_qc_dir = work_dir.join("visual_qc");
+        tokio::fs::create_dir_all(&visual_qc_dir).await?;
+        let visual_qc = Arc::new(VisualQcEngine::new(&ffmpeg_path, &visual_qc_dir));
+
         Ok(Self {
             ffmpeg,
             premiere,
@@ -398,6 +409,7 @@ impl EditronService {
             proxy_manager,
             music_library,
             artlist_client: Arc::new(RwLock::new(None)),
+            visual_qc,
         })
     }
 
@@ -1156,5 +1168,31 @@ impl EditronService {
         }
 
         Ok(all_tracks)
+    }
+
+    // ============ VISUAL QC (SPECTRA) ============
+
+    /// Extract candidate frames from a clip for visual QC analysis
+    pub async fn extract_qc_frames(
+        &self,
+        clip_path: &Path,
+        config: &VisualQcConfig,
+    ) -> EditronResult<Vec<(f64, PathBuf)>> {
+        self.visual_qc.extract_candidate_frames(clip_path, config).await
+    }
+
+    /// Read a frame JPEG and return base64 for vision API
+    pub async fn get_frame_base64(&self, path: &Path) -> EditronResult<String> {
+        VisualQcEngine::frame_to_base64(path).await
+    }
+
+    /// Apply visual QC results to a set of footage clips
+    pub fn apply_visual_qc(&self, clips: &mut [FootageClip], qc_result: &VisualQcResult) {
+        VisualQcEngine::apply_qc_to_clips(clips, qc_result);
+    }
+
+    /// Get a reference to the Visual QC engine
+    pub fn visual_qc_engine(&self) -> &VisualQcEngine {
+        &self.visual_qc
     }
 }

@@ -142,16 +142,21 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                let app_handle = window.app_handle();
-                let state: State<AppState> = app_handle.state();
+                let bridge_server = {
+                    let app_handle = window.app_handle();
+                    let state: State<AppState> = app_handle.state();
+                    state.bridge_server.clone()
+                };
 
-                // Stop bridge server
-                if let Ok(mut bridge) = state.bridge_server.lock() {
-                    if let Some(mut child) = bridge.take() {
-                        println!("Stopping bridge server...");
-                        let _ = child.kill();
+                // Stop bridge server — scope the MutexGuard so it drops before bridge_server
+                {
+                    if let Ok(mut bridge) = bridge_server.lock() {
+                        if let Some(mut child) = bridge.take() {
+                            println!("Stopping bridge server...");
+                            let _ = child.kill();
+                        }
                     }
-                }
+                };
 
                 // Note: We don't stop the APN node as it may be used by other services
                 // Users can stop it manually if needed

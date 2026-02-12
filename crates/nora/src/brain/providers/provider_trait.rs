@@ -71,6 +71,16 @@ pub enum ProviderError {
     NotAvailable(String),
 }
 
+/// Provider-agnostic content block for multi-modal messages (text + images)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlock {
+    /// Plain text content
+    Text { text: String },
+    /// Base64-encoded image — each provider serializes to its own format
+    ImageBase64 { media_type: String, data: String },
+}
+
 /// Role of a message in the conversation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -92,6 +102,10 @@ pub struct ChatMessage {
     /// For assistant messages that include tool calls
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCallRequest>>,
+    /// Multi-modal content blocks (text + images). When present, providers
+    /// serialize these instead of the plain `content` string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_blocks: Option<Vec<ContentBlock>>,
 }
 
 impl ChatMessage {
@@ -101,6 +115,7 @@ impl ChatMessage {
             content: content.into(),
             tool_call_id: None,
             tool_calls: None,
+            content_blocks: None,
         }
     }
 
@@ -110,6 +125,7 @@ impl ChatMessage {
             content: content.into(),
             tool_call_id: None,
             tool_calls: None,
+            content_blocks: None,
         }
     }
 
@@ -119,6 +135,7 @@ impl ChatMessage {
             content: content.into(),
             tool_call_id: None,
             tool_calls: None,
+            content_blocks: None,
         }
     }
 
@@ -128,6 +145,7 @@ impl ChatMessage {
             content: content.into(),
             tool_call_id: Some(tool_call_id.into()),
             tool_calls: None,
+            content_blocks: None,
         }
     }
 
@@ -137,6 +155,25 @@ impl ChatMessage {
             content: String::new(),
             tool_call_id: None,
             tool_calls: Some(tool_calls),
+            content_blocks: None,
+        }
+    }
+
+    /// Create a user message with text and base64-encoded images (for Vision APIs)
+    pub fn user_with_images(text: impl Into<String>, images: Vec<(String, String)>) -> Self {
+        let text_str = text.into();
+        let mut blocks: Vec<ContentBlock> = images
+            .into_iter()
+            .map(|(data, media_type)| ContentBlock::ImageBase64 { media_type, data })
+            .collect();
+        blocks.push(ContentBlock::Text { text: text_str.clone() });
+
+        Self {
+            role: MessageRole::User,
+            content: text_str,
+            tool_call_id: None,
+            tool_calls: None,
+            content_blocks: Some(blocks),
         }
     }
 }

@@ -8,6 +8,7 @@ pub mod brain;
 pub mod cache;
 pub mod context;
 pub mod coordination;
+pub mod editron_tracking;
 pub mod execution;
 pub mod executor;
 pub mod graph;

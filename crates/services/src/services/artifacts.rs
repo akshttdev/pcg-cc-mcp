@@ -179,7 +179,7 @@ impl ArtifactService {
         // Create the artifact
         let artifact = self
             .create_artifact(CreateExecutionArtifact {
-                execution_process_id,
+                execution_process_id: Some(execution_process_id),
                 artifact_type: ArtifactType::Plan,
                 title,
                 content: Some(plan_content),
@@ -219,7 +219,7 @@ impl ArtifactService {
     ) -> Result<ExecutionArtifact, ArtifactServiceError> {
         let artifact = self
             .create_artifact(CreateExecutionArtifact {
-                execution_process_id,
+                execution_process_id: Some(execution_process_id),
                 artifact_type: ArtifactType::Screenshot,
                 title,
                 content: None,
@@ -241,7 +241,7 @@ impl ArtifactService {
     ) -> Result<ExecutionArtifact, ArtifactServiceError> {
         let artifact = self
             .create_artifact(CreateExecutionArtifact {
-                execution_process_id,
+                execution_process_id: Some(execution_process_id),
                 artifact_type: ArtifactType::ErrorReport,
                 title,
                 content: Some(error_content),

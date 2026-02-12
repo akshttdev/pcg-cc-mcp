@@ -250,8 +250,9 @@ pub fn get_recommended_provider(agent_name: &str) -> LLMProvider {
         // Orchestration → OpenAI (good at coordination)
         "nora" | "orchestrator" => LLMProvider::OpenAI,
 
-        // Visual/Creative → OpenAI (GPT-4o has vision)
+        // Visual/Creative → OpenAI (GPT-4o has vision), also Anthropic (Claude Vision)
         "maci" | "editron" | "cinematographer" => LLMProvider::OpenAI,
+        "spectra" | "visual-qc" | "master-cinematographer" => LLMProvider::Anthropic,
 
         // Strategy → Either works well
         "astra" | "genesis" => LLMProvider::OpenAI,

@@ -673,8 +673,8 @@ pub async fn initialize_nora(
             tracing::error!("Failed to initialize Nora: {}", e);
             ApiError::InternalError(format!("Nora initialization failed: {}", e))
         })?
-        .with_database(state.db().pool.clone())
-        .with_media_pipeline(state.media_pipeline().clone());
+        .with_media_pipeline(state.media_pipeline().clone())
+        .with_database(state.db().pool.clone());
 
     nora_agent
         .seed_projects(project_context)
@@ -773,8 +773,8 @@ pub async fn initialize_nora_on_startup(state: &DeploymentImpl) -> Result<String
     let nora_agent = nora::initialize_nora(config)
         .await
         .map_err(|e| format!("Nora initialization failed: {}", e))?
-        .with_database(state.db().pool.clone())
         .with_media_pipeline(state.media_pipeline().clone())
+        .with_database(state.db().pool.clone())
         .with_cinematics(cinematics);
 
     // Seed project context
@@ -1555,8 +1555,13 @@ pub async fn execute_executive_tool(
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
 
     // Convert string permissions to Permission enum
-    // This is a simplified conversion - in real implementation you'd have proper mapping
-    let user_permissions = vec![nora::tools::Permission::Execute]; // TODO: Proper permission mapping
+    // Grant all permissions for local development — proper RBAC mapping will be added later
+    let user_permissions = vec![
+        nora::tools::Permission::ReadOnly,
+        nora::tools::Permission::Write,
+        nora::tools::Permission::Execute,
+        nora::tools::Permission::Executive,
+    ];
 
     let result = nora
         .executive_tools

@@ -46,6 +46,10 @@ const ACTION_ICON_MAP: Record<string, typeof CheckCircle> = {
   rejected: XCircle,
   'changes_requested': Clock,
   tagged: Tag,
+  'editron_ingest_completed': CheckCircle,
+  'editron_analyze_completed': CheckCircle,
+  'editron_edits_generated': CheckCircle,
+  'editron_render_started': Clock,
 };
 
 interface StateChange {
@@ -103,6 +107,14 @@ function formatActionText(activity: ActivityLog): string {
       return 'requested changes';
     case 'tagged':
       return 'updated tags';
+    case 'editron_ingest_completed':
+      return 'completed media ingest';
+    case 'editron_analyze_completed':
+      return 'completed media analysis';
+    case 'editron_edits_generated':
+      return 'generated video edits';
+    case 'editron_render_started':
+      return 'started render job';
     default:
       return activity.action;
   }

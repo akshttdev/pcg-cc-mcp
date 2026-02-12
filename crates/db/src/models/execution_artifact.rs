@@ -50,6 +50,12 @@ pub enum ArtifactType {
     // Wide Research artifacts
     SubagentResult,
     AggregatedResearch,
+
+    // Editron media artifacts
+    MediaIngestManifest,
+    MediaAnalysisReport,
+    VideoEditSession,
+    RenderDeliverable,
 }
 
 #[derive(Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS)]
@@ -101,6 +107,11 @@ impl std::fmt::Display for ArtifactType {
             // Wide Research
             ArtifactType::SubagentResult => write!(f, "subagent_result"),
             ArtifactType::AggregatedResearch => write!(f, "aggregated_research"),
+            // Editron media
+            ArtifactType::MediaIngestManifest => write!(f, "media_ingest_manifest"),
+            ArtifactType::MediaAnalysisReport => write!(f, "media_analysis_report"),
+            ArtifactType::VideoEditSession => write!(f, "video_edit_session"),
+            ArtifactType::RenderDeliverable => write!(f, "render_deliverable"),
         }
     }
 }
@@ -130,7 +141,7 @@ impl std::fmt::Display for ArtifactReviewStatus {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct ExecutionArtifact {
     pub id: Uuid,
-    pub execution_process_id: Uuid,
+    pub execution_process_id: Option<Uuid>,
     pub artifact_type: ArtifactType,
     pub title: String,
     pub content: Option<String>,
@@ -142,7 +153,7 @@ pub struct ExecutionArtifact {
 
 #[derive(Debug, Deserialize, TS)]
 pub struct CreateExecutionArtifact {
-    pub execution_process_id: Uuid,
+    pub execution_process_id: Option<Uuid>,
     pub artifact_type: ArtifactType,
     pub title: String,
     pub content: Option<String>,

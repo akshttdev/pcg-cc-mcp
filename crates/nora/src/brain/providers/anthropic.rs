@@ -7,8 +7,9 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 
 use super::provider_trait::{
-    ChatConfig, ChatMessage, ChatRequest, LLMProviderTrait, MessageRole, ProviderError,
-    ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest, ToolDefinition,
+    ChatConfig, ChatMessage, ChatRequest, ContentBlock, LLMProviderTrait, MessageRole,
+    ProviderError, ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest,
+    ToolDefinition,
 };
 
 /// Anthropic Claude API provider
@@ -69,10 +70,36 @@ impl AnthropicProvider {
                     }
                 }
                 MessageRole::User => {
-                    api_messages.push(serde_json::json!({
-                        "role": "user",
-                        "content": msg.content
-                    }));
+                    if let Some(ref blocks) = msg.content_blocks {
+                        // Multi-modal: serialize content blocks in Anthropic format
+                        let content_array: Vec<serde_json::Value> = blocks
+                            .iter()
+                            .map(|block| match block {
+                                ContentBlock::Text { text } => {
+                                    serde_json::json!({ "type": "text", "text": text })
+                                }
+                                ContentBlock::ImageBase64 { media_type, data } => {
+                                    serde_json::json!({
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": media_type,
+                                            "data": data
+                                        }
+                                    })
+                                }
+                            })
+                            .collect();
+                        api_messages.push(serde_json::json!({
+                            "role": "user",
+                            "content": content_array
+                        }));
+                    } else {
+                        api_messages.push(serde_json::json!({
+                            "role": "user",
+                            "content": msg.content
+                        }));
+                    }
                 }
                 MessageRole::Assistant => {
                     if let Some(ref tool_calls) = msg.tool_calls {
@@ -455,5 +482,45 @@ mod tests {
         assert_eq!(api_messages.len(), 2); // System is extracted, user + assistant remain
         assert_eq!(api_messages[0]["role"], "user");
         assert_eq!(api_messages[1]["role"], "assistant");
+    }
+
+    #[test]
+    fn test_vision_content_blocks_serialization() {
+        let provider = AnthropicProvider::new();
+
+        let msg = ChatMessage::user_with_images(
+            "Analyze this frame",
+            vec![("dGVzdA==".to_string(), "image/jpeg".to_string())],
+        );
+        let messages = vec![msg];
+        let (_, api_messages) = provider.messages_to_anthropic(&messages);
+
+        assert_eq!(api_messages.len(), 1);
+        let content = &api_messages[0]["content"];
+        assert!(content.is_array());
+        let blocks = content.as_array().unwrap();
+        assert_eq!(blocks.len(), 2); // 1 image + 1 text
+
+        // First block should be the image
+        assert_eq!(blocks[0]["type"], "image");
+        assert_eq!(blocks[0]["source"]["type"], "base64");
+        assert_eq!(blocks[0]["source"]["media_type"], "image/jpeg");
+        assert_eq!(blocks[0]["source"]["data"], "dGVzdA==");
+
+        // Second block should be the text
+        assert_eq!(blocks[1]["type"], "text");
+        assert_eq!(blocks[1]["text"], "Analyze this frame");
+    }
+
+    #[test]
+    fn test_plain_text_message_no_content_blocks() {
+        let provider = AnthropicProvider::new();
+
+        let msg = ChatMessage::user("Just text");
+        let messages = vec![msg];
+        let (_, api_messages) = provider.messages_to_anthropic(&messages);
+
+        // Plain text should be a string, not an array
+        assert_eq!(api_messages[0]["content"], "Just text");
     }
 }

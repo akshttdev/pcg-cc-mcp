@@ -31,3 +31,7 @@ pub mod topos_scanner;
 pub mod worktree_manager;
 pub mod social;
 pub mod vibe_pricing;
+pub mod visual_qc;
+pub mod scene_analysis;
+pub mod beat_analysis;
+pub mod recap_assembly;
