@@ -75,8 +75,7 @@ impl SovereignStorageConfig {
             .or_else(|_| std::env::var("DATABASE_URL"))
             .unwrap_or_else(|_| "dev_assets/db.sqlite".to_string());
         let db_path_str = db_path_str
-            .strip_prefix("sqlite:///")
-            .or_else(|| db_path_str.strip_prefix("sqlite://"))
+            .strip_prefix("sqlite://")
             .unwrap_or(&db_path_str)
             .to_string();
         let db_path = if db_path_str.starts_with('/') {

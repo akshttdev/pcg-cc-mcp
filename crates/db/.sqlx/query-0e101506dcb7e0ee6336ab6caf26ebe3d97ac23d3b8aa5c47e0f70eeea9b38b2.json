@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n  t.id                            AS \"id!: Uuid\",\n  t.project_id                    AS \"project_id!: Uuid\",\n  t.pod_id                        AS \"pod_id: Uuid\",\n  t.board_id                      AS \"board_id: Uuid\",\n  t.title,\n  t.description,\n  t.status                        AS \"status!: TaskStatus\",\n  t.parent_task_attempt           AS \"parent_task_attempt: Uuid\",\n  t.created_at                    AS \"created_at!: DateTime<Utc>\",\n  t.updated_at                    AS \"updated_at!: DateTime<Utc>\",\n  t.priority                      AS \"priority!: Priority\",\n  t.assignee_id                   AS \"assignee_id: String\",\n  t.assigned_agent                AS \"assigned_agent: String\",\n  t.agent_id                      AS \"agent_id: Uuid\",\n  t.assigned_mcps                 AS \"assigned_mcps: String\",\n  t.created_by                    AS \"created_by!\",\n  t.requires_approval             AS \"requires_approval!: bool\",\n  t.approval_status               AS \"approval_status: ApprovalStatus\",\n  t.parent_task_id                AS \"parent_task_id: Uuid\",\n  t.tags                          AS \"tags: String\",\n  t.due_date                      AS \"due_date: DateTime<Utc>\",\n  t.custom_properties             AS \"custom_properties: Json<Value>\",\n  t.scheduled_start               AS \"scheduled_start: DateTime<Utc>\",\n  t.scheduled_end                 AS \"scheduled_end: DateTime<Utc>\",\n\n  CASE WHEN EXISTS (\n    SELECT 1\n      FROM task_attempts ta\n      JOIN execution_processes ep\n        ON ep.task_attempt_id = ta.id\n     WHERE ta.task_id       = t.id\n       AND ep.status        = 'running'\n       AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')\n     LIMIT 1\n  ) THEN 1 ELSE 0 END            AS \"has_in_progress_attempt!: i64\",\n\n  CASE WHEN (\n    SELECT ep.status\n      FROM task_attempts ta\n      JOIN execution_processes ep\n        ON ep.task_attempt_id = ta.id\n     WHERE ta.task_id       = t.id\n     AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')\n     ORDER BY ep.created_at DESC\n     LIMIT 1\n  ) IN ('failed','killed') THEN 1 ELSE 0 END\n                                 AS \"last_attempt_failed!: i64\",\n\n  ( SELECT ta.executor\n      FROM task_attempts ta\n      WHERE ta.task_id = t.id\n     ORDER BY ta.created_at DESC\n      LIMIT 1\n    )                               AS \"executor!: String\",\n\n  t.collaborators                   AS \"collaborators: String\"\n\nFROM tasks t\nWHERE t.project_id = $1\nORDER BY t.created_at DESC",
+  "query": "SELECT\n  t.id                            AS \"id!: Uuid\",\n  t.project_id                    AS \"project_id!: Uuid\",\n  t.pod_id                        AS \"pod_id: Uuid\",\n  t.board_id                      AS \"board_id: Uuid\",\n  t.title,\n  t.description,\n  t.status                        AS \"status!: TaskStatus\",\n  t.parent_task_attempt           AS \"parent_task_attempt: Uuid\",\n  t.created_at                    AS \"created_at!: DateTime<Utc>\",\n  t.updated_at                    AS \"updated_at!: DateTime<Utc>\",\n  t.priority                      AS \"priority!: Priority\",\n  t.assignee_id                   AS \"assignee_id: String\",\n  t.assigned_agent                AS \"assigned_agent: String\",\n  t.agent_id                      AS \"agent_id: Uuid\",\n  t.assigned_mcps                 AS \"assigned_mcps: String\",\n  t.created_by                    AS \"created_by!\",\n  t.requires_approval             AS \"requires_approval!: bool\",\n  t.approval_status               AS \"approval_status: ApprovalStatus\",\n  t.parent_task_id                AS \"parent_task_id: Uuid\",\n  t.tags                          AS \"tags: String\",\n  t.due_date                      AS \"due_date: DateTime<Utc>\",\n  t.custom_properties             AS \"custom_properties: Json<Value>\",\n  t.scheduled_start               AS \"scheduled_start: DateTime<Utc>\",\n  t.scheduled_end                 AS \"scheduled_end: DateTime<Utc>\",\n\n  CASE WHEN EXISTS (\n    SELECT 1\n      FROM task_attempts ta\n      JOIN execution_processes ep\n        ON ep.task_attempt_id = ta.id\n     WHERE ta.task_id       = t.id\n       AND ep.status        = 'running'\n       AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')\n     LIMIT 1\n  ) THEN 1 ELSE 0 END            AS \"has_in_progress_attempt!: i64\",\n\n  CASE WHEN (\n    SELECT ep.status\n      FROM task_attempts ta\n      JOIN execution_processes ep\n        ON ep.task_attempt_id = ta.id\n     WHERE ta.task_id       = t.id\n     AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')\n     ORDER BY ep.created_at DESC\n     LIMIT 1\n  ) IN ('failed','killed') THEN 1 ELSE 0 END\n                                 AS \"last_attempt_failed!: i64\",\n\n  ( SELECT ta.executor\n      FROM task_attempts ta\n      WHERE ta.task_id = t.id\n     ORDER BY ta.created_at DESC\n      LIMIT 1\n    )                               AS \"executor!: String\",\n\n  t.collaborators                   AS \"collaborators: String\",\n\n  COALESCE(( SELECT SUM(vt.amount_vibe)\n      FROM vibe_transactions vt\n     WHERE vt.task_id = t.id\n  ), 0)                             AS \"vibe_cost!: i64\",\n\n  ( SELECT vt.model\n      FROM vibe_transactions vt\n     WHERE vt.task_id = t.id\n     ORDER BY vt.created_at DESC\n     LIMIT 1\n  )                                 AS \"vibe_model: String\"\n\nFROM tasks t\nWHERE t.project_id = $1\nORDER BY t.created_at DESC",
   "describe": {
     "columns": [
       {
@@ -142,6 +142,16 @@
         "name": "collaborators: String",
         "ordinal": 27,
         "type_info": "Text"
+      },
+      {
+        "name": "vibe_cost!: i64",
+        "ordinal": 28,
+        "type_info": "Null"
+      },
+      {
+        "name": "vibe_model: String",
+        "ordinal": 29,
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -175,8 +185,10 @@
       null,
       null,
       true,
+      true,
+      null,
       true
     ]
   },
-  "hash": "1a3598cc2646aae8c5903c33df38b65cbdc5c00d9e9fa29113fa8648ecda414d"
+  "hash": "0e101506dcb7e0ee6336ab6caf26ebe3d97ac23d3b8aa5c47e0f70eeea9b38b2"
 }

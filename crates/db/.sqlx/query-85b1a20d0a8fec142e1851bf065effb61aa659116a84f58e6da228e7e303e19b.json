@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "UPDATE tasks\n               SET title = $3, description = $4, status = $5, parent_task_attempt = $6,\n                   pod_id = $7,\n                   board_id = $8,\n                   priority = $9, assignee_id = $10, assigned_agent = $11, assigned_mcps = $12,\n                   requires_approval = $13, approval_status = $14, parent_task_id = $15,\n                   tags = $16, due_date = $17,\n                   custom_properties = $18,\n                   scheduled_start = $19,\n                   scheduled_end = $20,\n                   updated_at = datetime('now', 'subsec')\n               WHERE id = $1 AND project_id = $2\n               RETURNING\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                pod_id as \"pod_id: Uuid\",\n                board_id as \"board_id: Uuid\",\n                title,\n                description,\n                status as \"status!: TaskStatus\",\n                parent_task_attempt as \"parent_task_attempt: Uuid\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\",\n                priority as \"priority!: Priority\",\n                assignee_id,\n                assigned_agent,\n                agent_id as \"agent_id: Uuid\",\n                assigned_mcps,\n                created_by,\n                requires_approval as \"requires_approval!: bool\",\n                approval_status as \"approval_status: ApprovalStatus\",\n                parent_task_id as \"parent_task_id: Uuid\",\n                tags,\n                due_date as \"due_date: DateTime<Utc>\",\n                custom_properties as \"custom_properties: Json<Value>\",\n                scheduled_start as \"scheduled_start: DateTime<Utc>\",\n                scheduled_end as \"scheduled_end: DateTime<Utc>\"",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                pod_id as \"pod_id: Uuid\",\n                board_id as \"board_id: Uuid\",\n                title as \"title!\",\n                description,\n                status as \"status!: TaskStatus\",\n                parent_task_attempt as \"parent_task_attempt: Uuid\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\",\n                priority as \"priority!: Priority\",\n                assignee_id,\n                assigned_agent,\n                agent_id as \"agent_id: Uuid\",\n                assigned_mcps,\n                created_by as \"created_by!\",\n                requires_approval as \"requires_approval!: bool\",\n                approval_status as \"approval_status: ApprovalStatus\",\n                parent_task_id as \"parent_task_id: Uuid\",\n                tags,\n                due_date as \"due_date: DateTime<Utc>\",\n                custom_properties as \"custom_properties: Json<Value>\",\n                scheduled_start as \"scheduled_start: DateTime<Utc>\",\n                scheduled_end as \"scheduled_end: DateTime<Utc>\"\n               FROM tasks\n               WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -24,7 +24,7 @@
         "type_info": "Blob"
       },
       {
-        "name": "title",
+        "name": "title!",
         "ordinal": 4,
         "type_info": "Text"
       },
@@ -79,7 +79,7 @@
         "type_info": "Text"
       },
       {
-        "name": "created_by",
+        "name": "created_by!",
         "ordinal": 15,
         "type_info": "Text"
       },
@@ -125,7 +125,7 @@
       }
     ],
     "parameters": {
-      "Right": 20
+      "Right": 1
     },
     "nullable": [
       true,
@@ -154,5 +154,5 @@
       true
     ]
   },
-  "hash": "92d4157ccd56e51ac2dc4b1e0f5afecfe4d7cd7385cf916b2d307374f087d6ad"
+  "hash": "85b1a20d0a8fec142e1851bf065effb61aa659116a84f58e6da228e7e303e19b"
 }
