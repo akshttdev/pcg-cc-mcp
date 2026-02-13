@@ -49,9 +49,19 @@ async fn main() -> Result<(), VibeKanbanError> {
         std::fs::create_dir_all(asset_dir())?;
     }
 
-    // Initialize external services (Ollama for local LLM, ComfyUI for image generation)
+    // Initialize external services (APN node/bridge, Ollama, ComfyUI)
     let external_config = ExternalServicesConfig::default();
     let service_status = initialize_external_services(&external_config).await;
+    if service_status.apn_node_running {
+        tracing::info!("APN node online - mesh networking active on port {}", external_config.apn_node_port);
+    } else {
+        tracing::warn!("APN node not available - mesh networking disabled");
+    }
+    if service_status.apn_bridge_running {
+        tracing::info!("APN bridge online - dashboard mesh API on port {}", external_config.apn_bridge_port);
+    } else {
+        tracing::warn!("APN bridge not available - mesh API will use log fallback");
+    }
     if !service_status.ollama_running {
         tracing::warn!("Ollama not available - agents will fall back to cloud LLMs (may incur API costs)");
     }
