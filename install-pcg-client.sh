@@ -115,6 +115,29 @@ SERVICE_EOF
     echo "  systemctl --user enable pcg-client"
     echo "  systemctl --user start pcg-client"
     echo ""
+
+    # Install desktop icon and launcher
+    ICON_DIR="${HOME}/.local/share/icons"
+    DESKTOP_DIR="${HOME}/.local/share/applications"
+    mkdir -p "${ICON_DIR}" "${DESKTOP_DIR}"
+
+    # Copy PCG logo from frontend public directory
+    if [ -f "${INSTALL_DIR}/repo/frontend/public/pcg-logo.png" ]; then
+        cp "${INSTALL_DIR}/repo/frontend/public/pcg-logo.png" "${ICON_DIR}/pcg-logo.png"
+        echo "✅ Icon installed: ${ICON_DIR}/pcg-logo.png"
+    fi
+
+    # Install desktop entry
+    if [ -f "${INSTALL_DIR}/repo/pcg-client.desktop" ]; then
+        cp "${INSTALL_DIR}/repo/pcg-client.desktop" "${DESKTOP_DIR}/pcg-client.desktop"
+        chmod +x "${DESKTOP_DIR}/pcg-client.desktop"
+        echo "✅ Desktop entry installed: ${DESKTOP_DIR}/pcg-client.desktop"
+
+        # Update desktop database if update-desktop-database is available
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database "${DESKTOP_DIR}" 2>/dev/null || true
+        fi
+    fi
 fi
 
 # Create launchd plist (Mac only)

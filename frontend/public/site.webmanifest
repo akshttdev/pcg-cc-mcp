@@ -1,21 +1,21 @@
 {
-  "name": "Vibe Kanban",
-  "short_name": "VK",
+  "name": "Power Club Global - Command Center",
+  "short_name": "PCG",
   "icons": [
     {
-      "src": "/favicon-vk-light.svg",
-      "sizes": "any",
+      "src": "/pcg-logo.png",
+      "sizes": "500x500",
       "purpose": "any",
-      "type": "image/svg+xml"
+      "type": "image/png"
     },
     {
-      "src": "/favicon-vk-light-maskable.svg",
-      "sizes": "any",
+      "src": "/pcg-logo.png",
+      "sizes": "500x500",
       "purpose": "maskable",
-      "type": "image/svg+xml"
+      "type": "image/png"
     }
   ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "background_color": "#000000",
   "display": "standalone"
 }
