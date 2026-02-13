@@ -156,7 +156,7 @@ impl NatsRelay {
     }
 
     /// Announce this node to the network
-    pub async fn announce(&self, wallet_address: &str, capabilities: &[String], resources: Option<&crate::wire::NodeResources>) -> Result<()> {
+    pub async fn announce(&self, wallet_address: &str, capabilities: &[String], resources: Option<&crate::wire::NodeResources>, device_name: Option<&str>) -> Result<()> {
         let announcement = PeerAnnouncement {
             node_id: self.config.node_id.clone(),
             wallet_address: wallet_address.to_string(),
@@ -164,6 +164,7 @@ impl NatsRelay {
             timestamp: chrono::Utc::now().to_rfc3339(),
             resources: resources.cloned(),
             hostname: crate::resources::get_hostname(),
+            device_name: device_name.map(String::from),
         };
 
         let payload = serde_json::to_vec(&announcement)?;
@@ -280,6 +281,8 @@ pub struct PeerAnnouncement {
     pub resources: Option<crate::wire::NodeResources>,
     #[serde(default)]
     pub hostname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_name: Option<String>,
 }
 
 #[cfg(test)]

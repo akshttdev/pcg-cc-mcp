@@ -160,10 +160,16 @@ async fn main() -> Result<(), VibeKanbanError> {
                 return;
             }
 
+            let device_name = std::env::var("APN_DEVICE_NAME")
+                .unwrap_or_else(|_| hostname::get()
+                    .map(|h| h.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "APN Node".to_string()));
+
             let mut cmd = tokio::process::Command::new(&apn_binary);
             cmd.arg("--port").arg("4001")
                .arg("--relay").arg("nats://nonlocal.info:4222")
-               .arg("--heartbeat-interval").arg("30");
+               .arg("--heartbeat-interval").arg("30")
+               .arg("--name").arg(&device_name);
 
             // Stdin/stdout/stderr should be null for background process
             cmd.stdin(std::process::Stdio::null())

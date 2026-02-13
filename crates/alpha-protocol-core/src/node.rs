@@ -25,6 +25,8 @@ pub struct NodeConfig {
     pub bootstrap_peers: Vec<String>,
     /// Node capabilities
     pub capabilities: Vec<String>,
+    /// Human-readable display name (e.g. "Sirak Studios")
+    pub device_name: Option<String>,
 }
 
 impl Default for NodeConfig {
@@ -35,6 +37,7 @@ impl Default for NodeConfig {
             relay_url: crate::DEFAULT_NATS_RELAY.to_string(),
             bootstrap_peers: vec![],
             capabilities: vec!["compute".to_string(), "relay".to_string()],
+            device_name: None,
         }
     }
 }
@@ -187,6 +190,7 @@ impl AlphaNode {
                 self.identity.address(),
                 &self.config.capabilities,
                 resources.as_ref(),
+                self.config.device_name.as_deref(),
             ).await?;
 
             // Spawn relay listener (subscribes to incoming messages)
@@ -327,6 +331,7 @@ impl AlphaNode {
                 self.identity.address(),
                 &self.config.capabilities,
                 resources.as_ref(),
+                self.config.device_name.as_deref(),
             ).await?;
         }
 
@@ -355,6 +360,7 @@ impl AlphaNode {
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 resources: resources.clone(),
                 hostname: crate::resources::get_hostname(),
+                device_name: self.config.device_name.clone(),
             };
 
             let payload = serde_json::to_vec(&announcement)?;
@@ -431,6 +437,11 @@ impl AlphaNodeBuilder {
 
     pub fn with_identity(mut self, identity: NodeIdentity) -> Self {
         self.identity = Some(identity);
+        self
+    }
+
+    pub fn with_device_name(mut self, name: &str) -> Self {
+        self.config.device_name = Some(name.to_string());
         self
     }
 

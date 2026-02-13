@@ -36,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
     let mut mnemonic: Option<String> = None;
     let mut heartbeat_interval: u64 = 30; // seconds
     let mut enable_heartbeat = true;
+    let mut device_name: Option<String> = None;
 
     // Parse args
     let mut i = 1;
@@ -80,6 +81,12 @@ async fn main() -> anyhow::Result<()> {
                 enable_heartbeat = false;
                 i += 1;
             }
+            "--name" => {
+                device_name = Some(args.get(i + 1)
+                    .ok_or_else(|| anyhow::anyhow!("--name requires a value"))?
+                    .clone());
+                i += 2;
+            }
             "--help" | "-h" => {
                 print_help();
                 return Ok(());
@@ -99,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
     let identity = identity_storage::load_or_create_identity(mnemonic.as_deref())?;
 
     // Build the node with persistent identity
-    let mut node = AlphaNodeBuilder::new()
+    let mut builder = AlphaNodeBuilder::new()
         .with_port(port)
         .with_relay(&relay_url)
         .with_bootstrap_peers(bootstrap_peers)
@@ -108,16 +115,24 @@ async fn main() -> anyhow::Result<()> {
             "relay".to_string(),
             "storage".to_string(),
         ])
-        .with_identity(identity)
-        .build(event_tx)?;
+        .with_identity(identity);
+
+    if let Some(ref name) = device_name {
+        builder = builder.with_device_name(name);
+    }
+
+    let mut node = builder.build(event_tx)?;
 
     println!("\n╔══════════════════════════════════════════════════════════════════╗");
     println!("║              ALPHA PROTOCOL NETWORK - Node                       ║");
     println!("╠══════════════════════════════════════════════════════════════════╣");
-    println!("║  Node ID:  {}                                   ║", node.short_id());
-    println!("║  Address:  {}  ║", node.address());
-    println!("║  P2P Port: {}                                                 ║", port);
-    println!("║  Relay:    {}                         ║", relay_url);
+    if let Some(ref name) = device_name {
+        println!("║  Name:     {:<53}║", name);
+    }
+    println!("║  Node ID:  {:<53}║", node.short_id());
+    println!("║  Address:  {:<53}║", node.address());
+    println!("║  P2P Port: {:<53}║", port);
+    println!("║  Relay:    {:<53}║", relay_url);
     println!("╚══════════════════════════════════════════════════════════════════╝\n");
 
     // Print mnemonic for backup
@@ -219,6 +234,7 @@ fn print_help() {
     println!("  --new               Generate new identity (WARNING: Creates new wallet!)");
     println!("  --import <PHRASE>   Import from mnemonic phrase (quoted)");
     println!("  --heartbeat-interval <SECS>  Heartbeat interval in seconds (default: 30)");
+    println!("  --name <NAME>       Display name for this node (e.g. \"Sirak Studios\")");
     println!("  --no-heartbeat      Disable heartbeat broadcasts");
     println!("  -h, --help          Show this help\n");
     println!("Identity Persistence:");

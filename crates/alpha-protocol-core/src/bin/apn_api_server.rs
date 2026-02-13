@@ -24,6 +24,8 @@ struct PeerInfo {
     wallet_address: String,
     capabilities: Vec<String>,
     resources: Option<alpha_protocol_core::wire::NodeResources>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +108,7 @@ fn fetch_network_info() -> (Vec<PeerInfo>, bool, String) {
                             hashrate: None,
                             bandwidth_mbps: None,
                         }),
+                        device_name: None, // Parsed from NATS heartbeats, not logs
                     });
                 }
             }
