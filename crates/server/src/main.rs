@@ -130,6 +130,49 @@ async fn main() -> Result<(), VibeKanbanError> {
         }
     }
 
+    // Auto-start APN node in background (if enabled)
+    let auto_start_apn = std::env::var("AUTO_START_APN")
+        .unwrap_or_else(|_| "true".to_string())
+        .parse::<bool>()
+        .unwrap_or(true);
+
+    if auto_start_apn {
+        tokio::spawn(async move {
+            tracing::info!("🌐 Auto-starting APN node in background...");
+
+            let apn_binary = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|p| p.join("apn_node")))
+                .unwrap_or_else(|| std::path::PathBuf::from("./target/release/apn_node"));
+
+            if !apn_binary.exists() {
+                tracing::warn!("⚠️ APN node binary not found at {:?}, skipping auto-start", apn_binary);
+                return;
+            }
+
+            let mut cmd = tokio::process::Command::new(&apn_binary);
+            cmd.arg("--port").arg("4001")
+               .arg("--relay").arg("nats://nonlocal.info:4222")
+               .arg("--heartbeat-interval").arg("30");
+
+            // Stdin/stdout/stderr should be null for background process
+            cmd.stdin(std::process::Stdio::null())
+               .stdout(std::process::Stdio::null())
+               .stderr(std::process::Stdio::null());
+
+            match cmd.spawn() {
+                Ok(child) => {
+                    tracing::info!("✅ APN node started in background (PID: {:?})", child.id());
+                }
+                Err(e) => {
+                    tracing::error!("❌ Failed to start APN node: {}", e);
+                }
+            }
+        });
+    } else {
+        tracing::info!("APN auto-start disabled (set AUTO_START_APN=true to enable)");
+    }
+
     // Start APN peer cleanup service (deduplicates and marks stale peers inactive)
     let deployment_for_cleanup = deployment.clone();
     tokio::spawn(async move {
