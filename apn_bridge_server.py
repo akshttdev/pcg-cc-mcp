@@ -34,6 +34,7 @@ except ImportError:
 
 # Node configuration
 NODE_ID = os.getenv("NODE_ID", "apn_dashboard")
+DEVICE_NAME = os.getenv("DEVICE_NAME", "APN Node")
 WALLET_ADDRESS = os.getenv("WALLET_ADDRESS", "0x09465b9572fb354fdf4e34040386f180d1ff0c2a3a668333bedee17b266a4b74")
 P2P_PORT = int(os.getenv("P2P_PORT", "4001"))
 
@@ -148,18 +149,38 @@ async def handle_message(msg):
                 peer_id = data["node_id"]
                 discovered_peers[peer_id] = {
                     "peer_id": peer_id,
+                    "device_name": data.get("device_name", data.get("hostname", "")),
                     "wallet_address": data.get("wallet_address", ""),
                     "capabilities": data.get("capabilities", []),
+                    "resources": data.get("resources"),
                     "last_seen": datetime.now(timezone.utc).isoformat(),
                     "source": subject,
                 }
-                print(f"👋 Discovered peer: {peer_id}")
+                name = data.get("device_name", data.get("hostname", peer_id))
+                print(f"👋 Discovered peer: {name} ({peer_id})")
 
         # Handle heartbeats
         elif subject == "apn.heartbeat":
             peer_id = data.get("node_id")
-            if peer_id and peer_id in discovered_peers:
-                discovered_peers[peer_id]["last_seen"] = datetime.now(timezone.utc).isoformat()
+            if peer_id:
+                if peer_id in discovered_peers:
+                    discovered_peers[peer_id]["last_seen"] = datetime.now(timezone.utc).isoformat()
+                    if "resources" in data:
+                        discovered_peers[peer_id]["resources"] = data["resources"]
+                    if data.get("hostname"):
+                        discovered_peers[peer_id]["device_name"] = data["hostname"]
+                else:
+                    discovered_peers[peer_id] = {
+                        "peer_id": peer_id,
+                        "device_name": data.get("hostname", ""),
+                        "wallet_address": data.get("wallet_address", ""),
+                        "capabilities": data.get("capabilities", []),
+                        "resources": data.get("resources"),
+                        "last_seen": datetime.now(timezone.utc).isoformat(),
+                        "source": "apn.heartbeat",
+                    }
+                    name = data.get("hostname", peer_id)
+                    print(f"👋 Discovered peer via heartbeat: {name} ({peer_id})")
 
         # Handle direct messages
         elif subject.startswith("apn.dm."):
@@ -177,6 +198,8 @@ async def announce_node():
 
     announcement = {
         "node_id": NODE_ID,
+        "device_name": DEVICE_NAME,
+        "hostname": DEVICE_NAME,
         "wallet_address": WALLET_ADDRESS,
         "capabilities": CAPABILITIES,
         "timestamp": datetime.now(timezone.utc).isoformat(),
