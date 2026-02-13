@@ -171,7 +171,14 @@ fn estimate_bandwidth() -> Option<u32> {
 /// Get system hostname
 ///
 /// Returns the system's hostname or None if it cannot be determined.
+/// Can be overridden with APN_HOSTNAME environment variable.
 pub fn get_hostname() -> Option<String> {
+    // Check for override first
+    if let Ok(custom_hostname) = std::env::var("APN_HOSTNAME") {
+        return Some(custom_hostname);
+    }
+
+    // Fall back to system hostname
     hostname::get()
         .ok()
         .and_then(|h| h.into_string().ok())

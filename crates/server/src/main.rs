@@ -171,6 +171,9 @@ async fn main() -> Result<(), VibeKanbanError> {
                .arg("--heartbeat-interval").arg("30")
                .arg("--name").arg(&device_name);
 
+            // Set custom hostname for master node
+            cmd.env("APN_HOSTNAME", "pythia");
+
             // Stdin/stdout/stderr should be null for background process
             cmd.stdin(std::process::Stdio::null())
                .stdout(std::process::Stdio::null())
