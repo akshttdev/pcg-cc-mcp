@@ -1,0 +1,14 @@
+[package]
+name = "pythia-client"
+version = "0.1.0"
+edition = "2021"
+description = "Client library for consuming Pythia API (Layer 3). Used by Dashboard (Layer 2) to access VIBE economics, task routing, and network intelligence."
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }

@@ -175,13 +175,15 @@ impl AccessControl {
     pub async fn sync_from_database(&self, pool: &SqlitePool) -> Result<()> {
         tracing::info!("Syncing access permissions from database");
 
-        // Load admin users
-        let admin_rows = sqlx::query!(
-            r#"
-            SELECT id, email
-            FROM users
-            WHERE is_admin = 1
-            "#
+        // Load admin users using runtime query (avoids compile-time sqlx check)
+        #[derive(sqlx::FromRow)]
+        struct AdminRow {
+            id: Vec<u8>,
+            email: String,
+        }
+
+        let admin_rows: Vec<AdminRow> = sqlx::query_as(
+            "SELECT id, email FROM users WHERE is_admin = 1"
         )
         .fetch_all(pool)
         .await
@@ -190,55 +192,72 @@ impl AccessControl {
         let mut admins = self.admin_users.write().await;
         admins.clear();
         for row in admin_rows {
-            // Convert Vec<u8> id to String
-            let user_id = String::from_utf8_lossy(&row.id).to_string();
-            admins.insert(user_id.clone());
-            // email is a String in this schema
-            tracing::debug!("Registered admin user: {} ({})", row.email, user_id);
+            // Convert 16-byte UUID blob to UUID string for consistent key format
+            if let Ok(user_uuid) = Uuid::from_slice(&row.id) {
+                let user_id_str = user_uuid.to_string();
+                admins.insert(user_id_str.clone());
+                tracing::debug!("Registered admin user: {} ({})", row.email, user_id_str);
+            }
         }
 
-        // Load user-project collaborations
-        // Note: project_collaborators table may not exist yet
-        // Using runtime query to avoid compile-time check
+        // Load user-project memberships from project_members table
         let mut user_access = self.user_access.write().await;
         user_access.clear();
 
-        // Try to load collaborations if the table exists
-        let collab_result: std::result::Result<Vec<(String, String, String, chrono::DateTime<chrono::Utc>, String)>, sqlx::Error> = sqlx::query_as(
+        #[derive(sqlx::FromRow)]
+        struct MemberRow {
+            user_id: Vec<u8>,
+            project_id: String,
+            role: String,
+            granted_at: String,
+            project_name: String,
+        }
+
+        let member_result: std::result::Result<Vec<MemberRow>, sqlx::Error> = sqlx::query_as(
             r#"
-            SELECT pc.user_id, pc.project_id, pc.role, pc.created_at, p.name as project_name
-            FROM project_collaborators pc
-            JOIN projects p ON p.id = pc.project_id
+            SELECT pm.user_id, pm.project_id, pm.role, pm.granted_at, p.name as project_name
+            FROM project_members pm
+            JOIN projects p ON p.id = pm.project_id
             "#
         )
         .fetch_all(pool)
         .await;
 
-        if let Ok(collab_rows) = collab_result {
-            for (user_id, project_id_str, role_str, created_at, project_name) in collab_rows {
-                if let Ok(project_id) = Uuid::parse_str(&project_id_str) {
-                    let role = match role_str.as_str() {
+        if let Ok(member_rows) = member_result {
+            for row in member_rows {
+                let user_id_str = if let Ok(user_uuid) = Uuid::from_slice(&row.user_id) {
+                    user_uuid.to_string()
+                } else {
+                    String::from_utf8_lossy(&row.user_id).to_string()
+                };
+
+                if let Ok(project_id) = Uuid::parse_str(&row.project_id) {
+                    let role = match row.role.as_str() {
                         "owner" => ProjectRole::Owner,
                         "editor" => ProjectRole::Editor,
                         "executor" => ProjectRole::Executor,
                         _ => ProjectRole::Viewer,
                     };
 
+                    let granted_at = chrono::DateTime::parse_from_rfc3339(&row.granted_at)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .unwrap_or_else(|_| chrono::Utc::now());
+
                     let access = ProjectAccess {
                         project_id,
-                        project_name,
+                        project_name: row.project_name,
                         role,
-                        granted_at: created_at,
+                        granted_at,
                     };
 
                     user_access
-                        .entry(user_id)
+                        .entry(user_id_str)
                         .or_insert_with(HashMap::new)
                         .insert(project_id, access);
                 }
             }
         } else {
-            tracing::debug!("project_collaborators table not found, skipping collaboration sync");
+            tracing::debug!("project_members table not found, skipping membership sync");
         }
 
         tracing::info!(

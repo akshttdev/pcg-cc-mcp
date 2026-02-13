@@ -7,6 +7,7 @@ pub const EV_STDERR: &str = "stderr";
 pub const EV_JSON_PATCH: &str = "json_patch";
 pub const EV_SESSION_ID: &str = "session_id";
 pub const EV_FINISHED: &str = "finished";
+pub const EV_TOKEN_COUNT: &str = "token_count";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum LogMsg {
@@ -14,6 +15,7 @@ pub enum LogMsg {
     Stderr(String),
     JsonPatch(Patch),
     SessionId(String),
+    TokenCount { input_tokens: u64, output_tokens: u64 },
     Finished,
 }
 
@@ -24,6 +26,7 @@ impl LogMsg {
             LogMsg::Stderr(_) => EV_STDERR,
             LogMsg::JsonPatch(_) => EV_JSON_PATCH,
             LogMsg::SessionId(_) => EV_SESSION_ID,
+            LogMsg::TokenCount { .. } => EV_TOKEN_COUNT,
             LogMsg::Finished => EV_FINISHED,
         }
     }
@@ -37,6 +40,10 @@ impl LogMsg {
                 Event::default().event(EV_JSON_PATCH).data(data)
             }
             LogMsg::SessionId(s) => Event::default().event(EV_SESSION_ID).data(s.clone()),
+            LogMsg::TokenCount { input_tokens, output_tokens } => {
+                let data = format!(r#"{{"input_tokens":{},"output_tokens":{}}}"#, input_tokens, output_tokens);
+                Event::default().event(EV_TOKEN_COUNT).data(data)
+            }
             LogMsg::Finished => Event::default().event(EV_FINISHED).data(""),
         }
     }
@@ -73,6 +80,7 @@ impl LogMsg {
                 EV_JSON_PATCH.len() + json_len + OVERHEAD
             }
             LogMsg::SessionId(s) => EV_SESSION_ID.len() + s.len() + OVERHEAD,
+            LogMsg::TokenCount { .. } => EV_TOKEN_COUNT.len() + 40 + OVERHEAD,
             LogMsg::Finished => EV_FINISHED.len() + OVERHEAD,
         }
     }

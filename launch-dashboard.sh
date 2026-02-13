@@ -9,6 +9,9 @@ echo ""
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Ensure all services use the project-local database
+export PCG_ASSET_DIR="$SCRIPT_DIR/dev_assets"
+
 # Start all agent services first
 echo "→ Initializing all dashboard services..."
 "$SCRIPT_DIR/start-all-services.sh"
@@ -24,6 +27,7 @@ else
     # Disable auto-start of ComfyUI to prevent server from hanging
     # Configure Topsi to use Ollama for LLM (qwen2.5:7b supports function calling)
     AUTO_START_COMFYUI=false BACKEND_PORT=58297 \
+    PCG_ASSET_DIR="$SCRIPT_DIR/dev_assets" \
     TOPSI_LLM_PROVIDER=ollama TOPSI_LLM_MODEL=qwen2.5:7b \
     OLLAMA_BASE_URL=http://localhost:11434 \
     nohup ./target/release/server > /tmp/pcg_backend.log 2>&1 &

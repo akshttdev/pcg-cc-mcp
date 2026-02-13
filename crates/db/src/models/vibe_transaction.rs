@@ -303,6 +303,73 @@ impl VibeTransaction {
         Ok(tx)
     }
 
+    /// Update cost details on an existing (typically zero-amount placeholder) transaction
+    pub async fn update_cost(
+        pool: &SqlitePool,
+        id: Uuid,
+        amount_vibe: i64,
+        input_tokens: Option<i64>,
+        output_tokens: Option<i64>,
+        model: Option<&str>,
+        provider: Option<&str>,
+        cost_cents: Option<i64>,
+        process_id: Option<Uuid>,
+        task_attempt_id: Option<Uuid>,
+        description: Option<&str>,
+    ) -> Result<Self, VibeTransactionError> {
+        let tx = sqlx::query_as::<_, VibeTransaction>(
+            r#"
+            UPDATE vibe_transactions
+            SET amount_vibe = $2,
+                input_tokens = COALESCE($3, input_tokens),
+                output_tokens = COALESCE($4, output_tokens),
+                model = COALESCE($5, model),
+                provider = COALESCE($6, provider),
+                calculated_cost_cents = COALESCE($7, calculated_cost_cents),
+                process_id = COALESCE($8, process_id),
+                task_attempt_id = COALESCE($9, task_attempt_id),
+                description = COALESCE($10, description),
+                updated_at = datetime('now', 'subsec')
+            WHERE id = $1
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(amount_vibe)
+        .bind(input_tokens)
+        .bind(output_tokens)
+        .bind(model)
+        .bind(provider)
+        .bind(cost_cents)
+        .bind(process_id)
+        .bind(task_attempt_id)
+        .bind(description)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(tx)
+    }
+
+    /// Find a pending (zero-amount) transaction for a task
+    pub async fn find_by_task_pending(
+        pool: &SqlitePool,
+        task_id: Uuid,
+    ) -> Result<Option<Self>, VibeTransactionError> {
+        let tx = sqlx::query_as::<_, VibeTransaction>(
+            r#"
+            SELECT * FROM vibe_transactions
+            WHERE task_id = $1 AND amount_vibe = 0
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(task_id)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(tx)
+    }
+
     /// Mark a transaction sync as failed
     pub async fn mark_sync_failed(
         pool: &SqlitePool,

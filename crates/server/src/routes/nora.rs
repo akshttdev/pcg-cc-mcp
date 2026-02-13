@@ -613,6 +613,36 @@ pub struct VoiceAnalyticsSummary {
     pub unique_sessions: i64,
 }
 
+/// Database row for voice analytics queries (runtime-checked)
+#[derive(Debug, sqlx::FromRow)]
+struct VoiceAnalyticsRow {
+    user_id: Option<String>,
+    total_interactions: i64,
+    total_messages: i64,
+    average_response_time_ms: f64,
+    first_interaction: DateTime<Utc>,
+    last_interaction: DateTime<Utc>,
+    total_input_tokens: i64,
+    total_output_tokens: i64,
+    unique_sessions: i64,
+}
+
+impl From<VoiceAnalyticsRow> for VoiceAnalyticsSummary {
+    fn from(row: VoiceAnalyticsRow) -> Self {
+        Self {
+            user_id: row.user_id,
+            total_interactions: row.total_interactions,
+            total_messages: row.total_messages,
+            average_response_time_ms: row.average_response_time_ms,
+            first_interaction: row.first_interaction,
+            last_interaction: row.last_interaction,
+            total_input_tokens: row.total_input_tokens,
+            total_output_tokens: row.total_output_tokens,
+            unique_sessions: row.unique_sessions,
+        }
+    }
+}
+
 /// Initialize Nora executive assistant
 pub async fn initialize_nora(
     State(state): State<DeploymentImpl>,
@@ -1362,24 +1392,24 @@ pub async fn get_user_voice_analytics(
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
 
     // Query analytics for the specific user
-    let result = sqlx::query!(
+    let result: VoiceAnalyticsRow = sqlx::query_as(
         r#"
         SELECT
-            user_id as "user_id: Option<String>",
-            COUNT(DISTINCT id) as "total_interactions!: i64",
-            SUM(message_count) as "total_messages!: i64",
-            AVG(julianday(last_message_at) - julianday(created_at)) * 86400000 as "average_response_time_ms!: f64",
-            MIN(created_at) as "first_interaction!: DateTime<Utc>",
-            MAX(updated_at) as "last_interaction!: DateTime<Utc>",
-            SUM(COALESCE(total_input_tokens, 0)) as "total_input_tokens!: i64",
-            SUM(COALESCE(total_output_tokens, 0)) as "total_output_tokens!: i64",
-            COUNT(DISTINCT session_id) as "unique_sessions!: i64"
+            user_id,
+            COUNT(DISTINCT id) as total_interactions,
+            COALESCE(SUM(message_count), 0) as total_messages,
+            COALESCE(AVG(julianday(last_message_at) - julianday(created_at)) * 86400000, 0.0) as average_response_time_ms,
+            MIN(created_at) as first_interaction,
+            MAX(updated_at) as last_interaction,
+            SUM(COALESCE(total_input_tokens, 0)) as total_input_tokens,
+            SUM(COALESCE(total_output_tokens, 0)) as total_output_tokens,
+            COUNT(DISTINCT session_id) as unique_sessions
         FROM agent_conversations
         WHERE agent_id = ? AND user_id = ? AND status = 'active'
         "#,
-        nora.id,
-        user_id
     )
+    .bind(&nora.id)
+    .bind(&user_id)
     .fetch_one(pool)
     .await
     .map_err(|e| {
@@ -1387,17 +1417,7 @@ pub async fn get_user_voice_analytics(
         ApiError::InternalError(format!("Failed to fetch analytics: {}", e))
     })?;
 
-    Ok(Json(VoiceAnalyticsSummary {
-        user_id: result.user_id.flatten(),
-        total_interactions: result.total_interactions,
-        total_messages: result.total_messages,
-        average_response_time_ms: result.average_response_time_ms,
-        first_interaction: result.first_interaction,
-        last_interaction: result.last_interaction,
-        total_input_tokens: result.total_input_tokens,
-        total_output_tokens: result.total_output_tokens,
-        unique_sessions: result.unique_sessions,
-    }))
+    Ok(Json(VoiceAnalyticsSummary::from(result)))
 }
 
 /// Get voice analytics for all users
@@ -1412,25 +1432,25 @@ pub async fn get_all_users_voice_analytics(
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
 
     // Query analytics grouped by user
-    let results = sqlx::query!(
+    let results: Vec<VoiceAnalyticsRow> = sqlx::query_as(
         r#"
         SELECT
-            user_id as "user_id: Option<String>",
-            COUNT(DISTINCT id) as "total_interactions!: i64",
-            SUM(message_count) as "total_messages!: i64",
-            AVG(julianday(last_message_at) - julianday(created_at)) * 86400000 as "average_response_time_ms!: f64",
-            MIN(created_at) as "first_interaction!: DateTime<Utc>",
-            MAX(updated_at) as "last_interaction!: DateTime<Utc>",
-            SUM(COALESCE(total_input_tokens, 0)) as "total_input_tokens!: i64",
-            SUM(COALESCE(total_output_tokens, 0)) as "total_output_tokens!: i64",
-            COUNT(DISTINCT session_id) as "unique_sessions!: i64"
+            user_id,
+            COUNT(DISTINCT id) as total_interactions,
+            COALESCE(SUM(message_count), 0) as total_messages,
+            COALESCE(AVG(julianday(last_message_at) - julianday(created_at)) * 86400000, 0.0) as average_response_time_ms,
+            MIN(created_at) as first_interaction,
+            MAX(updated_at) as last_interaction,
+            SUM(COALESCE(total_input_tokens, 0)) as total_input_tokens,
+            SUM(COALESCE(total_output_tokens, 0)) as total_output_tokens,
+            COUNT(DISTINCT session_id) as unique_sessions
         FROM agent_conversations
         WHERE agent_id = ? AND status = 'active' AND user_id IS NOT NULL
         GROUP BY user_id
         ORDER BY MAX(updated_at) DESC
         "#,
-        nora.id
     )
+    .bind(&nora.id)
     .fetch_all(pool)
     .await
     .map_err(|e| {
@@ -1438,20 +1458,7 @@ pub async fn get_all_users_voice_analytics(
         ApiError::InternalError(format!("Failed to fetch analytics: {}", e))
     })?;
 
-    let analytics: Vec<VoiceAnalyticsSummary> = results
-        .into_iter()
-        .map(|r| VoiceAnalyticsSummary {
-            user_id: r.user_id.flatten(),
-            total_interactions: r.total_interactions,
-            total_messages: r.total_messages,
-            average_response_time_ms: r.average_response_time_ms,
-            first_interaction: r.first_interaction,
-            last_interaction: r.last_interaction,
-            total_input_tokens: r.total_input_tokens,
-            total_output_tokens: r.total_output_tokens,
-            unique_sessions: r.unique_sessions,
-        })
-        .collect();
+    let analytics: Vec<VoiceAnalyticsSummary> = results.into_iter().map(VoiceAnalyticsSummary::from).collect();
 
     Ok(Json(analytics))
 }

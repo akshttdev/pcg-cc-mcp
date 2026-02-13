@@ -43,9 +43,19 @@ pub struct TaskQuery {
 }
 
 pub async fn get_tasks(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<TaskQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TaskWithAttemptStatus>>>, ApiError> {
+    // Verify user has at least viewer access to this project
+    access_context
+        .check_project_access(
+            &deployment.db().pool,
+            &query.project_id.to_string(),
+            crate::middleware::access_control::ProjectRole::Viewer,
+        )
+        .await?;
+
     let tasks =
         Task::find_by_project_id_with_attempt_status(&deployment.db().pool, query.project_id)
             .await?;
@@ -108,15 +118,26 @@ pub async fn get_task(
 }
 
 pub async fn create_task(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateTask>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    // Verify user has at least editor access to create tasks in this project
+    access_context
+        .check_project_access(
+            &deployment.db().pool,
+            &payload.project_id.to_string(),
+            crate::middleware::access_control::ProjectRole::Editor,
+        )
+        .await?;
+
     let id = Uuid::new_v4();
 
     tracing::debug!(
-        "Creating task '{}' in project {}",
+        "Creating task '{}' in project {} by user {}",
         payload.title,
-        payload.project_id
+        payload.project_id,
+        access_context.user_id
     );
 
     if let Some(pod_id) = payload.pod_id {
@@ -172,9 +193,18 @@ pub struct CreateAndStartTaskRequest {
 }
 
 pub async fn create_task_and_start(
+    Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateAndStartTaskRequest>,
 ) -> Result<ResponseJson<ApiResponse<TaskWithAttemptStatus>>, ApiError> {
+    // Verify user has editor access to create and start tasks
+    access_context
+        .check_project_access(
+            &deployment.db().pool,
+            &payload.task.project_id.to_string(),
+            crate::middleware::access_control::ProjectRole::Editor,
+        )
+        .await?;
     let CreateAndStartTaskRequest {
         task: task_payload,
         executor_profile_id,
@@ -352,6 +382,8 @@ pub async fn create_task_and_start(
         executor: task_attempt.executor,
         last_execution_summary: None,
         collaborators: None,
+        vibe_cost: None,
+        vibe_model: None,
     })))
 }
 

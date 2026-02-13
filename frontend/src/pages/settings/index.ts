@@ -10,3 +10,4 @@ export { ModelsSettings } from './ModelsSettings';
 export { McpSettings } from './McpSettings';
 export { WalletSettings } from './WalletSettings';
 export { AirtableSettings } from './AirtableSettings';
+export { NetworkSettings } from './NetworkSettings';

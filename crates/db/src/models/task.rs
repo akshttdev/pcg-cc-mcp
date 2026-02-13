@@ -106,6 +106,12 @@ pub struct TaskWithAttemptStatus {
     /// Collaborators who have worked on this task
     #[serde(skip_serializing_if = "Option::is_none")]
     pub collaborators: Option<Vec<TaskCollaborator>>,
+    /// Total VIBE cost for this task (aggregated from vibe_transactions)
+    #[serde(default)]
+    pub vibe_cost: Option<i64>,
+    /// Model used for the most recent vibe transaction on this task
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vibe_model: Option<String>,
 }
 
 impl std::ops::Deref for TaskWithAttemptStatus {
@@ -266,7 +272,19 @@ impl Task {
       LIMIT 1
     )                               AS "executor!: String",
 
-  t.collaborators                   AS "collaborators: String"
+  t.collaborators                   AS "collaborators: String",
+
+  COALESCE(( SELECT SUM(vt.amount_vibe)
+      FROM vibe_transactions vt
+     WHERE vt.task_id = t.id
+  ), 0)                             AS "vibe_cost!: i64",
+
+  ( SELECT vt.model
+      FROM vibe_transactions vt
+     WHERE vt.task_id = t.id
+     ORDER BY vt.created_at DESC
+     LIMIT 1
+  )                                 AS "vibe_model: String"
 
 FROM tasks t
 WHERE t.project_id = $1
@@ -313,6 +331,8 @@ ORDER BY t.created_at DESC"#,
                 collaborators: rec.collaborators
                     .as_deref()
                     .and_then(|json| serde_json::from_str(json).ok()),
+                vibe_cost: if rec.vibe_cost > 0 { Some(rec.vibe_cost) } else { None },
+                vibe_model: rec.vibe_model,
             })
             .collect();
 

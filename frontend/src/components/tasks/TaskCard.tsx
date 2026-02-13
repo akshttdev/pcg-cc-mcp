@@ -18,6 +18,7 @@ import {
   XCircle,
   Bot,
   User,
+  Zap,
 } from 'lucide-react';
 import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget';
 import { AgentFlowBadges } from './AgentFlowBadges';
@@ -200,8 +201,18 @@ export function TaskCard({
         </p>
       )}
       {!selectionMode && (
-        <div className="mt-2 pt-2 border-t">
+        <div className="mt-2 pt-2 border-t flex items-center justify-between gap-2">
           <TimeTrackerWidget taskId={task.id} compact />
+          {task.vibe_cost != null && task.vibe_cost > 0 && (
+            <div
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-[10px] font-medium shrink-0"
+              title={`${task.vibe_cost} VIBE${task.vibe_model ? ` (${task.vibe_model})` : ''}`}
+            >
+              <Zap className="h-2.5 w-2.5" />
+              <span>{task.vibe_cost}</span>
+              <span className="text-amber-500 dark:text-amber-500/70">VIBE</span>
+            </div>
+          )}
         </div>
       )}
     </KanbanCard>

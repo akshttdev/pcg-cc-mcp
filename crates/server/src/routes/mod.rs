@@ -66,6 +66,7 @@ pub mod vibe_treasury;
 pub mod topsi;
 pub mod mesh;
 pub mod peer_rewards;
+pub mod pythia;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -101,6 +102,15 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(agents::routes())
         .merge(agent_chat::routes())
         .merge(comments::router())
+        // Project and task routes require auth for user-scoped access control
+        .merge(projects::router(&deployment))
+        .merge(tasks::router(&deployment))
+        .merge(task_attempts::router(&deployment))
+        .merge(task_templates::router(&deployment))
+        .merge(approvals::router())
+        .merge(agent_wallets::router(&deployment))
+        .nest("/permissions", permissions::router(&deployment))
+        .merge(vibe_treasury::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -113,18 +123,11 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(config::router())
         .merge(agent_chat::public_routes()) // Public read-only conversation endpoints for team collaboration
         .merge(containers::router(&deployment))
-        .merge(projects::router(&deployment))
-        .merge(tasks::router(&deployment))
-        .merge(task_attempts::router(&deployment))
         .merge(execution_processes::router(&deployment))
         .merge(execution_summaries::routes())
-        .merge(task_templates::router(&deployment))
         .merge(auth::router(&deployment))
         .merge(filesystem::router())
         .merge(events::router(&deployment))
-        .merge(approvals::router())
-        .merge(agent_wallets::router(&deployment))
-        .nest("/permissions", permissions::router(&deployment))
         .nest("/images", images::routes())
         .merge(nora::nora_routes())
         .merge(cinematics::router(&deployment))
@@ -149,10 +152,10 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))
         .merge(model_pricing::router(&deployment))
-        .merge(vibe_treasury::router(&deployment))
         .merge(topsi::topsi_routes())
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
+        .merge(pythia::router(&deployment))
         .merge(protected_routes)
         .merge(admin_routes)
         .with_state(deployment);

@@ -16,6 +16,7 @@ use tokio::{io::AsyncWriteExt, process::Command};
 use ts_rs::TS;
 use workspace_utils::{
     diff::{concatenate_diff_hunks, extract_unified_diff_hunks},
+    log_msg::LogMsg,
     msg_store::MsgStore,
     path::make_path_relative,
     shell::get_shell_command,
@@ -411,6 +412,18 @@ impl StandardCodingAgentExecutor for Codex {
                                     };
                                     msg_store.push_patch(ConversationPatch::replace(idx, entry));
                                 }
+                            }
+                            CodexMsgContent::TokenCount {
+                                input_tokens,
+                                output_tokens,
+                                ..
+                            } => {
+                                let input = input_tokens.unwrap_or(0);
+                                let output = output_tokens.unwrap_or(0);
+                                msg_store.push(LogMsg::TokenCount {
+                                    input_tokens: input,
+                                    output_tokens: output,
+                                });
                             }
                             _ => {
                                 if let Some(entries) = cj.to_normalized_entries(&current_dir) {

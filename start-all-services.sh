@@ -9,6 +9,9 @@ echo ""
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Ensure all services use the project-local database
+export PCG_ASSET_DIR="$SCRIPT_DIR/dev_assets"
+
 # 1. Check/Start Ollama (LLM Service)
 echo "→ Checking Ollama (LLM Service)..."
 if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
@@ -100,7 +103,7 @@ if lsof -i :58297 >/dev/null 2>&1; then
 else
     echo "  → Starting PCG Backend..."
     cd "$SCRIPT_DIR"
-    BACKEND_PORT=58297 nohup ./target/release/server > /tmp/pcg_backend.log 2>&1 &
+    BACKEND_PORT=58297 PCG_ASSET_DIR="$SCRIPT_DIR/dev_assets" nohup ./target/release/server > /tmp/pcg_backend.log 2>&1 &
     echo $! > /tmp/pcg_backend.pid
     sleep 4
     echo "  ✅ PCG Backend started"

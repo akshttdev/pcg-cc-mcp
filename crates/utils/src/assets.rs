@@ -79,14 +79,20 @@ pub fn ensure_project_structure(project_path: &PathBuf) -> std::io::Result<()> {
 
 pub fn asset_dir() -> PathBuf {
     let path = if let Ok(custom_dir) = env::var(ASSET_DIR_ENV) {
+        // 1. Explicit override via environment variable
         PathBuf::from(custom_dir)
-    } else if cfg!(debug_assertions) {
-        PathBuf::from(PROJECT_ROOT).join("../../dev_assets")
     } else {
-        ProjectDirs::from("ai", "bmorphism", "duck-kanban")
-            .expect("OS didn't give us a home directory")
-            .data_dir()
-            .to_path_buf()
+        // 2. Check for dev_assets relative to CWD (works for both cargo run and release binary)
+        let cwd_dev_assets = PathBuf::from("dev_assets");
+        if cwd_dev_assets.exists() && cwd_dev_assets.is_dir() {
+            cwd_dev_assets
+        } else {
+            // 3. Fall back to XDG dirs (~/.local/share/duck-kanban/)
+            ProjectDirs::from("ai", "bmorphism", "duck-kanban")
+                .expect("OS didn't give us a home directory")
+                .data_dir()
+                .to_path_buf()
+        }
     };
 
     if !path.exists() {
@@ -94,9 +100,6 @@ pub fn asset_dir() -> PathBuf {
     }
 
     path
-    // ✔ macOS → ~/Library/Application Support/MyApp
-    // ✔ Linux → ~/.local/share/myapp   (respects XDG_DATA_HOME)
-    // ✔ Windows → %APPDATA%\Example\MyApp
 }
 
 pub fn config_path() -> std::path::PathBuf {

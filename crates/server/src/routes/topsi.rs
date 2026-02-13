@@ -331,7 +331,8 @@ pub async fn initialize_topsi_handler(
             tracing::error!("Failed to initialize Topsi: {}", e);
             ApiError::InternalError(format!("Topsi initialization failed: {}", e))
         })?
-        .with_database(state.db().pool.clone());
+        .with_database(state.db().pool.clone())
+        .await;
 
     let topsi_id = topsi_agent.id.to_string();
 
@@ -383,7 +384,8 @@ pub async fn initialize_topsi_on_startup(state: &DeploymentImpl) -> Result<Strin
     let topsi_agent = initialize_topsi(config)
         .await
         .map_err(|e| format!("Topsi initialization failed: {}", e))?
-        .with_database(state.db().pool.clone());
+        .with_database(state.db().pool.clone())
+        .await;
 
     let topsi_id = topsi_agent.id.to_string();
 

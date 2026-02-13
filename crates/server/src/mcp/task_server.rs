@@ -216,6 +216,10 @@ pub struct GetTaskResponse {
 #[derive(Debug, Clone)]
 pub struct TaskServer {
     pub pool: SqlitePool,
+    /// User ID for scoping operations (None = admin/unscoped for backward compat)
+    pub user_id: Option<Uuid>,
+    /// Whether this user is admin (bypasses project membership checks)
+    pub is_admin: bool,
     tool_router: ToolRouter<TaskServer>,
 }
 
@@ -224,6 +228,18 @@ impl TaskServer {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             pool,
+            user_id: None,
+            is_admin: true, // Default: backward-compatible admin access
+            tool_router: Self::tool_router(),
+        }
+    }
+
+    /// Create a user-scoped MCP task server
+    pub fn new_for_user(pool: SqlitePool, user_id: Uuid, is_admin: bool) -> Self {
+        Self {
+            pool,
+            user_id: Some(user_id),
+            is_admin,
             tool_router: Self::tool_router(),
         }
     }
@@ -300,7 +316,7 @@ impl TaskServer {
             assigned_agent: None,
             agent_id: None,
             assigned_mcps: None,
-            created_by: "mcp".to_string(),
+            created_by: self.user_id.map(|id| id.to_string()).unwrap_or_else(|| "mcp".to_string()),
             requires_approval: None,
             parent_task_id: None,
             tags: None,
@@ -338,9 +354,51 @@ impl TaskServer {
         }
     }
 
-    #[tool(description = "List all the available projects")]
+    #[tool(description = "List all projects accessible to the current user")]
     async fn list_projects(&self) -> Result<CallToolResult, ErrorData> {
-        match Project::find_all(&self.pool).await {
+        // Scope to user's projects unless admin
+        let projects_result = if self.is_admin || self.user_id.is_none() {
+            Project::find_all(&self.pool).await
+        } else {
+            // Fetch only projects the user has membership in
+            let user_id = self.user_id.unwrap();
+            let user_id_bytes = user_id.as_bytes().to_vec();
+
+            #[derive(sqlx::FromRow)]
+            struct ProjId { project_id: String }
+
+            let project_ids: Vec<String> = match sqlx::query_as::<_, ProjId>(
+                "SELECT DISTINCT project_id FROM project_members WHERE user_id = ?"
+            )
+            .bind(&user_id_bytes)
+            .fetch_all(&self.pool)
+            .await {
+                Ok(rows) => rows.into_iter().map(|r| r.project_id).collect(),
+                Err(e) => {
+                    let error_response = serde_json::json!({
+                        "success": false,
+                        "error": "Failed to retrieve user projects",
+                        "details": e.to_string()
+                    });
+                    return Ok(CallToolResult::error(vec![Content::text(
+                        serde_json::to_string_pretty(&error_response)
+                            .unwrap_or_else(|_| "Database error".to_string()),
+                    )]));
+                }
+            };
+
+            let mut projects = Vec::new();
+            for pid_str in project_ids {
+                if let Ok(pid) = Uuid::parse_str(&pid_str) {
+                    if let Ok(Some(project)) = Project::find_by_id(&self.pool, pid).await {
+                        projects.push(project);
+                    }
+                }
+            }
+            Ok(projects)
+        };
+
+        match projects_result {
             Ok(projects) => {
                 let count = projects.len();
                 let project_summaries: Vec<ProjectSummary> = projects

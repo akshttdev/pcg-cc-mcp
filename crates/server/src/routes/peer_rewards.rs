@@ -83,7 +83,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .with_state(deployment.clone())
 }
 
-/// GET /api/peers/:wallet/balance - Get peer's VIBE balance and earnings
+/// GET /api/peers/{wallet}/balance - Get peer's VIBE balance and earnings
 async fn get_peer_balance(
     Path(wallet): Path<String>,
     State(deployment): State<DeploymentImpl>,
@@ -118,7 +118,7 @@ async fn get_peer_balance(
     })))
 }
 
-/// GET /api/peers/:wallet/rewards - List rewards for a peer
+/// GET /api/peers/{wallet}/rewards - List rewards for a peer
 async fn list_peer_rewards(
     Path(wallet): Path<String>,
     Query(query): Query<ListQuery>,
@@ -137,7 +137,7 @@ async fn list_peer_rewards(
     Ok(Json(ApiResponse::success(rewards)))
 }
 
-/// GET /api/peers/:wallet/stats - Get peer node stats
+/// GET /api/peers/{wallet}/stats - Get peer node stats
 async fn get_peer_stats(
     Path(wallet): Path<String>,
     State(deployment): State<DeploymentImpl>,

@@ -19,6 +19,9 @@ use db::{
     DBService,
     models::{
         activity::{ActivityLog, ActorType, CreateActivityLog},
+        agent_flow::{AgentFlow, AgentPhase, CreateAgentFlow, FlowType},
+        agent_flow_event::{AgentFlowEvent, CreateFlowEvent, FlowEventPayload, FlowEventType},
+        execution_artifact::{ArtifactType, CreateExecutionArtifact},
         execution_process::{
             ExecutionContext, ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus,
         },
@@ -28,9 +31,11 @@ use db::{
         follow_up_draft::FollowUpDraft,
         image::TaskImage,
         merge::Merge,
+        model_pricing::infer_provider,
         project::Project,
         task::{Task, TaskStatus},
         task_attempt::TaskAttempt,
+        vibe_transaction::VibeTransaction,
     },
 };
 use deployment::DeploymentError;
@@ -49,6 +54,7 @@ use notify_debouncer_full::DebouncedEvent;
 use serde_json::json;
 use services::services::{
     analytics::AnalyticsContext,
+    artifacts::ArtifactService,
     config::Config,
     container::{ContainerError, ContainerRef, ContainerService},
     execution_summary::{DiffStats, ExecutionSummaryService},
@@ -56,6 +62,7 @@ use services::services::{
     git::{Commit, DiffTarget, GitService},
     image::ImageService,
     notification::NotificationService,
+    vibe_pricing::VibePricingService,
     worktree_manager::WorktreeManager,
 };
 use utils::diff::DiffChangeKind;
@@ -80,6 +87,8 @@ pub struct LocalContainerService {
     git: GitService,
     image_service: ImageService,
     analytics: Option<AnalyticsContext>,
+    /// Maps execution_process_id → agent_flow_id for workflow tracking
+    flow_ids: Arc<RwLock<HashMap<Uuid, Uuid>>>,
 }
 
 impl LocalContainerService {
@@ -146,6 +155,7 @@ impl LocalContainerService {
         analytics: Option<AnalyticsContext>,
     ) -> Self {
         let child_store = Arc::new(RwLock::new(HashMap::new()));
+        let flow_ids = Arc::new(RwLock::new(HashMap::new()));
 
         LocalContainerService {
             db,
@@ -155,6 +165,7 @@ impl LocalContainerService {
             git,
             image_service,
             analytics,
+            flow_ids,
         }
     }
 
@@ -565,6 +576,15 @@ impl LocalContainerService {
                             e
                         );
                     }
+
+                    // Complete workflow flow (Part 2: Workflow Logs)
+                    container.complete_classic_pipeline_flow(&ctx).await;
+
+                    // Record VIBE cost (Part 1: VIBE Cost Tracking)
+                    container.record_execution_vibe_cost(&ctx).await;
+
+                    // Create execution artifacts (Part 3: Artifacts)
+                    container.create_execution_artifacts(&ctx).await;
 
                     // Log activity: execution completed
                     let completion_status = match ctx.execution_process.status {
@@ -1280,6 +1300,16 @@ impl ContainerService for LocalContainerService {
             tracing::warn!("Failed to update task collaborators: {}", e);
         }
 
+        // Create workflow flow for CodingAgent executions
+        if matches!(
+            execution_process.run_reason,
+            ExecutionProcessRunReason::CodingAgent
+        ) {
+            if let Ok(ctx) = ExecutionProcess::load_context(&self.db.pool, execution_process.id).await {
+                self.create_classic_pipeline_flow(&ctx).await;
+            }
+        }
+
         Ok(())
     }
 
@@ -1724,5 +1754,399 @@ impl LocalContainerService {
         let _ = FollowUpDraft::clear_after_send(&self.db.pool, ctx.task_attempt.id).await;
 
         Ok(())
+    }
+
+    // ==================== Part 1: VIBE Cost Tracking ====================
+
+    /// Extract accumulated token counts from MsgStore history for an execution
+    fn extract_token_counts(&self, exec_id: &Uuid) -> Option<(u64, u64)> {
+        let msg_stores = self.msg_stores.try_read().ok()?;
+        let msg_store = msg_stores.get(exec_id)?;
+        let history = msg_store.get_history();
+
+        let mut total_input: u64 = 0;
+        let mut total_output: u64 = 0;
+        let mut found = false;
+
+        for msg in &history {
+            if let LogMsg::TokenCount { input_tokens, output_tokens } = msg {
+                total_input += input_tokens;
+                total_output += output_tokens;
+                found = true;
+            }
+        }
+
+        if found { Some((total_input, total_output)) } else { None }
+    }
+
+    /// Estimate token counts from execution duration and model
+    fn estimate_tokens_from_duration(duration_ms: i64, model: &str) -> (i64, i64) {
+        // Heuristic: model-specific output tokens/sec
+        let output_tokens_per_sec: f64 = if model.contains("claude") {
+            80.0
+        } else if model.contains("gemini") {
+            100.0
+        } else if model.contains("codex") || model.contains("gpt") {
+            90.0
+        } else {
+            80.0 // conservative default
+        };
+
+        let duration_secs = duration_ms as f64 / 1000.0;
+        let estimated_output = (duration_secs * output_tokens_per_sec) as i64;
+        // Assume 3:1 input:output ratio
+        let estimated_input = estimated_output * 3;
+        (estimated_input, estimated_output)
+    }
+
+    /// Infer a model name for an executor
+    fn infer_model_for_executor(executor_name: &str) -> &'static str {
+        match executor_name {
+            name if name.contains("claude") => "claude-sonnet-4-20250514",
+            name if name.contains("codex") => "codex-mini-latest",
+            name if name.contains("gemini") => "gemini-2.5-pro",
+            _ => "claude-sonnet-4-20250514", // default fallback
+        }
+    }
+
+    /// Record VIBE cost for a completed execution
+    async fn record_execution_vibe_cost(&self, ctx: &ExecutionContext) {
+        let exec_id = ctx.execution_process.id;
+
+        // Try to get actual token counts from MsgStore
+        let (input_tokens, output_tokens, source) = if let Some((input, output)) = self.extract_token_counts(&exec_id) {
+            (input as i64, output as i64, "actual")
+        } else {
+            // Fallback: estimate from duration
+            let duration_ms = ctx.execution_process.completed_at
+                .map(|completed| {
+                    (completed - ctx.execution_process.started_at).num_milliseconds()
+                })
+                .unwrap_or(60_000);
+            let model = Self::infer_model_for_executor(&ctx.task_attempt.executor);
+            let (input, output) = Self::estimate_tokens_from_duration(duration_ms, model);
+            (input, output, "estimated")
+        };
+
+        if input_tokens == 0 && output_tokens == 0 {
+            return;
+        }
+
+        let model = Self::infer_model_for_executor(&ctx.task_attempt.executor);
+        let provider = infer_provider(model);
+
+        // Try to find and update the pending zero-amount transaction
+        match VibeTransaction::find_by_task_pending(&self.db.pool, ctx.task.id).await {
+            Ok(Some(pending_tx)) => {
+                // Use VibePricingService to calculate cost
+                let pricing_service = VibePricingService::new(self.db.pool.clone());
+                let cost_estimate = pricing_service.estimate_cost(model, input_tokens, output_tokens).await;
+
+                let (amount_vibe, cost_cents) = match cost_estimate {
+                    Ok(est) => (est.cost_vibe, Some(est.cost_cents)),
+                    Err(_) => {
+                        // Rough fallback: 1 VIBE per 1000 tokens
+                        let total_tokens = input_tokens + output_tokens;
+                        ((total_tokens / 1000).max(1), None)
+                    }
+                };
+
+                let description = format!(
+                    "LLM usage ({}): {} ({} in, {} out tokens)",
+                    source, model, input_tokens, output_tokens
+                );
+
+                if let Err(e) = VibeTransaction::update_cost(
+                    &self.db.pool,
+                    pending_tx.id,
+                    amount_vibe,
+                    Some(input_tokens),
+                    Some(output_tokens),
+                    Some(model),
+                    Some(provider),
+                    cost_cents,
+                    Some(ctx.execution_process.id),
+                    Some(ctx.task_attempt.id),
+                    Some(&description),
+                ).await {
+                    tracing::warn!("Failed to update VIBE transaction cost: {}", e);
+                } else {
+                    tracing::info!(
+                        "Updated VIBE cost for task {}: {} VIBE ({} in, {} out tokens, {})",
+                        ctx.task.id, amount_vibe, input_tokens, output_tokens, source
+                    );
+                }
+            }
+            Ok(None) => {
+                // No pending transaction found; create a new one via VibePricingService
+                let pricing_service = VibePricingService::new(self.db.pool.clone());
+                // We need a source_id; use the task's project_id as a fallback
+                if let Err(e) = pricing_service.record_llm_usage(
+                    db::models::vibe_transaction::VibeSourceType::Project,
+                    ctx.task.project_id,
+                    model,
+                    input_tokens,
+                    output_tokens,
+                    Some(ctx.task.id),
+                    Some(ctx.task_attempt.id),
+                    Some(ctx.execution_process.id),
+                ).await {
+                    tracing::warn!("Failed to create VIBE transaction: {}", e);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to find pending VIBE transaction: {}", e);
+            }
+        }
+    }
+
+    // ==================== Part 2: Workflow Logs ====================
+
+    /// Create an AgentFlow for a classic pipeline execution
+    async fn create_classic_pipeline_flow(&self, ctx: &ExecutionContext) {
+        let flow = AgentFlow::create(
+            &self.db.pool,
+            CreateAgentFlow {
+                task_id: ctx.task.id,
+                flow_type: FlowType::Custom,
+                planner_agent_id: None,
+                executor_agent_id: None,
+                verifier_agent_id: None,
+                flow_config: Some(serde_json::json!({
+                    "pipeline": "classic",
+                    "executor": ctx.task_attempt.executor,
+                    "execution_process_id": ctx.execution_process.id.to_string(),
+                })),
+                human_approval_required: None,
+            },
+        ).await;
+
+        match flow {
+            Ok(flow) => {
+                // Transition to Execution phase (classic pipeline skips Planning)
+                if let Err(e) = AgentFlow::transition_to_phase(
+                    &self.db.pool,
+                    flow.id,
+                    AgentPhase::Execution,
+                ).await {
+                    tracing::warn!("Failed to transition flow to execution phase: {}", e);
+                }
+
+                // Emit phase_started event
+                if let Err(e) = AgentFlowEvent::emit_phase_started(
+                    &self.db.pool,
+                    flow.id,
+                    "execution",
+                    None,
+                ).await {
+                    tracing::warn!("Failed to emit phase_started event: {}", e);
+                }
+
+                // Store flow_id for retrieval at completion
+                self.flow_ids.write().await.insert(ctx.execution_process.id, flow.id);
+
+                tracing::info!(
+                    "Created classic pipeline flow {} for task {}",
+                    flow.id, ctx.task.id
+                );
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create classic pipeline flow: {}", e);
+            }
+        }
+    }
+
+    /// Complete an AgentFlow for a classic pipeline execution
+    async fn complete_classic_pipeline_flow(&self, ctx: &ExecutionContext) {
+        let flow_id = {
+            let map = self.flow_ids.read().await;
+            map.get(&ctx.execution_process.id).copied()
+        };
+
+        let flow_id = match flow_id {
+            Some(id) => id,
+            None => {
+                // Fallback: try to find by task_id
+                match AgentFlow::find_by_task(&self.db.pool, ctx.task.id).await {
+                    Ok(flows) => {
+                        if let Some(flow) = flows.into_iter().find(|f| {
+                            f.status != db::models::agent_flow::FlowStatus::Completed
+                                && f.status != db::models::agent_flow::FlowStatus::Failed
+                        }) {
+                            flow.id
+                        } else {
+                            return;
+                        }
+                    }
+                    Err(_) => return,
+                }
+            }
+        };
+
+        let is_success = matches!(
+            ctx.execution_process.status,
+            ExecutionProcessStatus::Completed
+        );
+
+        if is_success {
+            // Emit phase_completed
+            if let Err(e) = AgentFlowEvent::create(
+                &self.db.pool,
+                CreateFlowEvent {
+                    agent_flow_id: flow_id,
+                    event_type: FlowEventType::PhaseCompleted,
+                    event_data: FlowEventPayload::PhaseCompleted {
+                        phase: "execution".to_string(),
+                        artifacts_produced: vec![],
+                    },
+                },
+            ).await {
+                tracing::warn!("Failed to emit phase_completed event: {}", e);
+            }
+
+            // Emit flow_completed
+            if let Err(e) = AgentFlowEvent::create(
+                &self.db.pool,
+                CreateFlowEvent {
+                    agent_flow_id: flow_id,
+                    event_type: FlowEventType::FlowCompleted,
+                    event_data: FlowEventPayload::FlowCompleted {
+                        verification_score: None,
+                        total_artifacts: 0,
+                    },
+                },
+            ).await {
+                tracing::warn!("Failed to emit flow_completed event: {}", e);
+            }
+
+            // Complete the flow
+            if let Err(e) = AgentFlow::complete(&self.db.pool, flow_id, None).await {
+                tracing::warn!("Failed to complete agent flow: {}", e);
+            }
+        } else {
+            // Emit flow_failed
+            let error_msg = format!(
+                "Execution failed with status {:?}, exit_code {:?}",
+                ctx.execution_process.status,
+                ctx.execution_process.exit_code
+            );
+            if let Err(e) = AgentFlowEvent::create(
+                &self.db.pool,
+                CreateFlowEvent {
+                    agent_flow_id: flow_id,
+                    event_type: FlowEventType::FlowFailed,
+                    event_data: FlowEventPayload::FlowFailed {
+                        error: error_msg,
+                        phase: "execution".to_string(),
+                    },
+                },
+            ).await {
+                tracing::warn!("Failed to emit flow_failed event: {}", e);
+            }
+
+            // Update flow status to failed
+            let _ = sqlx::query(
+                "UPDATE agent_flows SET status = 'failed', updated_at = datetime('now', 'subsec') WHERE id = ?1"
+            )
+            .bind(flow_id)
+            .execute(&self.db.pool)
+            .await;
+        }
+
+        // Cleanup flow_ids entry
+        self.flow_ids.write().await.remove(&ctx.execution_process.id);
+    }
+
+    // ==================== Part 3: Execution Artifacts ====================
+
+    /// Create execution artifacts from completed execution data
+    async fn create_execution_artifacts(&self, ctx: &ExecutionContext) {
+        let artifact_service = ArtifactService::new(self.db.clone());
+        let exec_id = ctx.execution_process.id;
+
+        // 1. DiffSummary artifact — from compute_diff_stats()
+        if let Ok(diff_stats) = self.compute_diff_stats(ctx).await {
+            if diff_stats.files_modified > 0 || diff_stats.files_created > 0 || diff_stats.files_deleted > 0 {
+                let content = format!(
+                    "Files modified: {}, Files created: {}, Files deleted: {}, Additions: +{}, Deletions: -{}",
+                    diff_stats.files_modified, diff_stats.files_created, diff_stats.files_deleted,
+                    diff_stats.additions, diff_stats.deletions
+                );
+                if let Err(e) = artifact_service.create_artifact(CreateExecutionArtifact {
+                    execution_process_id: Some(exec_id),
+                    artifact_type: ArtifactType::DiffSummary,
+                    title: "Diff Summary".to_string(),
+                    content: Some(content),
+                    file_path: None,
+                    metadata: Some(serde_json::json!({
+                        "files_modified": diff_stats.files_modified,
+                        "files_created": diff_stats.files_created,
+                        "files_deleted": diff_stats.files_deleted,
+                        "additions": diff_stats.additions,
+                        "deletions": diff_stats.deletions,
+                    })),
+                }).await {
+                    tracing::warn!("Failed to create DiffSummary artifact: {}", e);
+                }
+            }
+        }
+
+        // 2. ErrorReport artifact — on failure, extract last error from MsgStore
+        if matches!(ctx.execution_process.status, ExecutionProcessStatus::Failed) {
+            let error_content = self.extract_last_error_message(&exec_id)
+                .unwrap_or_else(|| format!(
+                    "Execution failed with exit code {:?}",
+                    ctx.execution_process.exit_code
+                ));
+            if let Err(e) = artifact_service.store_error_report(
+                exec_id,
+                "Execution Error".to_string(),
+                error_content,
+                Some(serde_json::json!({
+                    "exit_code": ctx.execution_process.exit_code,
+                    "executor": ctx.task_attempt.executor,
+                })),
+            ).await {
+                tracing::warn!("Failed to create ErrorReport artifact: {}", e);
+            }
+        }
+
+        // 3. Checkpoint artifact — executor's final summary
+        if let Some(summary) = self.extract_last_assistant_message(&exec_id) {
+            if let Err(e) = artifact_service.create_artifact(CreateExecutionArtifact {
+                execution_process_id: Some(exec_id),
+                artifact_type: ArtifactType::Checkpoint,
+                title: "Execution Summary".to_string(),
+                content: Some(summary),
+                file_path: None,
+                metadata: Some(serde_json::json!({
+                    "executor": ctx.task_attempt.executor,
+                    "status": format!("{:?}", ctx.execution_process.status),
+                })),
+            }).await {
+                tracing::warn!("Failed to create Checkpoint artifact: {}", e);
+            }
+        }
+    }
+
+    /// Extract the last error message from the MsgStore history
+    fn extract_last_error_message(&self, exec_id: &Uuid) -> Option<String> {
+        let msg_stores = self.msg_stores.try_read().ok()?;
+        let msg_store = msg_stores.get(exec_id)?;
+        let history = msg_store.get_history();
+
+        for msg in history.iter().rev() {
+            if let LogMsg::JsonPatch(patch) = msg {
+                if let Some((_, entry)) = extract_normalized_entry_from_patch(patch)
+                    && matches!(entry.entry_type, NormalizedEntryType::ErrorMessage)
+                {
+                    let content = entry.content.trim();
+                    if !content.is_empty() {
+                        return Some(content.to_string());
+                    }
+                }
+            }
+        }
+        None
     }
 }

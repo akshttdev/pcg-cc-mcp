@@ -174,8 +174,12 @@ impl TopsiAgent {
         })
     }
 
-    /// Attach database connection
-    pub fn with_database(mut self, pool: SqlitePool) -> Self {
+    /// Attach database connection and sync access control
+    pub async fn with_database(mut self, pool: SqlitePool) -> Self {
+        // Sync access control from database so user permissions are loaded
+        if let Err(e) = self.access_control.sync_from_database(&pool).await {
+            tracing::error!("Failed to sync Topsi access control from database: {}", e);
+        }
         self.db = Some(pool);
         self
     }
@@ -958,6 +962,9 @@ impl TopsiAgent {
             .map_err(|e| TopsiError::ToolError(format!("Failed to create project: {}", e)))?;
 
         // Add the creator as project owner in project_members
+        // Parse user_id string to UUID to get proper 16-byte blob encoding
+        let user_uuid = uuid::Uuid::parse_str(&user_context.user_id)
+            .map_err(|e| TopsiError::ToolError(format!("Invalid user ID '{}': {}", user_context.user_id, e)))?;
         let member_id = uuid::Uuid::new_v4();
         sqlx::query(
             r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
@@ -965,9 +972,9 @@ impl TopsiAgent {
         )
         .bind(member_id.as_bytes().to_vec())
         .bind(project.id.to_string()) // project_id is TEXT
-        .bind(user_context.user_id.as_bytes().to_vec())
+        .bind(user_uuid.as_bytes().to_vec())
         .bind("owner")
-        .bind(user_context.user_id.as_bytes().to_vec()) // granted_by is the user themselves
+        .bind(user_uuid.as_bytes().to_vec()) // granted_by is the user themselves
         .execute(pool)
         .await
         .map_err(|e| TopsiError::ToolError(format!("Failed to add project member: {}", e)))?;
@@ -1024,7 +1031,9 @@ impl TopsiAgent {
                 Project::find_all(pool).await.unwrap_or_default()
             } else {
                 // Regular users - fetch their projects from project_members table
-                let user_id_bytes = user_context.user_id.as_bytes().to_vec();
+                // Parse user_id string to UUID for proper 16-byte blob encoding
+                let user_uuid = uuid::Uuid::parse_str(&user_context.user_id).unwrap_or_default();
+                let user_id_bytes = user_uuid.as_bytes().to_vec();
                 let project_ids: Vec<String> = sqlx::query_scalar(
                     r#"SELECT DISTINCT project_id FROM project_members WHERE user_id = ?"#
                 )
@@ -1084,6 +1093,9 @@ impl TopsiAgent {
                 match Project::create(pool, &create_project, new_project_id).await {
                     Ok(project) => {
                         // Add the creator as project owner in project_members
+                        // Parse user_id string to UUID for proper 16-byte blob encoding
+                        let auto_user_uuid = uuid::Uuid::parse_str(&user_context.user_id)
+                            .map_err(|e| TopsiError::ToolError(format!("Invalid user ID: {}", e)))?;
                         let member_id = uuid::Uuid::new_v4();
                         if let Err(e) = sqlx::query(
                             r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
@@ -1091,9 +1103,9 @@ impl TopsiAgent {
                         )
                         .bind(member_id.as_bytes().to_vec())
                         .bind(project.id.to_string()) // project_id is TEXT
-                        .bind(user_context.user_id.as_bytes().to_vec())
+                        .bind(auto_user_uuid.as_bytes().to_vec())
                         .bind("owner")
-                        .bind(user_context.user_id.as_bytes().to_vec())
+                        .bind(auto_user_uuid.as_bytes().to_vec())
                         .execute(pool)
                         .await {
                             tracing::error!("Failed to add project member for auto-created project: {}", e);
@@ -1180,7 +1192,7 @@ impl TopsiAgent {
             assigned_agent: agent_name.map(|s| s.to_string()),
             agent_id: None,
             assigned_mcps: None,
-            created_by: "topsi".to_string(),
+            created_by: user_context.user_id.clone(),
             requires_approval: None,
             parent_task_id: None,
             tags: None,

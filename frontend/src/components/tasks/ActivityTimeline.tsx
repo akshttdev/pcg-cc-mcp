@@ -22,6 +22,9 @@ import {
   AlertCircle,
   ArrowRight,
   Coins,
+  Zap,
+  Cpu,
+  Layers,
 } from 'lucide-react';
 
 interface ActivityTimelineProps {
@@ -36,6 +39,7 @@ const ACTOR_TYPE_CONFIG: Record<ActorType, { icon: typeof User; color: string }>
 };
 
 const ACTION_ICON_MAP: Record<string, typeof CheckCircle> = {
+  task_created: CheckCircle,
   created: CheckCircle,
   updated: Edit,
   'status_changed': ArrowRight,
@@ -56,6 +60,22 @@ interface StateChange {
   field: string;
   from: string;
   to: string;
+}
+
+interface ParsedMetadata {
+  message?: string;
+  phase?: string;
+  layer?: string;
+  agent?: string;
+  vibe_estimate?: number;
+  vibe_cost?: number;
+  total_vibe_cost?: number;
+  planning_vibe_cost?: number;
+  execution_vibe_cost?: number;
+  verification_vibe_cost?: number;
+  breakdown?: { planning?: number; execution?: number };
+  summary?: string;
+  [key: string]: unknown;
 }
 
 function parseStateChanges(activity: ActivityLog): StateChange[] {
@@ -83,10 +103,29 @@ function parseStateChanges(activity: ActivityLog): StateChange[] {
   return changes;
 }
 
+function parseMetadata(activity: ActivityLog): ParsedMetadata | null {
+  if (!activity.metadata) return null;
+  try {
+    return JSON.parse(activity.metadata) as ParsedMetadata;
+  } catch {
+    return null;
+  }
+}
+
+function getVibeCost(metadata: ParsedMetadata | null): number | null {
+  if (!metadata) return null;
+  return metadata.vibe_cost ??
+         metadata.planning_vibe_cost ??
+         metadata.execution_vibe_cost ??
+         metadata.verification_vibe_cost ??
+         (metadata.breakdown ? (metadata.breakdown.planning ?? 0) + (metadata.breakdown.execution ?? 0) : null);
+}
+
 function formatActionText(activity: ActivityLog): string {
   const action = activity.action.toLowerCase();
 
   switch (action) {
+    case 'task_created':
     case 'created':
       return 'created this task';
     case 'updated':
@@ -120,32 +159,111 @@ function formatActionText(activity: ActivityLog): string {
   }
 }
 
-interface ParsedMetadata {
-  message?: string;
-  vibe_cost?: number;
-  planning_vibe_cost?: number;
-  execution_vibe_cost?: number;
-  verification_vibe_cost?: number;
-  breakdown?: { planning?: number; execution?: number };
-  [key: string]: unknown;
-}
+/** Render VIBE cost and execution metadata as styled elements */
+function MetadataDisplay({ meta }: { meta: ParsedMetadata }) {
+  const vibeCost = getVibeCost(meta);
+  const hasVibeData = vibeCost != null || meta.vibe_estimate != null || meta.total_vibe_cost != null;
+  const hasContext = meta.summary || meta.agent || meta.phase || meta.layer || meta.message;
 
-function parseMetadata(activity: ActivityLog): ParsedMetadata | null {
-  if (!activity.metadata) return null;
-  try {
-    return JSON.parse(activity.metadata) as ParsedMetadata;
-  } catch {
-    return null;
+  if (!hasVibeData && !hasContext) {
+    const knownKeys = new Set(['phase', 'layer', 'agent', 'vibe_estimate', 'vibe_cost', 'total_vibe_cost', 'summary', 'message', 'planning_vibe_cost', 'execution_vibe_cost', 'verification_vibe_cost', 'breakdown']);
+    const extraKeys = Object.keys(meta).filter(k => !knownKeys.has(k));
+    if (extraKeys.length === 0) return null;
+    return (
+      <div className="mt-2 text-xs text-muted-foreground">
+        {extraKeys.map(k => (
+          <span key={k} className="mr-3">{k}: {String(meta[k])}</span>
+        ))}
+      </div>
+    );
   }
-}
 
-function getVibeCost(metadata: ParsedMetadata | null): number | null {
-  if (!metadata) return null;
-  return metadata.vibe_cost ??
-         metadata.planning_vibe_cost ??
-         metadata.execution_vibe_cost ??
-         metadata.verification_vibe_cost ??
-         (metadata.breakdown ? (metadata.breakdown.planning ?? 0) + (metadata.breakdown.execution ?? 0) : null);
+  return (
+    <div className="mt-2 space-y-2">
+      {/* Message text */}
+      {meta.message && (
+        <div className="text-sm text-foreground/80 bg-muted/30 rounded-md px-3 py-2">
+          {meta.message}
+        </div>
+      )}
+
+      {/* Summary text */}
+      {meta.summary && (
+        <p className="text-sm text-foreground/80">{meta.summary}</p>
+      )}
+
+      {/* VIBE cost prominent display */}
+      {vibeCost !== null && vibeCost > 0 && (
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 flex items-center gap-1">
+            <Coins className="h-3 w-3" />
+            {vibeCost.toLocaleString()} VIBE
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            (${(vibeCost * 0.01).toFixed(2)} USD)
+          </span>
+        </div>
+      )}
+
+      {/* Breakdown badges */}
+      {meta.breakdown && (
+        <div className="flex gap-2 text-xs">
+          {meta.breakdown.planning && (
+            <Badge variant="outline" className="text-purple-600 dark:text-purple-400">
+              Planning: {meta.breakdown.planning.toLocaleString()} VIBE
+            </Badge>
+          )}
+          {meta.breakdown.execution && (
+            <Badge variant="outline" className="text-blue-600 dark:text-blue-400">
+              Execution: {meta.breakdown.execution.toLocaleString()} VIBE
+            </Badge>
+          )}
+        </div>
+      )}
+
+      {/* Execution context row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Phase badge */}
+        {meta.phase && (
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-medium">
+            <Layers className="h-2.5 w-2.5" />
+            Phase {meta.phase}
+          </div>
+        )}
+
+        {/* Agent badge */}
+        {meta.agent && (
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 text-[10px] font-medium">
+            <Cpu className="h-2.5 w-2.5" />
+            {meta.agent}
+          </div>
+        )}
+
+        {/* VIBE estimate (on creation) */}
+        {meta.vibe_estimate != null && (
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-[10px] font-medium">
+            <Zap className="h-2.5 w-2.5" />
+            ~{meta.vibe_estimate} VIBE estimated
+          </div>
+        )}
+
+        {/* Total VIBE cost (final on completion) */}
+        {meta.total_vibe_cost != null && (
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-[11px] font-semibold">
+            <Zap className="h-3 w-3" />
+            {meta.total_vibe_cost} VIBE total
+          </div>
+        )}
+
+        {/* Layer badge */}
+        {meta.layer && (
+          <div className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-medium">
+            {meta.layer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function ActivityTimeline({ taskId }: ActivityTimelineProps) {
@@ -193,8 +311,8 @@ export function ActivityTimeline({ taskId }: ActivityTimelineProps) {
               const ActorIcon = actorConfig.icon;
               const ActionIcon = ACTION_ICON_MAP[activity.action.toLowerCase()] || Edit;
               const stateChanges = parseStateChanges(activity);
-              const metadata = parseMetadata(activity);
-              const vibeCost = getVibeCost(metadata);
+              const meta = parseMetadata(activity);
+              const hasContent = stateChanges.length > 0 || meta != null;
 
               return (
                 <div key={activity.id} className="relative">
@@ -233,44 +351,8 @@ export function ActivityTimeline({ taskId }: ActivityTimelineProps) {
                       </div>
                     </CardHeader>
 
-                    {(stateChanges.length > 0 || metadata) && (
+                    {hasContent && (
                       <CardContent className="pt-0">
-                        {/* Display message from metadata */}
-                        {metadata?.message && (
-                          <div className="text-sm text-foreground mb-3 bg-muted/30 rounded-md px-3 py-2">
-                            {metadata.message}
-                          </div>
-                        )}
-
-                        {/* Display Vibe cost prominently */}
-                        {vibeCost !== null && vibeCost > 0 && (
-                          <div className="flex items-center gap-2 mb-3">
-                            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 flex items-center gap-1">
-                              <Coins className="h-3 w-3" />
-                              {vibeCost.toLocaleString()} VIBE
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">
-                              (${(vibeCost * 0.001).toFixed(2)} USD)
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Display breakdown if available */}
-                        {metadata?.breakdown && (
-                          <div className="flex gap-2 mb-3 text-xs">
-                            {metadata.breakdown.planning && (
-                              <Badge variant="outline" className="text-purple-600 dark:text-purple-400">
-                                Planning: {metadata.breakdown.planning.toLocaleString()} VIBE
-                              </Badge>
-                            )}
-                            {metadata.breakdown.execution && (
-                              <Badge variant="outline" className="text-blue-600 dark:text-blue-400">
-                                Execution: {metadata.breakdown.execution.toLocaleString()} VIBE
-                              </Badge>
-                            )}
-                          </div>
-                        )}
-
                         {/* State changes */}
                         {stateChanges.length > 0 && (
                           <div className="space-y-2">
@@ -293,6 +375,9 @@ export function ActivityTimeline({ taskId }: ActivityTimelineProps) {
                             ))}
                           </div>
                         )}
+
+                        {/* Structured metadata display */}
+                        {meta && <MetadataDisplay meta={meta} />}
                       </CardContent>
                     )}
                   </Card>

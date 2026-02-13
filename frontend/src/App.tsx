@@ -37,6 +37,7 @@ import {
   UsersSettings,
   ProjectsSettings,
   AirtableSettings,
+  NetworkSettings,
 } from '@/pages/settings/';
 import {
   UserSystemProvider,
@@ -282,6 +283,7 @@ function AppContent() {
                       <Route path="models" element={<ModelsSettings />} />
                       <Route path="mcp" element={<McpSettings />} />
                       <Route path="airtable" element={<AirtableSettings />} />
+                      <Route path="network" element={<NetworkSettings />} />
                     </Route>
                     {/* Redirect old MCP route */}
                     <Route

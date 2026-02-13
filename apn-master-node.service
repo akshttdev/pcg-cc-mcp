@@ -1,0 +1,14 @@
+[Unit]
+Description=APN Master Node (Alpha Protocol Network - Pythia)
+After=network.target
+
+[Service]
+Type=simple
+User=spaceterminal
+WorkingDirectory=/home/spaceterminal/topos/PCG/GitHub/pcg-cc-mcp
+ExecStart=/home/spaceterminal/topos/PCG/GitHub/pcg-cc-mcp/target/release/apn_node --port 4001 --relay nats://nonlocal.info:4222 --heartbeat-interval 30 --import "slush index float shaft flight citizen swear chunk correct veteran eyebrow blind"
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
