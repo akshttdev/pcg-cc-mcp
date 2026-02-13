@@ -22,6 +22,7 @@
 //! ```
 
 pub mod identity;
+pub mod identity_storage;
 pub mod crypto;
 pub mod wire;
 pub mod mesh;

@@ -57,6 +57,13 @@ export async function login(credentials: LoginRequest): Promise<UserProfile> {
   }
 
   const result: ApiResponse<LoginResponse> = await response.json();
+
+  // Store session_id in localStorage for Bearer token authentication
+  // (fallback for when cookies don't work due to browser privacy settings)
+  if (result.data.session_id) {
+    localStorage.setItem('session_id', result.data.session_id);
+  }
+
   return result.data.user;
 }
 
@@ -94,5 +101,9 @@ export async function logout(): Promise<void> {
     });
   } catch (error) {
     console.error('Logout failed:', error);
+  } finally {
+    // Clear session_id from localStorage
+    localStorage.removeItem('session_id');
+    sessionStorage.removeItem('session_id');
   }
 }

@@ -137,9 +137,16 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     setIsSending(true);
 
     try {
+      // Get session token from localStorage (fallback for when cookies don't work)
+      const sessionToken = localStorage.getItem('session_id') || sessionStorage.getItem('session_id');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+
       const res = await fetch('/api/topsi/voice/interaction', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include', // Send auth cookies
         body: JSON.stringify({
           sessionId,
@@ -259,9 +266,16 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     try {
       const base64Audio = await blobToBase64(audioBlob);
 
+      // Get session token from localStorage (fallback for when cookies don't work)
+      const sessionToken = localStorage.getItem('session_id') || sessionStorage.getItem('session_id');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+
       const res = await fetch('/api/topsi/voice/interaction', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include', // Send auth cookies
         body: JSON.stringify({
           sessionId,

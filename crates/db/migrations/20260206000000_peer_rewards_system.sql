@@ -35,10 +35,10 @@ CREATE TABLE IF NOT EXISTS peer_nodes (
     updated_at TEXT NOT NULL DEFAULT (datetime('now', 'subsec'))
 );
 
-CREATE INDEX idx_peer_nodes_node_id ON peer_nodes(node_id);
-CREATE INDEX idx_peer_nodes_wallet ON peer_nodes(wallet_address);
-CREATE INDEX idx_peer_nodes_active ON peer_nodes(is_active, is_banned);
-CREATE INDEX idx_peer_nodes_last_heartbeat ON peer_nodes(last_heartbeat_at);
+CREATE INDEX IF NOT EXISTS idx_peer_nodes_node_id ON peer_nodes(node_id);
+CREATE INDEX IF NOT EXISTS idx_peer_nodes_wallet ON peer_nodes(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_peer_nodes_active ON peer_nodes(is_active, is_banned);
+CREATE INDEX IF NOT EXISTS idx_peer_nodes_last_heartbeat ON peer_nodes(last_heartbeat_at);
 
 -- ============================================================================
 -- peer_contributions: Track resource contributions over time
@@ -68,8 +68,8 @@ CREATE TABLE IF NOT EXISTS peer_contributions (
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'subsec'))
 );
 
-CREATE INDEX idx_peer_contrib_node ON peer_contributions(peer_node_id);
-CREATE INDEX idx_peer_contrib_period ON peer_contributions(period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_peer_contrib_node ON peer_contributions(peer_node_id);
+CREATE INDEX IF NOT EXISTS idx_peer_contrib_period ON peer_contributions(period_start, period_end);
 
 -- ============================================================================
 -- peer_rewards: Individual reward transactions
@@ -121,12 +121,12 @@ CREATE TABLE IF NOT EXISTS peer_rewards (
     confirmed_at TEXT
 );
 
-CREATE INDEX idx_peer_rewards_node ON peer_rewards(peer_node_id);
-CREATE INDEX idx_peer_rewards_status ON peer_rewards(status);
-CREATE INDEX idx_peer_rewards_type ON peer_rewards(reward_type);
-CREATE INDEX idx_peer_rewards_batch ON peer_rewards(batch_id);
-CREATE INDEX idx_peer_rewards_created ON peer_rewards(created_at);
-CREATE INDEX idx_peer_rewards_tx_hash ON peer_rewards(aptos_tx_hash);
+CREATE INDEX IF NOT EXISTS idx_peer_rewards_node ON peer_rewards(peer_node_id);
+CREATE INDEX IF NOT EXISTS idx_peer_rewards_status ON peer_rewards(status);
+CREATE INDEX IF NOT EXISTS idx_peer_rewards_type ON peer_rewards(reward_type);
+CREATE INDEX IF NOT EXISTS idx_peer_rewards_batch ON peer_rewards(batch_id);
+CREATE INDEX IF NOT EXISTS idx_peer_rewards_created ON peer_rewards(created_at);
+CREATE INDEX IF NOT EXISTS idx_peer_rewards_tx_hash ON peer_rewards(aptos_tx_hash);
 
 -- ============================================================================
 -- reward_batches: Batch multiple rewards into single blockchain transactions
@@ -162,9 +162,9 @@ CREATE TABLE IF NOT EXISTS reward_batches (
     confirmed_at TEXT
 );
 
-CREATE INDEX idx_reward_batches_status ON reward_batches(status);
-CREATE INDEX idx_reward_batches_number ON reward_batches(batch_number);
-CREATE INDEX idx_reward_batches_tx_hash ON reward_batches(aptos_tx_hash);
+CREATE INDEX IF NOT EXISTS idx_reward_batches_status ON reward_batches(status);
+CREATE INDEX IF NOT EXISTS idx_reward_batches_number ON reward_batches(batch_number);
+CREATE INDEX IF NOT EXISTS idx_reward_batches_tx_hash ON reward_batches(aptos_tx_hash);
 
 -- ============================================================================
 -- peer_wallet_balances: Cache of peer wallet balances
@@ -219,9 +219,9 @@ CREATE TABLE IF NOT EXISTS reward_distribution_log (
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'subsec'))
 );
 
-CREATE INDEX idx_reward_log_event ON reward_distribution_log(event_type);
-CREATE INDEX idx_reward_log_peer ON reward_distribution_log(peer_node_id);
-CREATE INDEX idx_reward_log_created ON reward_distribution_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_reward_log_event ON reward_distribution_log(event_type);
+CREATE INDEX IF NOT EXISTS idx_reward_log_peer ON reward_distribution_log(peer_node_id);
+CREATE INDEX IF NOT EXISTS idx_reward_log_created ON reward_distribution_log(created_at);
 
 -- ============================================================================
 -- Views for easy querying

@@ -130,6 +130,37 @@ async fn main() -> Result<(), VibeKanbanError> {
         }
     }
 
+    // Start APN peer cleanup service (deduplicates and marks stale peers inactive)
+    let deployment_for_cleanup = deployment.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60)); // Run every minute
+        loop {
+            interval.tick().await;
+
+            // Clean up duplicate peers
+            match db::models::peer_node::PeerNode::cleanup_duplicates(&deployment_for_cleanup.db().pool).await {
+                Ok(count) if count > 0 => {
+                    tracing::info!("APN: Marked {} duplicate peers as inactive", count);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!("APN: Failed to cleanup duplicates: {}", e);
+                }
+            }
+
+            // Mark stale peers as inactive
+            match db::models::peer_node::PeerNode::mark_stale_inactive(&deployment_for_cleanup.db().pool).await {
+                Ok(count) if count > 0 => {
+                    tracing::info!("APN: Marked {} stale peers as inactive", count);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!("APN: Failed to mark stale peers: {}", e);
+                }
+            }
+        }
+    });
+
     let app_router = routes::router(deployment);
 
     let port = std::env::var("BACKEND_PORT")

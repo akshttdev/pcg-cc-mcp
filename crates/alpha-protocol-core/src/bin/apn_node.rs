@@ -15,6 +15,7 @@
 use alpha_protocol_core::{
     node::{AlphaNodeBuilder, NodeEvent},
     identity::NodeIdentity,
+    identity_storage,
     DEFAULT_NATS_RELAY,
 };
 use tokio::sync::mpsc;
@@ -94,8 +95,11 @@ async fn main() -> anyhow::Result<()> {
     // Create event channel
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<NodeEvent>();
 
-    // Build the node
-    let mut builder = AlphaNodeBuilder::new()
+    // Load or create identity (with persistence)
+    let identity = identity_storage::load_or_create_identity(mnemonic.as_deref())?;
+
+    // Build the node with persistent identity
+    let mut node = AlphaNodeBuilder::new()
         .with_port(port)
         .with_relay(&relay_url)
         .with_bootstrap_peers(bootstrap_peers)
@@ -103,13 +107,9 @@ async fn main() -> anyhow::Result<()> {
             "compute".to_string(),
             "relay".to_string(),
             "storage".to_string(),
-        ]);
-
-    if let Some(phrase) = mnemonic {
-        builder = builder.with_mnemonic(&phrase);
-    }
-
-    let mut node = builder.build(event_tx)?;
+        ])
+        .with_identity(identity)
+        .build(event_tx)?;
 
     println!("\n╔══════════════════════════════════════════════════════════════════╗");
     println!("║              ALPHA PROTOCOL NETWORK - Node                       ║");
@@ -216,16 +216,20 @@ fn print_help() {
     println!("  --port <PORT>       P2P port (default: 4001)");
     println!("  --relay <URL>       NATS relay URL (default: nats://nonlocal.info:4222)");
     println!("  --bootstrap <ADDR>  Bootstrap peer multiaddr (can be used multiple times)");
-    println!("  --new               Generate new identity (default)");
+    println!("  --new               Generate new identity (WARNING: Creates new wallet!)");
     println!("  --import <PHRASE>   Import from mnemonic phrase (quoted)");
     println!("  --heartbeat-interval <SECS>  Heartbeat interval in seconds (default: 30)");
     println!("  --no-heartbeat      Disable heartbeat broadcasts");
     println!("  -h, --help          Show this help\n");
+    println!("Identity Persistence:");
+    println!("  Identities are automatically saved to ~/.apn/node_identity.json");
+    println!("  On restart, the same identity (and wallet) is reused");
+    println!("  Backup your identity file to prevent loss of accumulated VIBE!\n");
     println!("Examples:");
-    println!("  # Start with new identity on default port");
+    println!("  # Start (loads existing identity or creates new one)");
     println!("  apn_node\n");
     println!("  # Start on custom port");
     println!("  apn_node --port 4002\n");
-    println!("  # Import existing identity");
+    println!("  # Import existing identity (overwrites saved identity)");
     println!("  apn_node --import \"word1 word2 word3 ...\"");
 }

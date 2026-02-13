@@ -250,4 +250,49 @@ impl PeerNode {
         .await?;
         Ok(())
     }
+
+    /// Clean up duplicate peers based on hardware fingerprint
+    /// Marks older duplicates (same CPU/RAM/GPU) as inactive, keeping only the most recent
+    pub async fn cleanup_duplicates(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+        let result = sqlx::query!(
+            r#"
+            UPDATE peer_nodes
+            SET is_active = 0
+            WHERE id IN (
+                SELECT p1.id
+                FROM peer_nodes p1
+                INNER JOIN peer_nodes p2 ON
+                    p1.cpu_cores = p2.cpu_cores
+                    AND p1.ram_mb = p2.ram_mb
+                    AND (
+                        (p1.gpu_model = p2.gpu_model AND p1.gpu_model IS NOT NULL)
+                        OR (p1.gpu_model IS NULL AND p2.gpu_model IS NULL)
+                    )
+                    AND p1.node_id != p2.node_id
+                    AND p1.last_heartbeat_at < p2.last_heartbeat_at
+                WHERE p1.is_active = 1
+            )
+            "#
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(result.rows_affected() as i64)
+    }
+
+    /// Mark stale peers as inactive (no heartbeat in 5+ minutes)
+    pub async fn mark_stale_inactive(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+        let result = sqlx::query!(
+            r#"
+            UPDATE peer_nodes
+            SET is_active = 0
+            WHERE is_active = 1
+            AND last_heartbeat_at < datetime('now', '-5 minutes')
+            "#
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(result.rows_affected() as i64)
+    }
 }
