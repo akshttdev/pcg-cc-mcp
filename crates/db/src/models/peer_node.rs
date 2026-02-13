@@ -17,6 +17,7 @@ pub struct PeerNode {
     pub storage_gb: Option<i64>,
     pub gpu_available: bool,
     pub gpu_model: Option<String>,
+    pub hostname: Option<String>,
     #[ts(type = "Date")]
     pub first_seen_at: DateTime<Utc>,
     #[ts(type = "Date | null")]
@@ -42,6 +43,7 @@ pub struct CreatePeerNode {
     pub storage_gb: Option<i64>,
     pub gpu_available: bool,
     pub gpu_model: Option<String>,
+    pub hostname: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -68,10 +70,10 @@ impl PeerNode {
             r#"
             INSERT INTO peer_nodes (
                 id, node_id, peer_id, wallet_address, capabilities,
-                cpu_cores, ram_mb, storage_gb, gpu_available, gpu_model,
+                cpu_cores, ram_mb, storage_gb, gpu_available, gpu_model, hostname,
                 last_heartbeat_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, datetime('now', 'subsec'))
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, datetime('now', 'subsec'))
             ON CONFLICT(node_id) DO UPDATE SET
                 peer_id = excluded.peer_id,
                 wallet_address = excluded.wallet_address,
@@ -81,6 +83,7 @@ impl PeerNode {
                 storage_gb = excluded.storage_gb,
                 gpu_available = excluded.gpu_available,
                 gpu_model = excluded.gpu_model,
+                hostname = excluded.hostname,
                 last_heartbeat_at = datetime('now', 'subsec'),
                 updated_at = datetime('now', 'subsec')
             "#,
@@ -93,7 +96,8 @@ impl PeerNode {
             data.ram_mb,
             data.storage_gb,
             data.gpu_available,
-            data.gpu_model
+            data.gpu_model,
+            data.hostname
         )
         .execute(pool)
         .await?;

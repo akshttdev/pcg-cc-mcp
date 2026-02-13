@@ -90,6 +90,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # System info
 num_cpus = "1.16"
 sysinfo = "0.32"
+hostname = "0.4"
 
 # Futures
 futures = "0.3"

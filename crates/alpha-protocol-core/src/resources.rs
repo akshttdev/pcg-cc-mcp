@@ -168,6 +168,15 @@ fn estimate_bandwidth() -> Option<u32> {
     None
 }
 
+/// Get system hostname
+///
+/// Returns the system's hostname or None if it cannot be determined.
+pub fn get_hostname() -> Option<String> {
+    hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+}
+
 /// Collect lightweight resource snapshot for heartbeat
 ///
 /// Similar to collect_resources() but may skip expensive operations

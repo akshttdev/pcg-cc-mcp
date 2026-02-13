@@ -163,6 +163,7 @@ impl NatsRelay {
             capabilities: capabilities.to_vec(),
             timestamp: chrono::Utc::now().to_rfc3339(),
             resources: resources.cloned(),
+            hostname: crate::resources::get_hostname(),
         };
 
         let payload = serde_json::to_vec(&announcement)?;
@@ -277,6 +278,8 @@ pub struct PeerAnnouncement {
     pub capabilities: Vec<String>,
     pub timestamp: String,
     pub resources: Option<crate::wire::NodeResources>,
+    #[serde(default)]
+    pub hostname: Option<String>,
 }
 
 #[cfg(test)]

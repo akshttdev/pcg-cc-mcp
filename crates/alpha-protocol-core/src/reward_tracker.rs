@@ -231,6 +231,7 @@ impl RewardTracker {
                 .resources
                 .as_ref()
                 .and_then(|r| r.gpu_model.clone()),
+            hostname: announcement.hostname.clone(),
         };
 
         PeerNode::upsert(&self.db, peer_data).await

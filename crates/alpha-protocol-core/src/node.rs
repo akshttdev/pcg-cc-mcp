@@ -354,12 +354,13 @@ impl AlphaNode {
                 capabilities: self.config.capabilities.clone(),
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 resources: resources.clone(),
+                hostname: crate::resources::get_hostname(),
             };
 
             let payload = serde_json::to_vec(&announcement)?;
             relay.publish("apn.heartbeat", &payload).await?;
 
-            tracing::debug!("💓 Published heartbeat to apn.heartbeat");
+            tracing::debug!("💓 Published heartbeat to apn.heartbeat with hostname={:?}", announcement.hostname);
         }
 
         Ok(())
