@@ -37,6 +37,13 @@ yarn-error.log*
 ehthumbs.db
 Thumbs.db
 
+# Deployment artifacts (hosted separately, not in git)
+*.tar.gz
+orcha-deployment/
+piper_voices/
+voice_samples/
+voices/
+
 # Runtime data
 pids
 *.pid

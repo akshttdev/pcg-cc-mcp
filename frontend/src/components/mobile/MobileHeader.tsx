@@ -18,7 +18,7 @@ interface MobileHeaderProps {
 }
 
 export function MobileHeader({
-  title = 'Vibertas',
+  title = 'ORCHA',
   showMeshStatus = true,
   meshConnected = false,
   notificationCount = 0,
@@ -37,7 +37,7 @@ export function MobileHeader({
           </SheetTrigger>
           <SheetContent side="left" className="w-[280px]">
             <SheetHeader>
-              <SheetTitle>Vibertas</SheetTitle>
+              <SheetTitle>ORCHA</SheetTitle>
             </SheetHeader>
             <nav className="flex flex-col gap-2 mt-4">
               <MobileMenuLink href="/" label="Dashboard" onClick={() => setMenuOpen(false)} />
