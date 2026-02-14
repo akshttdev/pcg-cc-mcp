@@ -71,7 +71,7 @@ impl std::str::FromStr for ProjectRole {
 #[derive(Debug, Clone, FromRow)]
 pub struct ProjectMember {
     pub id: Vec<u8>,
-    pub project_id: String,
+    pub project_id: Vec<u8>,
     pub user_id: Vec<u8>,
     pub role: String,
     pub permissions: String,
@@ -118,10 +118,15 @@ impl AccessContext {
             return Ok(ProjectRole::Owner);
         }
 
+        // Convert project_id string to UUID bytes for BLOB comparison
+        let project_uuid = Uuid::parse_str(project_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
+        let project_id_bytes = project_uuid.as_bytes().to_vec();
+
         // Check project membership
         let member: Option<ProjectMember> =
             sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
-                .bind(project_id)
+                .bind(&project_id_bytes)
                 .bind(self.user_id.as_bytes().to_vec())
                 .fetch_optional(pool)
                 .await
@@ -168,9 +173,13 @@ impl AccessContext {
             return Ok(Some(ProjectRole::Owner));
         }
 
+        let project_uuid = Uuid::parse_str(project_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
+        let project_id_bytes = project_uuid.as_bytes().to_vec();
+
         let member: Option<ProjectMember> =
             sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
-                .bind(project_id)
+                .bind(&project_id_bytes)
                 .bind(self.user_id.as_bytes().to_vec())
                 .fetch_optional(pool)
                 .await
