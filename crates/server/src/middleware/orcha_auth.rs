@@ -10,7 +10,9 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use deployment::Deployment;
 use sqlx::SqlitePool;
+use std::path::Path;
 
 use crate::{
     DeploymentImpl,
@@ -97,12 +99,29 @@ pub async fn require_orcha_auth(
         topsi_route.using_fallback
     );
 
-    // For now, we'll use the shared database pool
-    // TODO: Connect to per-user Topsi database based on topsi_route.topsi_db_path
+    // Connect to per-user Topsi database
+    let topsi_pool = match connect_to_topsi(&topsi_route.topsi_db_path).await {
+        Ok(pool) => {
+            tracing::info!(
+                "Connected to Topsi database for user '{}': {}",
+                username,
+                topsi_route.topsi_db_path.display()
+            );
+            Some(pool)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to connect to user-specific Topsi database: {}. Falling back to shared pool.",
+                e
+            );
+            None
+        }
+    };
+
     let orcha_context = OrchaAccessContext {
         access: access_context,
         topsi_route,
-        topsi_pool: None,  // Will be implemented in phase 2
+        topsi_pool,
     };
 
     req.extensions_mut().insert(orcha_context);
@@ -122,6 +141,37 @@ async fn get_username_from_id(pool: &SqlitePool, user_id: &uuid::Uuid) -> Result
     result
         .map(|(username,)| username)
         .ok_or_else(|| ApiError::InternalError("User not found".to_string()))
+}
+
+/// Connect to user-specific Topsi database
+async fn connect_to_topsi(db_path: &Path) -> Result<SqlitePool, ApiError> {
+    // Check if database file exists
+    if !db_path.exists() {
+        return Err(ApiError::InternalError(
+            format!("Topsi database not found: {}", db_path.display())
+        ));
+    }
+
+    // Build connection URL
+    let db_url = format!("sqlite://{}?mode=rw", db_path.display());
+
+    // Connect to database
+    let pool = SqlitePool::connect(&db_url)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to connect to Topsi database: {}", e)))?;
+
+    // Set connection options for better performance
+    sqlx::query("PRAGMA journal_mode = WAL")
+        .execute(&pool)
+        .await
+        .ok(); // Ignore errors, WAL mode is optional
+
+    sqlx::query("PRAGMA synchronous = NORMAL")
+        .execute(&pool)
+        .await
+        .ok();
+
+    Ok(pool)
 }
 
 #[cfg(test)]
