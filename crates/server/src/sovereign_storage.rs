@@ -112,6 +112,21 @@ struct SyncPayload {
     projects: Vec<serde_json::Value>,
     tasks: Vec<serde_json::Value>,
     agents: Vec<serde_json::Value>,
+    // v0.3.0: workflow execution data
+    #[serde(default)]
+    workflow_executions: Vec<serde_json::Value>,
+    #[serde(default)]
+    media_batches: Vec<serde_json::Value>,
+    #[serde(default)]
+    media_files: Vec<serde_json::Value>,
+    #[serde(default)]
+    edit_sessions: Vec<serde_json::Value>,
+    #[serde(default)]
+    media_batch_analyses: Vec<serde_json::Value>,
+    #[serde(default)]
+    agent_flows: Vec<serde_json::Value>,
+    #[serde(default)]
+    agent_flow_events: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -190,6 +205,14 @@ impl SovereignStorageService {
             serve_subject
         );
 
+        // Listen for ALL peer sync data (wildcard) to import workflow data
+        let peer_subject = "apn.storage.sync.>";
+        let mut peer_sub = client.subscribe(peer_subject.to_string()).await?;
+        tracing::info!(
+            "[SOVEREIGN_SYNC] 📡 Listening for peer sync on: {}",
+            peer_subject
+        );
+
         let device_id = self.config.device_id.clone();
 
         // Spawn ack handler
@@ -220,12 +243,13 @@ impl SovereignStorageService {
         });
 
         // Spawn serve handler
+        let serve_subject_clone = serve_subject.clone();
         tokio::spawn(async move {
             while let Some(msg) = serve_sub.next().await {
                 tracing::info!(
                     "[SOVEREIGN_SYNC] 📨 Serve response ({} bytes) on {}",
                     msg.payload.len(),
-                    serve_subject
+                    serve_subject_clone
                 );
                 if let Ok(val) =
                     serde_json::from_slice::<serde_json::Value>(&msg.payload)
@@ -233,6 +257,56 @@ impl SovereignStorageService {
                     tracing::debug!("[SOVEREIGN_SYNC] Serve payload: {:?}", val);
                 }
             }
+        });
+
+        // Spawn peer sync handler — imports workflow data from other nodes
+        let my_device_for_peer = self.config.device_id.clone();
+        let db_path_for_peer = self.config.db_path.clone();
+        tokio::spawn(async move {
+            while let Some(msg) = peer_sub.next().await {
+                match serde_json::from_slice::<SyncPayload>(&msg.payload) {
+                    Ok(payload) => {
+                        // Skip our own messages
+                        if payload.from_device == my_device_for_peer {
+                            continue;
+                        }
+
+                        let has_workflow_data = !payload.workflow_executions.is_empty()
+                            || !payload.media_batches.is_empty()
+                            || !payload.media_files.is_empty()
+                            || !payload.edit_sessions.is_empty();
+
+                        tracing::info!(
+                            "[SOVEREIGN_SYNC] 📨 Peer sync from {} (v{}) — {} projects, {} tasks, {} workflows, {} batches, {} files, {} edit_sessions",
+                            payload.from_device,
+                            payload.version,
+                            payload.projects.len(),
+                            payload.tasks.len(),
+                            payload.workflow_executions.len(),
+                            payload.media_batches.len(),
+                            payload.media_files.len(),
+                            payload.edit_sessions.len()
+                        );
+
+                        if has_workflow_data {
+                            if let Err(e) = import_peer_workflow_data(&db_path_for_peer, &payload).await {
+                                tracing::error!(
+                                    "[SOVEREIGN_SYNC] Failed to import peer workflow data: {}",
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            "[SOVEREIGN_SYNC] Could not parse peer sync ({} bytes): {}",
+                            msg.payload.len(),
+                            e
+                        );
+                    }
+                }
+            }
+            tracing::warn!("[SOVEREIGN_SYNC] Peer sync subscription ended");
         });
 
         Ok(())
@@ -278,12 +352,15 @@ impl SovereignStorageService {
 
         self.last_sync = Some(now);
         tracing::info!(
-            "[SOVEREIGN_SYNC] ✅ Sync complete! Published {} bytes to {} ({} projects, {} tasks, {} agents)",
+            "[SOVEREIGN_SYNC] ✅ Sync complete! Published {} bytes to {} ({} projects, {} tasks, {} agents, {} workflows, {} batches, {} files)",
             payload_size,
             sync_subject,
             snapshot.projects.len(),
             snapshot.tasks.len(),
-            snapshot.agents.len()
+            snapshot.agents.len(),
+            snapshot.workflow_executions.len(),
+            snapshot.media_batches.len(),
+            snapshot.media_files.len()
         );
         Ok(())
     }
@@ -331,18 +408,337 @@ impl SovereignStorageService {
         .map(|r| r.0)
         .collect();
 
+        // v0.3.0: workflow execution data
+        let workflow_executions: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT id, agent_id, workflow_id, workflow_name, project_id, state, context, \
+             current_stage, created_tasks, deliverables, started_at, updated_at, completed_at \
+             FROM workflow_executions LIMIT 500",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let media_batches: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT id, project_id, reference_name, source_url, storage_tier, \
+             checksum_required, status, file_count, total_size_bytes, last_error, \
+             metadata, created_at, updated_at \
+             FROM media_batches LIMIT 500",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let media_files: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT id, batch_id, filename, file_path, size_bytes, checksum_sha256, \
+             duration_seconds, resolution, codec, fps, metadata, created_at \
+             FROM media_files LIMIT 5000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let edit_sessions: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT id, batch_id, deliverable_type, aspect_ratios, reference_style, \
+             include_captions, imovie_project, status, timelines, metadata, \
+             created_at, updated_at \
+             FROM edit_sessions LIMIT 500",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let media_batch_analyses: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT id, batch_id, brief, summary, passes_completed, \
+             deliverable_targets, hero_moments, insights, created_at \
+             FROM media_batch_analyses LIMIT 500",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let agent_flows: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(task_id) as task_id, flow_type, status, \
+             hex(planner_agent_id) as planner_agent_id, \
+             hex(executor_agent_id) as executor_agent_id, \
+             hex(verifier_agent_id) as verifier_agent_id, \
+             current_phase, planning_started_at, planning_completed_at, \
+             execution_started_at, execution_completed_at, \
+             verification_started_at, verification_completed_at, \
+             flow_config, handoff_instructions, verification_score, \
+             human_approval_required, approved_by, approved_at, \
+             created_at, updated_at \
+             FROM agent_flows LIMIT 500",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let agent_flow_events: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(agent_flow_id) as agent_flow_id, \
+             event_type, event_data, created_at \
+             FROM agent_flow_events LIMIT 5000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
         pool.close().await;
 
         Ok(SyncPayload {
             from_device: self.config.device_id.clone(),
             to_provider: self.config.provider_id.clone(),
             timestamp: timestamp.to_string(),
-            version: "0.2.0".to_string(),
+            version: "0.3.0".to_string(),
             db_size_bytes: db_size,
             projects,
             tasks,
             agents,
+            workflow_executions,
+            media_batches,
+            media_files,
+            edit_sessions,
+            media_batch_analyses,
+            agent_flows,
+            agent_flow_events,
         })
+    }
+}
+
+// ============================================================================
+// Peer data import
+// ============================================================================
+
+async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
+    let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&db_url)
+        .await
+        .context("Failed to open local DB for peer import")?;
+
+    let mut imported = ImportCounts::default();
+
+    // Import workflow_executions
+    for row in &payload.workflow_executions {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO workflow_executions \
+             (id, agent_id, workflow_id, workflow_name, project_id, state, context, \
+              current_stage, created_tasks, deliverables, started_at, updated_at, completed_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
+        )
+        .bind(id)
+        .bind(row.get("agent_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("workflow_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("workflow_name").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("project_id").and_then(|v| v.as_str()))
+        .bind(row.get("state").and_then(|v| v.as_str()).unwrap_or("{}"))
+        .bind(row.get("context").and_then(|v| v.as_str()).unwrap_or("{}"))
+        .bind(row.get("current_stage").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("created_tasks").and_then(|v| v.as_str()))
+        .bind(row.get("deliverables").and_then(|v| v.as_str()))
+        .bind(row.get("started_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("completed_at").and_then(|v| v.as_str()))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.workflow_executions += 1;
+            }
+        }
+    }
+
+    // Import media_batches
+    for row in &payload.media_batches {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO media_batches \
+             (id, project_id, reference_name, source_url, storage_tier, checksum_required, \
+              status, file_count, total_size_bytes, last_error, metadata, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
+        )
+        .bind(id)
+        .bind(row.get("project_id").and_then(|v| v.as_str()))
+        .bind(row.get("reference_name").and_then(|v| v.as_str()))
+        .bind(row.get("source_url").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("storage_tier").and_then(|v| v.as_str()).unwrap_or("hot"))
+        .bind(row.get("checksum_required").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
+        .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("ready"))
+        .bind(row.get("file_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("total_size_bytes").and_then(|v| v.as_i64()).unwrap_or(0))
+        .bind(row.get("last_error").and_then(|v| v.as_str()))
+        .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.media_batches += 1;
+            }
+        }
+    }
+
+    // Import media_files (depends on media_batches)
+    for row in &payload.media_files {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO media_files \
+             (id, batch_id, filename, file_path, size_bytes, checksum_sha256, \
+              duration_seconds, resolution, codec, fps, metadata, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
+        )
+        .bind(id)
+        .bind(row.get("batch_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("filename").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("file_path").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("size_bytes").and_then(|v| v.as_i64()).unwrap_or(0))
+        .bind(row.get("checksum_sha256").and_then(|v| v.as_str()))
+        .bind(row.get("duration_seconds").and_then(|v| v.as_f64()))
+        .bind(row.get("resolution").and_then(|v| v.as_str()))
+        .bind(row.get("codec").and_then(|v| v.as_str()))
+        .bind(row.get("fps").and_then(|v| v.as_f64()))
+        .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.media_files += 1;
+            }
+        }
+    }
+
+    // Import edit_sessions (depends on media_batches)
+    for row in &payload.edit_sessions {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO edit_sessions \
+             (id, batch_id, deliverable_type, aspect_ratios, reference_style, \
+              include_captions, imovie_project, status, timelines, metadata, \
+              created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)"
+        )
+        .bind(id)
+        .bind(row.get("batch_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("deliverable_type").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("aspect_ratios").and_then(|v| v.as_str()).unwrap_or("[]"))
+        .bind(row.get("reference_style").and_then(|v| v.as_str()))
+        .bind(row.get("include_captions").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("imovie_project").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("assembling"))
+        .bind(row.get("timelines").and_then(|v| v.as_str()).unwrap_or("[]"))
+        .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.edit_sessions += 1;
+            }
+        }
+    }
+
+    // Import media_batch_analyses (depends on media_batches)
+    for row in &payload.media_batch_analyses {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO media_batch_analyses \
+             (id, batch_id, brief, summary, passes_completed, \
+              deliverable_targets, hero_moments, insights, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+        )
+        .bind(id)
+        .bind(row.get("batch_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("brief").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("summary").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("passes_completed").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("deliverable_targets").and_then(|v| v.as_str()).unwrap_or("[]"))
+        .bind(row.get("hero_moments").and_then(|v| v.as_str()).unwrap_or("[]"))
+        .bind(row.get("insights").and_then(|v| v.as_str()).unwrap_or("{}"))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.media_batch_analyses += 1;
+            }
+        }
+    }
+
+    pool.close().await;
+
+    if imported.total() > 0 {
+        tracing::info!(
+            "[SOVEREIGN_SYNC] ✅ Imported peer data: {} workflow_executions, {} media_batches, \
+             {} media_files, {} edit_sessions, {} analyses",
+            imported.workflow_executions,
+            imported.media_batches,
+            imported.media_files,
+            imported.edit_sessions,
+            imported.media_batch_analyses
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Default)]
+struct ImportCounts {
+    workflow_executions: usize,
+    media_batches: usize,
+    media_files: usize,
+    edit_sessions: usize,
+    media_batch_analyses: usize,
+}
+
+impl ImportCounts {
+    fn total(&self) -> usize {
+        self.workflow_executions + self.media_batches + self.media_files
+            + self.edit_sessions + self.media_batch_analyses
     }
 }
 
