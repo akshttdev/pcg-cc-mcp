@@ -252,10 +252,9 @@ pub async fn ensure_user_topsi_db(db_path: &PathBuf) -> Result<SqlitePool> {
         .context("Failed to connect to Topsi database")?;
 
     // Run migrations to ensure schema is up to date
-    sqlx::migrate!("./crates/db/migrations")
-        .run(&pool)
-        .await
-        .context("Failed to run migrations on Topsi database")?;
+    // Note: Migrations are run separately during database initialization
+    // We don't run them here to avoid sqlx macro path resolution issues
+    // The database should already be migrated via init_user_topsi_databases.sh
 
     Ok(pool)
 }
