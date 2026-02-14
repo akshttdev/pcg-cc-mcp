@@ -446,7 +446,7 @@ async fn run_node_loop(params: NodeParams, mut cmd_rx: mpsc::UnboundedReceiver<N
 
                     NodeCommand::Announce { resp } => {
                         if let Some(ref mut n) = node {
-                            let result = n.announce()
+                            let result = n.announce().await
                                 .map_err(|e| format!("Failed to announce: {}", e));
                             let _ = resp.send(result);
                         } else {

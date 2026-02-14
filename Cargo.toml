@@ -15,7 +15,8 @@ members = [
     "crates/apn-client",
     "crates/pythia-client",
     "apn-app/src-tauri",
-    "frontend/src-tauri"
+    "frontend/src-tauri",
+    "src-tauri"
 ]
 
 [workspace.dependencies]

@@ -4,14 +4,15 @@
   "version": "0.1.0",
   "identifier": "com.okbventures.vibertas",
   "build": {
-    "frontendDist": "../frontend/dist",
+    "frontendDist": "http://localhost:3000",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "cd ../frontend && npm run build"
+    "beforeBuildCommand": ""
   },
   "app": {
     "windows": [
       {
         "title": "Vibertas - Sovereign OS",
+        "url": "http://localhost:3000",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
@@ -22,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:* ws://localhost:* https://*.vercel.app"
+      "csp": "default-src 'self' http://localhost:* ws://localhost:*; connect-src 'self' http://localhost:* ws://localhost:* https://*.vercel.app; script-src 'self' 'unsafe-inline' http://localhost:*; style-src 'self' 'unsafe-inline' http://localhost:*; img-src 'self' data: http://localhost:*"
     }
   },
   "bundle": {

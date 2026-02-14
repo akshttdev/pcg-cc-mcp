@@ -126,6 +126,9 @@ class ApiError<E = unknown> extends Error {
   }
 }
 
+const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+const API_BASE = isTauri ? 'http://localhost:3000' : '';
+
 const makeRequest = async (url: string, options: RequestInit = {}) => {
   const headers = {
     'Content-Type': 'application/json',
@@ -135,28 +138,24 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
   const isFileProtocol =
     typeof window !== 'undefined' && window.location.protocol === 'file:';
 
-  if (isFileProtocol) {
+  if (isFileProtocol && !isTauri) {
     throw new Error(
       'The PCG CC dashboard assets were opened directly from disk. Please start the PCG CC server (`node npx-cli/bin/cli.js`) and access it via the URL printed in the terminal.'
     );
   }
 
+  const resolvedUrl = url.startsWith('/') ? `${API_BASE}${url}` : url;
+
   try {
-    return await fetch(url, {
+    return await fetch(resolvedUrl, {
       ...options,
       headers,
       credentials: 'include',
     });
   } catch (error) {
-    if (isFileProtocol) {
-      throw new Error(
-        'Unable to reach the PCG CC server because the dashboard is running from the filesystem. Launch the server via `node npx-cli/bin/cli.js` and reopen the app from the provided http:// address.'
-      );
-    }
-
     if (typeof window !== 'undefined' && error instanceof TypeError) {
       throw new Error(
-        `Failed to reach the PCG CC server at ${window.location.origin}. Make sure the server process is running and reachable.`
+        `Failed to reach the PCG CC server at ${API_BASE || window.location.origin}. Make sure the server process is running and reachable.`
       );
     }
 
