@@ -1,5 +1,6 @@
 pub mod access_control;
 pub mod model_loaders;
+pub mod orcha_auth;
 pub mod rate_limit;
 pub mod request_id;
 

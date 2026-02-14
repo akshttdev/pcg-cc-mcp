@@ -108,3 +108,7 @@ session_logs/
 .cc.log
 *.pid
 NETWORK-REWARDS-WALLET.txt
+piper_voices/
+voices/
+voice_samples/
+.env.backup

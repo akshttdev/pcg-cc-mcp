@@ -2,6 +2,7 @@ pub mod error;
 pub mod mcp;
 pub mod middleware;
 pub mod nora_metrics;
+pub mod orcha_routing;
 pub mod routes;
 pub mod sovereign_storage;
 pub mod task_scheduler;
