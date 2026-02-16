@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { resolveApiUrl } from '@/lib/api';
 
 export interface ProjectCapacity {
   project_id: string;
@@ -34,7 +35,7 @@ export interface ActiveExecutionsResponse {
 }
 
 async function fetchProjectCapacity(projectId: string): Promise<ProjectCapacity> {
-  const response = await fetch(`/api/projects/${projectId}/capacity`);
+  const response = await fetch(resolveApiUrl(`/api/projects/${projectId}/capacity`));
   if (!response.ok) {
     throw new Error('Failed to fetch project capacity');
   }
@@ -43,7 +44,7 @@ async function fetchProjectCapacity(projectId: string): Promise<ProjectCapacity>
 }
 
 async function fetchActiveSlots(projectId: string): Promise<ExecutionSlot[]> {
-  const response = await fetch(`/api/projects/${projectId}/slots`);
+  const response = await fetch(resolveApiUrl(`/api/projects/${projectId}/slots`));
   if (!response.ok) {
     throw new Error('Failed to fetch active slots');
   }
@@ -52,7 +53,7 @@ async function fetchActiveSlots(projectId: string): Promise<ExecutionSlot[]> {
 }
 
 async function fetchActiveExecutions(): Promise<ActiveExecutionsResponse> {
-  const response = await fetch('/api/execution/active');
+  const response = await fetch(resolveApiUrl('/api/execution/active'));
   if (!response.ok) {
     throw new Error('Failed to fetch active executions');
   }

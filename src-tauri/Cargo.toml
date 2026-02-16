@@ -35,6 +35,9 @@ tokio = { version = "1", features = ["full"] }
 log = "0.4"
 tracing = "0.1"
 
+# HTTP client (for backend health check)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
 # Error handling
 anyhow = "1.0"
 thiserror = "2.0"

@@ -18,6 +18,7 @@ import {
   XCircle,
   Loader2,
 } from 'lucide-react';
+import { resolveApiUrl } from '@/lib/api';
 
 interface ApnIdentity {
   node_id: string | null;
@@ -56,7 +57,7 @@ const KNOWN_SOFTWARE = [
 ];
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetch(resolveApiUrl(url));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   return json.data ?? json;
@@ -85,7 +86,7 @@ export function NetworkSettings() {
   const { data: capabilities, isLoading: capsLoading } = useQuery<Capabilities>({
     queryKey: ['apn-capabilities'],
     queryFn: async () => {
-      const res = await fetch('/api/mesh/stats');
+      const res = await fetch(resolveApiUrl('/api/mesh/stats'));
       if (!res.ok) throw new Error('Failed to fetch');
       // Also try APN Core directly for capabilities
       try {

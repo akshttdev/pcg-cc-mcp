@@ -1,4 +1,4 @@
-//! Interactive REPL for PCG CLI
+//! Interactive REPL for ORCHA CLI
 //!
 //! Provides the Claude Code-like interactive terminal experience.
 
@@ -30,7 +30,7 @@ fn format_num(n: i64) -> String {
     result
 }
 
-/// Interactive REPL for PCG CLI
+/// Interactive REPL for ORCHA CLI
 pub struct PcgRepl {
     api: ApiClient,
     config: Config,
@@ -40,6 +40,10 @@ pub struct PcgRepl {
     editor: Editor<(), DefaultHistory>,
     project_id: Option<Uuid>,
     project_name: Option<String>,
+    /// Current model override (None = use agent default)
+    current_model: Option<String>,
+    /// Current provider override (None = use agent default)
+    current_provider: Option<String>,
 }
 
 impl PcgRepl {
@@ -63,6 +67,8 @@ impl PcgRepl {
             editor,
             project_id: None,
             project_name: project,
+            current_model: None,
+            current_provider: None,
         };
 
         // If resuming, parse session ID
@@ -147,7 +153,7 @@ impl PcgRepl {
 
         // Prompt to save session
         if self.session.is_some() {
-            self.output.print_info("Session ended. Use 'pcg status' to view history.");
+            self.output.print_info("Session ended. Use 'orcha status' to view history.");
         }
 
         Ok(())
@@ -225,11 +231,18 @@ impl PcgRepl {
             })
             .unwrap_or_default();
 
+        let model_part = self
+            .current_provider
+            .as_ref()
+            .map(|p| format!(" {}", p.bright_magenta()))
+            .unwrap_or_default();
+
         format!(
-            "\n{} [{}{}] {} ",
-            "pcg".bright_green().bold(),
+            "\n{} [{}{}{}] {} ",
+            "orcha".bright_green().bold(),
             project_part,
             session_part,
+            model_part,
             ">".bright_green()
         )
     }
@@ -260,6 +273,10 @@ impl PcgRepl {
                 self.handle_agent_command(&parts[1..]).await?;
             }
 
+            "/model" => {
+                self.handle_model_command(&parts[1..]).await?;
+            }
+
             "/cost" => {
                 self.print_cost_summary();
             }
@@ -287,7 +304,7 @@ impl PcgRepl {
     /// Print help information
     fn print_help(&self) {
         println!();
-        println!("{}", "PCG CLI Commands".bright_white().bold());
+        println!("{}", "ORCHA CLI Commands".bright_white().bold());
         println!("{}", "─".repeat(50).dimmed());
         println!();
 
@@ -321,9 +338,32 @@ impl PcgRepl {
         );
         println!();
 
+        println!("{}", "Model Commands:".bright_cyan());
+        println!("  {}            Show current model/provider", "/model".bright_yellow());
+        println!("  {}   Switch to local Ollama LLM", "/model ollama".bright_yellow());
+        println!("  {}  Switch to OpenAI GPT-4o", "/model openai".bright_yellow());
+        println!("  {} Switch to Anthropic Claude", "/model anthropic".bright_yellow());
+        println!(
+            "  {}  Use a specific model",
+            "/model set <model>".bright_yellow()
+        );
+        println!();
+
+        println!("{}", "Project Commands:".bright_cyan());
+        println!("  {}           Show current project", "/project".bright_yellow());
+        println!("  {}      List all projects", "/project list".bright_yellow());
+        println!(
+            "  {} Create a new project",
+            "/project create <name>".bright_yellow()
+        );
+        println!(
+            "  {}    Switch to a project",
+            "/project <name>".bright_yellow()
+        );
+        println!();
+
         println!("{}", "Other Commands:".bright_cyan());
         println!("  {}             Show cost breakdown", "/cost".bright_yellow());
-        println!("  {}           Show current project", "/project".bright_yellow());
         println!("  {}            Clear screen", "/clear".bright_yellow());
         println!("  {}             Show this help", "/help".bright_yellow());
         println!("  {}             Exit the CLI", "/exit".bright_yellow());
@@ -350,7 +390,7 @@ impl PcgRepl {
                     let request = CreateTaskRequest {
                         title: title.clone(),
                         description: None,
-                        created_by: "pcg-cli".to_string(),
+                        created_by: "orcha-cli".to_string(),
                     };
 
                     match self.api.create_task(project_id, None, &request).await {
@@ -493,6 +533,79 @@ impl PcgRepl {
         Ok(())
     }
 
+    /// Handle model subcommands
+    async fn handle_model_command(&mut self, args: &[&str]) -> Result<()> {
+        if args.is_empty() {
+            // Show current model info
+            let model = self.current_model.as_deref().unwrap_or("(agent default)");
+            let provider = self.current_provider.as_deref().unwrap_or("(agent default)");
+
+            self.output.print_header("Model Configuration");
+            println!();
+            println!("  {} {}", "Provider:".dimmed(), provider.bright_cyan());
+            println!("  {} {}", "Model:".dimmed(), model.bright_cyan());
+            println!();
+            println!("{}", "Available Providers:".bright_white());
+            println!("  {} - Local LLM via Ollama (free, private)", "ollama".bright_green());
+            println!("  {} - OpenAI GPT models (requires API key)", "openai".bright_yellow());
+            println!("  {} - Anthropic Claude models (requires API key)", "anthropic".bright_yellow());
+            println!();
+            println!("{}", "Usage:".dimmed());
+            println!("  /model ollama              Switch to local Ollama");
+            println!("  /model openai              Switch to OpenAI");
+            println!("  /model anthropic           Switch to Anthropic");
+            println!("  /model set llama3.2:3b     Use a specific model");
+            println!("  /model reset               Reset to agent defaults");
+            return Ok(());
+        }
+
+        match args[0] {
+            "ollama" | "local" => {
+                self.current_provider = Some("ollama".to_string());
+                self.current_model = Some("llama3.2:3b".to_string());
+                self.output.print_success("Switched to Ollama (local) with llama3.2:3b");
+            }
+            "openai" | "gpt" => {
+                self.current_provider = Some("openai".to_string());
+                self.current_model = Some("gpt-4o".to_string());
+                self.output.print_success("Switched to OpenAI with gpt-4o");
+            }
+            "anthropic" | "claude" => {
+                self.current_provider = Some("anthropic".to_string());
+                self.current_model = Some("claude-sonnet-4".to_string());
+                self.output.print_success("Switched to Anthropic with claude-sonnet-4");
+            }
+            "set" => {
+                if args.len() < 2 {
+                    self.output.print_error("Usage: /model set <model-name>");
+                    return Ok(());
+                }
+                let model = args[1];
+                // Infer provider from model name
+                let provider = if model.starts_with("claude") {
+                    "anthropic"
+                } else if model.starts_with("gpt-4") || model.starts_with("gpt-3") || model.starts_with("o1") {
+                    "openai"
+                } else {
+                    "ollama"
+                };
+                self.current_model = Some(model.to_string());
+                self.current_provider = Some(provider.to_string());
+                self.output.print_success(&format!("Model set to {} ({})", model, provider));
+            }
+            "reset" => {
+                self.current_model = None;
+                self.current_provider = None;
+                self.output.print_success("Reset to agent default model/provider");
+            }
+            _ => {
+                self.output.print_error("Unknown model command. Use: ollama, openai, anthropic, set <model>, reset");
+            }
+        }
+
+        Ok(())
+    }
+
     /// Print cost summary
     fn print_cost_summary(&self) {
         if let Some(session) = &self.session {
@@ -594,7 +707,7 @@ impl PcgRepl {
             }
 
             "pause" => {
-                self.output.print_info("Session paused. Resume later with: pcg --resume <session-id>");
+                self.output.print_info("Session paused. Resume later with: orcha --resume <session-id>");
             }
 
             _ => {
@@ -621,23 +734,75 @@ impl PcgRepl {
             return Ok(());
         }
 
-        // Switch project
-        let name = args.join(" ");
-        match self.api.find_project_by_name(&name).await {
-            Ok(Some(project)) => {
-                self.project_id = Some(project.id);
-                self.project_name = Some(project.name.clone());
-                self.output.print_success(&format!("Switched to project: {}", project.name));
+        match args[0] {
+            "create" => {
+                if args.len() < 2 {
+                    self.output.print_error("Usage: /project create <name>");
+                    return Ok(());
+                }
+                let name = args[1..].join(" ");
 
-                // Start new session for this project
-                self.session = None;
-                self.init_session().await?;
+                // Use work_dir as default git repo path for the new project
+                let git_path = self.work_dir.join(&name.replace(' ', "-").to_lowercase());
+                let git_path_str = git_path.to_string_lossy().to_string();
+
+                self.output.print_info(&format!("Creating project '{}' at {}...", name, git_path_str));
+
+                match self.api.create_project(&name, &git_path_str, None).await {
+                    Ok(project) => {
+                        self.output.print_success(&format!("Project '{}' created!", project.name));
+                        self.project_id = Some(project.id);
+                        self.project_name = Some(project.name);
+
+                        // Start new session for this project
+                        self.session = None;
+                        self.init_session().await?;
+                    }
+                    Err(e) => {
+                        self.output.print_error(&format!("Failed to create project: {}", e));
+                    }
+                }
             }
-            Ok(None) => {
-                self.output.print_error(&format!("Project not found: {}", name));
+
+            "list" => {
+                let projects = self.api.list_projects().await?;
+                if projects.is_empty() {
+                    self.output.print_info("No projects found.");
+                    return Ok(());
+                }
+
+                self.output.print_header("Projects");
+                for project in &projects {
+                    let marker = if self.project_id == Some(project.id) { " (active)" } else { "" };
+                    println!(
+                        "  {} {}{}",
+                        project.name.bright_cyan(),
+                        format!("[{}]", &project.id.to_string()[..8]).dimmed(),
+                        marker.bright_green()
+                    );
+                }
             }
-            Err(e) => {
-                self.output.print_error(&format!("Error finding project: {}", e));
+
+            _ => {
+                // Treat as project name to switch to
+                let name = args.join(" ");
+                match self.api.find_project_by_name(&name).await {
+                    Ok(Some(project)) => {
+                        self.project_id = Some(project.id);
+                        self.project_name = Some(project.name.clone());
+                        self.output.print_success(&format!("Switched to project: {}", project.name));
+
+                        // Start new session for this project
+                        self.session = None;
+                        self.init_session().await?;
+                    }
+                    Ok(None) => {
+                        self.output.print_error(&format!("Project '{}' not found. Use /project create {} to create it.", name, name));
+                    }
+                    Err(e) => {
+                        self.output.print_error(&format!("Error finding project: {}", e));
+                    }
+                }
             }
         }
 
@@ -668,7 +833,7 @@ impl PcgRepl {
                     let request = CreateTaskRequest {
                         title: input.to_string(),
                         description: None,
-                        created_by: "pcg-cli".to_string(),
+                        created_by: "orcha-cli".to_string(),
                     };
 
                     if let Ok(task) = self.api.create_task(project_id, None, &request).await {
@@ -694,7 +859,14 @@ impl PcgRepl {
 
             match self
                 .api
-                .chat_with_agent(agent.id, input, &session_id, self.project_id)
+                .chat_with_agent(
+                    agent.id,
+                    input,
+                    &session_id,
+                    self.project_id,
+                    self.current_model.as_deref(),
+                    self.current_provider.as_deref(),
+                )
                 .await
             {
                 Ok(response) => {
@@ -722,7 +894,7 @@ impl PcgRepl {
                 Err(e) => {
                     self.output.print_error(&format!("Agent error: {}", e));
                     self.output.print_info(
-                        "Note: Make sure the PCG backend server is running on the configured URL.",
+                        "Note: Make sure the ORCHA backend server is running on the configured URL.",
                     );
                 }
             }
@@ -734,7 +906,7 @@ impl PcgRepl {
             ));
             self.output.print_info(&format!("Your request: {}", input));
             self.output.print_info(
-                "To enable agent chat, ensure the PCG backend is running: pnpm run dev",
+                "To enable agent chat, ensure the ORCHA backend is running: pnpm run dev",
             );
         }
 

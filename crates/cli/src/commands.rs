@@ -32,7 +32,7 @@ pub async fn status(api: &ApiClient) -> Result<()> {
     // Check server health
     let healthy = api.health_check().await?;
 
-    output.print_header("PCG CLI Status");
+    output.print_header("ORCHA CLI Status");
 
     if healthy {
         output.print_success("Server: Connected");

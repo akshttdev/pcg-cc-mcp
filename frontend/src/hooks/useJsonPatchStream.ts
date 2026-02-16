@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { resolveApiUrl } from '@/lib/api';
 import { applyPatch } from 'rfc6902';
 import type { Operation } from 'rfc6902';
 
@@ -81,7 +82,7 @@ export const useJsonPatchStream = <T>(
 
     // Create EventSource if it doesn't exist
     if (!eventSourceRef.current) {
-      const eventSource = new EventSource(endpoint);
+      const eventSource = new EventSource(resolveApiUrl(endpoint));
 
       eventSource.onopen = () => {
         setError(null);

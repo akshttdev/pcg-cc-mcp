@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { resolveWsUrl } from '@/lib/api';
 import type {
   RemotePlayer,
   PlayerPosition,
@@ -63,8 +64,7 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
     }
 
     // Determine WebSocket URL
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/multiplayer/ws`;
+    const wsUrl = resolveWsUrl('/api/multiplayer/ws');
 
     try {
       const ws = new WebSocket(wsUrl);

@@ -22,6 +22,7 @@ import {
   XCircle,
   Clock
 } from 'lucide-react';
+import { resolveApiUrl } from '@/lib/api';
 
 // Check if we're running in Tauri
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
@@ -109,7 +110,7 @@ const useMeshStats = () => {
       }
 
       // Fall back to API endpoint
-      const response = await fetch('/api/mesh/stats');
+      const response = await fetch(resolveApiUrl('/api/mesh/stats'));
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }

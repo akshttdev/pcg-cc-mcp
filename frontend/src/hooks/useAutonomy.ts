@@ -5,6 +5,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { resolveApiUrl } from '@/lib/api';
 
 // ========== Types ==========
 
@@ -138,14 +139,14 @@ export interface SubmitApprovalRequest {
 // ========== Fetch Functions ==========
 
 async function fetchTaskAutonomyMode(taskId: string): Promise<AutonomyMode> {
-  const response = await fetch(`/api/tasks/${taskId}/autonomy-mode`);
+  const response = await fetch(resolveApiUrl(`/api/tasks/${taskId}/autonomy-mode`));
   if (!response.ok) throw new Error('Failed to fetch autonomy mode');
   const json = await response.json();
   return json.data;
 }
 
 async function setTaskAutonomyMode(taskId: string, mode: AutonomyMode): Promise<void> {
-  const response = await fetch(`/api/tasks/${taskId}/autonomy-mode`, {
+  const response = await fetch(resolveApiUrl(`/api/tasks/${taskId}/autonomy-mode`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode }),
@@ -154,14 +155,14 @@ async function setTaskAutonomyMode(taskId: string, mode: AutonomyMode): Promise<
 }
 
 async function fetchCheckpointDefinitions(projectId: string): Promise<CheckpointDefinition[]> {
-  const response = await fetch(`/api/projects/${projectId}/checkpoint-definitions`);
+  const response = await fetch(resolveApiUrl(`/api/projects/${projectId}/checkpoint-definitions`));
   if (!response.ok) throw new Error('Failed to fetch checkpoint definitions');
   const json = await response.json();
   return json.data;
 }
 
 async function createCheckpointDefinition(req: CreateCheckpointDefinitionRequest): Promise<CheckpointDefinition> {
-  const response = await fetch('/api/autonomy/checkpoint-definitions', {
+  const response = await fetch(resolveApiUrl('/api/autonomy/checkpoint-definitions'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -175,7 +176,7 @@ async function updateCheckpointDefinition(
   definitionId: string,
   req: UpdateCheckpointDefinitionRequest
 ): Promise<CheckpointDefinition> {
-  const response = await fetch(`/api/autonomy/checkpoint-definitions/${definitionId}`, {
+  const response = await fetch(resolveApiUrl(`/api/autonomy/checkpoint-definitions/${definitionId}`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -186,28 +187,28 @@ async function updateCheckpointDefinition(
 }
 
 async function deleteCheckpointDefinition(definitionId: string): Promise<void> {
-  const response = await fetch(`/api/autonomy/checkpoint-definitions/${definitionId}`, {
+  const response = await fetch(resolveApiUrl(`/api/autonomy/checkpoint-definitions/${definitionId}`), {
     method: 'DELETE',
   });
   if (!response.ok) throw new Error('Failed to delete checkpoint definition');
 }
 
 async function fetchExecutionCheckpoints(executionId: string): Promise<ExecutionCheckpoint[]> {
-  const response = await fetch(`/api/executions/${executionId}/checkpoints`);
+  const response = await fetch(resolveApiUrl(`/api/executions/${executionId}/checkpoints`));
   if (!response.ok) throw new Error('Failed to fetch checkpoints');
   const json = await response.json();
   return json.data;
 }
 
 async function fetchPendingCheckpoints(executionId: string): Promise<ExecutionCheckpoint[]> {
-  const response = await fetch(`/api/executions/${executionId}/checkpoints/pending`);
+  const response = await fetch(resolveApiUrl(`/api/executions/${executionId}/checkpoints/pending`));
   if (!response.ok) throw new Error('Failed to fetch pending checkpoints');
   const json = await response.json();
   return json.data;
 }
 
 async function reviewCheckpoint(checkpointId: string, req: ReviewCheckpointRequest): Promise<ExecutionCheckpoint> {
-  const response = await fetch(`/api/checkpoints/${checkpointId}/review`, {
+  const response = await fetch(resolveApiUrl(`/api/checkpoints/${checkpointId}/review`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -218,7 +219,7 @@ async function reviewCheckpoint(checkpointId: string, req: ReviewCheckpointReque
 }
 
 async function skipCheckpoint(checkpointId: string): Promise<ExecutionCheckpoint> {
-  const response = await fetch(`/api/checkpoints/${checkpointId}/skip`, {
+  const response = await fetch(resolveApiUrl(`/api/checkpoints/${checkpointId}/skip`), {
     method: 'POST',
   });
   if (!response.ok) throw new Error('Failed to skip checkpoint');
@@ -227,14 +228,14 @@ async function skipCheckpoint(checkpointId: string): Promise<ExecutionCheckpoint
 }
 
 async function fetchProjectGates(projectId: string): Promise<ApprovalGate[]> {
-  const response = await fetch(`/api/projects/${projectId}/approval-gates`);
+  const response = await fetch(resolveApiUrl(`/api/projects/${projectId}/approval-gates`));
   if (!response.ok) throw new Error('Failed to fetch approval gates');
   const json = await response.json();
   return json.data;
 }
 
 async function createApprovalGate(req: CreateApprovalGateRequest): Promise<ApprovalGate> {
-  const response = await fetch('/api/autonomy/approval-gates', {
+  const response = await fetch(resolveApiUrl('/api/autonomy/approval-gates'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -245,21 +246,21 @@ async function createApprovalGate(req: CreateApprovalGateRequest): Promise<Appro
 }
 
 async function deleteApprovalGate(gateId: string): Promise<void> {
-  const response = await fetch(`/api/autonomy/approval-gates/${gateId}`, {
+  const response = await fetch(resolveApiUrl(`/api/autonomy/approval-gates/${gateId}`), {
     method: 'DELETE',
   });
   if (!response.ok) throw new Error('Failed to delete approval gate');
 }
 
 async function fetchPendingGates(executionId: string): Promise<PendingGate[]> {
-  const response = await fetch(`/api/executions/${executionId}/gates`);
+  const response = await fetch(resolveApiUrl(`/api/executions/${executionId}/gates`));
   if (!response.ok) throw new Error('Failed to fetch pending gates');
   const json = await response.json();
   return json.data;
 }
 
 async function submitGateApproval(pendingGateId: string, req: SubmitApprovalRequest): Promise<GateApproval> {
-  const response = await fetch(`/api/pending-gates/${pendingGateId}/approve`, {
+  const response = await fetch(resolveApiUrl(`/api/pending-gates/${pendingGateId}/approve`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -270,7 +271,7 @@ async function submitGateApproval(pendingGateId: string, req: SubmitApprovalRequ
 }
 
 async function bypassGate(pendingGateId: string): Promise<PendingGate> {
-  const response = await fetch(`/api/pending-gates/${pendingGateId}/bypass`, {
+  const response = await fetch(resolveApiUrl(`/api/pending-gates/${pendingGateId}/bypass`), {
     method: 'POST',
   });
   if (!response.ok) throw new Error('Failed to bypass gate');
@@ -279,14 +280,14 @@ async function bypassGate(pendingGateId: string): Promise<PendingGate> {
 }
 
 async function fetchPendingApprovalsSummary(): Promise<PendingApprovalsSummary> {
-  const response = await fetch('/api/autonomy/pending-approvals');
+  const response = await fetch(resolveApiUrl('/api/autonomy/pending-approvals'));
   if (!response.ok) throw new Error('Failed to fetch pending approvals');
   const json = await response.json();
   return json.data;
 }
 
 async function fetchCanProceed(executionId: string): Promise<boolean> {
-  const response = await fetch(`/api/executions/${executionId}/can-proceed`);
+  const response = await fetch(resolveApiUrl(`/api/executions/${executionId}/can-proceed`));
   if (!response.ok) throw new Error('Failed to check proceed status');
   const json = await response.json();
   return json.data;

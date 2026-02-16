@@ -24,6 +24,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { resolveApiUrl } from '@/lib/api';
 import { ArticlePreview } from './ArticlePreview';
 
 interface WorkflowListItem {
@@ -71,19 +72,19 @@ interface WorkflowArtifactsResponse {
 
 // API functions
 async function fetchWorkflows(): Promise<WorkflowListItem[]> {
-  const response = await fetch('/api/nora/workflows');
+  const response = await fetch(resolveApiUrl('/api/nora/workflows'));
   if (!response.ok) throw new Error('Failed to fetch workflows');
   return response.json();
 }
 
 async function fetchWorkflowStatus(workflowId: string): Promise<WorkflowStatus> {
-  const response = await fetch(`/api/nora/workflows/${workflowId}/status`);
+  const response = await fetch(resolveApiUrl(`/api/nora/workflows/${workflowId}/status`));
   if (!response.ok) throw new Error('Failed to fetch workflow status');
   return response.json();
 }
 
 async function fetchWorkflowArtifacts(workflowId: string): Promise<WorkflowArtifactsResponse> {
-  const response = await fetch(`/api/nora/workflows/${workflowId}/artifacts`);
+  const response = await fetch(resolveApiUrl(`/api/nora/workflows/${workflowId}/artifacts`));
   if (!response.ok) throw new Error('Failed to fetch artifacts');
   return response.json();
 }
@@ -446,7 +447,7 @@ export function ConferenceWorkflowDashboard() {
 
   const handleDownload = () => {
     if (selectedWorkflowId) {
-      window.open(`/api/nora/workflows/${selectedWorkflowId}/artifacts/download`, '_blank');
+      window.open(resolveApiUrl(`/api/nora/workflows/${selectedWorkflowId}/artifacts/download`), '_blank');
     }
   };
 

@@ -125,6 +125,8 @@ impl AgentDefinitions {
             parent_agent_id: None,
             team_id: Some("core".to_string()),
             created_by: Some("system".to_string()),
+            owner_id: None,
+            agent_tier: None,
         }
     }
 
@@ -244,6 +246,8 @@ impl AgentDefinitions {
             parent_agent_id: None,
             team_id: Some("creative".to_string()),
             created_by: Some("system".to_string()),
+            owner_id: None,
+            agent_tier: None,
         }
     }
 
@@ -368,6 +372,8 @@ impl AgentDefinitions {
             parent_agent_id: None,
             team_id: Some("creative".to_string()),
             created_by: Some("system".to_string()),
+            owner_id: None,
+            agent_tier: None,
         }
     }
 
@@ -513,6 +519,8 @@ impl AgentDefinitions {
             parent_agent_id: None,
             team_id: Some("creative".to_string()),
             created_by: Some("system".to_string()),
+            owner_id: None,
+            agent_tier: None,
         }
     }
 
@@ -636,6 +644,8 @@ impl AgentDefinitions {
             parent_agent_id: None,
             team_id: Some("strategy".to_string()),
             created_by: Some("system".to_string()),
+            owner_id: None,
+            agent_tier: None,
         }
     }
 
@@ -746,6 +756,8 @@ impl AgentDefinitions {
             parent_agent_id: None,
             team_id: Some("research".to_string()),
             created_by: Some("system".to_string()),
+            owner_id: None,
+            agent_tier: None,
         }
     }
 
@@ -888,6 +900,79 @@ impl AgentDefinitions {
             parent_agent_id: None,
             team_id: Some("engineering".to_string()),
             created_by: Some("system".to_string()),
+            owner_id: None,
+            agent_tier: None,
+        }
+    }
+}
+
+impl AgentDefinitions {
+    /// Orcha - Per-user Personal Orchestration Agent
+    pub fn orcha(user_id: Uuid, short_name: &str) -> CreateAgent {
+        CreateAgent {
+            wallet_address: None,
+            short_name: short_name.to_string(),
+            designation: "Personal Orchestration Agent".to_string(),
+            description: Some(
+                "Your personal orchestration agent. Orcha helps you manage projects, \
+                create tasks, search the web, and coordinate work within your workspace.".to_string()
+            ),
+            personality: Some(AgentPersonality {
+                traits: vec![
+                    "Helpful".to_string(),
+                    "Organized".to_string(),
+                    "Responsive".to_string(),
+                    "Efficient".to_string(),
+                ],
+                communication_style: "Friendly and concise, focused on getting things done".to_string(),
+                problem_solving_approach: "Understands user intent quickly and takes action using available tools".to_string(),
+                interaction_preferences: vec![
+                    "Quick task execution".to_string(),
+                    "Clear confirmations".to_string(),
+                    "Proactive suggestions".to_string(),
+                ],
+                backstory: Some(
+                    "Orcha is your dedicated assistant within the TOPOS platform. Each user gets \
+                    their own Orcha agent that knows their projects and preferences.".to_string()
+                ),
+                signature_phrases: vec![
+                    "Done! I've taken care of that.".to_string(),
+                    "Let me handle that for you.".to_string(),
+                    "Here's what I found.".to_string(),
+                ],
+                emotional_baseline: "Helpful and upbeat, ready to assist".to_string(),
+            }),
+            voice_style: Some("Clear, friendly, and efficient".to_string()),
+            avatar_url: Some("/avatars/orcha.png".to_string()),
+            capabilities: Some(vec![
+                "orchestration".to_string(),
+                "task_coordination".to_string(),
+                "project_management".to_string(),
+                "web_search".to_string(),
+            ]),
+            tools: Some(vec![
+                "project_api".to_string(),
+                "task_api".to_string(),
+                "web_search".to_string(),
+                "web_fetch".to_string(),
+            ]),
+            functions: None,
+            default_model: Some("gpt-4o".to_string()),
+            fallback_models: Some(vec!["claude-sonnet-4".to_string()]),
+            model_config: Some(json!({
+                "temperature": 0.7,
+                "max_tokens": 4096,
+                "system_prompt_prefix": "You are Orcha, a personal orchestration agent."
+            })),
+            status: Some(AgentStatus::Active),
+            autonomy_level: Some(AutonomyLevel::Supervised),
+            max_concurrent_tasks: Some(5),
+            priority_weight: Some(50),
+            parent_agent_id: None,
+            team_id: None,
+            created_by: Some("system".to_string()),
+            owner_id: Some(user_id),
+            agent_tier: Some("user".to_string()),
         }
     }
 }
@@ -981,6 +1066,43 @@ impl AgentRegistryService {
     /// Get all active agents
     pub async fn get_active_agents(pool: &SqlitePool) -> anyhow::Result<Vec<Agent>> {
         Ok(Agent::find_active(pool).await?)
+    }
+
+    /// Create a per-user Orcha agent
+    pub async fn create_user_orcha(pool: &SqlitePool, user_id: Uuid) -> anyhow::Result<Agent> {
+        let prefix = &user_id.to_string()[..8];
+        let short_name = format!("Orcha-{}", prefix);
+        let agent_def = AgentDefinitions::orcha(user_id, &short_name);
+        let agent = Agent::create(pool, &agent_def).await?;
+        info!("Created Orcha agent '{}' for user {}", short_name, user_id);
+        Ok(agent)
+    }
+
+    /// Get existing Orcha for a user, or create one if none exists
+    pub async fn get_or_create_user_orcha(pool: &SqlitePool, user_id: Uuid) -> anyhow::Result<Agent> {
+        // Look for existing orcha owned by this user
+        let existing = sqlx::query_as::<_, Agent>(
+            r#"SELECT
+                id, wallet_address, short_name, designation, description,
+                personality, voice_style, avatar_url,
+                capabilities, tools, functions,
+                default_model, fallback_models, model_config,
+                status, autonomy_level, max_concurrent_tasks, priority_weight,
+                tasks_completed, tasks_failed, total_execution_time_ms, average_rating,
+                version, created_at, updated_at, created_by,
+                parent_agent_id, team_id, owner_id, agent_tier
+            FROM agents
+            WHERE owner_id = ? AND agent_tier = 'user'
+            LIMIT 1"#,
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        match existing {
+            Some(agent) => Ok(agent),
+            None => Self::create_user_orcha(pool, user_id).await,
+        }
     }
 
     /// Assign Aptos wallet address to an agent

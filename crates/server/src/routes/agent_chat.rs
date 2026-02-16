@@ -23,14 +23,15 @@ use deployment::Deployment;
 use services::services::vibe_pricing::VibePricingService;
 use futures::stream::Stream;
 use nora::{
-    brain::{create_client_for_agent, ConversationMessage, LLMResponse},
+    brain::{create_client_for_agent, ConversationMessage, LLMResponse, ToolCall, ToolResult},
+    tools::ExecutiveTools,
     ProjectScopedContext,
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::{error::ApiError, DeploymentImpl};
+use crate::{error::ApiError, middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Request to chat with an agent
 #[derive(Debug, Deserialize, TS)]
@@ -47,6 +48,12 @@ pub struct AgentChatRequest {
     /// Enable streaming response
     #[serde(default)]
     pub stream: bool,
+    /// Optional model override (e.g. "llama3.2:3b", "gpt-4o", "claude-sonnet-4")
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Optional provider override ("ollama", "openai", "anthropic")
+    #[serde(default)]
+    pub provider: Option<String>,
 }
 
 /// Response from agent chat
@@ -122,6 +129,7 @@ pub fn public_routes() -> Router<DeploymentImpl> {
 pub async fn agent_chat(
     State(state): State<DeploymentImpl>,
     Path(agent_id): Path<Uuid>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
     Json(request): Json<AgentChatRequest>,
 ) -> Result<Json<AgentChatResponse>, ApiError> {
     let start = std::time::Instant::now();
@@ -174,8 +182,31 @@ pub async fn agent_chat(
         })
         .collect();
 
-    // Create LLM client for this agent
-    let llm = create_client_for_agent(&agent);
+    // Create LLM client for this agent, with optional model/provider overrides
+    let agent_for_llm = if request.model.is_some() || request.provider.is_some() {
+        let mut overridden = agent.clone();
+        if let Some(ref model) = request.model {
+            overridden.default_model = Some(model.clone());
+        }
+        if let Some(ref provider) = request.provider {
+            // Inject provider into model_config JSON
+            let mut config: serde_json::Value = overridden
+                .model_config
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+            config["provider"] = serde_json::Value::String(provider.clone());
+            overridden.model_config = Some(config.to_string());
+        }
+        tracing::info!(
+            "Model/provider override: model={:?}, provider={:?}",
+            request.model, request.provider
+        );
+        overridden
+    } else {
+        agent.clone()
+    };
+    let llm = create_client_for_agent(&agent_for_llm);
 
     // Load project-scoped context if project is specified
     let project_context = if let Some(project_id) = request.project_id {
@@ -231,32 +262,108 @@ pub async fn agent_chat(
         }
     }
 
-    // Generate response
-    let llm_response = llm
+    // Load tools based on agent tier
+    let agent_tier = agent.agent_tier.as_deref().unwrap_or("user");
+    let tool_schemas = match agent_tier {
+        "admin" => ExecutiveTools::get_openai_tool_schemas(),
+        "user" => ExecutiveTools::get_user_tool_schemas(),
+        "system" => ExecutiveTools::get_system_tool_schemas(),
+        _ => vec![],
+    };
+
+    // Generate response with tools
+    let mut llm_response = llm
         .generate_with_tools_and_history(
             "", // Use agent's default system prompt
             &request.message,
             &context,
-            &[], // No tools for now - can add later
+            &tool_schemas,
             &conversation_messages,
         )
         .await
         .map_err(|e| ApiError::InternalError(format!("LLM error: {}", e)))?;
 
-    // Extract response content and usage
+    // Tool execution loop (max 10 iterations to prevent infinite loops)
+    let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
+    let mut accumulated_tool_results: Vec<ToolResult> = Vec::new();
+    let mut final_usage = None;
+    let max_iterations = 10;
+
+    for iteration in 0..max_iterations {
+        match llm_response {
+            LLMResponse::Text { ref usage, .. } => {
+                final_usage = usage.clone();
+                break;
+            }
+            LLMResponse::ToolCalls { ref calls, ref usage } => {
+                tracing::info!(
+                    "[AGENT_CHAT] Tool calls iteration {}: {:?}",
+                    iteration,
+                    calls.iter().map(|c| &c.name).collect::<Vec<_>>()
+                );
+
+                if let Some(u) = usage {
+                    final_usage = Some(u.clone());
+                }
+
+                // Execute each tool call
+                let mut tool_results = Vec::new();
+                for call in calls {
+                    let result = if agent_tier == "admin" {
+                        // Admin agents use Nora's tool execution (stub for now)
+                        serde_json::json!({
+                            "success": false,
+                            "error": "Admin tool execution requires full Nora agent context"
+                        })
+                    } else {
+                        // User/system agents use scoped tool execution
+                        ExecutiveTools::execute_user_scoped_tool(
+                            &call.name,
+                            &call.arguments,
+                            pool,
+                            access_ctx.user_id,
+                        )
+                        .await
+                    };
+
+                    let result_str = serde_json::to_string(&result).unwrap_or_default();
+                    tool_results.push(ToolResult {
+                        tool_call_id: call.id.clone(),
+                        success: result.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
+                        result: result_str,
+                    });
+                }
+
+                accumulated_tool_calls.extend(calls.clone());
+                accumulated_tool_results.extend(tool_results.clone());
+
+                // Feed results back to LLM
+                llm_response = llm
+                    .continue_with_tool_results_and_history(
+                        "", // system prompt
+                        &request.message,
+                        &context,
+                        calls,
+                        &tool_results,
+                        &conversation_messages,
+                        &tool_schemas,
+                    )
+                    .await
+                    .map_err(|e| ApiError::InternalError(format!("LLM tool continuation error: {}", e)))?;
+            }
+        }
+    }
+
+    // Extract final content and usage
     let (content, usage) = match llm_response {
-        LLMResponse::Text { content: text, usage } => (text, usage),
+        LLMResponse::Text { content: text, usage } => (text, usage.or(final_usage)),
         LLMResponse::ToolCalls { calls, usage } => {
-            // For now, just describe the tool calls
+            // Max iterations reached - summarize what happened
             let text = format!(
-                "I would like to use the following tools: {}",
-                calls
-                    .iter()
-                    .map(|c| c.name.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                "I attempted to use tools but reached the maximum iteration limit. Last tools requested: {}",
+                calls.iter().map(|c| c.name.clone()).collect::<Vec<_>>().join(", ")
             );
-            (text, usage)
+            (text, usage.or(final_usage))
         }
     };
 
@@ -273,14 +380,18 @@ pub async fn agent_chat(
 
     let latency_ms = start.elapsed().as_millis() as i64;
 
-    // Get model/provider info from agent config
-    let model = agent.default_model.clone();
-    let provider = model.as_ref().map(|m| {
-        if m.starts_with("claude") {
-            "anthropic".to_string()
-        } else {
-            "openai".to_string()
-        }
+    // Get model/provider info (use overrides if present, else agent config)
+    let model = request.model.clone().or_else(|| agent.default_model.clone());
+    let provider = request.provider.clone().or_else(|| {
+        model.as_ref().map(|m| {
+            if m.starts_with("claude") {
+                "anthropic".to_string()
+            } else if m.starts_with("llama") || m.starts_with("deepseek") || m.starts_with("mistral") || m.starts_with("phi") || m.starts_with("qwen") || m.starts_with("gpt-oss") {
+                "ollama".to_string()
+            } else {
+                "openai".to_string()
+            }
+        })
     });
 
     // Record VIBE usage (if project is specified and we have token counts)

@@ -30,10 +30,16 @@ pub struct ServerConfig {
 
     #[serde(default)]
     pub api_key: Option<String>,
+
+    #[serde(default)]
+    pub username: Option<String>,
+
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 fn default_server_url() -> String {
-    "http://localhost:3002".to_string()
+    "http://localhost:3000".to_string()
 }
 
 impl Default for ServerConfig {
@@ -41,6 +47,8 @@ impl Default for ServerConfig {
         Self {
             url: default_server_url(),
             api_key: None,
+            username: None,
+            password: None,
         }
     }
 }
@@ -107,9 +115,6 @@ pub struct AgentsConfig {
     pub default: String,
 
     #[serde(default = "default_true")]
-    pub duck_enabled: bool,
-
-    #[serde(default = "default_true")]
     pub nora_enabled: bool,
 
     #[serde(default = "default_true")]
@@ -117,14 +122,13 @@ pub struct AgentsConfig {
 }
 
 fn default_agent() -> String {
-    "duck".to_string()
+    "nora".to_string()
 }
 
 impl Default for AgentsConfig {
     fn default() -> Self {
         Self {
             default: default_agent(),
-            duck_enabled: true,
             nora_enabled: true,
             scout_enabled: true,
         }
@@ -174,6 +178,8 @@ impl Config {
         match parts.as_slice() {
             ["server", "url"] => Some(self.server.url.clone()),
             ["server", "api_key"] => self.server.api_key.clone(),
+            ["server", "username"] => self.server.username.clone(),
+            ["server", "password"] => self.server.password.as_ref().map(|_| "********".to_string()),
             ["session", "auto_create_tasks"] => Some(self.session.auto_create_tasks.to_string()),
             ["session", "default_project"] => self.session.default_project.clone(),
             ["display", "theme"] => Some(self.display.theme.clone()),
@@ -190,6 +196,8 @@ impl Config {
         match parts.as_slice() {
             ["server", "url"] => self.server.url = value.to_string(),
             ["server", "api_key"] => self.server.api_key = Some(value.to_string()),
+            ["server", "username"] => self.server.username = Some(value.to_string()),
+            ["server", "password"] => self.server.password = Some(value.to_string()),
             ["session", "auto_create_tasks"] => {
                 self.session.auto_create_tasks = value.parse().unwrap_or(true)
             }

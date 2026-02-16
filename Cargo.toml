@@ -16,7 +16,8 @@ members = [
     "crates/pythia-client",
     "apn-app/src-tauri",
     "frontend/src-tauri",
-    "src-tauri"
+    "src-tauri",
+    "crates/cli"
 ]
 
 [workspace.dependencies]
@@ -37,3 +38,11 @@ schemars = { version = "1.0.4", features = ["derive", "chrono04", "uuid1", "pres
 debug = true
 split-debuginfo = "packed"
 strip = true
+
+[profile.dist]
+inherits = "release"
+debug = false
+strip = true
+lto = "thin"
+codegen-units = 1
+opt-level = "s"

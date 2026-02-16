@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { resolveApiUrl, resolveWsUrl } from '@/lib/api';
 import {
   AgentCoordinationState,
   CoordinationEvent,
@@ -36,8 +37,8 @@ export function useAgentDirectory(): AgentDirectoryState {
   const refresh = useCallback(async () => {
     try {
       const [statsResponse, agentsResponse] = await Promise.all([
-        fetch('/api/nora/coordination/stats'),
-        fetch('/api/nora/coordination/agents'),
+        fetch(resolveApiUrl('/api/nora/coordination/stats')),
+        fetch(resolveApiUrl('/api/nora/coordination/agents')),
       ]);
 
       if (statsResponse.ok) {
@@ -68,8 +69,7 @@ export function useAgentDirectory(): AgentDirectoryState {
       return;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/nora/coordination/events`);
+    const ws = new WebSocket(resolveWsUrl('/api/nora/coordination/events'));
 
     ws.onopen = () => {
       websocketRef.current = ws;
@@ -108,7 +108,7 @@ export function useAgentDirectory(): AgentDirectoryState {
       return;
     }
 
-    const es = new EventSource('/api/nora/coordination/events/sse');
+    const es = new EventSource(resolveApiUrl('/api/nora/coordination/events/sse'));
 
     es.onopen = () => {
       eventSourceRef.current = es;

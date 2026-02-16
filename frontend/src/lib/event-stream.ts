@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { resolveApiUrl } from './api';
 
 export interface AgentFlowEvent {
   id: string;
@@ -83,9 +84,9 @@ export function useEventStream(options: UseEventStreamOptions = {}): UseEventStr
     // Clean up existing connection
     disconnect();
 
-    const url = flowId
+    const url = resolveApiUrl(flowId
       ? `/api/events/flows/${flowId}`
-      : '/api/events/all';
+      : '/api/events/all');
 
     try {
       const eventSource = new EventSource(url);
@@ -166,9 +167,9 @@ export function subscribeToEvents(
     onError?: (error: Error) => void;
   }
 ): () => void {
-  const url = options.flowId
+  const url = resolveApiUrl(options.flowId
     ? `/api/events/flows/${options.flowId}`
-    : '/api/events/all';
+    : '/api/events/all');
 
   const eventSource = new EventSource(url);
 

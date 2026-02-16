@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { resolveApiUrl } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -256,7 +257,7 @@ export function AgentChatConsole({
   const ensureNoraReady = useCallback(async () => {
     if (noraReadyRef.current) return true;
     try {
-      const statusResp = await fetch('/api/nora/status');
+      const statusResp = await fetch(resolveApiUrl('/api/nora/status'));
       if (statusResp.ok) {
         const status = (await statusResp.json()) as { isActive?: boolean };
         if (status?.isActive) {
@@ -269,7 +270,7 @@ export function AgentChatConsole({
     }
 
     try {
-      const initResp = await fetch('/api/nora/initialize', {
+      const initResp = await fetch(resolveApiUrl('/api/nora/initialize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ activateImmediately: true }),
@@ -314,7 +315,7 @@ export function AgentChatConsole({
           throw new Error('Nora link offline. Initialization failed.');
         }
 
-        const response = await fetch('/api/nora/chat', {
+        const response = await fetch(resolveApiUrl('/api/nora/chat'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -365,7 +366,7 @@ export function AgentChatConsole({
 
       setIsSending(true);
       try {
-        const response = await fetch(`/api/nora/coordination/agents/${agent.agentId}/directives`, {
+        const response = await fetch(resolveApiUrl(`/api/nora/coordination/agents/${agent.agentId}/directives`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

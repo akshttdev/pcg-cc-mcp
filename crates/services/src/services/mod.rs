@@ -35,3 +35,4 @@ pub mod visual_qc;
 pub mod scene_analysis;
 pub mod beat_analysis;
 pub mod recap_assembly;
+pub mod user_onboarding;

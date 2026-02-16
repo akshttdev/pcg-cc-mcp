@@ -68,9 +68,9 @@ pub async fn login(
 
     // Find user by username
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin 
-         FROM users 
-         WHERE username = ? AND is_active = 1",
+        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin
+         FROM users
+         WHERE username = ? COLLATE NOCASE AND is_active = 1",
     )
     .bind(&req.username)
     .fetch_optional(pool)
@@ -93,6 +93,31 @@ pub async fn login(
         .execute(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+    // Run onboarding for existing users who don't have Orcha yet
+    // Check if user has a home_project_id
+    let has_home: bool = sqlx::query_scalar::<_, Option<Vec<u8>>>(
+        "SELECT home_project_id FROM users WHERE id = ?",
+    )
+    .bind(user.id.as_bytes().as_slice())
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|v| v)
+    .is_some();
+
+    if !has_home {
+        if let Err(e) = services::services::user_onboarding::UserOnboardingService::onboard_user(
+            pool,
+            user.id,
+            &user.username,
+        )
+        .await
+        {
+            tracing::warn!("Login onboarding failed for {}: {}", user.id, e);
+        }
+    }
 
     // Generate session ID using secure random UUID
     let session_id = db::services::AuthService::generate_session_id();

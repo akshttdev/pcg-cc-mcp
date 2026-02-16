@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Coins, TrendingUp, Clock, AlertTriangle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { resolveApiUrl } from '@/lib/api';
 
 interface TokenUsageSummary {
   total_input_tokens: number;
@@ -27,14 +28,14 @@ interface TokenUsageWidgetProps {
 }
 
 async function fetchTodayUsage(): Promise<TokenUsageSummary> {
-  const res = await fetch('/api/token-usage/today');
+  const res = await fetch(resolveApiUrl('/api/token-usage/today'));
   if (!res.ok) throw new Error('Failed to fetch token usage');
   const data = await res.json();
   return data.data;
 }
 
 async function fetchUsageByProject(): Promise<TokenUsageByProject[]> {
-  const res = await fetch('/api/token-usage/by-project?days=1');
+  const res = await fetch(resolveApiUrl('/api/token-usage/by-project?days=1'));
   if (!res.ok) throw new Error('Failed to fetch project usage');
   const data = await res.json();
   return data.data;

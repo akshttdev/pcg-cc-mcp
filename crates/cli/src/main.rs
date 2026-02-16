@@ -16,14 +16,14 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-/// PCG CLI - AI-Native Development Assistant
+/// ORCHA CLI - AI-Native Development Assistant
 #[derive(Parser)]
-#[command(name = "pcg")]
+#[command(name = "orcha")]
 #[command(author = "PCG Team")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Interactive development session with task tracking and agent coordination")]
+#[command(about = "ORCHA CLI - Interactive development session with task tracking and agent coordination")]
 #[command(long_about = r#"
-PCG CLI provides a Claude Code-like terminal experience integrated with PCG Dashboard.
+ORCHA CLI provides a Claude Code-like terminal experience integrated with the ORCHA Dashboard.
 
 Features:
   - Interactive REPL for AI-assisted development
@@ -33,10 +33,10 @@ Features:
   - Session history and reports
 
 Examples:
-  pcg                          # Start session in current directory
-  pcg --project "My Project"   # Start with specific project
-  pcg status                   # Show current session status
-  pcg tasks                    # List tasks in current project
+  orcha                          # Start session in current directory
+  orcha --project "My Project"   # Start with specific project
+  orcha status                   # Show current session status
+  orcha tasks                    # List tasks in current project
 "#)]
 struct Cli {
     /// Project name or ID to work with
@@ -44,8 +44,16 @@ struct Cli {
     project: Option<String>,
 
     /// Server URL
-    #[arg(long, env = "PCG_SERVER_URL", default_value = "http://localhost:3002")]
+    #[arg(long, env = "PCG_SERVER_URL", default_value = "http://localhost:3000")]
     server: String,
+
+    /// Username for authentication
+    #[arg(short, long, env = "ORCHA_USERNAME")]
+    username: Option<String>,
+
+    /// Password for authentication
+    #[arg(long, env = "ORCHA_PASSWORD")]
+    password: Option<String>,
 
     /// Working directory (defaults to current directory)
     #[arg(short = 'd', long)]
@@ -141,6 +149,20 @@ async fn main() -> Result<()> {
 
     // Create API client
     let api = api::ApiClient::new(&server_url);
+
+    // Auto-login if credentials available
+    let username = cli.username.or(config.server.username.clone());
+    let password = cli.password.or(config.server.password.clone());
+    if let (Some(user), Some(pass)) = (&username, &password) {
+        match api.login(user, pass).await {
+            Ok(name) => {
+                println!("Logged in as {}", name);
+            }
+            Err(e) => {
+                eprintln!("Login failed: {}", e);
+            }
+        }
+    }
 
     // Handle subcommands or start REPL
     match cli.command {

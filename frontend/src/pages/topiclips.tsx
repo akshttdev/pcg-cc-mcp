@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { resolveApiUrl } from '@/lib/api';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -114,7 +115,7 @@ export function TopiClipsPage() {
   // Fetch gallery data
   const fetchGallery = useCallback(async () => {
     try {
-      const res = await fetch(`/api/topiclips/gallery?projectId=${projectId}`);
+      const res = await fetch(resolveApiUrl(`/api/topiclips/gallery?projectId=${projectId}`));
       if (res.ok) {
         const data = await res.json();
         setGallery(data.data);
@@ -129,7 +130,7 @@ export function TopiClipsPage() {
   // Fetch symbols
   const fetchSymbols = useCallback(async () => {
     try {
-      const res = await fetch('/api/topiclips/symbols');
+      const res = await fetch(resolveApiUrl('/api/topiclips/symbols'));
       if (res.ok) {
         const data = await res.json();
         setSymbols(data.data || []);
@@ -142,7 +143,7 @@ export function TopiClipsPage() {
   // Fetch timeline for a session
   const fetchTimeline = useCallback(async (sessionId: string) => {
     try {
-      const res = await fetch(`/api/topiclips/sessions/${sessionId}/timeline`);
+      const res = await fetch(resolveApiUrl(`/api/topiclips/sessions/${sessionId}/timeline`));
       if (res.ok) {
         const data = await res.json();
         setTimeline(data.data);
@@ -157,7 +158,7 @@ export function TopiClipsPage() {
     setIsGenerating(true);
     try {
       // Create session
-      const createRes = await fetch('/api/topiclips/sessions', {
+      const createRes = await fetch(resolveApiUrl('/api/topiclips/sessions'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -174,7 +175,7 @@ export function TopiClipsPage() {
       const session = createData.data;
 
       // Generate the clip
-      const generateRes = await fetch(`/api/topiclips/sessions/${session.id}/generate`, {
+      const generateRes = await fetch(resolveApiUrl(`/api/topiclips/sessions/${session.id}/generate`), {
         method: 'POST',
       });
 
@@ -196,7 +197,7 @@ export function TopiClipsPage() {
   const forceDailyGeneration = useCallback(async () => {
     setIsGenerating(true);
     try {
-      const res = await fetch(`/api/topiclips/daily/${projectId}/generate`, {
+      const res = await fetch(resolveApiUrl(`/api/topiclips/daily/${projectId}/generate`), {
         method: 'POST',
       });
 
@@ -217,7 +218,7 @@ export function TopiClipsPage() {
   // Create/update schedule
   const saveSchedule = useCallback(async () => {
     try {
-      const res = await fetch('/api/topiclips/daily', {
+      const res = await fetch(resolveApiUrl('/api/topiclips/daily'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

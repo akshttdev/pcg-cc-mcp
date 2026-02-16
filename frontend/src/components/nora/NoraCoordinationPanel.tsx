@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { resolveApiUrl, resolveWsUrl } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,14 +43,14 @@ export function NoraCoordinationPanel({ className }: NoraCoordinationPanelProps)
       setErrorMessage(null);
 
       // Fetch coordination stats
-      const statsResponse = await fetch('/api/nora/coordination/stats');
+      const statsResponse = await fetch(resolveApiUrl('/api/nora/coordination/stats'));
       if (statsResponse.ok) {
         const statsData = (await statsResponse.json()) as CoordinationStats;
         setStats(statsData);
       }
 
       // Fetch agent states
-      const agentsResponse = await fetch('/api/nora/coordination/agents');
+      const agentsResponse = await fetch(resolveApiUrl('/api/nora/coordination/agents'));
       if (agentsResponse.ok) {
         const agentsData = (await agentsResponse.json()) as AgentCoordinationState[];
         setAgents(agentsData);
@@ -77,8 +78,7 @@ export function NoraCoordinationPanel({ className }: NoraCoordinationPanelProps)
       return;
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/nora/coordination/events`);
+    const ws = new WebSocket(resolveWsUrl('/api/nora/coordination/events'));
 
     ws.onopen = () => {
       websocketRef.current = ws;

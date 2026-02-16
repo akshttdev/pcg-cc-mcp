@@ -14,7 +14,7 @@ use services::services::agent_registry::AgentRegistryService;
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::DeploymentImpl;
+use crate::{middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Query params for agent search/filter
 #[derive(Debug, Deserialize, TS)]
@@ -45,13 +45,29 @@ pub fn routes() -> Router<DeploymentImpl> {
         .route("/agents/{id}/status", put(update_status))
 }
 
-/// List all agents
+/// List agents visible to the current user
+/// Admin users see all agents; regular users see only system-tier + their own agents
 async fn list_agents(
     State(deployment): State<DeploymentImpl>,
+    access_ctx: Option<axum::Extension<AccessContext>>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let agents = Agent::find_all(&deployment.db().pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let pool = &deployment.db().pool;
+
+    let agents = match access_ctx {
+        Some(axum::Extension(ctx)) if ctx.is_admin => {
+            // Admin sees all agents
+            Agent::find_all(pool).await
+        }
+        Some(axum::Extension(ctx)) => {
+            // Regular user sees system-tier + own agents
+            Agent::find_visible_for_user(pool, ctx.user_id).await
+        }
+        None => {
+            // No auth context (shouldn't happen behind protected routes, but fallback)
+            Agent::find_all(pool).await
+        }
+    }
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let parsed: Vec<AgentWithParsedFields> = agents.into_iter().map(|a| a.into()).collect();
     Ok(Json(parsed))
