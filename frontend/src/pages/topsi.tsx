@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { resolveApiUrl } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -110,7 +111,7 @@ export function TopsiPage() {
   // Fetch Topsi status
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/topsi/status');
+      const res = await fetch(resolveApiUrl('/api/topsi/status'));
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
@@ -126,7 +127,7 @@ export function TopsiPage() {
   const initializeTopsi = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/topsi/initialize', {
+      const res = await fetch(resolveApiUrl('/api/topsi/initialize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ activateImmediately: true }),
@@ -149,7 +150,7 @@ export function TopsiPage() {
   // Fetch topology overview
   const fetchTopology = useCallback(async () => {
     try {
-      const res = await fetch('/api/topsi/topology');
+      const res = await fetch(resolveApiUrl('/api/topsi/topology'));
       if (res.ok) {
         const data = await res.json();
         setTopology(data);
@@ -162,7 +163,7 @@ export function TopsiPage() {
   // Fetch issues
   const fetchIssues = useCallback(async () => {
     try {
-      const res = await fetch('/api/topsi/issues');
+      const res = await fetch(resolveApiUrl('/api/topsi/issues'));
       if (res.ok) {
         const data = await res.json();
         setIssues(data.issues || []);
@@ -175,7 +176,7 @@ export function TopsiPage() {
   // Fetch accessible projects
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await fetch('/api/topsi/projects');
+      const res = await fetch(resolveApiUrl('/api/topsi/projects'));
       if (res.ok) {
         const data = await res.json();
         setProjects(data.projects || []);
@@ -205,7 +206,7 @@ export function TopsiPage() {
     const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     try {
-      const res = await fetch('/api/topsi/chat', {
+      const res = await fetch(resolveApiUrl('/api/topsi/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -360,7 +361,7 @@ export function TopsiPage() {
     try {
       const base64Audio = await blobToBase64(audioBlob);
 
-      const res = await fetch('/api/topsi/voice/interaction', {
+      const res = await fetch(resolveApiUrl('/api/topsi/voice/interaction'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

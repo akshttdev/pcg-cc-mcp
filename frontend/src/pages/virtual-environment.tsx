@@ -87,11 +87,12 @@ const noraAcknowledgements = [
   'Amplifying signal for',
 ];
 
-// Spawn player ON the Command Center platform with Nora
-// Command Center is at y=80, add offset for avatar feet
+// Spawn positions based on role
 const PLAYER_COLOR = '#ff8800';
-// Spawn on command center floor, outside hologram railing (R > 10)
-const INITIAL_PLAYER_POSITION: [number, number, number] = [15, COMMAND_CENTER_FLOOR_Y + 1, 15];
+// Admin: spawn on command center floor, outside hologram railing (R > 10)
+const SPAWN_ADMIN: [number, number, number] = [15, COMMAND_CENTER_FLOOR_Y + 1, 15];
+// User: spawn at ground level center
+const SPAWN_USER: [number, number, number] = [0, 1, 0];
 
 // Static demo project for Fine Art Society (always available)
 const FINE_ART_SOCIETY_PROJECT: Project = {
@@ -306,7 +307,8 @@ export function VirtualEnvironmentPage() {
   const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
   const [noraLine, setNoraLine] = useState('Command Center online. Syncing with Dashboard...');
   const [noraStatusVersion, setNoraStatusVersion] = useState(1);
-  const [userPosition, setUserPosition] = useState<[number, number, number]>(INITIAL_PLAYER_POSITION);
+  const spawnPosition: [number, number, number] = isAdmin ? SPAWN_ADMIN : SPAWN_USER;
+  const [userPosition, setUserPosition] = useState<[number, number, number]>(spawnPosition);
   const [activeInterior, setActiveInterior] = useState<ProjectData | null>(null);
   const [isConsoleInputActive, setIsConsoleInputActive] = useState(false);
   const [consoleFocusVersion, setConsoleFocusVersion] = useState(0);
@@ -362,7 +364,7 @@ export function VirtualEnvironmentPage() {
   const multiplayerIsConnected = useMultiplayerStore((s) => s.isConnected);
   const isMovingRef = useRef(false);
   const wasMovingRef = useRef(false);
-  const lastPositionRef = useRef<[number, number, number]>(INITIAL_PLAYER_POSITION);
+  const lastPositionRef = useRef<[number, number, number]>(spawnPosition);
   const lastZoneRef = useRef('ground');
   const stoppedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -665,13 +667,13 @@ export function VirtualEnvironmentPage() {
 
           {/* User avatar */}
           <UserAvatar
-            initialPosition={INITIAL_PLAYER_POSITION}
+            initialPosition={isAdmin ? SPAWN_ADMIN : SPAWN_USER}
             color={PLAYER_COLOR}
             isAdmin={isAdmin}
             onPositionChange={handleUserPositionChange}
             onInteract={handleAttemptEnter}
             isSuspended={Boolean(activeInterior || isConsoleInputActive)}
-            canFly
+            canFly={isAdmin}
             buildings={buildingColliders}
           />
 

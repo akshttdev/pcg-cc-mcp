@@ -1,4 +1,5 @@
 // Auth API functions
+import { resolveApiUrl } from './api';
 
 // Types for auth (matching Rust backend)
 export interface LoginRequest {
@@ -42,7 +43,7 @@ export interface ApiResponse<T> {
  * Session cookie is automatically set by the server
  */
 export async function login(credentials: LoginRequest): Promise<UserProfile> {
-  const response = await fetch('/api/auth/login', {
+  const response = await fetch(resolveApiUrl('/api/auth/login'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -73,7 +74,7 @@ export async function login(credentials: LoginRequest): Promise<UserProfile> {
  */
 export async function getCurrentUser(): Promise<UserProfile | null> {
   try {
-    const response = await fetch('/api/auth/me', {
+    const response = await fetch(resolveApiUrl('/api/auth/me'), {
       method: 'GET',
       credentials: 'include', // Important: sends session cookie
     });
@@ -95,7 +96,7 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
  */
 export async function logout(): Promise<void> {
   try {
-    await fetch('/api/auth/logout', {
+    await fetch(resolveApiUrl('/api/auth/logout'), {
       method: 'POST',
       credentials: 'include', // Important: sends session cookie to be deleted
     });

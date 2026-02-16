@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { resolveApiUrl } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -84,7 +85,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
   const checkTopsiStatus = async () => {
     try {
-      const res = await fetch('/api/topsi/status');
+      const res = await fetch(resolveApiUrl('/api/topsi/status'));
       if (res.ok) {
         const data = await res.json();
         setIsInitialized(data.isActive);
@@ -97,7 +98,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const initializeTopsi = async () => {
     setIsInitializing(true);
     try {
-      const res = await fetch('/api/topsi/initialize', {
+      const res = await fetch(resolveApiUrl('/api/topsi/initialize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ activateImmediately: true }),
@@ -144,7 +145,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         headers['Authorization'] = `Bearer ${sessionToken}`;
       }
 
-      const res = await fetch('/api/topsi/voice/interaction', {
+      const res = await fetch(resolveApiUrl('/api/topsi/voice/interaction'), {
         method: 'POST',
         headers,
         credentials: 'include', // Send auth cookies
@@ -273,7 +274,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         headers['Authorization'] = `Bearer ${sessionToken}`;
       }
 
-      const res = await fetch('/api/topsi/voice/interaction', {
+      const res = await fetch(resolveApiUrl('/api/topsi/voice/interaction'), {
         method: 'POST',
         headers,
         credentials: 'include', // Send auth cookies

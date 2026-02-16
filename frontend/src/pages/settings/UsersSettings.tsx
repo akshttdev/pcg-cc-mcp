@@ -45,6 +45,7 @@ import {
   ConfirmActionDialog
 } from '@/components/dialogs/user-management-dialogs';
 import type { UserListItem, UserDetail } from 'shared/types';
+import { resolveApiUrl } from '@/lib/api';
 
 // API functions
 const api = {
@@ -58,14 +59,14 @@ const api = {
     if (filters?.is_active !== undefined) params.append('is_active', filters.is_active.toString());
     if (filters?.is_admin !== undefined) params.append('is_admin', filters.is_admin.toString());
     
-    const response = await fetch(`/api/users?${params}`);
+    const response = await fetch(resolveApiUrl(`/api/users?${params}`));
     if (!response.ok) throw new Error('Failed to fetch users');
     const data = await response.json();
     return data.data;
   },
 
   updateUserRole: async (userId: string, isAdmin: boolean): Promise<UserDetail> => {
-    const response = await fetch(`/api/users/${userId}/role`, {
+    const response = await fetch(resolveApiUrl(`/api/users/${userId}/role`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_admin: isAdmin }),
@@ -76,7 +77,7 @@ const api = {
   },
 
   suspendUser: async (userId: string): Promise<UserDetail> => {
-    const response = await fetch(`/api/users/${userId}/suspend`, {
+    const response = await fetch(resolveApiUrl(`/api/users/${userId}/suspend`), {
       method: 'PATCH',
     });
     if (!response.ok) throw new Error('Failed to suspend user');
@@ -85,7 +86,7 @@ const api = {
   },
 
   activateUser: async (userId: string): Promise<UserDetail> => {
-    const response = await fetch(`/api/users/${userId}/activate`, {
+    const response = await fetch(resolveApiUrl(`/api/users/${userId}/activate`), {
       method: 'PATCH',
     });
     if (!response.ok) throw new Error('Failed to activate user');
@@ -100,7 +101,7 @@ const api = {
     full_name: string;
     is_admin: boolean;
   }): Promise<{ message: string; user_id: string; username: string }> => {
-    const response = await fetch('/api/users/create', {
+    const response = await fetch(resolveApiUrl('/api/users/create'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData),

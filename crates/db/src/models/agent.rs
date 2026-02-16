@@ -130,6 +130,10 @@ pub struct Agent {
     // Relationships
     pub parent_agent_id: Option<Uuid>,
     pub team_id: Option<String>,
+
+    // Tier system
+    pub owner_id: Option<Uuid>,
+    pub agent_tier: Option<String>,
 }
 
 /// Agent with parsed JSON fields for API responses
@@ -159,6 +163,8 @@ pub struct AgentWithParsedFields {
     pub version: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub owner_id: Option<Uuid>,
+    pub agent_tier: Option<String>,
 }
 
 impl From<Agent> for AgentWithParsedFields {
@@ -188,6 +194,8 @@ impl From<Agent> for AgentWithParsedFields {
             version: agent.version,
             created_at: agent.created_at,
             updated_at: agent.updated_at,
+            owner_id: agent.owner_id,
+            agent_tier: agent.agent_tier,
         }
     }
 }
@@ -215,6 +223,10 @@ pub struct CreateAgent {
     pub parent_agent_id: Option<Uuid>,
     pub team_id: Option<String>,
     pub created_by: Option<String>,
+    #[serde(default)]
+    pub owner_id: Option<Uuid>,
+    #[serde(default)]
+    pub agent_tier: Option<String>,
 }
 
 /// Update an existing agent
@@ -282,7 +294,9 @@ impl Agent {
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
                 parent_agent_id as "parent_agent_id: Uuid",
-                team_id
+                team_id,
+                owner_id as "owner_id: Uuid",
+                agent_tier
             FROM agents
             ORDER BY short_name ASC"#
         )
@@ -322,7 +336,9 @@ impl Agent {
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
                 parent_agent_id as "parent_agent_id: Uuid",
-                team_id
+                team_id,
+                owner_id as "owner_id: Uuid",
+                agent_tier
             FROM agents
             WHERE status = 'active'
             ORDER BY priority_weight DESC, short_name ASC"#
@@ -363,7 +379,9 @@ impl Agent {
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
                 parent_agent_id as "parent_agent_id: Uuid",
-                team_id
+                team_id,
+                owner_id as "owner_id: Uuid",
+                agent_tier
             FROM agents
             WHERE id = $1"#,
             id
@@ -404,7 +422,9 @@ impl Agent {
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
                 parent_agent_id as "parent_agent_id: Uuid",
-                team_id
+                team_id,
+                owner_id as "owner_id: Uuid",
+                agent_tier
             FROM agents
             WHERE LOWER(short_name) = LOWER($1)"#,
             short_name
@@ -445,7 +465,9 @@ impl Agent {
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
                 parent_agent_id as "parent_agent_id: Uuid",
-                team_id
+                team_id,
+                owner_id as "owner_id: Uuid",
+                agent_tier
             FROM agents
             WHERE wallet_address = $1"#,
             wallet_address
@@ -474,14 +496,16 @@ impl Agent {
                 capabilities, tools, functions,
                 default_model, fallback_models, model_config,
                 status, autonomy_level, max_concurrent_tasks, priority_weight,
-                parent_agent_id, team_id, created_by
+                parent_agent_id, team_id, created_by,
+                owner_id, agent_tier
             ) VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7, $8,
                 $9, $10, $11,
                 $12, $13, $14,
                 $15, $16, $17, $18,
-                $19, $20, $21
+                $19, $20, $21,
+                $22, $23
             )
             RETURNING
                 id as "id!: Uuid",
@@ -511,7 +535,9 @@ impl Agent {
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
                 parent_agent_id as "parent_agent_id: Uuid",
-                team_id"#,
+                team_id,
+                owner_id as "owner_id: Uuid",
+                agent_tier"#,
             id,
             data.wallet_address,
             data.short_name,
@@ -532,7 +558,9 @@ impl Agent {
             data.priority_weight,
             data.parent_agent_id,
             data.team_id,
-            data.created_by
+            data.created_by,
+            data.owner_id,
+            data.agent_tier
         )
         .fetch_one(pool)
         .await
@@ -597,7 +625,9 @@ impl Agent {
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
                 parent_agent_id as "parent_agent_id: Uuid",
-                team_id"#,
+                team_id,
+                owner_id as "owner_id: Uuid",
+                agent_tier"#,
             id,
             data.wallet_address,
             data.short_name,
@@ -669,6 +699,50 @@ impl Agent {
             .await?;
         }
         Ok(())
+    }
+
+    /// Find agents visible to a specific user (system-tier + user's own agents)
+    pub async fn find_visible_for_user(pool: &SqlitePool, user_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Agent,
+            r#"SELECT
+                id as "id!: Uuid",
+                wallet_address,
+                short_name,
+                designation,
+                description,
+                personality,
+                voice_style,
+                avatar_url,
+                capabilities,
+                tools,
+                functions,
+                default_model,
+                fallback_models,
+                model_config,
+                status as "status!: AgentStatus",
+                autonomy_level as "autonomy_level!: AutonomyLevel",
+                max_concurrent_tasks,
+                priority_weight,
+                tasks_completed,
+                tasks_failed,
+                total_execution_time_ms,
+                average_rating,
+                version,
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>",
+                created_by,
+                parent_agent_id as "parent_agent_id: Uuid",
+                team_id,
+                owner_id as "owner_id: Uuid",
+                agent_tier
+            FROM agents
+            WHERE agent_tier = 'system' OR owner_id = $1
+            ORDER BY short_name ASC"#,
+            user_id
+        )
+        .fetch_all(pool)
+        .await
     }
 
     /// Update agent status

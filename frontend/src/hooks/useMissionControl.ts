@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { resolveApiUrl } from '@/lib/api';
 
 export interface AgentTaskPlan {
   id: string;
@@ -79,7 +80,7 @@ export interface MissionControlDashboard {
 }
 
 async function fetchMissionControlDashboard(): Promise<MissionControlDashboard> {
-  const response = await fetch('/api/mission-control');
+  const response = await fetch(resolveApiUrl('/api/mission-control'));
   if (!response.ok) {
     throw new Error('Failed to fetch Mission Control dashboard');
   }
@@ -88,7 +89,7 @@ async function fetchMissionControlDashboard(): Promise<MissionControlDashboard> 
 }
 
 async function fetchExecutionArtifacts(executionId: string): Promise<ExecutionArtifact[]> {
-  const response = await fetch(`/api/mission-control/executions/${executionId}/artifacts`);
+  const response = await fetch(resolveApiUrl(`/api/mission-control/executions/${executionId}/artifacts`));
   if (!response.ok) {
     throw new Error('Failed to fetch execution artifacts');
   }
@@ -97,7 +98,7 @@ async function fetchExecutionArtifacts(executionId: string): Promise<ExecutionAr
 }
 
 async function fetchExecutionPlan(executionId: string): Promise<AgentTaskPlan | null> {
-  const response = await fetch(`/api/mission-control/executions/${executionId}/plan`);
+  const response = await fetch(resolveApiUrl(`/api/mission-control/executions/${executionId}/plan`));
   if (!response.ok) {
     throw new Error('Failed to fetch execution plan');
   }
@@ -106,7 +107,7 @@ async function fetchExecutionPlan(executionId: string): Promise<AgentTaskPlan | 
 }
 
 async function fetchActivePlans(): Promise<AgentTaskPlan[]> {
-  const response = await fetch('/api/mission-control/plans/active');
+  const response = await fetch(resolveApiUrl('/api/mission-control/plans/active'));
   if (!response.ok) {
     throw new Error('Failed to fetch active plans');
   }

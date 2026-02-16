@@ -1,4 +1,5 @@
 // External authentication API for federated identity (e.g., Jungleverse SSO)
+import { resolveApiUrl } from './api';
 
 export interface UserProfile {
   id: string;
@@ -27,7 +28,7 @@ export interface ValidateTokenResponse {
  */
 export async function validateExternalToken(token: string): Promise<UserProfile | null> {
   try {
-    const response = await fetch('/api/auth/external/validate', {
+    const response = await fetch(resolveApiUrl('/api/auth/external/validate'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

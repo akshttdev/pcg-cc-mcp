@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { resolveApiUrl } from '@/lib/api';
 
 // ========== Types ==========
 
@@ -80,63 +81,63 @@ export interface BowserSummary {
 // ========== API Functions ==========
 
 async function fetchActiveSessions(): Promise<BrowserSession[]> {
-  const response = await fetch('/api/bowser/sessions');
+  const response = await fetch(resolveApiUrl('/api/bowser/sessions'));
   if (!response.ok) throw new Error('Failed to fetch active sessions');
   const json = await response.json();
   return json.data;
 }
 
 async function fetchSession(sessionId: string): Promise<BrowserSession> {
-  const response = await fetch(`/api/bowser/sessions/${sessionId}`);
+  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}`));
   if (!response.ok) throw new Error('Failed to fetch session');
   const json = await response.json();
   return json.data;
 }
 
 async function fetchSessionDetails(sessionId: string): Promise<BrowserSessionDetails> {
-  const response = await fetch(`/api/bowser/sessions/${sessionId}/details`);
+  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/details`));
   if (!response.ok) throw new Error('Failed to fetch session details');
   const json = await response.json();
   return json.data;
 }
 
 async function fetchScreenshots(sessionId: string): Promise<BrowserScreenshot[]> {
-  const response = await fetch(`/api/bowser/sessions/${sessionId}/screenshots`);
+  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/screenshots`));
   if (!response.ok) throw new Error('Failed to fetch screenshots');
   const json = await response.json();
   return json.data;
 }
 
 async function fetchScreenshotsWithDiffs(sessionId: string): Promise<BrowserScreenshot[]> {
-  const response = await fetch(`/api/bowser/sessions/${sessionId}/screenshots/diffs`);
+  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/screenshots/diffs`));
   if (!response.ok) throw new Error('Failed to fetch screenshots with diffs');
   const json = await response.json();
   return json.data;
 }
 
 async function fetchActions(sessionId: string): Promise<BrowserAction[]> {
-  const response = await fetch(`/api/bowser/sessions/${sessionId}/actions`);
+  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/actions`));
   if (!response.ok) throw new Error('Failed to fetch actions');
   const json = await response.json();
   return json.data;
 }
 
 async function fetchAllowlist(projectId: string): Promise<BrowserAllowlist[]> {
-  const response = await fetch(`/api/bowser/projects/${projectId}/allowlist`);
+  const response = await fetch(resolveApiUrl(`/api/bowser/projects/${projectId}/allowlist`));
   if (!response.ok) throw new Error('Failed to fetch allowlist');
   const json = await response.json();
   return json.data;
 }
 
 async function fetchSummary(): Promise<BowserSummary> {
-  const response = await fetch('/api/bowser/summary');
+  const response = await fetch(resolveApiUrl('/api/bowser/summary'));
   if (!response.ok) throw new Error('Failed to fetch Bowser summary');
   const json = await response.json();
   return json.data;
 }
 
 async function checkUrl(projectId: string, url: string): Promise<{ allowed: boolean; url: string }> {
-  const response = await fetch(`/api/bowser/projects/${projectId}/check-url`, {
+  const response = await fetch(resolveApiUrl(`/api/bowser/projects/${projectId}/check-url`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -153,7 +154,7 @@ async function startSession(data: {
   viewport_height?: number;
   headless?: boolean;
 }): Promise<BrowserSession> {
-  const response = await fetch('/api/bowser/sessions', {
+  const response = await fetch(resolveApiUrl('/api/bowser/sessions'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -164,7 +165,7 @@ async function startSession(data: {
 }
 
 async function closeSession(sessionId: string): Promise<BrowserSession> {
-  const response = await fetch(`/api/bowser/sessions/${sessionId}/close`, {
+  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/close`), {
     method: 'POST',
   });
   if (!response.ok) throw new Error('Failed to close session');
@@ -173,7 +174,7 @@ async function closeSession(sessionId: string): Promise<BrowserSession> {
 }
 
 async function navigate(sessionId: string, projectId: string, url: string): Promise<BrowserAction> {
-  const response = await fetch(`/api/bowser/sessions/${sessionId}/navigate`, {
+  const response = await fetch(resolveApiUrl(`/api/bowser/sessions/${sessionId}/navigate`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, project_id: projectId }),
@@ -190,7 +191,7 @@ async function addToAllowlist(data: {
   description?: string;
   is_global?: boolean;
 }): Promise<BrowserAllowlist> {
-  const response = await fetch('/api/bowser/allowlist', {
+  const response = await fetch(resolveApiUrl('/api/bowser/allowlist'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -201,7 +202,7 @@ async function addToAllowlist(data: {
 }
 
 async function removeFromAllowlist(entryId: string): Promise<void> {
-  const response = await fetch(`/api/bowser/allowlist/${entryId}`, {
+  const response = await fetch(resolveApiUrl(`/api/bowser/allowlist/${entryId}`), {
     method: 'DELETE',
   });
   if (!response.ok) throw new Error('Failed to remove from allowlist');

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { resolveApiUrl } from '@/lib/api';
 import type { AgentFlowEvent, FlowEventType } from 'shared/types';
 
 // Valid flow event types for normalization
@@ -65,7 +66,7 @@ export function useWorkflowEventStream(
     }
 
     try {
-      const url = `/api/events/agent-flows/${flowId}/stream`;
+      const url = resolveApiUrl(`/api/events/agent-flows/${flowId}/stream`);
       const eventSource = new EventSource(url);
       eventSourceRef.current = eventSource;
 
@@ -170,7 +171,7 @@ export function useTasksWorkflowEventPolling(
     setIsPolling(true);
     try {
       // Fetch latest events for all tasks via API
-      const response = await fetch('/api/agent-flows/events/batch', {
+      const response = await fetch(resolveApiUrl('/api/agent-flows/events/batch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -243,7 +244,7 @@ export function useExecutionEventStream(
   useEffect(() => {
     if (!processId || !enabled) return;
 
-    const url = `/api/events/processes/${processId}/logs`;
+    const url = resolveApiUrl(`/api/events/processes/${processId}/logs`);
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 

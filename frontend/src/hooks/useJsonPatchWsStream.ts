@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { resolveWsUrl } from '@/lib/api';
 import { applyPatch } from 'rfc6902';
 import type { Operation } from 'rfc6902';
 
@@ -91,10 +92,8 @@ export const useJsonPatchWsStream = <T>(
         // Absolute URL: replace http(s) with ws(s)
         wsEndpoint = endpoint.replace(/^http/, 'ws');
       } else {
-        // Relative URL: construct full WebSocket URL from current location
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        wsEndpoint = `${protocol}//${host}${endpoint}`;
+        // Relative URL: resolve via backend host
+        wsEndpoint = resolveWsUrl(endpoint);
       }
       const ws = new WebSocket(wsEndpoint);
 

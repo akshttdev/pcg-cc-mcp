@@ -35,61 +35,54 @@ impl OutputHandler {
     /// Print the welcome banner
     pub fn print_banner(&self, project_name: Option<&str>, session_id: &str) {
         println!();
+        println!("{}", "  ██████╗ ██████╗  ██████╗██╗  ██╗ █████╗ ".bright_cyan().bold());
+        println!("{}", " ██╔═══██╗██╔══██╗██╔════╝██║  ██║██╔══██╗".bright_cyan().bold());
+        println!("{}", " ██║   ██║██████╔╝██║     ███████║███████║".bright_cyan().bold());
+        println!("{}", " ██║   ██║██╔══██╗██║     ██╔══██║██╔══██║".bright_cyan().bold());
+        println!("{}", " ╚██████╔╝██║  ██║╚██████╗██║  ██║██║  ██║".bright_cyan().bold());
+        println!("{}", "  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝".bright_cyan().bold());
+        println!();
         println!(
-            "{}",
-            "╔═══════════════════════════════════════════════════════════════╗"
-                .bright_cyan()
+            "  {}  {}",
+            "Orchestration Hub".bright_white().bold(),
+            "v0.1.0".dimmed()
         );
         println!(
-            "{}",
-            "║             PCG Development Session                           ║"
-                .bright_cyan()
+            "  {}",
+            "AI-Native Development + Multi-Agent Coordination".dimmed()
         );
-        println!(
-            "{}",
-            "╠═══════════════════════════════════════════════════════════════╣"
-                .bright_cyan()
-        );
+        println!("{}", "  ─────────────────────────────────────────────────".dimmed());
 
         if let Some(name) = project_name {
             println!(
-                "{}  Project: {:<50}{}",
-                "║".bright_cyan(),
-                name.bright_white(),
-                "║".bright_cyan()
+                "  {} {}    {} {}",
+                "Project:".dimmed(),
+                name.bright_green().bold(),
+                "Session:".dimmed(),
+                &session_id[..8.min(session_id.len())].bright_yellow()
+            );
+        } else {
+            println!(
+                "  {} {}",
+                "Session:".dimmed(),
+                &session_id[..8.min(session_id.len())].bright_yellow()
             );
         }
+
+        println!("{}", "  ─────────────────────────────────────────────────".dimmed());
         println!(
-            "{}  Session: {:<50}{}",
-            "║".bright_cyan(),
-            &session_id[..8.min(session_id.len())].dimmed(),
-            "║".bright_cyan()
+            "  {}  {}  {}  {}",
+            "/help".bright_yellow(),
+            "commands".dimmed(),
+            "/model".bright_yellow(),
+            "switch LLM".dimmed(),
         );
         println!(
-            "{}",
-            "╠═══════════════════════════════════════════════════════════════╣"
-                .bright_cyan()
-        );
-        println!(
-            "{}                                                               {}",
-            "║".bright_cyan(),
-            "║".bright_cyan()
-        );
-        println!(
-            "{}  {}                               {}",
-            "║".bright_cyan(),
-            "Type your request or use /help for commands".dimmed(),
-            "║".bright_cyan()
-        );
-        println!(
-            "{}                                                               {}",
-            "║".bright_cyan(),
-            "║".bright_cyan()
-        );
-        println!(
-            "{}",
-            "╚═══════════════════════════════════════════════════════════════╝"
-                .bright_cyan()
+            "  {}  {}  {}  {}",
+            "/project".bright_yellow(),
+            "manage".dimmed(),
+            "/agent".bright_yellow(),
+            "switch agent".dimmed(),
         );
         println!();
     }

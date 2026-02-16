@@ -1,0 +1,332 @@
+name: content-editing-pipeline
+version: 1
+description: "6-phase multi-agent pipeline for testimonial video production. Audio content is fully understood before any editing decisions are made."
+trigger:
+  type: manual
+  conditions:
+    - indicator: project_type
+      operator: equals
+      value: testimonial_video
+
+variables:
+  max_duration_seconds: 150
+  resolution: "1920x1080"
+  aspect_ratio: "16:9"
+  broll_coverage_min: 0.80
+  broll_coverage_max: 0.85
+  interview_on_camera_max: 0.17
+  soundbite_match_threshold: 0.80
+  music_ducked_db: -18
+  output_bitrate_mbps: 18
+
+agents:
+  specialized:
+    - name: Sonix
+      phase_assignments: [transcribe]
+    - name: Scout
+      phase_assignments: [research]
+    - name: Editron
+      phase_assignments: [index, assembly]
+
+  quality:
+    - name: QA-Content
+      gates: [directive]
+
+  orchestrator:
+    name: Nora
+
+phases:
+  - name: intake
+    display_name: "Phase 1: Intake"
+    duration: "1-2 minutes"
+    owner: agent
+    agents: [Nora]
+    quality_gate: null
+
+    tasks:
+      - id: parse_client_spec
+        name: "Parse Client Specification"
+        agent: Nora
+        duration: "30 seconds"
+        actions:
+          - parse_rtf_brief
+          - extract_duration_constraints
+          - extract_style_requirements
+          - extract_ratio_targets
+        outputs:
+          - client_spec
+
+      - id: catalog_source_media
+        name: "Catalog Source Media Directory"
+        agent: Nora
+        duration: "1 minute"
+        actions:
+          - walk_source_directory
+          - classify_by_folder_structure
+        outputs:
+          - media_inventory
+
+    checkpoint:
+      name: intake_verification
+      owner: Nora
+      criteria:
+        - client_spec_parsed: complete
+        - source_media_accessible: true
+        - interview_files_found: true
+      human_approval: null
+      handoff_to: transcribe
+
+  - name: transcribe
+    display_name: "Phase 2: Transcribe"
+    duration: "5-10 minutes"
+    owner: agent
+    agents: [Sonix]
+    quality_gate: null
+
+    tasks:
+      - id: extract_audio
+        name: "Extract Audio from Interview"
+        agent: Sonix
+        duration: "1-2 minutes"
+        actions:
+          - ffmpeg_audio_extraction
+          - convert_to_16khz_mono_wav
+        outputs:
+          - extracted_audio_wav
+
+      - id: whisper_transcription
+        name: "Whisper Transcription"
+        agent: Sonix
+        duration: "2-5 minutes"
+        actions:
+          - local_whisper_file_transcription
+          - word_level_timestamp_extraction
+        outputs:
+          - raw_whisper_json
+
+      - id: llm_cleaning
+        name: "LLM Transcript Cleaning"
+        agent: Sonix
+        duration: "1-2 minutes"
+        actions:
+          - identify_banter_testimonial_boundary
+          - tag_speakers
+          - classify_segments
+          - preserve_timecodes
+        outputs:
+          - structured_transcript
+
+      - id: soundbite_verification
+        name: "Soundbite Verification"
+        agent: Sonix
+        duration: "30 seconds"
+        actions:
+          - fuzzy_match_against_transcript
+          - filter_below_threshold
+        outputs:
+          - verified_soundbite_map
+
+    checkpoint:
+      name: transcription_verification
+      owner: Sonix
+      criteria:
+        - transcript_has_testimonial_segments: true
+        - speakers_identified: true
+        - timecodes_present: true
+        - banter_boundary_detected: true
+      human_approval: null
+      handoff_to: research
+
+  - name: research
+    display_name: "Phase 3: Research"
+    duration: "3-5 minutes"
+    owner: agent
+    agents: [Scout]
+    quality_gate: null
+
+    tasks:
+      - id: entity_extraction
+        name: "Extract Entities from Transcript"
+        agent: Scout
+        duration: "30 seconds"
+        actions:
+          - llm_named_entity_recognition
+          - deduplicate_entities
+        outputs:
+          - entity_list
+
+      - id: entity_research
+        name: "Research Each Entity"
+        agent: Scout
+        duration: "2-4 minutes"
+        actions:
+          - web_search_per_entity
+          - llm_synthesis_per_entity
+        outputs:
+          - entity_research_findings
+
+      - id: context_brief_synthesis
+        name: "Synthesize Content Context Brief"
+        agent: Scout
+        duration: "1 minute"
+        actions:
+          - classify_entities_by_type
+          - build_event_context
+          - build_subject_profile
+          - identify_key_themes
+        outputs:
+          - content_context_brief
+
+    checkpoint:
+      name: research_verification
+      owner: Scout
+      criteria:
+        - entities_researched: true
+        - context_brief_complete: true
+      human_approval: null
+      handoff_to: index
+
+  - name: index
+    display_name: "Phase 4: Index"
+    duration: "2-5 minutes"
+    owner: agent
+    agents: [Editron]
+    quality_gate: null
+
+    tasks:
+      - id: ffprobe_catalog
+        name: "FFprobe Media Catalog"
+        agent: Editron
+        duration: "1-3 minutes"
+        actions:
+          - walk_directory_tree
+          - ffprobe_each_file
+          - extract_duration_resolution_codec
+          - classify_by_folder_and_filename
+        outputs:
+          - shot_catalog
+
+      - id: soundbite_cross_reference
+        name: "Cross-Reference Soundbites with Catalog"
+        agent: Editron
+        duration: "30 seconds"
+        actions:
+          - match_soundbites_to_interview_files
+          - verify_timecode_ranges
+        outputs:
+          - verified_soundbite_map
+
+    checkpoint:
+      name: index_verification
+      owner: Editron
+      criteria:
+        - all_media_files_cataloged: true
+        - interview_files_identified: true
+        - broll_classified: true
+        - soundbites_verified: true
+      human_approval: null
+      handoff_to: directive
+
+  - name: directive
+    display_name: "Phase 5: Directive"
+    duration: "2-3 minutes"
+    owner: agent
+    agents: [Nora]
+    quality_gate: QA-Content
+
+    tasks:
+      - id: soundbite_selection
+        name: "Select and Order Soundbites"
+        agent: Nora
+        duration: "1 minute"
+        actions:
+          - select_8_12_best_soundbites
+          - map_to_5_act_structure
+          - mark_3_emotional_beats
+        outputs:
+          - ordered_soundbite_selection
+
+      - id: broll_assignment
+        name: "Assign B-Roll per Act"
+        agent: Nora
+        duration: "1 minute"
+        actions:
+          - assign_broll_clips_per_act
+          - set_in_out_points
+          - flag_vertical_for_blur_fill
+        outputs:
+          - broll_assignment_map
+
+      - id: timing_validation
+        name: "Validate Timing and Ratios"
+        agent: Nora
+        duration: "30 seconds"
+        actions:
+          - calculate_total_duration
+          - verify_broll_ratio_80_85_percent
+          - verify_interview_ratio_12_17_percent
+          - verify_all_files_exist
+          - verify_all_timecodes_exist
+        outputs:
+          - edit_directive
+
+    checkpoint:
+      name: directive_verification
+      owner: QA-Content
+      criteria:
+        - total_duration_under_150s: true
+        - broll_ratio_in_range: true
+        - interview_ratio_in_range: true
+        - all_files_verified: true
+        - all_timecodes_verified: true
+      human_approval: creative_director
+      handoff_to: assembly
+
+  - name: assembly
+    display_name: "Phase 6: Assembly"
+    duration: "5-15 minutes"
+    owner: agent
+    agents: [Editron]
+    quality_gate: null
+
+    tasks:
+      - id: ffmpeg_render
+        name: "FFmpeg Video Render"
+        agent: Editron
+        duration: "5-10 minutes"
+        actions:
+          - generate_filter_graph_script
+          - concatenate_soundbite_audio
+          - sequence_broll_per_directive
+          - intercut_interview_at_beats
+          - apply_vertical_blur_fill
+          - render_h264_1080p
+        outputs:
+          - rendered_mp4
+
+      - id: premiere_xml
+        name: "Generate Premiere Pro XML"
+        agent: Editron
+        duration: "30 seconds"
+        actions:
+          - generate_fcpxml
+          - map_v1_broll_track
+          - map_v2_interview_track
+          - map_v3_graphics_placeholder
+          - map_a1_a2_interview_audio
+          - map_a3_a4_music_with_keyframes
+          - add_act_boundary_markers
+        outputs:
+          - premiere_xml
+
+    checkpoint:
+      name: assembly_verification
+      owner: Editron
+      criteria:
+        - mp4_plays_correctly: true
+        - duration_matches_spec: true
+        - resolution_1080p: true
+        - aspect_ratio_16_9: true
+        - xml_imports_in_premiere: true
+      human_approval: creative_director
+      handoff_to: null

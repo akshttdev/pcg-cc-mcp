@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { resolveApiUrl, resolveWsUrl } from '@/lib/api';
 import type { CoordinationEvent } from '@/types/nora';
 
 /** Filter for execution-specific events */
@@ -204,8 +205,7 @@ export function useExecutionEvents(options: UseExecutionEventsOptions = {}) {
   const setupWebSocket = useCallback(() => {
     if (typeof window === 'undefined') return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/nora/coordination/events`);
+    const ws = new WebSocket(resolveWsUrl('/api/nora/coordination/events'));
 
     ws.onopen = () => {
       websocketRef.current = ws;
@@ -240,7 +240,7 @@ export function useExecutionEvents(options: UseExecutionEventsOptions = {}) {
   const setupEventSource = useCallback(() => {
     if (typeof window === 'undefined') return;
 
-    const es = new EventSource('/api/nora/coordination/events/sse');
+    const es = new EventSource(resolveApiUrl('/api/nora/coordination/events/sse'));
 
     es.onopen = () => {
       eventSourceRef.current = es;

@@ -55,13 +55,13 @@ export function Navbar() {
       <div className="w-full px-4">
         <div className="flex items-center h-14 py-2">
           {/* Logo */}
-          <div className="flex items-center mr-6">
+          <div className="flex items-center mr-6 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/projects')}>
             <img
-              src="/pcg-cc-logo.png"
-              alt="PCG Dashboard"
-              className="h-8 w-auto cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => navigate('/projects')}
+              src="/orcha-logo.png"
+              alt="ORCHA"
+              className="h-8 w-auto"
             />
+            <span className="ml-2 text-lg font-bold tracking-wide">ORCHA</span>
           </div>
 
           <div className="flex-1">

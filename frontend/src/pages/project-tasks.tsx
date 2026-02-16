@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle, Plus, Sparkles } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
-import { projectsApi, tasksApi, attemptsApi, agentsApi } from '@/lib/api';
+import { projectsApi, tasksApi, attemptsApi, agentsApi, resolveApiUrl } from '@/lib/api';
 import type { AgentChatRequest } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { ViewSwitcher } from '@/components/views/ViewSwitcher';
@@ -435,7 +435,7 @@ export function ProjectTasks() {
       const agentContext = agentName ? `[To ${agentName}] ` : '';
       const contextualMessage = `${agentContext}Regarding task "${task.title}": ${message}`;
 
-      const response = await fetch('/api/nora/chat', {
+      const response = await fetch(resolveApiUrl('/api/nora/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

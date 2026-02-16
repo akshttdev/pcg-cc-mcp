@@ -45,7 +45,7 @@ import { TaskArtifactsPanel } from './TaskArtifactsPanel';
 import { WorkflowTerminal } from './WorkflowTerminal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { agentFlowsApi, taskArtifactsApi, agentsApi } from '@/lib/api';
+import { agentFlowsApi, taskArtifactsApi, agentsApi, resolveApiUrl } from '@/lib/api';
 import type {
   ExecutionArtifact as ApiExecutionArtifact,
 } from '@/lib/api';
@@ -303,7 +303,7 @@ export function TaskDetailsPanel({
     const agentContext = agentName ? `[To ${agentName}] ` : '';
     const contextualMessage = `${agentContext}Regarding workflow task "${task.title}": ${message}`;
 
-    const response = await fetch('/api/nora/chat', {
+    const response = await fetch(resolveApiUrl('/api/nora/chat'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

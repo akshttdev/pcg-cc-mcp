@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { resolveApiUrl } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -93,7 +94,7 @@ export function NoraVoiceControls({ className, onConfigChange }: NoraVoiceContro
   const fetchVoiceConfig = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/nora/voice/config');
+      const response = await fetch(resolveApiUrl('/api/nora/voice/config'));
       if (response.ok) {
         const payload = (await response.json()) as { config: VoiceConfig };
         setConfig(payload.config);
@@ -114,7 +115,7 @@ export function NoraVoiceControls({ className, onConfigChange }: NoraVoiceContro
     setConfig(updatedConfig);
 
     try {
-      const response = await fetch('/api/nora/voice/config', {
+      const response = await fetch(resolveApiUrl('/api/nora/voice/config'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config: updatedConfig })
@@ -158,7 +159,7 @@ export function NoraVoiceControls({ className, onConfigChange }: NoraVoiceContro
         // Send for transcription
         try {
           setIsTesting(true);
-          const response = await fetch('/api/nora/voice/transcribe', {
+          const response = await fetch(resolveApiUrl('/api/nora/voice/transcribe'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ audioData: base64Audio })
@@ -237,7 +238,7 @@ export function NoraVoiceControls({ className, onConfigChange }: NoraVoiceContro
         ? "Good afternoon. I trust this message demonstrates the quality of my British executive pronunciation."
         : "Hello! This is a test of my voice synthesis capabilities.";
 
-      const response = await fetch('/api/nora/voice/synthesize', {
+      const response = await fetch(resolveApiUrl('/api/nora/voice/synthesize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: testText })

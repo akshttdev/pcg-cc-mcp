@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { resolveApiUrl } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -192,7 +193,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
   const initializeNora = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/nora/initialize', {
+      const response = await fetch(resolveApiUrl('/api/nora/initialize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -327,7 +328,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
         stopVoiceRecording();
       }
 
-      const response = await fetch('/api/nora/chat', {
+      const response = await fetch(resolveApiUrl('/api/nora/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request)
@@ -670,7 +671,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
         const base64Audio = await blobToBase64(audioBlob);
 
         try {
-          const response = await fetch('/api/nora/voice/transcribe', {
+          const response = await fetch(resolveApiUrl('/api/nora/voice/transcribe'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ audioData: base64Audio })

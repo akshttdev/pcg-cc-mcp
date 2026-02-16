@@ -7,7 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// API client for PCG Dashboard
+/// API client for ORCHA Dashboard
 pub struct ApiClient {
     client: Client,
     base_url: String,
@@ -16,8 +16,33 @@ pub struct ApiClient {
 impl ApiClient {
     pub fn new(base_url: &str) -> Self {
         Self {
-            client: Client::new(),
+            client: Client::builder()
+                .cookie_store(true)
+                .build()
+                .unwrap_or_else(|_| Client::new()),
             base_url: base_url.trim_end_matches('/').to_string(),
+        }
+    }
+
+    /// Login with username/password and store session cookie
+    pub async fn login(&self, username: &str, password: &str) -> Result<String> {
+        let resp = self
+            .client
+            .post(format!("{}/api/auth/login", self.base_url))
+            .json(&serde_json::json!({
+                "username": username,
+                "password": password
+            }))
+            .send()
+            .await
+            .context("Failed to connect to server")?;
+
+        if resp.status().is_success() {
+            let body: serde_json::Value = resp.json().await?;
+            let user = &body["data"]["user"]["full_name"];
+            Ok(user.as_str().unwrap_or("Unknown").to_string())
+        } else {
+            anyhow::bail!("Login failed: invalid credentials")
         }
     }
 
@@ -35,13 +60,18 @@ impl ApiClient {
             let text = resp.text().await?;
             // Check if response is HTML (frontend) instead of JSON
             if text.starts_with("<!DOCTYPE") || text.starts_with("<html") {
-                anyhow::bail!("API returned HTML. Authentication may be required. Run: pcg config --set server.api_key=YOUR_KEY");
+                anyhow::bail!("Authentication required. Run: orcha config --set server.username=YOUR_USER");
             }
+            // Try parsing as wrapped response {"success": true, "data": [...]}
+            if let Ok(wrapped) = serde_json::from_str::<ApiResponse<Vec<Project>>>(&text) {
+                return Ok(wrapped.data.unwrap_or_default());
+            }
+            // Fallback: try parsing as raw array
             let projects: Vec<Project> = serde_json::from_str(&text)
                 .context("Failed to parse projects response")?;
             Ok(projects)
         } else if resp.status().as_u16() == 401 {
-            anyhow::bail!("Authentication required. Run: pcg config --set server.api_key=YOUR_KEY");
+            anyhow::bail!("Authentication required. Run: orcha config --set server.username=YOUR_USER");
         } else {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
@@ -70,6 +100,39 @@ impl ApiClient {
         Ok(projects
             .into_iter()
             .find(|p| p.name.to_lowercase() == name.to_lowercase()))
+    }
+
+    pub async fn create_project(&self, name: &str, git_repo_path: &str, description: Option<&str>) -> Result<Project> {
+        let request = serde_json::json!({
+            "name": name,
+            "gitRepoPath": git_repo_path,
+            "useExistingRepo": false,
+        });
+
+        let resp = self
+            .client
+            .post(format!("{}/api/projects", self.base_url))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to create project")?;
+
+        if resp.status().is_success() {
+            let text = resp.text().await?;
+            if let Ok(wrapped) = serde_json::from_str::<ApiResponse<Project>>(&text) {
+                if let Some(project) = wrapped.data {
+                    return Ok(project);
+                }
+                anyhow::bail!("Server returned success but no project data");
+            }
+            let project: Project = serde_json::from_str(&text)
+                .context("Failed to parse create project response")?;
+            Ok(project)
+        } else {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Failed to create project: {} - {}", status, text)
+        }
     }
 
     // ============ Tasks ============
@@ -236,6 +299,8 @@ impl ApiClient {
         message: &str,
         session_id: &str,
         project_id: Option<Uuid>,
+        model: Option<&str>,
+        provider: Option<&str>,
     ) -> Result<AgentChatResponse> {
         let request = AgentChatRequest {
             message: message.to_string(),
@@ -243,6 +308,8 @@ impl ApiClient {
             project_id,
             context: None,
             stream: false,
+            model: model.map(|s| s.to_string()),
+            provider: provider.map(|s| s.to_string()),
         };
 
         let resp = self
@@ -270,8 +337,16 @@ impl ApiClient {
             .await?;
 
         if resp.status().is_success() {
-            Ok(resp.json().await?)
+            let text = resp.text().await?;
+            // Try wrapped response first
+            if let Ok(wrapped) = serde_json::from_str::<ApiResponse<Vec<Agent>>>(&text) {
+                return Ok(wrapped.data.unwrap_or_default());
+            }
+            // Try raw array
+            let agents: Vec<Agent> = serde_json::from_str(&text).unwrap_or_default();
+            Ok(agents)
         } else {
+            tracing::debug!("Agents endpoint returned {}", resp.status());
             Ok(vec![])
         }
     }
@@ -297,6 +372,15 @@ impl ApiClient {
             Err(_) => Ok(false),
         }
     }
+}
+
+// ============ API Response Wrapper ============
+
+#[derive(Debug, Deserialize)]
+pub struct ApiResponse<T> {
+    #[allow(dead_code)]
+    pub success: bool,
+    pub data: Option<T>,
 }
 
 // ============ Data Types ============
@@ -412,6 +496,12 @@ pub struct AgentChatRequest {
     pub context: Option<serde_json::Value>,
     #[serde(default)]
     pub stream: bool,
+    /// Optional model override (e.g. "llama3.2:3b", "gpt-4o", "claude-sonnet-4")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Optional provider override ("ollama", "openai", "anthropic")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -434,7 +524,6 @@ pub struct AgentChatResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Agent {
     pub id: Uuid,
     pub short_name: String,

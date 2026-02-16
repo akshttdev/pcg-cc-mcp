@@ -28,6 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Shield, User, Edit, Trash2, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { ProjectMemberItem, UserListItem } from 'shared/types';
+import { resolveApiUrl } from '@/lib/api';
 
 interface ProjectMembersDialogProps {
   open: boolean;
@@ -39,21 +40,21 @@ interface ProjectMembersDialogProps {
 // API functions
 const api = {
   listProjectMembers: async (projectId: string): Promise<ProjectMemberItem[]> => {
-    const response = await fetch(`/api/permissions/projects/${projectId}/members`);
+    const response = await fetch(resolveApiUrl(`/api/permissions/projects/${projectId}/members`));
     if (!response.ok) throw new Error('Failed to fetch project members');
     const data = await response.json();
     return data.data;
   },
 
   listUsers: async (): Promise<UserListItem[]> => {
-    const response = await fetch('/api/users');
+    const response = await fetch(resolveApiUrl('/api/users'));
     if (!response.ok) throw new Error('Failed to fetch users');
     const data = await response.json();
     return data.data;
   },
 
   addProjectMember: async (projectId: string, userId: string, role: string) => {
-    const response = await fetch(`/api/permissions/projects/${projectId}/members`, {
+    const response = await fetch(resolveApiUrl(`/api/permissions/projects/${projectId}/members`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, role }),
@@ -66,7 +67,7 @@ const api = {
   },
 
   updateMemberRole: async (projectId: string, userId: string, role: string) => {
-    const response = await fetch(`/api/permissions/projects/${projectId}/members/${userId}/role`, {
+    const response = await fetch(resolveApiUrl(`/api/permissions/projects/${projectId}/members/${userId}/role`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role }),
@@ -76,7 +77,7 @@ const api = {
   },
 
   removeMember: async (projectId: string, userId: string) => {
-    const response = await fetch(`/api/permissions/projects/${projectId}/members/${userId}`, {
+    const response = await fetch(resolveApiUrl(`/api/permissions/projects/${projectId}/members/${userId}`), {
       method: 'DELETE',
     });
     if (!response.ok) throw new Error('Failed to remove member');

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { resolveApiUrl } from '@/lib/api';
 
 export interface SystemMetrics {
   cpu_usage_percent: number;
@@ -33,7 +34,7 @@ export interface DetailedSystemMetrics {
 }
 
 async function fetchSystemMetrics(): Promise<SystemMetrics> {
-  const res = await fetch('/api/system-metrics');
+  const res = await fetch(resolveApiUrl('/api/system-metrics'));
   if (!res.ok) {
     throw new Error('Failed to fetch system metrics');
   }
@@ -42,7 +43,7 @@ async function fetchSystemMetrics(): Promise<SystemMetrics> {
 }
 
 async function fetchDetailedMetrics(): Promise<DetailedSystemMetrics> {
-  const res = await fetch('/api/system-metrics/detailed');
+  const res = await fetch(resolveApiUrl('/api/system-metrics/detailed'));
   if (!res.ok) {
     throw new Error('Failed to fetch detailed metrics');
   }

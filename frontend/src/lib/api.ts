@@ -127,11 +127,45 @@ class ApiError<E = unknown> extends Error {
 }
 
 const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
-const API_BASE = isTauri ? 'http://localhost:3000' : '';
+const API_BASE = isTauri
+  ? `http://localhost:${(window as any).__ORCHA_BACKEND_PORT__ || 58297}`
+  : '';
+
+/**
+ * Resolve an API path (e.g. "/api/events/all") to a full URL.
+ * In Tauri mode, prepends the backend origin; in web mode, returns the path as-is.
+ */
+export function resolveApiUrl(path: string): string {
+  return path.startsWith('/') ? `${API_BASE}${path}` : path;
+}
+
+/**
+ * Resolve a WebSocket path (e.g. "/api/ws") to a full ws:// URL.
+ * In Tauri mode, uses the backend port; in web mode, uses window.location.
+ */
+export function resolveWsUrl(path: string): string {
+  if (isTauri) {
+    const port = (window as any).__ORCHA_BACKEND_PORT__ || 58297;
+    return `ws://localhost:${port}${path}`;
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}${path}`;
+}
 
 const makeRequest = async (url: string, options: RequestInit = {}) => {
+  // In Tauri mode, cookies don't work cross-origin (tauri:// → http://localhost).
+  // Send the session_id as a Bearer token instead.
+  const authHeaders: Record<string, string> = {};
+  if (isTauri) {
+    const sessionId = localStorage.getItem('session_id');
+    if (sessionId) {
+      authHeaders['Authorization'] = `Bearer ${sessionId}`;
+    }
+  }
+
   const headers = {
     'Content-Type': 'application/json',
+    ...authHeaders,
     ...(options.headers || {}),
   };
 
@@ -1559,7 +1593,7 @@ export const imagesApi = {
     const formData = new FormData();
     formData.append('image', file);
 
-    const response = await fetch('/api/images/upload', {
+    const response = await fetch(resolveApiUrl('/api/images/upload'), {
       method: 'POST',
       body: formData,
       credentials: 'include',
@@ -1979,7 +2013,7 @@ export const agentFlowsApi = {
   },
 
   streamEvents: (flowId: string): EventSource => {
-    return new EventSource(`/api/agent-flows/${flowId}/events/stream`);
+    return new EventSource(resolveApiUrl(`/api/agent-flows/${flowId}/events/stream`));
   },
 };
 

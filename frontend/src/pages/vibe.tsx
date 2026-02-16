@@ -21,6 +21,7 @@ import { MobileLayout } from '@/components/mobile';
 import { useMobile } from '@/hooks/useMobile';
 import { useProjectList } from '@/hooks/api/useProjectList';
 import { format } from 'date-fns';
+import { resolveApiUrl } from '@/lib/api';
 
 interface VibeStats {
   balance: number;
@@ -68,7 +69,7 @@ export default function VibePage() {
     const fetchData = async () => {
       try {
         // Fetch mesh stats for network earnings
-        const meshResp = await fetch('/api/mesh/stats');
+        const meshResp = await fetch(resolveApiUrl('/api/mesh/stats'));
         let meshBalance = 0;
         let pendingRewards = 0;
         if (meshResp.ok) {
@@ -84,7 +85,7 @@ export default function VibePage() {
         let budgetLimit = 0;
         if (projectId) {
           try {
-            const balResp = await fetch(`/api/projects/${projectId}/vibe/balance`);
+            const balResp = await fetch(resolveApiUrl(`/api/projects/${projectId}/vibe/balance`));
             if (balResp.ok) {
               const balResult = await balResp.json();
               if (balResult.success && balResult.data) {
@@ -95,7 +96,7 @@ export default function VibePage() {
           } catch {}
 
           try {
-            const txResp = await fetch(`/api/projects/${projectId}/vibe/transactions?limit=50`);
+            const txResp = await fetch(resolveApiUrl(`/api/projects/${projectId}/vibe/transactions?limit=50`));
             if (txResp.ok) {
               const txResult = await txResp.json();
               if (txResult.success && txResult.data) {

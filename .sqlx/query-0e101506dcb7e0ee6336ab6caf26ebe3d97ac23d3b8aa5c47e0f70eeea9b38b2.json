@@ -96,7 +96,7 @@
       {
         "name": "parent_task_id: Uuid",
         "ordinal": 18,
-        "type_info": "Text"
+        "type_info": "Blob"
       },
       {
         "name": "tags: String",
@@ -168,12 +168,12 @@
       true,
       false,
       false,
-      false,
       true,
       true,
       true,
       true,
-      false,
+      true,
+      true,
       false,
       true,
       true,

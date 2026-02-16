@@ -5,7 +5,7 @@ use axum::{
     response::IntoResponse,
     routing::{IntoMakeService, get},
 };
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{CorsLayer, AllowOrigin};
 
 use crate::{DeploymentImpl, middleware as app_middleware};
 
@@ -67,6 +67,7 @@ pub mod topsi;
 pub mod mesh;
 pub mod peer_rewards;
 pub mod pythia;
+pub mod wallet;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -111,6 +112,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(agent_wallets::router(&deployment))
         .nest("/permissions", permissions::router(&deployment))
         .merge(vibe_treasury::router(&deployment))
+        .merge(wallet::router())
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -160,20 +162,38 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(admin_routes)
         .with_state(deployment);
 
-    // CORS configuration for external embeds (e.g., Jungleverse iframe)
+    // CORS configuration
     let allowed_origins = std::env::var("ALLOWED_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:3001".to_string());
 
-    let cors = CorsLayer::new()
-        .allow_origin(
-            allowed_origins
-                .split(',')
-                .filter_map(|s| s.trim().parse().ok())
-                .collect::<Vec<_>>()
-        )
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
-        .allow_credentials(true);
+    // Collect valid HTTP origins for standard matching
+    let parsed_origins: Vec<header::HeaderValue> = allowed_origins
+        .split(',')
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+
+    // Check if any Tauri origins were requested (tauri:// can't be parsed as HeaderValue)
+    let has_tauri_origin = allowed_origins.contains("tauri://");
+
+    let cors = if has_tauri_origin {
+        // Use a predicate to allow both standard HTTP origins and tauri:// origins
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::predicate(move |origin, _| {
+                let origin_str = origin.to_str().unwrap_or("");
+                origin_str.starts_with("tauri://")
+                    || origin_str.starts_with("https://tauri.")
+                    || parsed_origins.iter().any(|allowed| allowed == origin)
+            }))
+            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
+            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
+            .allow_credentials(true)
+    } else {
+        CorsLayer::new()
+            .allow_origin(parsed_origins)
+            .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::COOKIE])
+            .allow_credentials(true)
+    };
 
     Router::new()
         .route("/", get(frontend::serve_frontend_root))

@@ -19,6 +19,8 @@ pub struct User {
     pub last_login_at: Option<chrono::DateTime<chrono::Utc>>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub wallet_address: Option<String>,
+    pub home_project_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
@@ -163,5 +165,35 @@ impl User {
             is_admin: self.is_admin,
             organizations: vec![],
         }
+    }
+
+    pub async fn set_wallet_address(
+        pool: &sqlx::SqlitePool,
+        user_id: Uuid,
+        wallet_address: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE users SET wallet_address = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
+        )
+        .bind(wallet_address)
+        .bind(user_id.as_bytes().as_slice())
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_home_project(
+        pool: &sqlx::SqlitePool,
+        user_id: Uuid,
+        project_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE users SET home_project_id = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
+        )
+        .bind(project_id.as_bytes().as_slice())
+        .bind(user_id.as_bytes().as_slice())
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 }

@@ -6,7 +6,9 @@
 use alpha_protocol_core::identity::WalletInfo;
 use std::sync::Arc;
 use std::time::Instant;
-use tauri::State;
+use tauri::{Manager, State};
+use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::process::CommandChild;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use sysinfo::{System, Disks};
 
@@ -164,6 +166,8 @@ pub struct AppState {
     wallet: Arc<RwLock<Option<WalletInfo>>>,
     /// Node start time for uptime tracking
     start_time: Arc<RwLock<Option<Instant>>>,
+    /// Backend sidecar process handle
+    sidecar_child: Arc<RwLock<Option<CommandChild>>>,
 }
 
 impl Default for AppState {
@@ -172,6 +176,7 @@ impl Default for AppState {
             node_handle: Arc::new(RwLock::new(None)),
             wallet: Arc::new(RwLock::new(None)),
             start_time: Arc::new(RwLock::new(None)),
+            sidecar_child: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -671,6 +676,29 @@ async fn get_mesh_stats(state: State<'_, AppState>) -> Result<MeshStatsData, Str
     }
 }
 
+/// The port the backend server listens on
+const BACKEND_PORT: u16 = 58297;
+
+/// Wait for the backend server to become ready by polling its health endpoint
+async fn wait_for_backend(port: u16, timeout_secs: u64) -> bool {
+    let start = Instant::now();
+    let url = format!("http://localhost:{}/api/health", port);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(500))
+        .build()
+        .unwrap_or_default();
+
+    while start.elapsed().as_secs() < timeout_secs {
+        if let Ok(resp) = client.get(&url).send().await {
+            if resp.status().is_success() {
+                return true;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    false
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -697,9 +725,92 @@ pub fn run() {
                 )?;
             }
 
-            log::info!("Vibertas starting...");
+            log::info!("ORCHA starting...");
+
+            // Spawn the backend server as a sidecar process
+            let sidecar_command = app.shell()
+                .sidecar("server")
+                .expect("failed to create server sidecar command")
+                .env("BACKEND_PORT", BACKEND_PORT.to_string())
+                .env("HOST", "127.0.0.1")
+                .env("ALLOWED_ORIGINS", format!(
+                    "tauri://localhost,https://tauri.localhost,http://localhost:{},http://localhost:3000",
+                    BACKEND_PORT
+                ));
+
+            let (mut rx, child) = sidecar_command
+                .spawn()
+                .expect("failed to spawn server sidecar");
+
+            log::info!("Backend server sidecar spawned on port {}", BACKEND_PORT);
+
+            // Store the child handle for graceful shutdown
+            let state: State<AppState> = app.state();
+            let sidecar_ref = state.sidecar_child.clone();
+            tauri::async_runtime::block_on(async {
+                *sidecar_ref.write().await = Some(child);
+            });
+
+            // Log sidecar stdout/stderr in a background task
+            tauri::async_runtime::spawn(async move {
+                use tauri_plugin_shell::process::CommandEvent;
+                while let Some(event) = rx.recv().await {
+                    match event {
+                        CommandEvent::Stdout(line) => {
+                            let line = String::from_utf8_lossy(&line);
+                            log::info!("[server] {}", line);
+                        }
+                        CommandEvent::Stderr(line) => {
+                            let line = String::from_utf8_lossy(&line);
+                            log::warn!("[server] {}", line);
+                        }
+                        CommandEvent::Terminated(status) => {
+                            log::info!("[server] process terminated: {:?}", status);
+                            break;
+                        }
+                        CommandEvent::Error(err) => {
+                            log::error!("[server] error: {}", err);
+                        }
+                        _ => {}
+                    }
+                }
+            });
+
+            // Inject the backend port into the webview so the frontend can connect
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // Wait for backend to be ready before injecting the port
+                if wait_for_backend(BACKEND_PORT, 30).await {
+                    log::info!("Backend server is ready on port {}", BACKEND_PORT);
+                } else {
+                    log::error!("Backend server failed to start within 30 seconds");
+                }
+
+                // Inject the port into the main window
+                if let Some(window) = handle.get_webview_window("main") {
+                    let script = format!(
+                        "window.__ORCHA_BACKEND_PORT__ = {};",
+                        BACKEND_PORT
+                    );
+                    let _ = window.eval(&script);
+                }
+            });
+
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Vibertas");
+        .build(tauri::generate_context!())
+        .expect("error while building ORCHA")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                log::info!("ORCHA shutting down, stopping backend server...");
+                let state: State<AppState> = app_handle.state();
+                let sidecar_ref = state.sidecar_child.clone();
+                tauri::async_runtime::block_on(async {
+                    if let Some(child) = sidecar_ref.write().await.take() {
+                        let _ = child.kill();
+                        log::info!("Backend server sidecar terminated");
+                    }
+                });
+            }
+        });
 }

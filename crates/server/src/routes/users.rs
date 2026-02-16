@@ -398,6 +398,18 @@ async fn create_user(
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to create user: {}", e)))?;
 
+    // Run onboarding: create home project + Orcha agent
+    if let Err(e) = services::services::user_onboarding::UserOnboardingService::onboard_user(
+        &pool,
+        user_id,
+        &req.username,
+    )
+    .await
+    {
+        tracing::warn!("User onboarding failed for {}: {}", user_id, e);
+        // Don't fail the user creation if onboarding fails
+    }
+
     Ok(ResponseJson(ApiResponse::success(CreateUserResponse {
         message: "User created successfully".to_string(),
         user_id,
