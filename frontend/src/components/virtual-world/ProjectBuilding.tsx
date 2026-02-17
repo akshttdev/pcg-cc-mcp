@@ -355,8 +355,13 @@ const GLB_SCALE = 4;
 
 function GalleryInteriorModel() {
   const { scene } = useGLTF('/environments/fine-art-gallery.glb');
+  const groupRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+
+    // Fix texture colorspace and enable shadows
     scene.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
       child.castShadow = true;
@@ -365,12 +370,10 @@ function GalleryInteriorModel() {
       const mats = Array.isArray(child.material) ? child.material : [child.material];
       mats.forEach((mat) => {
         if (!mat) return;
-        // sRGB colorspace for colour and emissive maps
         for (const key of ['map', 'emissiveMap'] as const) {
           const tex = (mat as Record<string, THREE.Texture | null>)[key];
           if (tex) { tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true; }
         }
-        // Linear colorspace for data maps
         for (const key of ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'lightMap'] as const) {
           const tex = (mat as Record<string, THREE.Texture | null>)[key];
           if (tex) { tex.colorSpace = THREE.LinearSRGBColorSpace; tex.needsUpdate = true; }
@@ -378,11 +381,18 @@ function GalleryInteriorModel() {
         if ('envMapIntensity' in mat) (mat as THREE.MeshStandardMaterial).envMapIntensity = 1;
         mat.needsUpdate = true;
       });
-    }, [scene]);
+    });
+
+    // The GLB was authored with the floor at y=0 in model space.
+    // With scale=4 the floor sits at world y=0 naturally — no offset needed.
+    group.position.y = 0;
   }, [scene]);
 
-  // position y=0 — floor is at origin by design (matches original BuildingInterior)
-  return <primitive object={scene} scale={[GLB_SCALE, GLB_SCALE, GLB_SCALE]} position={[0, 0, 0]} />;
+  return (
+    <group ref={groupRef} scale={[GLB_SCALE, GLB_SCALE, GLB_SCALE]}>
+      <primitive object={scene} />
+    </group>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -395,9 +405,16 @@ function FineArtGallery({
 
   return (
     <group>
-      {/* Warm gallery fill lights */}
-      <pointLight position={[0, 8, 0]} color="#ffe7cc" intensity={boost * 1.5} distance={80} decay={2} />
-      <pointLight position={[0, 8, 20]} color="#fff0d8" intensity={boost * 0.8} distance={60} decay={2} />
+      {/* Gallery lighting — multiple warm fills spread through the space */}
+      <pointLight position={[0, 12, 0]}   color="#fff5e0" intensity={boost * 6}   distance={120} decay={1.5} />
+      <pointLight position={[0, 12, 30]}  color="#ffe8c8" intensity={boost * 5}   distance={100} decay={1.5} />
+      <pointLight position={[0, 12, -30]} color="#ffe8c8" intensity={boost * 5}   distance={100} decay={1.5} />
+      <pointLight position={[20, 10, 15]} color="#fff0d0" intensity={boost * 3.5} distance={80}  decay={2} />
+      <pointLight position={[-20, 10, 15]}color="#fff0d0" intensity={boost * 3.5} distance={80}  decay={2} />
+      <pointLight position={[20, 10,-15]} color="#fff0d0" intensity={boost * 3.5} distance={80}  decay={2} />
+      <pointLight position={[-20, 10,-15]}color="#fff0d0" intensity={boost * 3.5} distance={80}  decay={2} />
+      {/* Low fill near floor level */}
+      <pointLight position={[0, 3, 0]}    color="#ffedda" intensity={boost * 2}   distance={60}  decay={2} />
 
       {/* Hermitage GLB — floor at y=0 by design */}
       <Suspense fallback={null}>
@@ -448,9 +465,10 @@ export function ProjectBuilding({
     [entranceDirection],
   );
 
+  // Place arch at the front face of the building (+Z = entrance side), 5 units high
   const doorPosition = useMemo(
-    () => [position[0], position[1] + 5, position[2]] as [number, number, number],
-    [position],
+    () => [0, 5, hl] as [number, number, number],
+    [hl],
   );
 
   const walkwayPosition = useMemo(() => {
@@ -567,8 +585,8 @@ export function ProjectBuilding({
         </mesh>
       )}
 
-      {/* Entrance arch */}
-      <group position={doorPosition} rotation={[0, doorRotation, 0]}>
+      {/* Entrance arch — not shown for gallery (open walkable space) */}
+      {buildingType !== 'gallery' && <group position={doorPosition} rotation={[0, doorRotation, 0]}>
         <mesh position={[-(DOOR_WIDTH / 2 + 0.5), 0, 0]}>
           <boxGeometry args={[1, DOOR_HEIGHT + 2, 1.5]} />
           <meshStandardMaterial color={theme.accentColor} metalness={0.8} roughness={0.2}
@@ -595,9 +613,9 @@ export function ProjectBuilding({
           color={locked ? '#ff0000' : theme.hologramColor}
           distance={15}
         />
-      </group>
+      </group>}
 
-      {showEnterPrompt && (
+      {buildingType !== 'gallery' && showEnterPrompt && (
         <Text
           position={[doorPosition[0], doorPosition[1] + ENTRY_PROMPT_HEIGHT, doorPosition[2]]}
           fontSize={1.5}
@@ -611,7 +629,7 @@ export function ProjectBuilding({
         </Text>
       )}
 
-      {showLockedPrompt && (
+      {buildingType !== 'gallery' && showLockedPrompt && (
         <Text
           position={[doorPosition[0], doorPosition[1] + ENTRY_PROMPT_HEIGHT, doorPosition[2]]}
           fontSize={1.5}
