@@ -374,8 +374,8 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
                 } else if let Some(ref pref) = effective_spawn {
                     get_spawn_position(pref).unwrap_or(PlayerPosition { x: 0.0, y: 1.5, z: 10.0 })
                 } else {
-                    // Default spawn for non-admin without preference
-                    PlayerPosition { x: 180.0, y: 1.0, z: 0.0 }
+                    // Default spawn for non-admin without preference - matches frontend SPAWN_USER [0, 1, 60]
+                    PlayerPosition { x: 0.0, y: 1.0, z: 60.0 }
                 };
 
                 // Use default avatar for users without one

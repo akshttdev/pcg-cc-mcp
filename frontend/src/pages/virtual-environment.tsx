@@ -19,15 +19,15 @@ import { CommandCenter } from '@/components/virtual-world/CommandCenter';
 import { NoraAvatar } from '@/components/virtual-world/NoraAvatar';
 import { WanderingAgent } from '@/components/virtual-world/WanderingAgent';
 import { ToposDataSphere } from '@/components/virtual-world/ToposDataSphere';
-import { UserAvatar, type BuildingCollider } from '@/components/virtual-world/UserAvatar';
-import { BuildingInterior } from '@/components/virtual-world/BuildingInterior';
+import { UserAvatar } from '@/components/virtual-world/UserAvatar';
 import { MultiplayerManager } from '@/components/virtual-world/MultiplayerManager';
 import { useMultiplayerStore } from '@/stores/useMultiplayerStore';
 import { AgentWorkspaceLevel, getAgentBayBounds } from '@/components/virtual-world/AgentWorkspaceLevel';
 import { SpiralStaircase } from '@/components/virtual-world/SpiralStaircase';
 import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
 import { InventoryPanel, EquipmentPanel } from '@/components/virtual-world/hud';
-import { getBuildingType } from '@/lib/virtual-world/buildingTypes';
+import { ENTRY_TRIGGER_DISTANCE, BUILDING_HALF_LENGTH } from '@/lib/virtual-world/constants';
+import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
 import { cn } from '@/lib/utils';
 import { useProjectList } from '@/hooks/api/useProjectList';
 import { useAuth } from '@/contexts/AuthContext';
@@ -91,8 +91,8 @@ const noraAcknowledgements = [
 const PLAYER_COLOR = '#ff8800';
 // Admin: spawn on command center floor, outside hologram railing (R > 10)
 const SPAWN_ADMIN: [number, number, number] = [15, COMMAND_CENTER_FLOOR_Y + 1, 15];
-// User: spawn at ground level center
-const SPAWN_USER: [number, number, number] = [0, 1, 0];
+// User: spawn south of command center, facing inward — can see the world and command center above
+const SPAWN_USER: [number, number, number] = [0, 1, 60];
 
 // ─── Virtual Zone System ──────────────────────────────────────────────────────
 // The global world has PCG Command Center at origin and other zones arranged
@@ -146,18 +146,6 @@ interface VirtualZone {
   spawn_z?: number;
 }
 
-interface ApiSpawnPoint {
-  space_name: string;
-  host_username: string;
-  world_x: number;
-  world_y: number;
-  world_z: number;
-  spawn_x: number;
-  spawn_y: number;
-  spawn_z: number;
-  theme: string | null;
-}
-
 // Evenly distribute N zones around a ring, returning [x, z] for each index
 function zonePosition(index: number, total: number, radius: number): [number, number] {
   const angle = (index / total) * Math.PI * 2 - Math.PI / 2; // start at top
@@ -179,6 +167,8 @@ const FINE_ART_SOCIETY_PROJECT: Project = {
   created_at: new Date(),
   updated_at: new Date(),
 };
+
+const PUBLIC_PROJECTS = new Set(['Fine Art Society']);
 
 function stringEnergy(input: string) {
   let hash = 0;
@@ -231,7 +221,6 @@ function ZoneLandmark({ name, host, position, color }: {
     pulseRef.current.intensity = 1.5 + Math.sin(state.clock.elapsedTime * 1.5) * 0.5;
   });
 
-  const col = new THREE.Color(color);
 
   return (
     <group position={position}>
@@ -416,7 +405,6 @@ export function VirtualEnvironmentPage() {
 
   // Fetch virtual zones from API
   const [worldZones, setWorldZones] = useState<VirtualZone[]>(STATIC_ZONES);
-  const [mySpawnPoint, setMySpawnPoint] = useState<ApiSpawnPoint | null>(null);
 
   useEffect(() => {
     // Fetch all virtual spaces to enrich static zone list
@@ -431,14 +419,6 @@ export function VirtualEnvironmentPage() {
           }
           return zone;
         }));
-      })
-      .catch(() => {});
-
-    // Fetch current user's spawn point
-    fetch('/api/virtual-space/me')
-      .then(r => r.json())
-      .then((d: { success: boolean; data: ApiSpawnPoint }) => {
-        if (d.success) setMySpawnPoint(d.data);
       })
       .catch(() => {});
   }, []);
@@ -462,36 +442,34 @@ export function VirtualEnvironmentPage() {
   // Generate positioned project data from all projects
   const projects = useMemo(() => generateProjectsFromAPI(allProjects, accessibleIds), [allProjects, accessibleIds]);
 
-  // No building colliders in global view — zone beacons are the entry points
-  const buildingColliders = useMemo<BuildingCollider[]>(() => [], []);
-
-  // Zone entry positions computed from ring layout
-  const ZONE_ENTRY_DISTANCE = 35;
-  const zoneEntryPoints = useMemo(() =>
+  // Zone buildings — each zone has a full ProjectBuilding in the global world
+  // Admin always has access; others need to be members or the project must be public
+  const zoneBuildings = useMemo(() =>
     worldZones.map((zone, idx) => {
       const [x, z] = zonePosition(idx, worldZones.length, ZONE_RING_RADIUS);
-      return { zone, position: [x, 0, z] as [number, number, number] };
+      const position: [number, number, number] = [x, 0, z];
+      // Angle so the building's door faces PCG Command Center at origin
+      const facingAngle = Math.atan2(-x, -z);
+      return {
+        zone,
+        position,
+        facingAngle,
+        accessible: isAdmin || PUBLIC_PROJECTS.has(zone.space_name),
+      };
     }),
-    [worldZones]
+    [worldZones, isAdmin]
   );
 
   const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
   const [noraLine, setNoraLine] = useState('Command Center online. Syncing with Dashboard...');
   const [noraStatusVersion, setNoraStatusVersion] = useState(1);
 
-  // Determine spawn position: admin → command center floor, others → their zone
+  // Unified global world spawn: admin → command center floor, everyone else → global ground
+  // There are no building interiors — all spaces exist in the same shared world.
   const spawnPosition = useMemo<[number, number, number]>(() => {
     if (isAdmin) return SPAWN_ADMIN;
-    if (mySpawnPoint) {
-      // Find the zone index for this space to get its ring position
-      const zoneIdx = STATIC_ZONES.findIndex(z => z.space_name === mySpawnPoint.space_name);
-      if (zoneIdx >= 0) {
-        const [zx, zz] = zonePosition(zoneIdx, STATIC_ZONES.length, ZONE_RING_RADIUS);
-        return [zx + (mySpawnPoint.spawn_x ?? 0), mySpawnPoint.spawn_y ?? 1.8, zz + (mySpawnPoint.spawn_z ?? 5)];
-      }
-    }
     return SPAWN_USER;
-  }, [isAdmin, mySpawnPoint]);
+  }, [isAdmin]);
 
   const [userPosition, setUserPosition] = useState<[number, number, number]>(spawnPosition);
   // activeZone = the zone beacon the user has entered (null = in global world)
@@ -538,7 +516,8 @@ export function VirtualEnvironmentPage() {
     });
   }, [releaseConsoleInput]);
 
-  const handleSelect = useCallback((project: ProjectData) => {
+  // handleSelect kept for future zone/project selection use
+  const _handleSelect = useCallback((project: ProjectData) => {
     setSelectedProject(project);
     const line = noraAcknowledgements[
       Math.floor(Math.random() * noraAcknowledgements.length)
@@ -606,34 +585,35 @@ export function VirtualEnvironmentPage() {
     wasMovingRef.current = isMovingRef.current;
   }, [sendPositionUpdate, multiplayerIsConnected]);
 
-  // Detect which zone beacon the user is near
+  // Detect which zone building the user is near (within entry range of the door)
+  const ZONE_BUILDING_ENTRY_DISTANCE = ENTRY_TRIGGER_DISTANCE + BUILDING_HALF_LENGTH;
   const enterZoneTarget = useMemo(() => {
-    if (activeZone) return null;
+    if (activeZone) return null; // suppress prompt when panel already open
     let closest: { zone: VirtualZone; distance: number } | null = null;
-    for (const { zone, position } of zoneEntryPoints) {
+    for (const { zone, position, accessible } of zoneBuildings) {
+      if (!accessible) continue;
       const dx = position[0] - userPosition[0];
       const dz = position[2] - userPosition[2];
       const distance = Math.hypot(dx, dz);
-      if (distance > ZONE_ENTRY_DISTANCE) continue;
+      if (distance > ZONE_BUILDING_ENTRY_DISTANCE) continue;
       if (!closest || distance < closest.distance) {
         closest = { zone, distance };
       }
     }
     return closest?.zone ?? null;
-  }, [activeZone, zoneEntryPoints, userPosition]);
+  }, [activeZone, zoneBuildings, userPosition]);
 
+  // Open a zone panel (stays in global world — MMO style)
   const handleAttemptEnter = useCallback(() => {
-    if (activeZone || !enterZoneTarget) return;
+    if (!enterZoneTarget) return;
     setActiveZone(enterZoneTarget);
-    updateNoraLine(`Entering ${enterZoneTarget.space_name}. Welcome to ${enterZoneTarget.host_username}'s space.`);
-  }, [activeZone, enterZoneTarget, updateNoraLine]);
+    updateNoraLine(`${enterZoneTarget.space_name} — ${enterZoneTarget.host_username}'s space. Press Esc to close.`);
+  }, [enterZoneTarget, updateNoraLine]);
 
-  const exitInterior = useCallback(() => {
-    if (activeZone) {
-      updateNoraLine(`Returned to global environment.`);
-    }
+  const closeZonePanel = useCallback(() => {
     setActiveZone(null);
-  }, [activeZone, updateNoraLine]);
+    updateNoraLine('Global environment active.');
+  }, [updateNoraLine]);
 
   const toggleHudPanel = useCallback((panel: HudPanelId) => {
     setActiveHudPanel((prev) => (prev === panel ? null : panel));
@@ -642,19 +622,13 @@ export function VirtualEnvironmentPage() {
   useEffect(() => {
     if (!activeZone) return undefined;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' || event.key.toLowerCase() === 'q') {
-        exitInterior();
+      if (event.key === 'Escape') {
+        closeZonePanel();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeZone, exitInterior]);
-
-  useEffect(() => {
-    if (activeZone) {
-      setActiveHudPanel(null);
-    }
-  }, [activeZone]);
+  }, [activeZone, closeZonePanel]);
 
   useEffect(() => {
     const handleConsoleToggle = (event: KeyboardEvent) => {
@@ -838,22 +812,22 @@ export function VirtualEnvironmentPage() {
             bayBounds={getAgentBayBounds('Auri') || undefined}
           />
 
-          {/* Virtual Zone Districts - arranged in a ring around PCG Command Center */}
-          {worldZones.map((zone, idx) => {
-            const [zx, zz] = zonePosition(idx, worldZones.length, ZONE_RING_RADIUS);
-            return (
-              <ZoneLandmark
-                key={zone.space_name}
+          {/* Zone District Buildings - full structures arranged in a ring around PCG Command Center.
+              Each building faces inward toward the command center. Admin has access to all. */}
+          {zoneBuildings.map(({ zone, position, facingAngle, accessible }) => (
+            <group key={zone.space_name} position={position} rotation={[0, facingAngle, 0]}>
+              <ProjectBuilding
                 name={zone.space_name}
-                host={zone.host_username}
-                position={[zx, 0, zz]}
-                color={zone.color}
+                position={[0, 0, 0]}
+                energy={0.85}
+                isSelected={false}
+                onSelect={() => {}}
+                isEnterTarget={enterZoneTarget?.space_name === zone.space_name}
+                entryHotkey="E"
+                locked={!accessible}
               />
-            );
-          })}
-
-          {/* Project buildings are NOT in the global world.
-              They appear inside zone interiors when the user enters a zone. */}
+            </group>
+          ))}
 
           {/* User avatar */}
           <UserAvatar
@@ -862,9 +836,8 @@ export function VirtualEnvironmentPage() {
             isAdmin={isAdmin}
             onPositionChange={handleUserPositionChange}
             onInteract={handleAttemptEnter}
-            isSuspended={Boolean(activeZone || isConsoleInputActive)}
+            isSuspended={isConsoleInputActive}
             canFly={isAdmin}
-            buildings={buildingColliders}
           />
 
           {/* Multiplayer - renders other players */}
@@ -873,8 +846,7 @@ export function VirtualEnvironmentPage() {
         </Suspense>
       </Canvas>
 
-      {!activeZone && (
-        <>
+      <>
           <div className="pointer-events-auto absolute top-4 right-4 w-[min(20rem,calc(100%-2rem))]">
             <div className="rounded-2xl border border-amber-500/30 bg-[#050403]/90 p-3 backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
               <MiniMap
@@ -981,36 +953,80 @@ export function VirtualEnvironmentPage() {
             </div>
           </div>
         </>
-      )}
 
-      {/* Zone entry prompt — shown when user approaches a zone beacon */}
+      {/* Zone entry prompt — shown when nearby a building and no panel is open */}
       {!activeZone && enterZoneTarget && (
         <div className="pointer-events-none absolute inset-x-0 bottom-28 flex justify-center">
           <div
-            className="rounded-full px-6 py-2 text-[11px] uppercase tracking-[0.4em] text-white"
+            className="rounded-full px-6 py-2 text-[11px] uppercase tracking-[0.4em]"
             style={{
-              borderColor: `${enterZoneTarget.color}66`,
               border: `1px solid ${enterZoneTarget.color}66`,
               backgroundColor: 'rgba(0,0,0,0.7)',
               color: enterZoneTarget.color,
             }}
           >
-            Press <span className="mx-1 font-semibold text-white">E</span> to enter {enterZoneTarget.space_name}
+            Press <span className="mx-1 font-semibold text-white">E</span> to open {enterZoneTarget.space_name}
           </div>
         </div>
       )}
 
-      {/* Zone interior — loads when user enters a zone beacon */}
+      {/* Zone panel — slides in from the right, player stays in global world */}
       {activeZone && (
-        <BuildingInterior
-          project={{
-            name: activeZone.space_name,
-            energy: 0.85,
-            type: getBuildingType(activeZone.space_name),
-          }}
-          playerColor={PLAYER_COLOR}
-          onExit={exitInterior}
-        />
+        <div className="pointer-events-auto absolute inset-y-0 right-0 flex w-[min(28rem,100%)] flex-col border-l border-amber-500/30 bg-[#08060a]/95 backdrop-blur-md shadow-[-20px_0_60px_rgba(0,0,0,0.7)]">
+          {/* Header */}
+          <div
+            className="flex items-center justify-between border-b border-amber-500/20 px-6 py-4"
+            style={{ borderBottomColor: `${activeZone.color}33` }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-3 w-3 rounded-full" style={{ backgroundColor: activeZone.color, boxShadow: `0 0 8px ${activeZone.color}` }} />
+              <div>
+                <p className="text-base font-semibold tracking-wide text-white">{activeZone.space_name}</p>
+                <p className="text-[11px] tracking-[0.2em] text-amber-200/60">HOST: {activeZone.host_username.toUpperCase()}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={closeZonePanel}
+              className="rounded border border-amber-500/30 px-3 py-1 text-[10px] tracking-[0.2em] text-amber-200/80 transition hover:bg-amber-500/20 hover:text-white"
+            >
+              ESC / CLOSE
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <p className="text-xs tracking-[0.15em] text-amber-200/50 uppercase">Virtual Space</p>
+            <p className="text-sm text-amber-100/80 leading-relaxed">
+              You are at the entrance of <span className="text-white font-medium">{activeZone.space_name}</span>.
+              Navigate to the project workspace to collaborate with the team.
+            </p>
+
+            {/* Find matching project */}
+            {(() => {
+              const matchingProject = allProjects.find(p => p.name === activeZone.space_name);
+              return matchingProject ? (
+                <a
+                  href={`/projects/${matchingProject.id}`}
+                  className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 transition hover:bg-amber-500/20 hover:text-white"
+                  style={{ borderColor: `${activeZone.color}44` }}
+                >
+                  <span className="tracking-[0.1em]">Open Project Workspace</span>
+                  <span className="text-amber-400">→</span>
+                </a>
+              ) : (
+                <div className="rounded-lg border border-amber-500/20 bg-black/30 px-4 py-3 text-xs text-amber-200/50 tracking-[0.1em]">
+                  Project workspace not linked
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-amber-500/20 px-6 py-3 text-[10px] tracking-[0.2em] text-amber-200/40">
+            YOU REMAIN IN THE GLOBAL ENVIRONMENT · ESC TO CLOSE
+          </div>
+        </div>
       )}
 
     </div>
@@ -1041,7 +1057,7 @@ interface MiniMapProps {
 
 function SystemsPanel({ projects, selectedProject, userPosition, zones = STATIC_ZONES }: SystemsPanelProps) {
   const [userX, , userZ] = userPosition;
-  const averageEnergy = projects.length
+  const _averageEnergy = projects.length
     ? projects.reduce((sum, project) => sum + project.energy, 0) / projects.length
     : 0;
   const topProject = projects.length

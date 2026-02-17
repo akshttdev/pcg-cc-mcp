@@ -51,7 +51,7 @@ interface AnimationDescriptor {
 // Movement constants
 const FLIGHT_DOUBLE_TAP_WINDOW_MS = 400;
 const JUMP_STRENGTH = 0.125;
-const WALK_SPEED = 3.0;
+const WALK_SPEED = 5.0;
 const RUN_MULTIPLIER = 1.8;
 const ROTATION_LERP = 0.15;
 const CAMERA_DISTANCE = 15;
@@ -119,6 +119,7 @@ export function UserAvatar({
   const trailRef = useRef<THREE.Vector3[]>([]);
   const [trailPoints, setTrailPoints] = useState<THREE.Vector3[]>([]);
   const maxTrailLength = 25;
+  const hasCameraSnappedRef = useRef(false);
 
   // Mouse controls
   useEffect(() => {
@@ -529,7 +530,13 @@ export function UserAvatar({
       Math.cos(cameraAngleRef.current) * CAMERA_DISTANCE
     );
     const desiredCameraPosition = position.clone().add(cameraOffset);
-    camera.position.lerp(desiredCameraPosition, CAMERA_LERP * dtScale);
+    if (!hasCameraSnappedRef.current) {
+      // First frame: snap camera directly to avoid the jarring pan from Canvas default position
+      camera.position.copy(desiredCameraPosition);
+      hasCameraSnappedRef.current = true;
+    } else {
+      camera.position.lerp(desiredCameraPosition, CAMERA_LERP * dtScale);
+    }
 
     const lookTarget = position.clone().add(new THREE.Vector3(0, 2.5, 0));
     camera.lookAt(lookTarget);

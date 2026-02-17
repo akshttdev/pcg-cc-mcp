@@ -110,6 +110,12 @@ async fn main() -> Result<(), VibeKanbanError> {
         tracing::warn!("NORA can still be initialized later via POST /api/nora/initialize");
     }
 
+    // Auto-initialize Topsi platform agent on server startup
+    if let Err(e) = routes::topsi::initialize_topsi_on_startup(&deployment).await {
+        tracing::warn!("Failed to auto-initialize Topsi on startup: {}", e);
+        tracing::warn!("Topsi can still be initialized later via POST /api/topsi/initialize");
+    }
+
     // Pre-warm file search cache for most active projects
     let deployment_for_cache = deployment.clone();
     tokio::spawn(async move {

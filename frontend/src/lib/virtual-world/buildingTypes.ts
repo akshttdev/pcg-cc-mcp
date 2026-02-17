@@ -3,7 +3,10 @@ export type BuildingType =
   | 'creative-studio'
   | 'infrastructure'
   | 'research'
-  | 'command';
+  | 'command'
+  | 'bank'
+  | 'casino'
+  | 'gallery';
 
 const KEYWORD_MAP: Record<BuildingType, string[]> = {
   'dev-tower': ['mcp', 'rs', 'code', 'api', 'frontend', 'backend', 'builder', 'web', 'app', 'site'],
@@ -15,9 +18,9 @@ const KEYWORD_MAP: Record<BuildingType, string[]> = {
 
 // Named project overrides — specific projects always map to a given type
 const NAME_OVERRIDES: Partial<Record<string, BuildingType>> = {
-  'fine art society': 'creative-studio',
-  'veritwin': 'research',
-  'jungleverse': 'creative-studio',
+  'fine art society': 'gallery',
+  'veritwin': 'bank',
+  'jungleverse': 'casino',
   'media monsters hq': 'command',
   'sirak studios': 'creative-studio',
 };
@@ -122,6 +125,45 @@ export const BUILDING_THEMES: Record<BuildingType, BuildingTheme> = {
       floorColor: '#081c28',
       glowColor: '#00f0ff',
       agentColor: '#00c6ff',
+    },
+  },
+  bank: {
+    baseColor: '#d4c9a8',
+    accentColor: '#b8a46e',
+    hologramColor: '#f0e6c8',
+    doorColor: '#c8b87a',
+    labelColor: '#f5f0e0',
+    interior: {
+      wallColor: '#c2b89a',
+      floorColor: '#a89868',
+      glowColor: '#d4c090',
+      agentColor: '#e0d0a0',
+    },
+  },
+  casino: {
+    baseColor: '#1a0a2e',
+    accentColor: '#ff2d78',
+    hologramColor: '#ffe040',
+    doorColor: '#ff6030',
+    labelColor: '#ffe880',
+    interior: {
+      wallColor: '#12061e',
+      floorColor: '#1e0a30',
+      glowColor: '#ff3080',
+      agentColor: '#ffcc00',
+    },
+  },
+  gallery: {
+    baseColor: '#e8e2d6',
+    accentColor: '#c8a84a',
+    hologramColor: '#fff4d0',
+    doorColor: '#ddc070',
+    labelColor: '#ffffff',
+    interior: {
+      wallColor: '#f0ece4',
+      floorColor: '#d8d0bc',
+      glowColor: '#ffe8a0',
+      agentColor: '#ffd060',
     },
   },
 };
