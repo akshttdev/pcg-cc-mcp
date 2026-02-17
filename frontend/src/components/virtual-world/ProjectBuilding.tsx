@@ -353,6 +353,14 @@ function JungleversCasino({
 // ─────────────────────────────────────────────────────────────────────────────
 const GLB_SCALE = 4;
 
+// GLB inspection (fine-art-gallery.glb, Blender glTF 2.0):
+//   Carpet mesh "Plane001" top surface sits at GLB-world Y = -1.677387
+//   (accessor max -1.3026, parent node scale=1.15, translate-Y=-0.17937).
+//   With external GLB_SCALE=4 applied by our group wrapper:
+//     Three.js world Y of carpet = -1.677387 × 4 = -6.7096 when group.position.y = 0
+//   Setting group.position.y = +6.7096 raises the carpet exactly to world y = 0.
+const GALLERY_FLOOR_LIFT = 1.677387 * GLB_SCALE;
+
 function GalleryInteriorModel() {
   const { scene } = useGLTF('/environments/fine-art-gallery.glb');
   const groupRef = useRef<THREE.Group>(null);
@@ -361,12 +369,14 @@ function GalleryInteriorModel() {
     const group = groupRef.current;
     if (!group) return;
 
+    // Land carpet surface exactly at world y = 0
+    group.position.y = GALLERY_FLOOR_LIFT;
+
     // Fix texture colorspace and enable shadows
     scene.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
       child.castShadow = true;
       child.receiveShadow = true;
-
       const mats = Array.isArray(child.material) ? child.material : [child.material];
       mats.forEach((mat) => {
         if (!mat) return;
@@ -382,43 +392,10 @@ function GalleryInteriorModel() {
         mat.needsUpdate = true;
       });
     });
-
-    // ── Find the exact floor surface via raycasting ──────────────────────────
-    // The model has geometry BELOW the walkable floor (foundations, trim, etc.),
-    // so aligning by bounding-box min overshoots. We instead cast a ray downward
-    // from the vertical mid-point of the bounding box (= well inside the room,
-    // above the floor but below the ceiling) and look for the first upward-facing
-    // hit — that surface is the walkable floor.  Setting group.position.y = -floorY
-    // then lifts the whole model so the floor lands exactly at world y=0.
-    group.position.y = 0;
-    group.updateWorldMatrix(true, true);
-
-    const box = new THREE.Box3().setFromObject(group);
-    // Start the ray from the vertical midpoint — inside the room, not above the roof
-    const castOriginY = (box.min.y + box.max.y) * 0.5;
-    const raycaster = new THREE.Raycaster(
-      new THREE.Vector3(0, castOriginY, 0),
-      new THREE.Vector3(0, -1, 0),
-    );
-    const hits = raycaster.intersectObject(group, true);
-
-    for (const h of hits) {
-      if (!h.face) continue;
-      // Transform the hit face's normal from mesh-local space to world space
-      // so rotation transforms don't confuse the upward-facing check.
-      const wn = h.face.normal.clone().transformDirection(
-        (h.object as THREE.Mesh).matrixWorld,
-      );
-      if (wn.y > 0.5) {
-        // First strongly-upward-facing surface below the midpoint = interior floor
-        group.position.y = -h.point.y;
-        break;
-      }
-    }
   }, [scene]);
 
   return (
-    <group ref={groupRef} scale={[GLB_SCALE, GLB_SCALE, GLB_SCALE]}>
+    <group ref={groupRef} position={[0, GALLERY_FLOOR_LIFT, 0]} scale={[GLB_SCALE, GLB_SCALE, GLB_SCALE]}>
       <primitive object={scene} />
     </group>
   );
