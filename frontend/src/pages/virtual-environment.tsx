@@ -18,10 +18,8 @@ import {
 import { CommandCenter } from '@/components/virtual-world/CommandCenter';
 import { NoraAvatar } from '@/components/virtual-world/NoraAvatar';
 import { WanderingAgent } from '@/components/virtual-world/WanderingAgent';
-import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
 import { ToposDataSphere } from '@/components/virtual-world/ToposDataSphere';
 import { UserAvatar, type BuildingCollider } from '@/components/virtual-world/UserAvatar';
-import { PUBLIC_PROJECTS } from '@/components/virtual-world/ProjectBuilding';
 import { BuildingInterior } from '@/components/virtual-world/BuildingInterior';
 import { MultiplayerManager } from '@/components/virtual-world/MultiplayerManager';
 import { useMultiplayerStore } from '@/stores/useMultiplayerStore';
@@ -30,7 +28,6 @@ import { SpiralStaircase } from '@/components/virtual-world/SpiralStaircase';
 import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
 import { InventoryPanel, EquipmentPanel } from '@/components/virtual-world/hud';
 import { getBuildingType } from '@/lib/virtual-world/buildingTypes';
-import { ENTRY_TRIGGER_DISTANCE } from '@/lib/virtual-world/constants';
 import { cn } from '@/lib/utils';
 import { useProjectList } from '@/hooks/api/useProjectList';
 import { useAuth } from '@/contexts/AuthContext';
@@ -465,20 +462,18 @@ export function VirtualEnvironmentPage() {
   // Generate positioned project data from all projects
   const projects = useMemo(() => generateProjectsFromAPI(allProjects, accessibleIds), [allProjects, accessibleIds]);
 
-  // Create building colliders for collision detection
-  const buildingColliders = useMemo<BuildingCollider[]>(() => {
-    return projects.map((project) => {
-      const dir = new THREE.Vector3(-project.position[0], 0, -project.position[2]);
-      if (dir.lengthSq() === 0) {
-        dir.set(0, 0, 1);
-      }
-      dir.normalize();
-      return {
-        position: project.position,
-        entranceDirection: dir,
-      };
-    });
-  }, [projects]);
+  // No building colliders in global view — zone beacons are the entry points
+  const buildingColliders = useMemo<BuildingCollider[]>(() => [], []);
+
+  // Zone entry positions computed from ring layout
+  const ZONE_ENTRY_DISTANCE = 35;
+  const zoneEntryPoints = useMemo(() =>
+    worldZones.map((zone, idx) => {
+      const [x, z] = zonePosition(idx, worldZones.length, ZONE_RING_RADIUS);
+      return { zone, position: [x, 0, z] as [number, number, number] };
+    }),
+    [worldZones]
+  );
 
   const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
   const [noraLine, setNoraLine] = useState('Command Center online. Syncing with Dashboard...');
@@ -499,7 +494,8 @@ export function VirtualEnvironmentPage() {
   }, [isAdmin, mySpawnPoint]);
 
   const [userPosition, setUserPosition] = useState<[number, number, number]>(spawnPosition);
-  const [activeInterior, setActiveInterior] = useState<ProjectData | null>(null);
+  // activeZone = the zone beacon the user has entered (null = in global world)
+  const [activeZone, setActiveZone] = useState<VirtualZone | null>(null);
   const [isConsoleInputActive, setIsConsoleInputActive] = useState(false);
   const [consoleFocusVersion, setConsoleFocusVersion] = useState(0);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
@@ -524,10 +520,10 @@ export function VirtualEnvironmentPage() {
   }, []);
 
   const activateConsoleInput = useCallback(() => {
-    if (activeInterior) return;
+    if (activeZone) return;
     setIsConsoleInputActive(true);
     bumpConsoleFocus();
-  }, [activeInterior, bumpConsoleFocus]);
+  }, [activeZone, bumpConsoleFocus]);
 
   const releaseConsoleInput = useCallback(() => {
     setIsConsoleInputActive(false);
@@ -610,46 +606,41 @@ export function VirtualEnvironmentPage() {
     wasMovingRef.current = isMovingRef.current;
   }, [sendPositionUpdate, multiplayerIsConnected]);
 
-  const enterTarget = useMemo(() => {
-    if (activeInterior) return null;
-
-    let closest: { project: ProjectData; distance: number } | null = null;
-    for (const project of projects) {
-      const dx = project.position[0] - userPosition[0];
-      const dz = project.position[2] - userPosition[2];
+  // Detect which zone beacon the user is near
+  const enterZoneTarget = useMemo(() => {
+    if (activeZone) return null;
+    let closest: { zone: VirtualZone; distance: number } | null = null;
+    for (const { zone, position } of zoneEntryPoints) {
+      const dx = position[0] - userPosition[0];
+      const dz = position[2] - userPosition[2];
       const distance = Math.hypot(dx, dz);
-      if (distance > ENTRY_TRIGGER_DISTANCE) continue;
+      if (distance > ZONE_ENTRY_DISTANCE) continue;
       if (!closest || distance < closest.distance) {
-        closest = { project, distance };
+        closest = { zone, distance };
       }
     }
-    return closest?.project ?? null;
-  }, [activeInterior, projects, userPosition]);
+    return closest?.zone ?? null;
+  }, [activeZone, zoneEntryPoints, userPosition]);
 
   const handleAttemptEnter = useCallback(() => {
-    if (activeInterior || !enterTarget) return;
-    if (!enterTarget.accessible) {
-      updateNoraLine(`Access denied. You are not a member of ${enterTarget.name}.`);
-      return;
-    }
-    handleSelect(enterTarget);
-    setActiveInterior(enterTarget);
-    updateNoraLine(`Opening interior for ${enterTarget.name}. Agents syncing.`);
-  }, [activeInterior, enterTarget, handleSelect, updateNoraLine]);
+    if (activeZone || !enterZoneTarget) return;
+    setActiveZone(enterZoneTarget);
+    updateNoraLine(`Entering ${enterZoneTarget.space_name}. Welcome to ${enterZoneTarget.host_username}'s space.`);
+  }, [activeZone, enterZoneTarget, updateNoraLine]);
 
   const exitInterior = useCallback(() => {
-    if (activeInterior) {
-      updateNoraLine(`Grid perspective restored. ${activeInterior.name} interior sealed.`);
+    if (activeZone) {
+      updateNoraLine(`Returned to global environment.`);
     }
-    setActiveInterior(null);
-  }, [activeInterior, updateNoraLine]);
+    setActiveZone(null);
+  }, [activeZone, updateNoraLine]);
 
   const toggleHudPanel = useCallback((panel: HudPanelId) => {
     setActiveHudPanel((prev) => (prev === panel ? null : panel));
   }, []);
 
   useEffect(() => {
-    if (!activeInterior) return undefined;
+    if (!activeZone) return undefined;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' || event.key.toLowerCase() === 'q') {
         exitInterior();
@@ -657,13 +648,13 @@ export function VirtualEnvironmentPage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeInterior, exitInterior]);
+  }, [activeZone, exitInterior]);
 
   useEffect(() => {
-    if (activeInterior) {
+    if (activeZone) {
       setActiveHudPanel(null);
     }
-  }, [activeInterior]);
+  }, [activeZone]);
 
   useEffect(() => {
     const handleConsoleToggle = (event: KeyboardEvent) => {
@@ -695,10 +686,10 @@ export function VirtualEnvironmentPage() {
   }, [activateConsoleInput, isConsoleInputActive, releaseConsoleInput]);
 
   useEffect(() => {
-    if (activeInterior && isConsoleInputActive) {
+    if (activeZone && isConsoleInputActive) {
       setIsConsoleInputActive(false);
     }
-  }, [activeInterior, isConsoleInputActive]);
+  }, [activeZone, isConsoleInputActive]);
 
   const hudPanelContent = useMemo(() => {
     if (!activeHudPanel) return null;
@@ -861,29 +852,17 @@ export function VirtualEnvironmentPage() {
             );
           })}
 
-          {/* Project buildings — accessible to members + universally public buildings */}
-          {projects.map((project) => (
-            <ProjectBuilding
-              key={project.name}
-              name={project.name}
-              position={project.position}
-              energy={project.energy}
-              isSelected={selectedProject?.name === project.name}
-              onSelect={() => handleSelect(project)}
-              isEnterTarget={!activeInterior && enterTarget?.name === project.name}
-              entryHotkey="E"
-              locked={!project.accessible}
-            />
-          ))}
+          {/* Project buildings are NOT in the global world.
+              They appear inside zone interiors when the user enters a zone. */}
 
           {/* User avatar */}
           <UserAvatar
-            initialPosition={isAdmin ? SPAWN_ADMIN : SPAWN_USER}
+            initialPosition={spawnPosition}
             color={PLAYER_COLOR}
             isAdmin={isAdmin}
             onPositionChange={handleUserPositionChange}
             onInteract={handleAttemptEnter}
-            isSuspended={Boolean(activeInterior || isConsoleInputActive)}
+            isSuspended={Boolean(activeZone || isConsoleInputActive)}
             canFly={isAdmin}
             buildings={buildingColliders}
           />
@@ -894,7 +873,7 @@ export function VirtualEnvironmentPage() {
         </Suspense>
       </Canvas>
 
-      {!activeInterior && (
+      {!activeZone && (
         <>
           <div className="pointer-events-auto absolute top-4 right-4 w-[min(20rem,calc(100%-2rem))]">
             <div className="rounded-2xl border border-amber-500/30 bg-[#050403]/90 p-3 backdrop-blur-sm shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
@@ -1004,29 +983,30 @@ export function VirtualEnvironmentPage() {
         </>
       )}
 
-      {!activeInterior && enterTarget && (
+      {/* Zone entry prompt — shown when user approaches a zone beacon */}
+      {!activeZone && enterZoneTarget && (
         <div className="pointer-events-none absolute inset-x-0 bottom-28 flex justify-center">
-          {enterTarget.accessible ? (
-            <div className="rounded-full border border-cyan-400/40 bg-black/70 px-6 py-2 text-[11px] uppercase tracking-[0.4em] text-cyan-100">
-              Press <span className="mx-1 font-semibold text-white">E</span> to enter {enterTarget.name}
-              {PUBLIC_PROJECTS.has(enterTarget.name) && (
-                <span className="ml-2 text-yellow-400">◆ Public</span>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-full border border-red-500/40 bg-black/70 px-6 py-2 text-[11px] uppercase tracking-[0.4em] text-red-300">
-              ⊘ Access Restricted — {enterTarget.name}
-            </div>
-          )}
+          <div
+            className="rounded-full px-6 py-2 text-[11px] uppercase tracking-[0.4em] text-white"
+            style={{
+              borderColor: `${enterZoneTarget.color}66`,
+              border: `1px solid ${enterZoneTarget.color}66`,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              color: enterZoneTarget.color,
+            }}
+          >
+            Press <span className="mx-1 font-semibold text-white">E</span> to enter {enterZoneTarget.space_name}
+          </div>
         </div>
       )}
 
-      {activeInterior && (
+      {/* Zone interior — loads when user enters a zone beacon */}
+      {activeZone && (
         <BuildingInterior
           project={{
-            name: activeInterior.name,
-            energy: activeInterior.energy,
-            type: getBuildingType(activeInterior.name),
+            name: activeZone.space_name,
+            energy: 0.85,
+            type: getBuildingType(activeZone.space_name),
           }}
           playerColor={PLAYER_COLOR}
           onExit={exitInterior}
