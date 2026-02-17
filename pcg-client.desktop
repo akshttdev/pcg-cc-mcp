@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Power Club Global Client
+Comment=Decentralized Compute Network Client
+Exec=pcg-client
+Icon=pcg-logo
+Terminal=false
+Categories=Network;P2P;
+Keywords=blockchain;compute;distributed;
+StartupNotify=true
