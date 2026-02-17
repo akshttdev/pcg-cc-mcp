@@ -68,6 +68,7 @@ pub mod mesh;
 pub mod peer_rewards;
 pub mod pythia;
 pub mod wallet;
+pub mod invitations;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -93,6 +94,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // Protected routes that require authentication
     // These routes handle sensitive data and must not be publicly accessible
     let protected_routes = Router::new()
+        .merge(invitations::router(&deployment))
         .merge(airtable::router())
         .merge(social_accounts::router(&deployment))
         .merge(social_posts::router(&deployment))
@@ -128,6 +130,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(execution_processes::router(&deployment))
         .merge(execution_summaries::routes())
         .merge(auth::router(&deployment))
+        .merge(invitations::public_router(&deployment))
         .merge(filesystem::router())
         .merge(events::router(&deployment))
         .nest("/images", images::routes())
