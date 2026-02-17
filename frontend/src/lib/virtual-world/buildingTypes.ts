@@ -10,10 +10,13 @@ export type BuildingType =
 
 const KEYWORD_MAP: Record<BuildingType, string[]> = {
   'dev-tower': ['mcp', 'rs', 'code', 'api', 'frontend', 'backend', 'builder', 'web', 'app', 'site'],
-  'creative-studio': ['jungle', 'brand', 'design', 'studio', 'glyph', 'creative', 'art', 'gallery', 'society', 'fine', 'media', 'film', 'cinema', 'music', 'verse'],
+  'creative-studio': ['brand', 'design', 'studio', 'glyph', 'creative', 'film', 'cinema', 'music'],
   infrastructure: ['ducknet', 'comfy', 'distribution', 'linux', 'infra', 'ops', 'network', 'server', 'cloud'],
-  research: ['extract', 'lab', 'research', 'ai', 'agent', 'ml', 'twin', 'veritwin', 'data', 'analytics'],
+  research: ['extract', 'lab', 'research', 'ai', 'agent', 'ml', 'twin', 'data', 'analytics'],
   command: ['command', 'control', 'hq', 'monsters', 'headquarters', 'hub'],
+  bank: ['bank', 'finance', 'vault'],
+  casino: ['casino', 'verse', 'jungle'],
+  gallery: ['gallery', 'art', 'society', 'fine', 'museum'],
 };
 
 // Named project overrides — specific projects always map to a given type
