@@ -27,6 +27,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/invitations", get(list_invitations))
         .route("/invitations/{id}/revoke", post(revoke_invitation))
         // Virtual space
+        .route("/virtual-spaces", get(list_spaces))
         .route("/virtual-space/me", get(my_spawn_point))
         .route("/virtual-space/{user_id}", get(get_user_space))
 }
@@ -515,6 +516,53 @@ async fn my_spawn_point(
         Some(s) => Ok(ResponseJson(ApiResponse::success(s))),
         None => Err(ApiError::NotFound("No virtual space found for this user".into())),
     }
+}
+
+/// GET /api/virtual-spaces — list all virtual spaces for the global world map
+async fn list_spaces(
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<serde_json::Value>>>, ApiError> {
+    let pool = deployment.db().pool.clone();
+
+    let rows = sqlx::query(
+        r#"SELECT
+               vs.space_name,
+               u.username as host_username,
+               u.id as host_id,
+               vs.world_x, vs.world_y, vs.world_z,
+               vs.spawn_x, vs.spawn_y, vs.spawn_z,
+               vs.theme, vs.max_guests
+           FROM virtual_spaces vs
+           JOIN users u ON u.id = vs.owner_id
+           ORDER BY vs.world_x ASC"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to list spaces: {}", e)))?;
+
+    use sqlx::Row;
+    let spaces: Vec<serde_json::Value> = rows
+        .iter()
+        .filter_map(|row| {
+            let host_id_bytes: Vec<u8> = row.try_get("host_id").ok()?;
+            let host_id = Uuid::from_slice(&host_id_bytes).ok()?;
+            Some(serde_json::json!({
+                "space_name": row.try_get::<String, _>("space_name").ok()?,
+                "host_username": row.try_get::<String, _>("host_username").ok()?,
+                "host_id": host_id.to_string(),
+                "world_x": row.try_get::<f64, _>("world_x").ok()?,
+                "world_y": row.try_get::<f64, _>("world_y").ok()?,
+                "world_z": row.try_get::<f64, _>("world_z").ok()?,
+                "spawn_x": row.try_get::<f64, _>("spawn_x").ok()?,
+                "spawn_y": row.try_get::<f64, _>("spawn_y").ok()?,
+                "spawn_z": row.try_get::<f64, _>("spawn_z").ok()?,
+                "theme": row.try_get::<Option<String>, _>("theme").ok()?,
+                "max_guests": row.try_get::<i64, _>("max_guests").ok()?,
+            }))
+        })
+        .collect();
+
+    Ok(ResponseJson(ApiResponse::success(spaces)))
 }
 
 /// GET /api/virtual-space/:user_id — get a specific user's virtual space

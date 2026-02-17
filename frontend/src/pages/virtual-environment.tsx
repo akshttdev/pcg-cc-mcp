@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Grid, Environment, Stars, SpotLight } from '@react-three/drei';
+import { Grid, Environment, Stars, SpotLight, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   type LucideIcon,
@@ -94,6 +94,77 @@ const SPAWN_ADMIN: [number, number, number] = [15, COMMAND_CENTER_FLOOR_Y + 1, 1
 // User: spawn at ground level center
 const SPAWN_USER: [number, number, number] = [0, 1, 0];
 
+// ─── Virtual Zone System ──────────────────────────────────────────────────────
+// The global world has PCG Command Center at origin and other zones arranged
+// in a ring around it at ZONE_RING_RADIUS.
+
+const ZONE_RING_RADIUS = 280;
+
+// Static zone definitions that are always present in the world
+// DB-backed zones (from /api/virtual-spaces) supplement and override these
+const STATIC_ZONES: VirtualZone[] = [
+  {
+    space_name: 'Fine Art Society',
+    host_username: 'pcg',
+    color: '#ffd700',
+    staticAngle: 0,
+  },
+  {
+    space_name: 'Veritwin',
+    host_username: 'Andre',
+    color: '#00aaff',
+    staticAngle: 1,
+  },
+  {
+    space_name: 'Jungleverse',
+    host_username: 'pcg',
+    color: '#00cc44',
+    staticAngle: 2,
+  },
+  {
+    space_name: 'Media Monsters HQ',
+    host_username: 'Travers',
+    color: '#ff5500',
+    staticAngle: 3,
+  },
+  {
+    space_name: 'Sirak Studios',
+    host_username: 'Sirak',
+    color: '#aa00ff',
+    staticAngle: 4,
+  },
+];
+
+interface VirtualZone {
+  space_name: string;
+  host_username: string;
+  color: string;
+  staticAngle: number; // index determining angular position in ring
+  world_x?: number;
+  spawn_x?: number;
+  spawn_y?: number;
+  spawn_z?: number;
+}
+
+interface ApiSpawnPoint {
+  space_name: string;
+  host_username: string;
+  world_x: number;
+  world_y: number;
+  world_z: number;
+  spawn_x: number;
+  spawn_y: number;
+  spawn_z: number;
+  theme: string | null;
+}
+
+// Evenly distribute N zones around a ring, returning [x, z] for each index
+function zonePosition(index: number, total: number, radius: number): [number, number] {
+  const angle = (index / total) * Math.PI * 2 - Math.PI / 2; // start at top
+  return [Math.cos(angle) * radius, Math.sin(angle) * radius];
+}
+
+
 // Static demo project for Fine Art Society (always available)
 const FINE_ART_SOCIETY_PROJECT: Project = {
   id: 'fine-art-society-demo',
@@ -140,6 +211,74 @@ function generateProjectsFromAPI(apiProjects: Project[]): ProjectData[] {
       project,
     };
   });
+}
+
+// ─── Zone Landmark Component ──────────────────────────────────────────────────
+// Each non-PCG zone appears as a glowing beacon/obelisk in the 3D world
+
+function ZoneLandmark({ name, host, position, color }: {
+  name: string;
+  host: string;
+  position: [number, number, number];
+  color: string;
+}) {
+  const pulseRef = useRef<THREE.PointLight>(null);
+
+  useFrame((state) => {
+    if (!pulseRef.current) return;
+    pulseRef.current.intensity = 1.5 + Math.sin(state.clock.elapsedTime * 1.5) * 0.5;
+  });
+
+  const col = new THREE.Color(color);
+
+  return (
+    <group position={position}>
+      {/* Ground ring */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.1, 0]}>
+        <ringGeometry args={[18, 20, 48]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} transparent opacity={0.4} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Central obelisk */}
+      <mesh position={[0, 20, 0]}>
+        <cylinderGeometry args={[0.8, 2, 40, 6]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.8} transparent opacity={0.85} />
+      </mesh>
+
+      {/* Top crystal */}
+      <mesh position={[0, 42, 0]}>
+        <octahedronGeometry args={[3.5, 0]} />
+        <meshStandardMaterial color="#ffffff" emissive={color} emissiveIntensity={1.5} transparent opacity={0.9} />
+      </mesh>
+
+      {/* Pulsing point light */}
+      <pointLight ref={pulseRef} color={color} intensity={2} distance={80} />
+
+      {/* Zone name label */}
+      <Text
+        position={[0, 50, 0]}
+        fontSize={6}
+        color="#ffffff"
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.3}
+        outlineColor={color}
+      >
+        {name}
+      </Text>
+
+      {/* Host label */}
+      <Text
+        position={[0, 43, 0]}
+        fontSize={3.5}
+        color={color}
+        anchorX="center"
+        anchorY="middle"
+      >
+        @{host}
+      </Text>
+    </group>
+  );
 }
 
 function AtmosphericLighting() {
@@ -273,6 +412,35 @@ export function VirtualEnvironmentPage() {
   const { user } = useAuth();
   const isAdmin = user?.is_admin ?? false;
 
+  // Fetch virtual zones from API
+  const [worldZones, setWorldZones] = useState<VirtualZone[]>(STATIC_ZONES);
+  const [mySpawnPoint, setMySpawnPoint] = useState<ApiSpawnPoint | null>(null);
+
+  useEffect(() => {
+    // Fetch all virtual spaces to enrich static zone list
+    fetch('/api/virtual-spaces')
+      .then(r => r.json())
+      .then((d: { success: boolean; data: Array<{ space_name: string; host_username: string; world_x: number; spawn_x: number; spawn_y: number; spawn_z: number }> }) => {
+        if (!d.success) return;
+        setWorldZones(prev => prev.map(zone => {
+          const found = d.data.find(s => s.space_name === zone.space_name);
+          if (found) {
+            return { ...zone, world_x: found.world_x, spawn_x: found.spawn_x, spawn_y: found.spawn_y, spawn_z: found.spawn_z };
+          }
+          return zone;
+        }));
+      })
+      .catch(() => {});
+
+    // Fetch current user's spawn point
+    fetch('/api/virtual-space/me')
+      .then(r => r.json())
+      .then((d: { success: boolean; data: ApiSpawnPoint }) => {
+        if (d.success) setMySpawnPoint(d.data);
+      })
+      .catch(() => {});
+  }, []);
+
   // Fetch projects from the Dashboard API
   const { data: apiProjects = [], isLoading: projectsLoading, error: projectsError } = useProjectList();
 
@@ -307,7 +475,21 @@ export function VirtualEnvironmentPage() {
   const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
   const [noraLine, setNoraLine] = useState('Command Center online. Syncing with Dashboard...');
   const [noraStatusVersion, setNoraStatusVersion] = useState(1);
-  const spawnPosition: [number, number, number] = isAdmin ? SPAWN_ADMIN : SPAWN_USER;
+
+  // Determine spawn position: admin → command center floor, others → their zone
+  const spawnPosition = useMemo<[number, number, number]>(() => {
+    if (isAdmin) return SPAWN_ADMIN;
+    if (mySpawnPoint) {
+      // Find the zone index for this space to get its ring position
+      const zoneIdx = STATIC_ZONES.findIndex(z => z.space_name === mySpawnPoint.space_name);
+      if (zoneIdx >= 0) {
+        const [zx, zz] = zonePosition(zoneIdx, STATIC_ZONES.length, ZONE_RING_RADIUS);
+        return [zx + (mySpawnPoint.spawn_x ?? 0), mySpawnPoint.spawn_y ?? 1.8, zz + (mySpawnPoint.spawn_z ?? 5)];
+      }
+    }
+    return SPAWN_USER;
+  }, [isAdmin, mySpawnPoint]);
+
   const [userPosition, setUserPosition] = useState<[number, number, number]>(spawnPosition);
   const [activeInterior, setActiveInterior] = useState<ProjectData | null>(null);
   const [isConsoleInputActive, setIsConsoleInputActive] = useState(false);
@@ -515,6 +697,7 @@ export function VirtualEnvironmentPage() {
             projects={projects}
             selectedProject={selectedProject}
             userPosition={userPosition}
+            zones={worldZones}
           />
         );
       case 'intel':
@@ -525,6 +708,7 @@ export function VirtualEnvironmentPage() {
             projects={projects}
             selectedProject={selectedProject}
             userPosition={userPosition}
+            zones={worldZones}
           />
         );
       case 'controls':
@@ -569,7 +753,7 @@ export function VirtualEnvironmentPage() {
         <color attach="background" args={['#030508']} />
 
         {/* Fog for depth perception */}
-        <fog attach="fog" args={['#030508', 100, 400]} />
+        <fog attach="fog" args={['#030508', 150, 600]} />
 
         <Suspense fallback={null}>
           {/* Lighting */}
@@ -579,7 +763,7 @@ export function VirtualEnvironmentPage() {
           <Environment preset="night" />
 
           {/* Stars */}
-          <Stars radius={280} depth={40} count={2500} factor={4} saturation={0} fade speed={0.5} />
+          <Stars radius={600} depth={60} count={3000} factor={4} saturation={0} fade speed={0.5} />
 
           {/* Infinite grid */}
           <Grid
@@ -651,6 +835,20 @@ export function VirtualEnvironmentPage() {
             bayBounds={getAgentBayBounds('Auri') || undefined}
           />
 
+          {/* Virtual Zone Districts - arranged in a ring around PCG Command Center */}
+          {worldZones.map((zone, idx) => {
+            const [zx, zz] = zonePosition(idx, worldZones.length, ZONE_RING_RADIUS);
+            return (
+              <ZoneLandmark
+                key={zone.space_name}
+                name={zone.space_name}
+                host={zone.host_username}
+                position={[zx, 0, zz]}
+                color={zone.color}
+              />
+            );
+          })}
+
           {/* Project buildings */}
           {projects.map((project) => (
             <ProjectBuilding
@@ -692,6 +890,7 @@ export function VirtualEnvironmentPage() {
                 selectedProject={selectedProject}
                 userPosition={userPosition}
                 size={220}
+                zones={worldZones}
               />
             </div>
           </div>
@@ -821,6 +1020,7 @@ interface SystemsPanelProps {
   projects: ProjectData[];
   selectedProject: ProjectData | null;
   userPosition: [number, number, number];
+  zones?: VirtualZone[];
 }
 
 interface IntelPanelProps {
@@ -834,9 +1034,10 @@ interface MiniMapProps {
   selectedProject: ProjectData | null;
   userPosition: [number, number, number];
   size?: number;
+  zones?: VirtualZone[];
 }
 
-function SystemsPanel({ projects, selectedProject, userPosition }: SystemsPanelProps) {
+function SystemsPanel({ projects, selectedProject, userPosition, zones = STATIC_ZONES }: SystemsPanelProps) {
   const [userX, , userZ] = userPosition;
   const averageEnergy = projects.length
     ? projects.reduce((sum, project) => sum + project.energy, 0) / projects.length
@@ -856,9 +1057,9 @@ function SystemsPanel({ projects, selectedProject, userPosition }: SystemsPanelP
             <p className="text-[10px] text-amber-200/60">Deployed across grid</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Average Signal</p>
-            <p className="text-2xl font-bold text-white">{(averageEnergy * 100).toFixed(0)}%</p>
-            <p className="text-[10px] text-amber-200/60">Energy distribution</p>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Active Zones</p>
+            <p className="text-2xl font-bold text-white">{zones.length + 1}</p>
+            <p className="text-[10px] text-amber-200/60">Including PCG Command Center</p>
           </div>
           <div>
             <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70">Command Center</p>
@@ -889,7 +1090,7 @@ function SystemsPanel({ projects, selectedProject, userPosition }: SystemsPanelP
       </div>
 
       <div className="w-full shrink-0 lg:w-64">
-        <MiniMap projects={projects} selectedProject={selectedProject} userPosition={userPosition} />
+        <MiniMap projects={projects} selectedProject={selectedProject} userPosition={userPosition} zones={zones} size={200} />
       </div>
     </div>
   );
@@ -921,7 +1122,7 @@ function IntelPanel({ projects }: IntelPanelProps) {
   );
 }
 
-function MapPanel({ projects, selectedProject, userPosition }: MapPanelProps) {
+function MapPanel({ projects, selectedProject, userPosition, zones = STATIC_ZONES }: MapPanelProps) {
   const [userX, , userZ] = userPosition;
   const closestProject = useMemo(() => {
     if (!projects.length) return null;
@@ -944,6 +1145,7 @@ function MapPanel({ projects, selectedProject, userPosition }: MapPanelProps) {
           selectedProject={selectedProject}
           userPosition={userPosition}
           size={320}
+          zones={zones}
         />
       </div>
       <div className="flex-1 space-y-3 text-sm text-amber-100/80">
@@ -976,14 +1178,12 @@ function MapPanel({ projects, selectedProject, userPosition }: MapPanelProps) {
   );
 }
 
-function MiniMap({ projects, selectedProject, userPosition, size = 220 }: MiniMapProps) {
+function MiniMap({ projects, selectedProject, userPosition, size = 220, zones = STATIC_ZONES }: MiniMapProps) {
   const [userX, , userZ] = userPosition;
-  const maxRadius = projects.reduce((max, project) => {
-    const radius = Math.hypot(project.position[0], project.position[2]);
-    return Math.max(max, radius);
-  }, 1);
-  const margin = 18;
-  const scale = (size / 2 - margin) / (maxRadius || 1);
+  // Scale to show the zone ring + some margin
+  const worldExtent = ZONE_RING_RADIUS + 60;
+  const margin = 14;
+  const scale = (size / 2 - margin) / worldExtent;
   const patternId = useMemo(() => `mini-map-grid-${Math.random().toString(36).slice(2)}`, []);
 
   const toMapX = (value: number) => size / 2 + value * scale;
@@ -992,7 +1192,7 @@ function MiniMap({ projects, selectedProject, userPosition, size = 220 }: MiniMa
   return (
     <div>
       <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.3em] text-amber-200">
-        <span>Mini Map</span>
+        <span>Global Map</span>
         <Compass className="h-4 w-4" />
       </div>
       <div className="relative rounded-lg border border-amber-500/30 bg-black/50 p-2">
@@ -1004,7 +1204,33 @@ function MiniMap({ projects, selectedProject, userPosition, size = 220 }: MiniMa
           </defs>
           <rect width={size} height={size} fill="#050403" />
           <rect width={size} height={size} fill={`url(#${patternId})`} opacity={0.7} />
-          <circle cx={size / 2} cy={size / 2} r={4} fill="#f97316" opacity={0.8} />
+
+          {/* Zone ring guide */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={ZONE_RING_RADIUS * scale}
+            fill="none"
+            stroke="#1a3a2a"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+          />
+
+          {/* Zone landmarks */}
+          {zones.map((zone, idx) => {
+            const [zx, zz] = zonePosition(idx, zones.length, ZONE_RING_RADIUS);
+            const mx = toMapX(zx);
+            const mz = toMapY(zz);
+            const col = zone.color;
+            return (
+              <g key={zone.space_name}>
+                <circle cx={mx} cy={mz} r={7} fill={col} opacity={0.25} />
+                <circle cx={mx} cy={mz} r={4} fill={col} opacity={0.9} />
+              </g>
+            );
+          })}
+
+          {/* Project buildings (small dots) */}
           {projects.map((project) => {
             const x = toMapX(project.position[0]);
             const y = toMapY(project.position[2]);
@@ -1014,19 +1240,31 @@ function MiniMap({ projects, selectedProject, userPosition, size = 220 }: MiniMa
                 key={project.name}
                 cx={x}
                 cy={y}
-                r={isSelected ? 6 : 4}
+                r={isSelected ? 5 : 3}
                 fill={isSelected ? '#fbbf24' : '#38bdf8'}
-                opacity={isSelected ? 0.95 : 0.7}
+                opacity={isSelected ? 0.95 : 0.5}
               />
             );
           })}
+
+          {/* PCG Command Center (center) */}
+          <circle cx={size / 2} cy={size / 2} r={6} fill="#00ffff" opacity={0.9} />
+          <circle cx={size / 2} cy={size / 2} r={12} fill="none" stroke="#00ffff" strokeWidth={0.8} opacity={0.4} />
+
+          {/* Player position */}
           <circle cx={toMapX(userX)} cy={toMapY(userZ)} r={5} fill="#f472b6" stroke="#ffffff" strokeWidth={1} />
         </svg>
         <span className="pointer-events-none absolute right-4 top-3 text-[10px] font-semibold text-amber-200">N</span>
       </div>
-      <p className="mt-2 text-[11px] text-amber-200/70">
-        Orange dot represents the command core. Pink indicator marks your current hovercraft.
-      </p>
+      {/* Zone legend */}
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+        {zones.map((z) => (
+          <span key={z.space_name} className="flex items-center gap-1 text-[9px] text-amber-200/70">
+            <span style={{ backgroundColor: z.color }} className="inline-block h-2 w-2 rounded-full" />
+            {z.space_name}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
