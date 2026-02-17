@@ -6,18 +6,32 @@ export type BuildingType =
   | 'command';
 
 const KEYWORD_MAP: Record<BuildingType, string[]> = {
-  'dev-tower': ['mcp', 'rs', 'code', 'api', 'frontend', 'backend', 'builder'],
-  'creative-studio': ['jungle', 'brand', 'design', 'studio', 'glyph', 'creative'],
-  infrastructure: ['ducknet', 'comfy', 'distribution', 'linux', 'infra', 'ops'],
-  research: ['extract', 'lab', 'research', 'ai', 'agent', 'ml'],
-  command: ['command', 'control', 'hq'],
+  'dev-tower': ['mcp', 'rs', 'code', 'api', 'frontend', 'backend', 'builder', 'web', 'app', 'site'],
+  'creative-studio': ['jungle', 'brand', 'design', 'studio', 'glyph', 'creative', 'art', 'gallery', 'society', 'fine', 'media', 'film', 'cinema', 'music', 'verse'],
+  infrastructure: ['ducknet', 'comfy', 'distribution', 'linux', 'infra', 'ops', 'network', 'server', 'cloud'],
+  research: ['extract', 'lab', 'research', 'ai', 'agent', 'ml', 'twin', 'veritwin', 'data', 'analytics'],
+  command: ['command', 'control', 'hq', 'monsters', 'headquarters', 'hub'],
+};
+
+// Named project overrides — specific projects always map to a given type
+const NAME_OVERRIDES: Partial<Record<string, BuildingType>> = {
+  'fine art society': 'creative-studio',
+  'veritwin': 'research',
+  'jungleverse': 'creative-studio',
+  'media monsters hq': 'command',
+  'sirak studios': 'creative-studio',
 };
 
 export function getBuildingType(name: string): BuildingType {
   const lower = name.toLowerCase();
 
-  if (lower === 'pcg-cc-mcp' || lower.includes('command-center')) {
+  if (lower === 'pcg-cc-mcp' || lower.includes('command-center') || lower.includes('pcg command')) {
     return 'command';
+  }
+
+  // Check named overrides first
+  if (NAME_OVERRIDES[lower]) {
+    return NAME_OVERRIDES[lower]!;
   }
 
   for (const [type, keywords] of Object.entries(KEYWORD_MAP) as [BuildingType, string[]][]) {

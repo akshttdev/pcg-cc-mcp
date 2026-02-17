@@ -13,6 +13,9 @@ const HALF_WIDTH = CONTAINER_WIDTH / 2;
 const HALF_LENGTH = CONTAINER_LENGTH / 2;
 const FOOTPRINT_RADIUS = Math.sqrt(HALF_WIDTH ** 2 + HALF_LENGTH ** 2);
 
+// Projects that are publicly accessible to all users regardless of membership
+export const PUBLIC_PROJECTS = new Set(['Fine Art Society']);
+
 interface ProjectBuildingProps {
   name: string;
   position: [number, number, number];
@@ -21,6 +24,8 @@ interface ProjectBuildingProps {
   onSelect: () => void;
   isEnterTarget?: boolean;
   entryHotkey?: string;
+  /** When true, renders a locked/restricted visual and blocks entry */
+  locked?: boolean;
 }
 
 function DevTower({ position, energy, isSelected, hovered }: any) {
@@ -245,10 +250,15 @@ export function ProjectBuilding({
   onSelect,
   isEnterTarget = false,
   entryHotkey = 'E',
+  locked = false,
 }: ProjectBuildingProps) {
   const [hovered, setHovered] = useState(false);
   const buildingType = getBuildingType(name);
   const theme = BUILDING_THEMES[buildingType];
+  const isPublic = PUBLIC_PROJECTS.has(name);
+
+  // Locked buildings use muted energy and a red/dark door
+  const effectiveEnergy = locked ? energy * 0.3 : energy;
 
   const elevatedPosition = useMemo(
     () => [position[0], position[1] + HALF_HEIGHT, position[2]] as [number, number, number],
@@ -279,13 +289,16 @@ export function ProjectBuilding({
     return [position[0] + offset.x, position[1] + 0.11, position[2] + offset.z] as [number, number, number];
   }, [entranceDirection, position]);
 
-  const labelColor = hovered || isSelected ? '#ffffff' : theme.labelColor;
+  const labelColor = locked ? '#666666' : hovered || isSelected ? '#ffffff' : theme.labelColor;
+  const doorColor = locked ? '#ff2200' : theme.doorColor;
+  const doorGlow = locked ? '#ff0000' : theme.hologramColor;
 
-  const showEnterPrompt = isEnterTarget && Boolean(entryHotkey);
+  const showEnterPrompt = isEnterTarget && Boolean(entryHotkey) && !locked;
+  const showLockedPrompt = isEnterTarget && locked;
 
   const props = {
     position: elevatedPosition,
-    energy,
+    energy: effectiveEnergy,
     isSelected,
     hovered,
   };
@@ -325,6 +338,32 @@ export function ProjectBuilding({
       >
         {name}
       </Text>
+
+      {/* Public access indicator for universally open buildings */}
+      {isPublic && (
+        <Text
+          position={[position[0], position[1] + CONTAINER_HEIGHT + 22, position[2]]}
+          fontSize={2.5}
+          color="#ffd700"
+          anchorX="center"
+          anchorY="bottom"
+        >
+          ◆ Open to all ◆
+        </Text>
+      )}
+
+      {/* Lock indicator for restricted buildings */}
+      {locked && (
+        <Text
+          position={[position[0], position[1] + CONTAINER_HEIGHT + 22, position[2]]}
+          fontSize={2.5}
+          color="#ff4444"
+          anchorX="center"
+          anchorY="bottom"
+        >
+          ⊘ Access Restricted
+        </Text>
+      )}
 
       {/* Ground plate */}
       <mesh position={[position[0], position[1] + 0.1, position[2]]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -398,9 +437,9 @@ export function ProjectBuilding({
         <mesh position={[0, 0, 0.2]}>
           <planeGeometry args={[DOOR_WIDTH, DOOR_HEIGHT]} />
           <meshStandardMaterial
-            color={theme.doorColor}
-            emissive={isEnterTarget ? theme.hologramColor : '#00121d'}
-            emissiveIntensity={isEnterTarget ? 1.5 : 0.3}
+            color={doorColor}
+            emissive={isEnterTarget ? doorGlow : locked ? '#550000' : '#00121d'}
+            emissiveIntensity={isEnterTarget ? 1.5 : locked ? 0.6 : 0.3}
             transparent
             opacity={isEnterTarget ? 0.9 : 0.7}
             metalness={0.1}
@@ -413,7 +452,7 @@ export function ProjectBuilding({
           <mesh position={[0, 0, 0.3]}>
             <ringGeometry args={[DOOR_WIDTH / 2 - 0.5, DOOR_WIDTH / 2 + 0.5, 32]} />
             <meshBasicMaterial
-              color={theme.hologramColor}
+              color={doorGlow}
               transparent
               opacity={0.6}
             />
@@ -423,23 +462,39 @@ export function ProjectBuilding({
         {/* Door indicator light */}
         <pointLight
           position={[0, DOOR_HEIGHT / 2 + 1.5, 1]}
-          intensity={isEnterTarget ? 2 : 0.5}
-          color={theme.hologramColor}
+          intensity={isEnterTarget ? 2 : locked ? 0.3 : 0.5}
+          color={locked ? '#ff0000' : theme.hologramColor}
           distance={15}
         />
       </group>
 
+      {/* Entry prompt (accessible building) */}
       {showEnterPrompt && (
         <Text
           position={[doorPosition[0], doorPosition[1] + ENTRY_PROMPT_HEIGHT, doorPosition[2]]}
           fontSize={1.5}
-          color={theme.hologramColor}
+          color={isPublic ? '#ffd700' : theme.hologramColor}
           anchorX="center"
           anchorY="bottom"
           outlineWidth={0.08}
           outlineColor="#000a10"
         >
-          Press {entryHotkey} to enter
+          Press {entryHotkey} to enter{isPublic ? ' (Public)' : ''}
+        </Text>
+      )}
+
+      {/* Locked prompt (restricted building) */}
+      {showLockedPrompt && (
+        <Text
+          position={[doorPosition[0], doorPosition[1] + ENTRY_PROMPT_HEIGHT, doorPosition[2]]}
+          fontSize={1.5}
+          color="#ff4444"
+          anchorX="center"
+          anchorY="bottom"
+          outlineWidth={0.08}
+          outlineColor="#220000"
+        >
+          Access Restricted
         </Text>
       )}
     </group>

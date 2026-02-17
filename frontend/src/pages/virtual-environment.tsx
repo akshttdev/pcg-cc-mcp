@@ -21,6 +21,7 @@ import { WanderingAgent } from '@/components/virtual-world/WanderingAgent';
 import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
 import { ToposDataSphere } from '@/components/virtual-world/ToposDataSphere';
 import { UserAvatar, type BuildingCollider } from '@/components/virtual-world/UserAvatar';
+import { PUBLIC_PROJECTS } from '@/components/virtual-world/ProjectBuilding';
 import { BuildingInterior } from '@/components/virtual-world/BuildingInterior';
 import { MultiplayerManager } from '@/components/virtual-world/MultiplayerManager';
 import { useMultiplayerStore } from '@/stores/useMultiplayerStore';
@@ -54,6 +55,8 @@ interface ProjectData {
   position: [number, number, number];
   energy: number;
   project: Project; // Full project data from API
+  /** true = user is a member or building is universally public */
+  accessible: boolean;
 }
 
 type HudPanelId = 'systems' | 'intel' | 'map' | 'controls' | 'inventory' | 'equipment';
@@ -188,7 +191,7 @@ function stringEnergy(input: string) {
   return 0.35 + (hash / 1000) * 0.65;
 }
 
-function generateProjectsFromAPI(apiProjects: Project[]): ProjectData[] {
+function generateProjectsFromAPI(apiProjects: Project[], accessibleIds: Set<string>): ProjectData[] {
   if (!apiProjects.length) return [];
 
   const radiusForSpacing = (apiProjects.length * TARGET_ARC_SPACING) / (Math.PI * 2);
@@ -209,6 +212,8 @@ function generateProjectsFromAPI(apiProjects: Project[]): ProjectData[] {
       position,
       energy: stringEnergy(project.name),
       project,
+      // Public projects are always accessible; otherwise check membership
+      accessible: PUBLIC_PROJECTS.has(project.name) || accessibleIds.has(project.id),
     };
   });
 }
@@ -454,8 +459,11 @@ export function VirtualEnvironmentPage() {
     return [...apiProjects, ...uniqueStaticProjects];
   }, [apiProjects]);
 
+  // Set of project IDs the current user is a member of (from the backend-filtered API)
+  const accessibleIds = useMemo(() => new Set(apiProjects.map(p => p.id)), [apiProjects]);
+
   // Generate positioned project data from all projects
-  const projects = useMemo(() => generateProjectsFromAPI(allProjects), [allProjects]);
+  const projects = useMemo(() => generateProjectsFromAPI(allProjects, accessibleIds), [allProjects, accessibleIds]);
 
   // Create building colliders for collision detection
   const buildingColliders = useMemo<BuildingCollider[]>(() => {
@@ -620,6 +628,10 @@ export function VirtualEnvironmentPage() {
 
   const handleAttemptEnter = useCallback(() => {
     if (activeInterior || !enterTarget) return;
+    if (!enterTarget.accessible) {
+      updateNoraLine(`Access denied. You are not a member of ${enterTarget.name}.`);
+      return;
+    }
     handleSelect(enterTarget);
     setActiveInterior(enterTarget);
     updateNoraLine(`Opening interior for ${enterTarget.name}. Agents syncing.`);
@@ -849,7 +861,7 @@ export function VirtualEnvironmentPage() {
             );
           })}
 
-          {/* Project buildings */}
+          {/* Project buildings — accessible to members + universally public buildings */}
           {projects.map((project) => (
             <ProjectBuilding
               key={project.name}
@@ -860,6 +872,7 @@ export function VirtualEnvironmentPage() {
               onSelect={() => handleSelect(project)}
               isEnterTarget={!activeInterior && enterTarget?.name === project.name}
               entryHotkey="E"
+              locked={!project.accessible}
             />
           ))}
 
@@ -993,9 +1006,18 @@ export function VirtualEnvironmentPage() {
 
       {!activeInterior && enterTarget && (
         <div className="pointer-events-none absolute inset-x-0 bottom-28 flex justify-center">
-          <div className="rounded-full border border-cyan-400/40 bg-black/70 px-6 py-2 text-[11px] uppercase tracking-[0.4em] text-cyan-100">
-            Press <span className="mx-1 font-semibold text-white">E</span> to enter {enterTarget.name}
-          </div>
+          {enterTarget.accessible ? (
+            <div className="rounded-full border border-cyan-400/40 bg-black/70 px-6 py-2 text-[11px] uppercase tracking-[0.4em] text-cyan-100">
+              Press <span className="mx-1 font-semibold text-white">E</span> to enter {enterTarget.name}
+              {PUBLIC_PROJECTS.has(enterTarget.name) && (
+                <span className="ml-2 text-yellow-400">◆ Public</span>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-full border border-red-500/40 bg-black/70 px-6 py-2 text-[11px] uppercase tracking-[0.4em] text-red-300">
+              ⊘ Access Restricted — {enterTarget.name}
+            </div>
+          )}
         </div>
       )}
 
