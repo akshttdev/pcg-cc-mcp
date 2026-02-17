@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
 import i18n from '@/i18n';
 import { Navbar } from '@/components/layout/navbar';
@@ -74,6 +74,8 @@ const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 function AppContent() {
   const { config, updateAndSaveConfig, loading } = useUserSystem();
   const { isFullscreen } = useTaskViewManager();
+  const location = useLocation();
+  const isVirtualEnv = location.pathname.startsWith('/virtual-environment');
 
   // Track previous path for back navigation
   usePreviousPath();
@@ -294,8 +296,8 @@ function AppContent() {
                 </div>
               </div>
             </div>
-            {/* Topsi floating chat widget - available on all pages */}
-            <TopsiWidget />
+            {/* Topsi floating chat widget - hidden on virtual environment (use /topsi in chat instead) */}
+            {!isVirtualEnv && <TopsiWidget />}
             <ShortcutsHelp />
             <CommandPalette />
             <KeyboardShortcutsOverlay />
