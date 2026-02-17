@@ -383,9 +383,38 @@ function GalleryInteriorModel() {
       });
     });
 
-    // The GLB was authored with the floor at y=0 in model space.
-    // With scale=4 the floor sits at world y=0 naturally — no offset needed.
+    // ── Find the exact floor surface via raycasting ──────────────────────────
+    // The model has geometry BELOW the walkable floor (foundations, trim, etc.),
+    // so aligning by bounding-box min overshoots. We instead cast a ray downward
+    // from the vertical mid-point of the bounding box (= well inside the room,
+    // above the floor but below the ceiling) and look for the first upward-facing
+    // hit — that surface is the walkable floor.  Setting group.position.y = -floorY
+    // then lifts the whole model so the floor lands exactly at world y=0.
     group.position.y = 0;
+    group.updateWorldMatrix(true, true);
+
+    const box = new THREE.Box3().setFromObject(group);
+    // Start the ray from the vertical midpoint — inside the room, not above the roof
+    const castOriginY = (box.min.y + box.max.y) * 0.5;
+    const raycaster = new THREE.Raycaster(
+      new THREE.Vector3(0, castOriginY, 0),
+      new THREE.Vector3(0, -1, 0),
+    );
+    const hits = raycaster.intersectObject(group, true);
+
+    for (const h of hits) {
+      if (!h.face) continue;
+      // Transform the hit face's normal from mesh-local space to world space
+      // so rotation transforms don't confuse the upward-facing check.
+      const wn = h.face.normal.clone().transformDirection(
+        (h.object as THREE.Mesh).matrixWorld,
+      );
+      if (wn.y > 0.5) {
+        // First strongly-upward-facing surface below the midpoint = interior floor
+        group.position.y = -h.point.y;
+        break;
+      }
+    }
   }, [scene]);
 
   return (
