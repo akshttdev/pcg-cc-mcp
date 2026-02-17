@@ -55,7 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const userProfile = await apiLogin({ username, password });
       setUser(userProfile);
-      // Equipment will be initialized by the useEffect
+      // Hard reload after login: wipes all cached React state so no
+      // previous user's data (projects, tasks, etc.) bleeds through.
+      window.location.href = '/';
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -72,6 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Even if logout API fails, clear local state
       resetEquipment();
       setUser(null);
+    } finally {
+      // Hard reload on logout: guarantees all cached user data is gone
+      window.location.href = '/';
     }
   }
 
