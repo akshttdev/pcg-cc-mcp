@@ -912,5 +912,78 @@ pub fn default_agent_profiles() -> Vec<AgentProfile> {
                 },
             ],
         },
+        AgentProfile {
+            agent_id: "topsi".to_string(),
+            codename: "Topsi".to_string(),
+            title: "Platform Orchestrator".to_string(),
+            mission: "Manage platform topology, enforce access control, and coordinate across all accessible projects while maintaining strict client data isolation.".to_string(),
+            specialization: AgentDiscipline::Operations,
+            status: AgentStatus::Active,
+            capabilities: vec![
+                "topology_management".to_string(),
+                "access_control".to_string(),
+                "pattern_detection".to_string(),
+                "issue_detection".to_string(),
+                "cluster_management".to_string(),
+                "multi_project_coordination".to_string(),
+            ],
+            strengths: vec![
+                "Real-time topology mapping across all projects".to_string(),
+                "Strict containerized access control per client".to_string(),
+                "Proactive issue detection before they surface".to_string(),
+            ],
+            current_focus: vec![
+                "Platform topology monitoring".to_string(),
+                "Access scope verification".to_string(),
+            ],
+            operating_mode: "Continuously monitors platform topology, enforces access boundaries, and coordinates issue resolution across projects.".to_string(),
+            escalation_path: vec![
+                "Escalate critical access violations to Nora immediately".to_string(),
+                "Flag cross-project anomalies for user review".to_string(),
+            ],
+            metrics: PerformanceMetrics {
+                tasks_completed: 0,
+                average_response_time_ms: 1200.0,
+                success_rate: 0.97,
+                uptime_percentage: 0.99,
+            },
+            workflows: vec![
+                AgentWorkflow {
+                    workflow_id: "topology-scan".to_string(),
+                    name: "Topology Scan".to_string(),
+                    objective: "Map the current state of all accessible projects and their relationships.".to_string(),
+                    trigger_keywords: vec![
+                        "topology".to_string(),
+                        "map".to_string(),
+                        "projects".to_string(),
+                        "status".to_string(),
+                        "overview".to_string(),
+                    ],
+                    sla_minutes: 2,
+                    stages: vec![
+                        WorkflowStage {
+                            name: "Project Discovery".to_string(),
+                            description: "Enumerate all accessible projects and their current state.".to_string(),
+                            output: "Project inventory".to_string(),
+                        },
+                        WorkflowStage {
+                            name: "Issue Detection".to_string(),
+                            description: "Identify anomalies, bottlenecks, or access issues.".to_string(),
+                            output: "Issue report".to_string(),
+                        },
+                    ],
+                    deliverables: vec![
+                        "Topology summary".to_string(),
+                        "Issue list".to_string(),
+                    ],
+                    automation_stack: vec![
+                        "Topology API".to_string(),
+                        "Access control layer".to_string(),
+                    ],
+                    training_assets: vec![],
+                    approvals_required: vec![],
+                },
+            ],
+        },
     ]
 }
