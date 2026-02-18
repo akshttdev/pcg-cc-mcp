@@ -31,6 +31,8 @@ pub struct Recommendation {
     pub follow_ups: Vec<String>,
     /// Time context (e.g., "critical for Feb 10 deadline")
     pub time_context: Option<String>,
+    /// Estimated VIBE tokens earned for completing this task
+    pub vibe_estimate: Option<f64>,
 }
 
 /// Batch of recommendations
@@ -167,6 +169,19 @@ impl PriorityRecommender {
                 })
             });
 
+        // Estimate VIBE earnings: higher priority + more blocking = more VIBEs
+        let vibe_estimate = {
+            let base = match priority.level {
+                PriorityLevel::Critical => 100.0,
+                PriorityLevel::High => 60.0,
+                PriorityLevel::Medium => 30.0,
+                PriorityLevel::Low => 10.0,
+                PriorityLevel::Backlog => 5.0,
+            };
+            let blocking_bonus = priority.components.blocking * 50.0;
+            Some(base + blocking_bonus)
+        };
+
         Recommendation {
             task_id: priority.task_id,
             task_name: priority.task_name.clone(),
@@ -175,6 +190,7 @@ impl PriorityRecommender {
             impact,
             follow_ups,
             time_context,
+            vibe_estimate,
         }
     }
 

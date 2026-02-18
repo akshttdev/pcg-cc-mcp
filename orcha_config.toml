@@ -1,0 +1,122 @@
+# ORCHA (Orchestration Application) Configuration
+# Federated User-to-Topsi Routing
+
+[orcha]
+name = "ORCHA"
+version = "1.0.0"
+description = "Federated Topological Orchestration System"
+
+# APN Network Configuration
+[apn]
+relay_url = "nats://nonlocal.info:4222"
+enabled = true
+
+# User-to-Topsi Mapping
+# Each user has a primary device that hosts their Topsi instance
+# Secondary devices access the primary via APN
+
+[[users]]
+username = "admin"
+primary_device = "pythia-master-node-001"
+secondary_devices = ["space-terminal-001"]
+topsi_db_path = "/home/pythia/.local/share/pcg/data/admin/topsi.db"
+projects_path = "/home/pythia/topos"
+uptime_guarantee = "100%"
+description = "Admin user with multi-device orchestration"
+
+[[users]]
+username = "Sirak"
+primary_device = "sirak-studios-laptop-001"
+fallback_device = "apn-cloud-sirak-001"  # When laptop offline
+topsi_db_path = "/home/sirak/topos/.topsi/db.sqlite"  # Local when online
+cloud_backup_path = "apn://sirak-topsi-backup"  # APN Cloud when offline
+projects_path = "/home/sirak/topos"
+uptime_guarantee = "<100%"
+description = "Sirak user with APN Cloud backup for mobile workflow"
+
+[[users]]
+username = "Bonomotion"
+primary_device = "bonomotion-device-001"
+topsi_db_path = "/home/bonomotion/.local/share/pcg/data/bonomotion/topsi.db"
+projects_path = "/home/bonomotion/topos"
+uptime_guarantee = "100%"
+description = "Bonomotion user with always-on device"
+
+# Device Definitions
+[[devices]]
+id = "pythia-master-node-001"
+name = "Pythia Master Node"
+type = "always_on"
+owner = "admin"
+apn_node_id = "apn_pythia_master"
+serves_data = true
+is_storage_provider = true
+hardware.cpu = "AMD Ryzen 9 5900X (24 threads)"
+hardware.ram = "32GB DDR4"
+hardware.gpu = "NVIDIA RTX 3080 Ti (12GB)"
+hardware.storage = "3.6TB NVMe SSD"
+
+[[devices]]
+id = "space-terminal-001"
+name = "Space Terminal"
+type = "always_on"
+owner = "admin"
+apn_node_id = "apn_space_terminal"
+serves_data = false  # Accesses data from pythia-master-node-001
+hardware.cpu = "16 cores"
+hardware.ram = "15.7GB"
+hardware.gpu = "NVIDIA RTX 3070 Laptop"
+
+[[devices]]
+id = "sirak-studios-laptop-001"
+name = "Sirak Studios Laptop"
+type = "mobile"
+owner = "Sirak"
+apn_node_id = "apn_sirak_laptop"
+serves_data = true
+
+[[devices]]
+id = "apn-cloud-sirak-001"
+name = "APN Cloud (Sirak Backup)"
+type = "storage_provider"
+owner = "Sirak"
+apn_node_id = "apn_cloud_sirak"
+serves_data = true
+is_storage_provider = true
+
+[[devices]]
+id = "bonomotion-device-001"
+name = "Bonomotion Studio Desktop"
+type = "always_on"
+owner = "Bonomotion"
+apn_node_id = "apn_bonomotion"
+serves_data = true
+
+# Routing Rules
+[routing]
+# When a user authenticates, route to their Topsi instance
+default_strategy = "primary_device"
+
+# If primary device offline, use fallback
+fallback_strategy = "apn_cloud"
+
+# Enable multi-device orchestration
+multi_device_orchestration = true
+
+# Admin-specific multi-device rules
+[routing.admin]
+allow_multi_device = true
+primary = "pythia-master-node-001"
+secondaries = ["space-terminal-001"]
+data_replication_on_demand = true
+
+# Sirak-specific fallback rules
+[routing.Sirak]
+primary = "sirak-studios-laptop-001"
+fallback = "apn-cloud-sirak-001"
+auto_sync_to_cloud = true
+sync_interval_seconds = 300
+
+# Bonomotion rules
+[routing.Bonomotion]
+primary = "bonomotion-device-001"

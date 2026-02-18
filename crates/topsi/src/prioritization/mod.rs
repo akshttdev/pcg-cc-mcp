@@ -12,10 +12,12 @@
 
 pub mod goals;
 pub mod free_energy;
+pub mod knowledge;
 pub mod priority_score;
 pub mod recommender;
 
 pub use goals::{Goal, GoalState, GoalType};
 pub use free_energy::{ExpectedFreeEnergy, EFECalculator};
 pub use priority_score::{PriorityScore, PriorityCalculator, PriorityLevel};
-pub use recommender::{Recommendation, PriorityRecommender};
+pub use recommender::{Recommendation, RecommendationBatch, PriorityRecommender};
+pub use knowledge::enrich_actions_with_knowledge;

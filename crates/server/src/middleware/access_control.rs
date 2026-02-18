@@ -71,7 +71,7 @@ impl std::str::FromStr for ProjectRole {
 #[derive(Debug, Clone, FromRow)]
 pub struct ProjectMember {
     pub id: Vec<u8>,
-    pub project_id: String,
+    pub project_id: Vec<u8>,
     pub user_id: Vec<u8>,
     pub role: String,
     pub permissions: String,
@@ -118,10 +118,15 @@ impl AccessContext {
             return Ok(ProjectRole::Owner);
         }
 
+        // Convert project_id string to UUID bytes for BLOB comparison
+        let project_uuid = Uuid::parse_str(project_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
+        let project_id_bytes = project_uuid.as_bytes().to_vec();
+
         // Check project membership
         let member: Option<ProjectMember> =
             sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
-                .bind(project_id)
+                .bind(&project_id_bytes)
                 .bind(self.user_id.as_bytes().to_vec())
                 .fetch_optional(pool)
                 .await
@@ -168,9 +173,13 @@ impl AccessContext {
             return Ok(Some(ProjectRole::Owner));
         }
 
+        let project_uuid = Uuid::parse_str(project_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
+        let project_id_bytes = project_uuid.as_bytes().to_vec();
+
         let member: Option<ProjectMember> =
             sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
-                .bind(project_id)
+                .bind(&project_id_bytes)
                 .bind(self.user_id.as_bytes().to_vec())
                 .fetch_optional(pool)
                 .await
@@ -186,6 +195,210 @@ impl AccessContext {
             }
             None => Ok(None),
         }
+    }
+
+    /// Hierarchical project access check:
+    /// 1. Direct project_members (existing logic)
+    /// 2. Organization membership (if project has organization_id)
+    /// 3. Client membership (if project has client_id)
+    /// 4. Admin bypass
+    pub async fn check_project_access_hierarchical(
+        &self,
+        pool: &sqlx::SqlitePool,
+        project_id: &str,
+        required_role: ProjectRole,
+    ) -> Result<ProjectRole, ApiError> {
+        // Admin bypass
+        if self.is_admin {
+            return Ok(ProjectRole::Owner);
+        }
+
+        // 1. Try direct project_members check
+        let project_uuid = Uuid::parse_str(project_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
+        let project_id_bytes = project_uuid.as_bytes().to_vec();
+        let user_id_bytes = self.user_id.as_bytes().to_vec();
+
+        let member: Option<ProjectMember> =
+            sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
+                .bind(&project_id_bytes)
+                .bind(&user_id_bytes)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+        if let Some(m) = member {
+            let role = m.role.parse::<ProjectRole>()
+                .map_err(|e| ApiError::InternalError(e))?;
+            let has_access = match required_role {
+                ProjectRole::Viewer => role.can_read(),
+                ProjectRole::Editor => role.can_write(),
+                ProjectRole::Admin => role.can_manage_members(),
+                ProjectRole::Owner => role.can_delete(),
+            };
+            if has_access {
+                return Ok(role);
+            }
+        }
+
+        // 2. Check organization membership
+        #[derive(sqlx::FromRow)]
+        struct ProjectOrgClient {
+            organization_id: Option<Vec<u8>>,
+            client_id: Option<Vec<u8>>,
+        }
+
+        let project_info: Option<ProjectOrgClient> = sqlx::query_as(
+            "SELECT organization_id, client_id FROM projects WHERE id = ?"
+        )
+        .bind(&project_id_bytes)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+        if let Some(info) = &project_info {
+            // Check org membership
+            if let Some(ref org_id_bytes) = info.organization_id {
+                #[derive(sqlx::FromRow)]
+                struct RoleRow {
+                    role: String,
+                }
+
+                let org_role: Option<RoleRow> = sqlx::query_as(
+                    "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?"
+                )
+                .bind(org_id_bytes)
+                .bind(&user_id_bytes)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+                if let Some(or) = org_role {
+                    let granted_role = match or.role.as_str() {
+                        "admin" => ProjectRole::Admin,
+                        "member" => ProjectRole::Editor,
+                        "viewer" => ProjectRole::Viewer,
+                        _ => ProjectRole::Viewer,
+                    };
+                    let has_access = match required_role {
+                        ProjectRole::Viewer => granted_role.can_read(),
+                        ProjectRole::Editor => granted_role.can_write(),
+                        ProjectRole::Admin => granted_role.can_manage_members(),
+                        ProjectRole::Owner => granted_role.can_delete(),
+                    };
+                    if has_access {
+                        return Ok(granted_role);
+                    }
+                }
+            }
+
+            // 3. Check client membership
+            if let Some(ref client_id_bytes) = info.client_id {
+                #[derive(sqlx::FromRow)]
+                struct RoleRow {
+                    role: String,
+                }
+
+                let client_role: Option<RoleRow> = sqlx::query_as(
+                    "SELECT role FROM client_members WHERE client_id = ? AND user_id = ?"
+                )
+                .bind(client_id_bytes)
+                .bind(&user_id_bytes)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+                if let Some(cr) = client_role {
+                    let granted_role = match cr.role.as_str() {
+                        "admin" => ProjectRole::Editor,
+                        "editor" => ProjectRole::Editor,
+                        "viewer" => ProjectRole::Viewer,
+                        _ => ProjectRole::Viewer,
+                    };
+                    let has_access = match required_role {
+                        ProjectRole::Viewer => granted_role.can_read(),
+                        ProjectRole::Editor => granted_role.can_write(),
+                        ProjectRole::Admin => granted_role.can_manage_members(),
+                        ProjectRole::Owner => granted_role.can_delete(),
+                    };
+                    if has_access {
+                        return Ok(granted_role);
+                    }
+                }
+            }
+        }
+
+        Err(ApiError::Forbidden(
+            "You do not have access to this project".to_string(),
+        ))
+    }
+
+    /// Check if user has access to a board via cross-org board sharing.
+    /// Returns the mapped ProjectRole if access is granted via a board_share.
+    pub async fn check_board_share_access(
+        &self,
+        pool: &sqlx::SqlitePool,
+        board_id: &str,
+    ) -> Result<Option<ProjectRole>, ApiError> {
+        if self.is_admin {
+            return Ok(Some(ProjectRole::Owner));
+        }
+
+        let board_uuid = Uuid::parse_str(board_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid board UUID: {}", e)))?;
+
+        let permission = db::models::board_share::BoardShare::check_user_share_access(
+            pool,
+            board_uuid,
+            self.user_id,
+        )
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+        Ok(permission.map(|p| match p.as_str() {
+            "admin" => ProjectRole::Admin,
+            "editor" => ProjectRole::Editor,
+            "viewer" => ProjectRole::Viewer,
+            _ => ProjectRole::Viewer,
+        }))
+    }
+
+    /// Extended hierarchical check that also considers board shares.
+    /// If `board_id` is provided and all other checks fail, tries board_share access.
+    pub async fn check_project_access_with_board(
+        &self,
+        pool: &sqlx::SqlitePool,
+        project_id: &str,
+        required_role: ProjectRole,
+        board_id: Option<&str>,
+    ) -> Result<ProjectRole, ApiError> {
+        // Try standard hierarchical check first
+        match self.check_project_access_hierarchical(pool, project_id, required_role).await {
+            Ok(role) => return Ok(role),
+            Err(_) if board_id.is_some() => {
+                // Fall through to board share check
+            }
+            Err(e) => return Err(e),
+        }
+
+        // Try board share access
+        if let Some(bid) = board_id {
+            if let Some(role) = self.check_board_share_access(pool, bid).await? {
+                let has_access = match required_role {
+                    ProjectRole::Viewer => role.can_read(),
+                    ProjectRole::Editor => role.can_write(),
+                    ProjectRole::Admin => role.can_manage_members(),
+                    ProjectRole::Owner => role.can_delete(),
+                };
+                if has_access {
+                    return Ok(role);
+                }
+            }
+        }
+
+        Err(ApiError::Forbidden(
+            "You do not have access to this project".to_string(),
+        ))
     }
 }
 

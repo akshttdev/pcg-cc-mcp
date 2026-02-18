@@ -25,6 +25,7 @@ import { useMultiplayerStore } from '@/stores/useMultiplayerStore';
 import { AgentWorkspaceLevel, getAgentBayBounds } from '@/components/virtual-world/AgentWorkspaceLevel';
 import { SpiralStaircase } from '@/components/virtual-world/SpiralStaircase';
 import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
+import { OrchaAvatar } from '@/components/virtual-world/OrchaAvatar';
 import { InventoryPanel, EquipmentPanel } from '@/components/virtual-world/hud';
 import { ENTRY_TRIGGER_DISTANCE, BUILDING_HALF_LENGTH } from '@/lib/virtual-world/constants';
 import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
@@ -840,6 +841,9 @@ export function VirtualEnvironmentPage() {
             canFly={isAdmin}
           />
 
+          {/* ORCHA orchestrator avatar follows admin only */}
+          {isAdmin && <OrchaAvatar userPosition={userPosition} />}
+
           {/* Multiplayer - renders other players */}
           <MultiplayerManager />
 
@@ -900,6 +904,7 @@ export function VirtualEnvironmentPage() {
                   onRequestCloseInput={releaseConsoleInput}
                   focusToken={consoleFocusVersion}
                   showHeader={false}
+                  projectId={selectedProject?.id}
                 />
               </div>
               <div className="border-t border-amber-500/30 px-3 py-1 text-[10px] text-amber-200/80">

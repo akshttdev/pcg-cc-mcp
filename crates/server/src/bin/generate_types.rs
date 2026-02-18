@@ -252,6 +252,21 @@ fn generate_types_content() -> String {
         server::routes::agent_chat::AgentChatRequest::decl(),
         server::routes::agent_chat::AgentChatResponse::decl(),
         server::routes::agent_chat::ConversationSummary::decl(),
+        // Knowledge Sheaf types
+        db::models::project_knowledge_source::KnowledgeSourceType::decl(),
+        db::models::project_knowledge_source::ProjectKnowledgeSource::decl(),
+        db::models::project_knowledge_source::ProjectKnowledgeCompleteness::decl(),
+        db::models::project_knowledge_source::HealthStatus::decl(),
+        db::models::project_knowledge_source::ProjectHealthSummary::decl(),
+        server::routes::knowledge::ProjectKnowledgeResponse::decl(),
+        // Sidebar types (health-enriched)
+        server::routes::sidebar::SidebarTree::decl(),
+        server::routes::sidebar::SidebarOrg::decl(),
+        server::routes::sidebar::SidebarClient::decl(),
+        server::routes::sidebar::SidebarProject::decl(),
+        server::routes::sidebar::SidebarProjectFolder::decl(),
+        server::routes::sidebar::SidebarSharedBoardGroup::decl(),
+        server::routes::sidebar::SidebarSharedBoard::decl(),
     ];
 
     let body = decls

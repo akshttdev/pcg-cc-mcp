@@ -104,6 +104,17 @@ async fn main() -> Result<(), VibeKanbanError> {
         }
     }
 
+    // Ensure ORCHA orchestrator agents exist for every active user
+    match routes::orcha::ensure_orcha_agents(&deployment.db().pool).await {
+        Ok(count) if count > 0 => {
+            tracing::info!("Created {} ORCHA orchestrator agents", count);
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!("Failed to ensure ORCHA agents: {}", e);
+        }
+    }
+
     // Auto-initialize Nora executive assistant on server startup
     if let Err(e) = routes::nora::initialize_nora_on_startup(&deployment).await {
         tracing::warn!("Failed to auto-initialize NORA on startup: {}", e);
@@ -144,6 +155,24 @@ async fn main() -> Result<(), VibeKanbanError> {
         Err(e) => {
             tracing::warn!("Failed to load sovereign storage config: {}", e);
         }
+    }
+
+    // Start Pulse Engine NATS consumer and publisher
+    {
+        let nats_url = std::env::var("PULSE_NATS_URL")
+            .or_else(|_| std::env::var("NATS_URL"))
+            .unwrap_or_else(|_| "nats://nonlocal.info:4222".to_string());
+
+        // Initialize PCG → Pulse publisher (global singleton)
+        server::pulse_publisher::init_global_publisher(&nats_url).await;
+
+        // Spawn Pulse → PCG consumer
+        let pool_for_pulse = deployment.db().pool.clone();
+        let nats_url_for_consumer = nats_url.clone();
+        tokio::spawn(async move {
+            tracing::info!("Pulse NATS consumer spawned");
+            server::pulse_consumer::start_pulse_consumer(&nats_url_for_consumer, pool_for_pulse).await;
+        });
     }
 
     // Auto-start APN node in background (if enabled)

@@ -1579,6 +1579,9 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             dev_script: None,
             cleanup_script: None,
             copy_files: None,
+            organization_id: None,
+            client_id: None,
+            folder_id: None,
         };
 
         let project = executor.create_project_entry(payload).await?;

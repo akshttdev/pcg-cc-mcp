@@ -37,9 +37,13 @@ pub async fn load_project_middleware(
 
     // Check if user has access to this project
     if let Some(access_context) = request.extensions().get::<AccessContext>() {
-        // Check if user has at least viewer access to this project
+        tracing::debug!(
+            "Checking project access for user {} (is_admin={}) on project {}",
+            access_context.user_id, access_context.is_admin, project_id
+        );
+        // Check if user has at least viewer access to this project (hierarchical: project_members → org → client)
         match access_context
-            .check_project_access(
+            .check_project_access_hierarchical(
                 &deployment.db().pool,
                 &project.id.to_string(),
                 ProjectRole::Viewer,
@@ -47,13 +51,14 @@ pub async fn load_project_middleware(
             .await
         {
             Ok(_role) => {
-                // User has access, continue
+                tracing::debug!("User {} granted {:?} access to project {}", access_context.user_id, _role, project_id);
             }
-            Err(_) => {
+            Err(e) => {
                 tracing::warn!(
-                    "User {} denied access to project {}",
+                    "User {} denied access to project {}: {:?}",
                     access_context.user_id,
-                    project_id
+                    project_id,
+                    e
                 );
                 return Err(StatusCode::FORBIDDEN);
             }
