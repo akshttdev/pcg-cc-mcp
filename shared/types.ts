@@ -10,7 +10,7 @@ export type DirectoryListResponse = { entries: Array<DirectoryEntry>, current_pa
 
 export type Project = { id: string, name: string, git_repo_path: string, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, 
 /**
- * VIBE budget limit (1 VIBE = $0.001 USD), None means unlimited
+ * VIBE budget limit (1 VIBE = $0.01 USD), None means unlimited
  */
 vibe_budget_limit: number | null, 
 /**
@@ -52,7 +52,7 @@ budget_limit: number,
  */
 spent_amount: number, 
 /**
- * VIBE budget limit (1 VIBE = $0.001 USD)
+ * VIBE budget limit (1 VIBE = $0.01 USD)
  */
 vibe_budget_limit: number | null, 
 /**
@@ -100,24 +100,23 @@ export type ApprovalStatus = "pending" | "approved" | "rejected" | "changesreque
 
 export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
 
-export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, has_merged_attempt: boolean, last_attempt_failed: boolean, executor: string,
+export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, has_merged_attempt: boolean, last_attempt_failed: boolean, executor: string, 
 /**
  * Latest execution summary for the task (populated from most recent attempt)
  */
-last_execution_summary: ExecutionSummaryBrief | null,
+last_execution_summary: ExecutionSummaryBrief | null, 
 /**
  * Collaborators who have worked on this task
  */
-collaborators: Array<TaskCollaborator> | null,
+collaborators: Array<TaskCollaborator> | null, 
 /**
  * Total VIBE cost for this task (aggregated from vibe_transactions)
  */
-vibe_cost: number | null,
+vibe_cost: bigint | null, 
 /**
  * Model used for the most recent vibe transaction on this task
  */
-vibe_model: string | null,
-id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
+vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
 
 export type TaskRelationships = { parent_task: Task | null, current_attempt: TaskAttempt, children: Array<Task>, };
 

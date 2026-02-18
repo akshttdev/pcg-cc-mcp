@@ -9,6 +9,10 @@
 -- AFTER:  ~14 unified projects with proper board structure
 -- ============================================================================
 
+-- NOTE: This migration contains hardcoded production UUIDs.
+-- All INSERT statements use OR IGNORE and WHERE EXISTS guards so they
+-- safely no-op on dev/staging databases where those rows don't exist.
+
 -- ============================================================================
 -- 1. POWERCLUB GLOBAL
 --    Canonical: "Sovereign Stack" (05ABAAF5...) → rename to "Powerclub Global"
@@ -32,42 +36,24 @@ WHERE id = X'1B49EFBE6D3549619274EB0FDDBE7911';
 
 -- Create Website board
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'05ABAAF5B2494D1CA980C27AA095F579',
-    'Website',
-    'website',
-    'custom',
-    'powerclubglobal.com — marketing site, content, SEO',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'05ABAAF5B2494D1CA980C27AA095F579', 'Website', 'website', 'custom',
+       'powerclubglobal.com — marketing site, content, SEO',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'05ABAAF5B2494D1CA980C27AA095F579');
 
 -- Create Internal / Admin board
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'05ABAAF5B2494D1CA980C27AA095F579',
-    'Internal',
-    'internal',
-    'custom',
-    'Private admin tooling — internal ops, employee-only',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'05ABAAF5B2494D1CA980C27AA095F579', 'Internal', 'internal', 'custom',
+       'Private admin tooling — internal ops, employee-only',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'05ABAAF5B2494D1CA980C27AA095F579');
 
 -- Create Tactical Transport board
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'05ABAAF5B2494D1CA980C27AA095F579',
-    'Tactical Transport',
-    'tactical-transport',
-    'custom',
-    'PCG Tactical Transportation service',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'05ABAAF5B2494D1CA980C27AA095F579', 'Tactical Transport', 'tactical-transport', 'custom',
+       'PCG Tactical Transportation service',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'05ABAAF5B2494D1CA980C27AA095F579');
 
 -- Move ORCHA tasks → Powerclub Global project, onto the ORCHA/Dashboard board
 UPDATE tasks
@@ -112,28 +98,16 @@ WHERE id = X'BE035EF65E1C4FCDAAA7C746080F7886';
 
 -- Create boards
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'BE035EF65E1C4FCDAAA7C746080F7886',
-    'Website',
-    'website',
-    'default',
-    'Alpha Protocol web presence',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'BE035EF65E1C4FCDAAA7C746080F7886', 'Website', 'website', 'custom',
+       'Alpha Protocol web presence',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'BE035EF65E1C4FCDAAA7C746080F7886');
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'BE035EF65E1C4FCDAAA7C746080F7886',
-    'Next.js Rebuild',
-    'nextjs-rebuild',
-    'custom',
-    'Next.js rewrite of the Alpha Protocol site',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'BE035EF65E1C4FCDAAA7C746080F7886', 'Next.js Rebuild', 'nextjs-rebuild', 'custom',
+       'Next.js rewrite of the Alpha Protocol site',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'BE035EF65E1C4FCDAAA7C746080F7886');
 
 UPDATE projects SET deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = X'B83C8D945455483E8CE27DEC3DDDEAB0'; -- alpha-protocol-web-nextjs
 
@@ -150,28 +124,16 @@ SET name = 'Spectrum Galactic',
 WHERE id = X'8B8F9575E68D4741A081233A0FA940D0';
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'8B8F9575E68D4741A081233A0FA940D0',
-    'Website',
-    'website',
-    'default',
-    'Spectrum Galactic public website',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'8B8F9575E68D4741A081233A0FA940D0', 'Website', 'website', 'custom',
+       'Spectrum Galactic public website',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'8B8F9575E68D4741A081233A0FA940D0');
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'8B8F9575E68D4741A081233A0FA940D0',
-    'Admin',
-    'admin',
-    'custom',
-    'Spectrum Galactic admin panel',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'8B8F9575E68D4741A081233A0FA940D0', 'Admin', 'admin', 'custom',
+       'Spectrum Galactic admin panel',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'8B8F9575E68D4741A081233A0FA940D0');
 
 UPDATE projects SET deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = X'E22C48F729AC408C823255B340C10694'; -- spectrum-admin
 
@@ -188,28 +150,16 @@ SET name = 'Pythia AI',
 WHERE id = X'4B8B30A3CEC448D7A9B18820749CCCE2';
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'4B8B30A3CEC448D7A9B18820749CCCE2',
-    'Core',
-    'core',
-    'default',
-    'Pythia AI core platform',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'4B8B30A3CEC448D7A9B18820749CCCE2', 'Core', 'core', 'custom',
+       'Pythia AI core platform',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'4B8B30A3CEC448D7A9B18820749CCCE2');
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'4B8B30A3CEC448D7A9B18820749CCCE2',
-    'Admin',
-    'admin',
-    'custom',
-    'Pythia AI admin panel',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'4B8B30A3CEC448D7A9B18820749CCCE2', 'Admin', 'admin', 'custom',
+       'Pythia AI admin panel',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'4B8B30A3CEC448D7A9B18820749CCCE2');
 
 UPDATE projects SET deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = X'BEDB6A6E531545A1849FE402B92AC70D'; -- pythia-admin
 
@@ -230,16 +180,10 @@ SET name = 'VLink Platform',
 WHERE id = X'0C004BAEE7F74BE9B67E426C44814DC5';
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'72312B4C1C6148C79210EE3D8286B92A',
-    'Website',
-    'website',
-    'custom',
-    'Veritwin marketing website',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'72312B4C1C6148C79210EE3D8286B92A', 'Website', 'website', 'custom',
+       'Veritwin marketing website',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'72312B4C1C6148C79210EE3D8286B92A');
 
 -- Reassign to Veratwin org
 UPDATE projects
@@ -265,16 +209,10 @@ SET name = 'Token Website',
 WHERE id = X'9CB2FA6F57AB42868EEC7F0971F14BAE';
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'09C61720C92049F6B2C33EF2C6711085',
-    'Admin',
-    'admin',
-    'custom',
-    'VIBE Token admin panel and internal tooling',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'09C61720C92049F6B2C33EF2C6711085', 'Admin', 'admin', 'custom',
+       'VIBE Token admin panel and internal tooling',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'09C61720C92049F6B2C33EF2C6711085');
 
 UPDATE projects SET deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = X'47E308DE5329449F8F6EBC8828EDEA32'; -- vibe-admin
 
@@ -291,28 +229,16 @@ SET name = 'YachtMaster',
 WHERE id = X'884BE248B70E45619CB0DC0999DAA85F';
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'884BE248B70E45619CB0DC0999DAA85F',
-    'Mobile App',
-    'mobile-app',
-    'default',
-    'YachtMaster mobile application',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'884BE248B70E45619CB0DC0999DAA85F', 'Mobile App', 'mobile-app', 'custom',
+       'YachtMaster mobile application',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'884BE248B70E45619CB0DC0999DAA85F');
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'884BE248B70E45619CB0DC0999DAA85F',
-    'Web',
-    'web',
-    'custom',
-    'YachtMaster web application',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'884BE248B70E45619CB0DC0999DAA85F', 'Web', 'web', 'custom',
+       'YachtMaster web application',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'884BE248B70E45619CB0DC0999DAA85F');
 
 UPDATE projects SET deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = X'AAB25F3447494CEFB451EEBBF6C4AC26'; -- YachtMaster-Web
 
@@ -329,28 +255,16 @@ SET name = 'WillRise Unlimited',
 WHERE id = X'9732A335374F4CA5A7EB29397BEBCCB6';
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'9732A335374F4CA5A7EB29397BEBCCB6',
-    'Main',
-    'main',
-    'default',
-    'WillRise Unlimited core brand',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'9732A335374F4CA5A7EB29397BEBCCB6', 'Main', 'main', 'custom',
+       'WillRise Unlimited core brand',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'9732A335374F4CA5A7EB29397BEBCCB6');
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'9732A335374F4CA5A7EB29397BEBCCB6',
-    'Skyfox Swings',
-    'skyfox-swings',
-    'custom',
-    'Skyfox Swings — WillRise derivative brand',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'9732A335374F4CA5A7EB29397BEBCCB6', 'Skyfox Swings', 'skyfox-swings', 'custom',
+       'Skyfox Swings — WillRise derivative brand',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'9732A335374F4CA5A7EB29397BEBCCB6');
 
 UPDATE projects SET deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = X'A84A1EDE4AF74359979EF8B363C54BB9'; -- skywalkerswings
 
@@ -367,16 +281,10 @@ SET name = 'Prime Hospitality',
 WHERE id = X'C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF';
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-VALUES (
-    randomblob(16),
-    X'C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF',
-    'Website',
-    'website',
-    'default',
-    'Prime Hospitality marketing website',
-    strftime('%Y-%m-%d %H:%M:%f', 'now'),
-    strftime('%Y-%m-%d %H:%M:%f', 'now')
-);
+SELECT randomblob(16), X'C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF', 'Website', 'website', 'custom',
+       'Prime Hospitality marketing website',
+       strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
+WHERE EXISTS (SELECT 1 FROM projects WHERE id = X'C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF');
 
 UPDATE projects SET deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = X'9B763C80642043C8B8794210C9B760DA'; -- prime-website
 
@@ -403,7 +311,7 @@ WHERE id = X'0851B9FDB4354B7486417BF675F2F53E';
 -- ============================================================================
 
 INSERT OR IGNORE INTO project_boards (id, project_id, name, slug, board_type, description, created_at, updated_at)
-SELECT randomblob(16), p.id, p.name || ' Board', REPLACE(LOWER(p.name), ' ', '-') || '-board', 'default', NULL,
+SELECT randomblob(16), p.id, p.name || ' Board', REPLACE(LOWER(p.name), ' ', '-') || '-board', 'custom', NULL,
        strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now')
 FROM projects p
 WHERE p.deleted_at IS NULL

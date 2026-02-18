@@ -16,8 +16,11 @@ members = [
     "crates/pythia-client",
     "apn-app/src-tauri",
     "frontend/src-tauri",
-    "src-tauri",
-    "crates/cli"
+    "crates/cli",
+    "crates/setup-wizard"
+]
+exclude = [
+    "src-tauri"
 ]
 
 [workspace.dependencies]

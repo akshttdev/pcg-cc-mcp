@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-  vibertas_lib::run();
+  pcg_dashboard_lib::run();
 }

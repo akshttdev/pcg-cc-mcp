@@ -27,9 +27,18 @@ impl DBService {
             "sqlite://{}",
             asset_dir().join("db.sqlite").to_string_lossy()
         );
+        // sqlx 0.8+ defaults foreign_keys=ON; disable for migration to allow
+        // data-only migrations with production UUIDs that may not exist in dev.
+        // Re-enabled post-migration via after_connect hook on the app pool.
+        let migration_options = SqliteConnectOptions::from_str(&database_url)?
+            .create_if_missing(true)
+            .foreign_keys(false);
+        let migration_pool = SqlitePool::connect_with(migration_options).await?;
+        sqlx::migrate!("./migrations").run(&migration_pool).await?;
+        migration_pool.close().await;
+
         let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
         let pool = SqlitePool::connect_with(options).await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
         Ok(DBService { pool })
     }
 
@@ -63,6 +72,13 @@ impl DBService {
         );
         let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
 
+        // Run migrations with FK enforcement OFF so data-only migrations with
+        // production UUIDs don't fail on dev/staging databases.
+        let migration_options = options.clone().foreign_keys(false);
+        let migration_pool = SqlitePool::connect_with(migration_options).await?;
+        sqlx::migrate!("./migrations").run(&migration_pool).await?;
+        migration_pool.close().await;
+
         let pool = if let Some(hook) = after_connect {
             SqlitePoolOptions::new()
                 .after_connect(move |conn, _meta| {
@@ -78,7 +94,6 @@ impl DBService {
             SqlitePool::connect_with(options).await?
         };
 
-        sqlx::migrate!("./migrations").run(&pool).await?;
         Ok(pool)
     }
 }
