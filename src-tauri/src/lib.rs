@@ -1,186 +1,48 @@
-//! Vibertas - Sovereign OS
+//! PCG Dashboard - Desktop Application
 //!
-//! This is the Tauri application that wraps the PCG Dashboard and
-//! Alpha Protocol Network functionality for Desktop and Mobile.
+//! This is the Tauri application that wraps the PCG Dashboard backend server
+//! for Desktop and Mobile platforms.
 
-use alpha_protocol_core::identity::WalletInfo;
+mod backend;
+
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{Manager, State};
+<<<<<<< Updated upstream
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 use tokio::sync::{mpsc, oneshot, RwLock};
+=======
+use tokio::sync::RwLock;
+>>>>>>> Stashed changes
 use sysinfo::{System, Disks};
+use crate::backend::BackendServer;
 
-/// Node initialization parameters (all Send + Sync)
-#[derive(Debug, Clone)]
-struct NodeParams {
-    mnemonic: String,
-    port: Option<u16>,
-    capabilities: Vec<String>,
-}
-
-/// Commands that can be sent to the node task
-#[derive(Debug)]
-enum NodeCommand {
-    Start { resp: oneshot::Sender<Result<String, String>> },
-    GetPeers { resp: oneshot::Sender<Vec<PeerInfoData>> },
-    GetInfo { resp: oneshot::Sender<Option<NodeInfoData>> },
-    GetMeshStats { resp: oneshot::Sender<MeshStatsData> },
-    Announce { resp: oneshot::Sender<Result<(), String>> },
-    Broadcast { topic: String, message: String, resp: oneshot::Sender<Result<(), String>> },
-    SendDirect { recipient: String, message: String, resp: oneshot::Sender<Result<(), String>> },
-}
-
-/// Peer info (serializable)
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PeerInfoData {
-    pub peer_id: String,
-    pub address: String,
-    pub capabilities: Vec<String>,
-}
-
-/// Data for node info (serializable)
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct NodeInfoData {
-    pub short_id: String,
-    pub address: String,
-    pub public_key: String,
-    pub peer_count: usize,
-}
-
-/// Bandwidth statistics
-#[derive(Debug, Clone, serde::Serialize, Default)]
-pub struct BandwidthStats {
-    pub available: f64,      // Mbps available to contribute
-    pub contributing: f64,   // Mbps currently contributing
-    pub consuming: f64,      // Mbps currently consuming
-}
-
-/// System resource information
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ResourceStats {
-    pub cpu_cores: usize,
-    pub cpu_usage: f64,
-    pub memory_total: u64,      // GB
-    pub memory_used: u64,       // GB
-    pub storage_available: u64, // GB
-}
-
-/// Complete mesh statistics
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct MeshStatsData {
-    pub node_id: String,
-    pub status: String,  // "online", "offline", "connecting"
-    pub peers_connected: usize,
-    pub peers: Vec<PeerInfoData>,
-    pub bandwidth: BandwidthStats,
-    pub resources: ResourceStats,
-    pub relay_connected: bool,
-    pub uptime: u64,  // seconds
-    pub vibe_balance: f64,
-    pub transactions: Vec<TransactionLog>,
-    pub active_tasks: u32,
-    pub completed_tasks_today: u32,
-}
-
-/// Transaction log entry for mesh operations
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TransactionLog {
-    pub id: String,
-    pub timestamp: String,
-    pub tx_type: String,  // task_distributed, task_received, execution_completed, etc.
-    pub description: String,
-    pub vibe_amount: Option<f64>,
-    pub peer_node: Option<String>,
-}
-
-/// Handle to communicate with the node task
-#[derive(Clone)]
-pub struct NodeHandle {
-    cmd_tx: mpsc::UnboundedSender<NodeCommand>,
-}
-
-impl NodeHandle {
-    fn new(cmd_tx: mpsc::UnboundedSender<NodeCommand>) -> Self {
-        Self { cmd_tx }
-    }
-
-    async fn start(&self) -> Result<String, String> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        self.cmd_tx.send(NodeCommand::Start { resp: resp_tx }).map_err(|e| e.to_string())?;
-        resp_rx.await.map_err(|e| e.to_string())?
-    }
-
-    async fn get_peers(&self) -> Vec<PeerInfoData> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        if self.cmd_tx.send(NodeCommand::GetPeers { resp: resp_tx }).is_ok() {
-            resp_rx.await.unwrap_or_default()
-        } else {
-            vec![]
-        }
-    }
-
-    async fn get_info(&self) -> Option<NodeInfoData> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        if self.cmd_tx.send(NodeCommand::GetInfo { resp: resp_tx }).is_ok() {
-            resp_rx.await.ok().flatten()
-        } else {
-            None
-        }
-    }
-
-    async fn get_mesh_stats(&self) -> Option<MeshStatsData> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        if self.cmd_tx.send(NodeCommand::GetMeshStats { resp: resp_tx }).is_ok() {
-            resp_rx.await.ok()
-        } else {
-            None
-        }
-    }
-
-    async fn announce(&self) -> Result<(), String> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        self.cmd_tx.send(NodeCommand::Announce { resp: resp_tx }).map_err(|e| e.to_string())?;
-        resp_rx.await.map_err(|e| e.to_string())?
-    }
-
-    async fn broadcast(&self, topic: String, message: String) -> Result<(), String> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        self.cmd_tx.send(NodeCommand::Broadcast { topic, message, resp: resp_tx }).map_err(|e| e.to_string())?;
-        resp_rx.await.map_err(|e| e.to_string())?
-    }
-
-    async fn send_direct(&self, recipient: String, message: String) -> Result<(), String> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        self.cmd_tx.send(NodeCommand::SendDirect { recipient, message, resp: resp_tx }).map_err(|e| e.to_string())?;
-        resp_rx.await.map_err(|e| e.to_string())?
-    }
-}
-
-/// Application state shared across Tauri commands
+/// Application state
 pub struct AppState {
-    /// Handle to the node task
-    node_handle: Arc<RwLock<Option<NodeHandle>>>,
-    /// Wallet info
-    wallet: Arc<RwLock<Option<WalletInfo>>>,
-    /// Node start time for uptime tracking
     start_time: Arc<RwLock<Option<Instant>>>,
+<<<<<<< Updated upstream
     /// Backend sidecar process handle
     sidecar_child: Arc<RwLock<Option<CommandChild>>>,
+=======
+    backend: Arc<BackendServer>,
+>>>>>>> Stashed changes
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            node_handle: Arc::new(RwLock::new(None)),
-            wallet: Arc::new(RwLock::new(None)),
             start_time: Arc::new(RwLock::new(None)),
+<<<<<<< Updated upstream
             sidecar_child: Arc::new(RwLock::new(None)),
+=======
+            backend: Arc::new(BackendServer::new(58297)),
+>>>>>>> Stashed changes
         }
     }
 }
 
+<<<<<<< Updated upstream
 /// Run the node task that processes commands
 /// Creates all non-Send types inside the task
 fn spawn_node_task(params: NodeParams) -> mpsc::UnboundedSender<NodeCommand> {
@@ -588,91 +450,72 @@ async fn get_peers(state: State<'_, AppState>) -> Result<Vec<PeerInfoData>, Stri
 }
 
 /// Broadcast a message to the network
+=======
+/// Get system information
+>>>>>>> Stashed changes
 #[tauri::command]
-async fn broadcast_message(
-    state: State<'_, AppState>,
-    topic: String,
-    message: String,
-) -> Result<(), String> {
-    let handle_guard = state.node_handle.read().await;
-    if let Some(handle) = handle_guard.as_ref() {
-        handle.broadcast(topic, message).await
-    } else {
-        Err("Node not initialized".to_string())
-    }
+async fn get_system_info() -> Result<SystemInfo, String> {
+    let mut system = System::new_all();
+    system.refresh_all();
+
+    let disks = Disks::new_with_refreshed_list();
+
+    Ok(SystemInfo {
+        os: System::name().unwrap_or_else(|| "Unknown".to_string()),
+        os_version: System::os_version().unwrap_or_else(|| "Unknown".to_string()),
+        kernel_version: System::kernel_version().unwrap_or_else(|| "Unknown".to_string()),
+        cpu_count: system.cpus().len(),
+        total_memory: system.total_memory(),
+        used_memory: system.used_memory(),
+        total_swap: system.total_swap(),
+        used_swap: system.used_swap(),
+        disk_total: disks.iter().map(|d| d.total_space()).sum(),
+        disk_available: disks.iter().map(|d| d.available_space()).sum(),
+    })
 }
 
-/// Send direct message to a peer
-#[tauri::command]
-async fn send_direct_message(
-    state: State<'_, AppState>,
-    recipient: String,
-    message: String,
-) -> Result<(), String> {
-    let handle_guard = state.node_handle.read().await;
-    if let Some(handle) = handle_guard.as_ref() {
-        handle.send_direct(recipient, message).await
-    } else {
-        Err("Node not initialized".to_string())
-    }
+/// System information
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SystemInfo {
+    pub os: String,
+    pub os_version: String,
+    pub kernel_version: String,
+    pub cpu_count: usize,
+    pub total_memory: u64,
+    pub used_memory: u64,
+    pub total_swap: u64,
+    pub used_swap: u64,
+    pub disk_total: u64,
+    pub disk_available: u64,
 }
 
-/// Announce node capabilities
+/// Get backend server status
 #[tauri::command]
-async fn announce(state: State<'_, AppState>) -> Result<(), String> {
-    let handle_guard = state.node_handle.read().await;
-    if let Some(handle) = handle_guard.as_ref() {
-        handle.announce().await
-    } else {
-        Err("Node not initialized".to_string())
-    }
+async fn get_backend_status(state: State<'_, AppState>) -> Result<BackendStatus, String> {
+    let backend = &state.backend;
+    let is_healthy = backend.is_healthy().await;
+    let url = backend.url();
+
+    Ok(BackendStatus {
+        running: is_healthy,
+        url,
+    })
 }
 
-/// Get node info
-#[tauri::command]
-async fn get_node_info(state: State<'_, AppState>) -> Result<NodeInfoData, String> {
-    let handle_guard = state.node_handle.read().await;
-    if let Some(handle) = handle_guard.as_ref() {
-        handle.get_info().await.ok_or_else(|| "Node info not available".to_string())
-    } else {
-        Err("Node not initialized".to_string())
-    }
+/// Backend status
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BackendStatus {
+    pub running: bool,
+    pub url: String,
 }
 
-/// Get comprehensive mesh network statistics
+/// Get application uptime
 #[tauri::command]
-async fn get_mesh_stats(state: State<'_, AppState>) -> Result<MeshStatsData, String> {
-    let handle_guard = state.node_handle.read().await;
-    if let Some(handle) = handle_guard.as_ref() {
-        handle.get_mesh_stats().await.ok_or_else(|| "Mesh stats not available".to_string())
-    } else {
-        // Return offline stats with system resources even if node not initialized
-        let mut sys = System::new_all();
-        sys.refresh_all();
-
-        Ok(MeshStatsData {
-            node_id: "not_initialized".to_string(),
-            status: "offline".to_string(),
-            peers_connected: 0,
-            peers: vec![],
-            bandwidth: BandwidthStats::default(),
-            resources: ResourceStats {
-                cpu_cores: sys.cpus().len(),
-                cpu_usage: sys.global_cpu_usage() as f64,
-                memory_total: sys.total_memory() / 1_073_741_824,
-                memory_used: sys.used_memory() / 1_073_741_824,
-                storage_available: {
-                    let disks = Disks::new_with_refreshed_list();
-                    disks.iter().map(|d| d.available_space()).sum::<u64>() / 1_073_741_824
-                },
-            },
-            relay_connected: false,
-            uptime: 0,
-            vibe_balance: 0.0,
-            transactions: vec![],
-            active_tasks: 0,
-            completed_tasks_today: 0,
-        })
+async fn get_uptime(state: State<'_, AppState>) -> Result<u64, String> {
+    let start_time = state.start_time.read().await;
+    match *start_time {
+        Some(start) => Ok(start.elapsed().as_secs()),
+        None => Ok(0),
     }
 }
 
@@ -705,16 +548,9 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
-            init_node,
-            import_node,
-            start_node,
-            get_wallet,
-            get_peers,
-            broadcast_message,
-            send_direct_message,
-            announce,
-            get_node_info,
-            get_mesh_stats,
+            get_system_info,
+            get_backend_status,
+            get_uptime,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -725,6 +561,7 @@ pub fn run() {
                 )?;
             }
 
+<<<<<<< Updated upstream
             log::info!("ORCHA starting...");
 
             // Spawn the backend server as a sidecar process
@@ -793,11 +630,30 @@ pub fn run() {
                         BACKEND_PORT
                     );
                     let _ = window.eval(&script);
+=======
+            log::info!("PCG Dashboard starting...");
+
+            // Record start time
+            let app_state: State<AppState> = app.state();
+            tauri::async_runtime::block_on(async {
+                let mut start_time = app_state.start_time.write().await;
+                *start_time = Some(Instant::now());
+            });
+
+            // Start the backend server
+            let app_state: State<AppState> = app.state();
+            let backend = app_state.backend.clone();
+            tauri::async_runtime::spawn(async move {
+                match backend.start().await {
+                    Ok(_) => log::info!("✅ PCG Dashboard backend started successfully"),
+                    Err(e) => log::error!("❌ Failed to start backend: {}", e),
+>>>>>>> Stashed changes
                 }
             });
 
             Ok(())
         })
+<<<<<<< Updated upstream
         .build(tauri::generate_context!())
         .expect("error while building ORCHA")
         .run(|app_handle, event| {
@@ -813,4 +669,8 @@ pub fn run() {
                 });
             }
         });
+=======
+        .run(tauri::generate_context!())
+        .expect("error while running PCG Dashboard");
+>>>>>>> Stashed changes
 }

@@ -1,0 +1,26 @@
+[package]
+name = "setup-wizard"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+inquire = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+bcrypt = "0.15"
+sqlx = { version = "0.8.6", features = ["runtime-tokio-native-tls", "sqlite"] }
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+sysinfo = "0.32"
+whoami = "1.5"
+colored = "2.1"
+dirs = "5.0"
+rand = "0.8"
+serde_json = "1.0"
+
+[[bin]]
+name = "orcha-setup"
+path = "src/main.rs"

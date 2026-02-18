@@ -211,6 +211,8 @@ pub async fn ensure_orcha_agents(pool: &SqlitePool) -> Result<usize, String> {
             parent_agent_id: nora_id,
             team_id: None,
             created_by: Some("system".to_string()),
+            agent_tier: Some("system".to_string()),
+            owner_id: None,
         };
 
         match Agent::create(pool, &create).await {

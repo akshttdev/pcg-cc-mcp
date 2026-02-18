@@ -1,5 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
+<<<<<<< Updated upstream
   "productName": "ORCHA",
   "version": "0.1.0",
   "identifier": "com.okbventures.orcha",
@@ -7,12 +8,24 @@
     "frontendDist": "../frontend/dist",
     "devUrl": "http://localhost:3000",
     "beforeBuildCommand": ""
+=======
+  "productName": "PCG Dashboard",
+  "version": "0.1.0",
+  "identifier": "com.powerclubglobal.dashboard",
+  "build": {
+    "frontendDist": "../frontend/dist",
+    "devUrl": "http://localhost:3000"
+>>>>>>> Stashed changes
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
+<<<<<<< Updated upstream
         "title": "ORCHA - Orchestration Hub",
+=======
+        "title": "PCG Dashboard",
+>>>>>>> Stashed changes
         "width": 1280,
         "height": 800,
         "minWidth": 800,
@@ -36,8 +49,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "publisher": "OKB Ventures",
+    "publisher": "Powerclub Global",
     "category": "Productivity",
+<<<<<<< Updated upstream
     "shortDescription": "ORCHA - Orchestration Hub for the Alpha Protocol Network",
     "longDescription": "ORCHA is the orchestration hub that connects you to the Alpha Protocol Network, enabling decentralized compute, privacy-first communication, and collective intelligence.",
     "externalBin": [
@@ -46,6 +60,15 @@
     "macOS": {
       "signingIdentity": null,
       "entitlements": null
+=======
+    "shortDescription": "PCG Dashboard - Community Coordination & Mesh Network",
+    "longDescription": "PCG Dashboard is the command center for the Alpha Protocol Network, enabling decentralized coordination, privacy-first communication, and collective intelligence.",
+    "iOS": {
+      "minimumSystemVersion": "13.0"
+    },
+    "android": {
+      "minSdkVersion": 24
+>>>>>>> Stashed changes
     }
   }
 }
