@@ -642,4 +642,22 @@ impl CrmContact {
             gmail_contact_id: None,
         }).await
     }
+
+    /// Find contacts subscribed to a given tag (e.g. "pulse:project-name")
+    /// who have SMS opt-in enabled and are not on the do-not-contact list.
+    pub async fn find_subscribed_to_tag(
+        pool: &SqlitePool,
+        tag: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Self>(
+            r#"SELECT * FROM crm_contacts
+               WHERE tags LIKE '%' || ? || '%'
+                 AND sms_opt_in = 1
+                 AND (do_not_contact IS NULL OR do_not_contact = 0)
+                 AND (phone IS NOT NULL OR mobile IS NOT NULL)"#,
+        )
+        .bind(tag)
+        .fetch_all(pool)
+        .await
+    }
 }

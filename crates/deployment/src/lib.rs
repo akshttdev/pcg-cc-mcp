@@ -288,6 +288,9 @@ pub trait Deployment: Clone + Send + Sync + 'static {
                         dev_script: None,
                         cleanup_script: None,
                         copy_files: None,
+                        organization_id: None,
+                        client_id: None,
+                        folder_id: None,
                     };
                     // Ensure existing repo has a main branch if it's empty
                     if let Err(e) = self.git().ensure_main_branch_exists(&repo.path) {
@@ -431,6 +434,9 @@ pub trait Deployment: Clone + Send + Sync + 'static {
             dev_script,
             cleanup_script: None,
             copy_files: None,
+            organization_id: None,
+            client_id: None,
+            folder_id: None,
         };
 
         let project_id = Uuid::new_v4();

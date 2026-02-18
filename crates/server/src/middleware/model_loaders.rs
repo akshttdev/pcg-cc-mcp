@@ -41,9 +41,9 @@ pub async fn load_project_middleware(
             "Checking project access for user {} (is_admin={}) on project {}",
             access_context.user_id, access_context.is_admin, project_id
         );
-        // Check if user has at least viewer access to this project
+        // Check if user has at least viewer access to this project (hierarchical: project_members → org → client)
         match access_context
-            .check_project_access(
+            .check_project_access_hierarchical(
                 &deployment.db().pool,
                 &project.id.to_string(),
                 ProjectRole::Viewer,

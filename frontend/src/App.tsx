@@ -12,6 +12,7 @@ import { GlobalTasksPage } from '@/pages/global-tasks';
 import { NoraPage } from '@/pages/nora';
 import { TopsiPage } from '@/pages/topsi';
 import { TopsiWidget } from '@/components/topsi';
+import { KnowledgePage } from '@/pages/knowledge';
 import MissionControlPage from '@/pages/mission-control';
 import { WorkflowsPage } from '@/pages/workflows';
 import { SocialPage } from '@/pages/social';
@@ -20,6 +21,7 @@ import { VirtualEnvironmentPage } from '@/pages/virtual-environment';
 import { EmbedVirtualEnvironmentPage } from '@/pages/embed/virtual-environment';
 import MeshPage from '@/pages/mesh';
 import VibePage from '@/pages/vibe';
+import PulsePage from '@/pages/pulse';
 import { OAuthCallbackPage } from '@/pages/oauth/OAuthCallbackPage';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
@@ -236,6 +238,11 @@ function AppContent() {
                       path="/projects/:projectId/crm"
                       element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
                     />
+                    {/* Project Knowledge - knowledge sheaf view */}
+                    <Route
+                      path="/projects/:projectId/knowledge"
+                      element={<ProtectedRoute><KnowledgePage /></ProtectedRoute>}
+                    />
                     {/* My Tasks - for non-admin users */}
                     <Route path="/my-tasks" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
                     {/* Nora Command - admin only global controller */}
@@ -265,6 +272,14 @@ function AppContent() {
                     <Route
                       path="/mesh"
                       element={<ProtectedRoute><MeshPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/pulse"
+                      element={<ProtectedRoute><PulsePage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/projects/:projectId/pulse"
+                      element={<ProtectedRoute><PulsePage /></ProtectedRoute>}
                     />
                     <Route
                       path="/vibe"

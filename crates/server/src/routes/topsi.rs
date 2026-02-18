@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     routing::{get, post, put},
 };
 use chrono::{DateTime, Utc};
@@ -17,6 +17,7 @@ use tokio::sync::RwLock;
 use topsi::{
     TopsiAgent, TopsiConfig, TopsiError, TopsiRequest, TopsiRequestType, TopsiResponse,
     TopologySummary, DetectedIssue, UserContext, AccessScope, ProjectAccess,
+    RecommendationBatch,
     initialize_topsi,
 };
 use ts_rs::TS;
@@ -122,6 +123,8 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         .route("/topsi/issues", get(detect_issues))
         .route("/topsi/issues/{project_id}", get(detect_project_issues))
         .route("/topsi/projects", get(get_accessible_projects))
+        .route("/topsi/recommendations", get(get_recommendations))
+        .route("/topsi/recommendations/{project_id}", get(get_project_recommendations))
         .route("/topsi/command", post(execute_command))
         // Voice routes for Topsi
         .route("/topsi/voice/synthesize", post(synthesize_speech))
@@ -218,6 +221,12 @@ pub struct AccessibleProjectsResponse {
     pub projects: Vec<ProjectAccess>,
     pub access_level: String,
     pub is_admin: bool,
+}
+
+/// Recommendations query parameters
+#[derive(Debug, Deserialize)]
+pub struct RecommendationsQuery {
+    pub max_count: Option<usize>,
 }
 
 /// Command request
@@ -722,6 +731,80 @@ pub async fn get_accessible_projects(
         access_level: access_level.to_string(),
         is_admin: user_context.is_admin,
     }))
+}
+
+/// Get recommendations across all accessible projects
+pub async fn get_recommendations(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Query(params): Query<RecommendationsQuery>,
+) -> Result<Json<RecommendationBatch>, ApiError> {
+    let topsi_instance = get_topsi_instance().await?;
+    let instance = topsi_instance.read().await;
+    let topsi = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let topsi_request = TopsiRequest::new(TopsiRequestType::GetRecommendations {
+        project_id: None,
+        max_count: params.max_count,
+    });
+
+    let response = topsi
+        .process_request(topsi_request, &user_context)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to get recommendations: {}", e)))?;
+
+    // Parse the JSON message back into a RecommendationBatch
+    let batch: RecommendationBatch = serde_json::from_str(&response.message)
+        .map_err(|e| ApiError::InternalError(format!("Failed to parse recommendations: {}", e)))?;
+
+    Ok(Json(batch))
+}
+
+/// Get recommendations for a specific project
+pub async fn get_project_recommendations(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Query(params): Query<RecommendationsQuery>,
+) -> Result<Json<RecommendationBatch>, ApiError> {
+    let topsi_instance = get_topsi_instance().await?;
+    let instance = topsi_instance.read().await;
+    let topsi = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    // Verify access
+    if !topsi.access_control.can_access_project(&user_context, project_id).await {
+        return Err(ApiError::Forbidden(format!(
+            "Access denied to project {}",
+            project_id
+        )));
+    }
+
+    let topsi_request = TopsiRequest::new(TopsiRequestType::GetRecommendations {
+        project_id: Some(project_id),
+        max_count: params.max_count,
+    });
+
+    let response = topsi
+        .process_request(topsi_request, &user_context)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to get recommendations: {}", e)))?;
+
+    let batch: RecommendationBatch = serde_json::from_str(&response.message)
+        .map_err(|e| ApiError::InternalError(format!("Failed to parse recommendations: {}", e)))?;
+
+    Ok(Json(batch))
 }
 
 /// Execute a Topsi command

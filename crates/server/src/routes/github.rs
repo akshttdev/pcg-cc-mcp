@@ -167,6 +167,10 @@ pub async fn create_project_from_github(
         setup_script: payload.setup_script,
         dev_script: payload.dev_script,
         cleanup_script: payload.cleanup_script,
+        copy_files: None,
+        organization_id: None,
+        client_id: None,
+        folder_id: None,
     };
 
     let project_id = Uuid::new_v4();
