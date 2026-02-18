@@ -1,0 +1,27 @@
+[Unit]
+Description=Pythia Storage Provider Server
+Documentation=file:///home/pythia/pcg-cc-mcp/SOVEREIGN_ARCHITECTURE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pythia
+Group=pythia
+WorkingDirectory=/home/pythia/pcg-cc-mcp
+Environment="PATH=/home/pythia/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/pythia/miniconda3/bin/python3 -u /home/pythia/pcg-cc-mcp/sovereign_storage/storage_provider_server.py d903c0e7-f3a6-4967-80e7-0da9d0fe7632
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/tmp/pythia_storage_provider.log
+StandardError=append:/var/tmp/pythia_storage_provider.log
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -239,6 +239,9 @@ impl TopsiAgent {
             TopsiRequestType::ExecuteCommand { command } => {
                 self.handle_command(&command, user_context, &scope).await
             }
+            TopsiRequestType::GetRecommendations { project_id, max_count } => {
+                self.handle_get_recommendations(project_id, max_count, user_context, &scope).await
+            }
         }
     }
 
@@ -955,6 +958,9 @@ impl TopsiAgent {
             cleanup_script: None,
             copy_files: None,
             use_existing_repo: false,
+            organization_id: None,
+            client_id: None,
+            folder_id: None,
         };
 
         let project = Project::create(pool, &create_project, project_id)
@@ -1087,6 +1093,9 @@ impl TopsiAgent {
                     cleanup_script: None,
                     copy_files: None,
                     use_existing_repo: false,
+                    organization_id: None,
+                    client_id: None,
+                    folder_id: None,
                 };
 
                 let new_project_id = uuid::Uuid::new_v4();
@@ -1512,6 +1521,111 @@ impl TopsiAgent {
         // TODO: Implement actual issue detection
         Ok(vec![])
     }
+
+    /// Handle recommendations request — runs PriorityRecommender over project tasks
+    async fn handle_get_recommendations(
+        &self,
+        project_id: Option<Uuid>,
+        max_count: Option<usize>,
+        user_context: &UserContext,
+        scope: &AccessScope,
+    ) -> Result<TopsiResponse> {
+        use crate::prioritization::free_energy::{IntoPotentialAction, PotentialAction};
+        use crate::prioritization::goals::{Goal, GoalType};
+        use crate::prioritization::recommender::PriorityRecommender;
+
+        // Verify access
+        if let Some(pid) = project_id {
+            if !self.access_control.can_access_project(user_context, pid).await {
+                return Err(TopsiError::TopologyError("Access denied to project".to_string()));
+            }
+        }
+
+        let Some(pool) = &self.db else {
+            return Ok(TopsiResponse {
+                message: "Database not connected — cannot generate recommendations".to_string(),
+                tool_calls: vec![],
+                topology_changes: vec![],
+                topology_summary: None,
+                issues: vec![],
+                input_tokens: None,
+                output_tokens: None,
+            });
+        };
+
+        // Determine which project IDs to query
+        let project_ids: Vec<Uuid> = match project_id {
+            Some(pid) => vec![pid],
+            None => match scope {
+                AccessScope::Admin => {
+                    Project::find_all(pool)
+                        .await
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|p| p.id)
+                        .collect()
+                }
+                AccessScope::Projects(ids) => ids.iter().copied().collect(),
+                AccessScope::SingleProject(id) => vec![*id],
+                AccessScope::None => vec![],
+            },
+        };
+
+        // Fetch open tasks across those projects
+        let mut all_tasks: Vec<Task> = Vec::new();
+        for pid in &project_ids {
+            let tasks: Vec<Task> = sqlx::query_as(
+                "SELECT * FROM tasks WHERE project_id = ? AND status IN ('todo', 'in_progress') ORDER BY created_at DESC LIMIT 50",
+            )
+            .bind(pid)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+            all_tasks.extend(tasks);
+        }
+
+        if all_tasks.is_empty() {
+            return Ok(TopsiResponse {
+                message: "No open tasks found for recommendations".to_string(),
+                tool_calls: vec![],
+                topology_changes: vec![],
+                topology_summary: None,
+                issues: vec![],
+                input_tokens: None,
+                output_tokens: None,
+            });
+        }
+
+        // Convert tasks to PotentialActions
+        let actions: Vec<PotentialAction> = all_tasks.iter().map(|t| t.into_action()).collect();
+
+        // Create a synthetic goal for general project progress
+        let goal = Goal::new(
+            "Project Progress",
+            "Complete open tasks and move projects forward",
+            GoalType::Custom,
+            0.8,
+        );
+
+        // Run the recommender
+        let max = max_count.unwrap_or(5);
+        let recommender = PriorityRecommender::new().with_max_recommendations(max);
+        let batch = recommender.recommend(&actions, &[goal]);
+
+        // Serialize the batch as the response message (JSON)
+        let batch_json = serde_json::to_string_pretty(&batch)
+            .unwrap_or_else(|_| "Failed to serialize recommendations".to_string());
+
+        Ok(TopsiResponse {
+            message: batch_json,
+            tool_calls: vec![],
+            topology_changes: vec![],
+            topology_summary: None,
+            issues: vec![],
+            input_tokens: None,
+            output_tokens: None,
+        })
+    }
 }
 
 /// Request types for Topsi
@@ -1529,6 +1643,11 @@ pub enum TopsiRequestType {
     ListProjects,
     /// Execute a command
     ExecuteCommand { command: String },
+    /// Get prioritized recommendations for a project
+    GetRecommendations {
+        project_id: Option<Uuid>,
+        max_count: Option<usize>,
+    },
 }
 
 /// A request to Topsi

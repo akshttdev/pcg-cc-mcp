@@ -432,6 +432,7 @@ pub struct ChatRequest {
     pub message: String,
     pub session_id: String,
     pub request_type: Option<NoraRequestType>,
+    #[serde(default)]
     pub voice_enabled: bool,
     pub priority: Option<RequestPriority>,
     pub context: Option<serde_json::Value>,

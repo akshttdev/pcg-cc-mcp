@@ -93,6 +93,13 @@ impl PotentialAction {
         }
     }
 
+    /// Blend task-level completeness (50%) with project-level knowledge completeness (50%)
+    pub fn with_knowledge_completeness(mut self, project_completeness: f64) -> Self {
+        let task_completeness = self.data_completeness;
+        self.data_completeness = 0.5 * task_completeness + 0.5 * project_completeness;
+        self
+    }
+
     /// Information gain from taking this action
     pub fn information_gain(&self) -> f64 {
         // KL divergence approximation: reduction in uncertainty
@@ -204,6 +211,46 @@ impl EFECalculator {
 /// Convert a task-like struct to a PotentialAction
 pub trait IntoPotentialAction {
     fn into_action(&self) -> PotentialAction;
+}
+
+impl IntoPotentialAction for db::models::task::Task {
+    fn into_action(&self) -> PotentialAction {
+        use db::models::task::{Priority, TaskStatus};
+
+        // Map task priority to expected reward
+        let expected_reward = match self.priority {
+            Priority::Critical => 0.9,
+            Priority::High => 0.7,
+            Priority::Medium => 0.5,
+            Priority::Low => 0.3,
+        };
+
+        // Map task status to uncertainty levels
+        let (prior_uncertainty, posterior_uncertainty) = match self.status {
+            TaskStatus::Todo => (0.8, 0.3),
+            TaskStatus::InProgress => (0.5, 0.2),
+            TaskStatus::InReview => (0.3, 0.1),
+            TaskStatus::Done | TaskStatus::Cancelled => (0.1, 0.05),
+        };
+
+        // Data completeness: based on whether description, assignee, etc. are filled
+        let mut completeness = 0.0;
+        if self.description.is_some() { completeness += 0.3; }
+        if self.assignee_id.is_some() || self.assigned_agent.is_some() { completeness += 0.3; }
+        if self.due_date.is_some() { completeness += 0.2; }
+        if self.tags.is_some() { completeness += 0.2; }
+
+        PotentialAction {
+            id: self.id,
+            name: self.title.clone(),
+            prior_uncertainty,
+            posterior_uncertainty,
+            expected_reward,
+            goal_ids: Vec::new(),
+            downstream_tasks: Vec::new(), // Would need a separate query to populate
+            data_completeness: completeness,
+        }
+    }
 }
 
 #[cfg(test)]

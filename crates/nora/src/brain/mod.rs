@@ -607,7 +607,7 @@ impl LLMClient {
         // Add tools if provided
         if !tools.is_empty() {
             payload["tools"] = serde_json::json!(tools);
-            payload["tool_choice"] = serde_json::json!("required");
+            payload["tool_choice"] = serde_json::json!("auto");
             tracing::debug!(
                 "[LLM_API] Added {} tools to payload with tool_choice=auto",
                 tools.len()
@@ -1143,7 +1143,7 @@ impl LLMClient {
         // Add tools if provided
         if !tools.is_empty() {
             payload["tools"] = serde_json::json!(tools);
-            payload["tool_choice"] = serde_json::json!("required");
+            payload["tool_choice"] = serde_json::json!("auto");
             tracing::debug!(
                 "[LLM_API] Added {} tools to payload with tool_choice=auto",
                 tools.len()
