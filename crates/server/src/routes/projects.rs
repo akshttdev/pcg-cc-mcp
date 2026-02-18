@@ -351,6 +351,9 @@ pub async fn create_project(
         cleanup_script,
         copy_files,
         use_existing_repo,
+        organization_id,
+        client_id,
+        folder_id,
     } = payload;
     tracing::debug!("Creating project '{}'", name);
 
@@ -437,12 +440,24 @@ pub async fn create_project(
             dev_script,
             cleanup_script,
             copy_files,
+            organization_id,
+            client_id,
+            folder_id,
         },
         id,
     )
     .await
     {
         Ok(project) => {
+            // Set owner_id on the project
+            let _ = sqlx::query(
+                "UPDATE projects SET owner_id = ? WHERE id = ?"
+            )
+            .bind(access_context.user_id.as_bytes().to_vec())
+            .bind(project.id.as_bytes().to_vec())
+            .execute(&deployment.db().pool)
+            .await;
+
             // Add the creator as project owner in project_members
             let member_id = Uuid::new_v4();
             if let Err(e) = sqlx::query(

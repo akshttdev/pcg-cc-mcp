@@ -3101,3 +3101,461 @@ export const modelPricingApi = {
     }
   },
 };
+
+// =====================
+// Pulse Engine API
+// =====================
+export const pulseApi = {
+  // Dashboard stats
+  getStats: async (projectId: string) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/stats`);
+    return handleApiResponse<{ total_content: number; total_sources: number; active_sources: number; unacknowledged_alerts: number }>(response);
+  },
+
+  // Sources
+  getSources: async (projectId: string) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/sources`);
+    return handleApiResponse<any[]>(response);
+  },
+  createSource: async (projectId: string, data: { source_id: string; source_type: string; name: string; url: string; config?: any; enabled?: boolean; collection_interval_secs?: number; category?: string }) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/sources`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, project_id: projectId }),
+    });
+    return handleApiResponse<any>(response);
+  },
+  updateSource: async (projectId: string, sourceId: string, data: { name?: string; url?: string; config?: any; enabled?: boolean; collection_interval_secs?: number; category?: string }) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/sources/${sourceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<any>(response);
+  },
+  deleteSource: async (projectId: string, sourceId: string) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/sources/${sourceId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  // Content
+  getContent: async (projectId: string, params?: { keyword?: string; source_id?: string; status?: string; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.keyword) searchParams.set('keyword', params.keyword);
+    if (params?.source_id) searchParams.set('source_id', params.source_id);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/content${qs ? `?${qs}` : ''}`);
+    return handleApiResponse<{ items: any[]; count: number }>(response);
+  },
+  getLatestContent: async (projectId: string, limit = 20) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/content/latest?limit=${limit}`);
+    return handleApiResponse<{ items: any[]; count: number }>(response);
+  },
+  contentAction: async (projectId: string, contentId: string, action: { action: string; task_title?: string; task_description?: string; crm_contact_id?: string }) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/content/${contentId}/action`, {
+      method: 'POST',
+      body: JSON.stringify(action),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  // Alerts
+  getAlerts: async (projectId: string, limit = 50) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/alerts?limit=${limit}`);
+    return handleApiResponse<any[]>(response);
+  },
+  getAlertRules: async (projectId: string) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/alert-rules`);
+    return handleApiResponse<any[]>(response);
+  },
+  createAlertRule: async (projectId: string, data: { name: string; conditions: any; actions: any; priority?: string; enabled?: boolean }) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/alert-rules`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, project_id: projectId }),
+    });
+    return handleApiResponse<any>(response);
+  },
+  updateAlertRule: async (projectId: string, ruleId: string, data: { name?: string; conditions?: any; actions?: any; priority?: string; enabled?: boolean }) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/alert-rules/${ruleId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<any>(response);
+  },
+  deleteAlertRule: async (projectId: string, ruleId: string) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/alert-rules/${ruleId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  // Collection
+  triggerCollection: async (projectId: string) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/collect`, {
+      method: 'POST',
+    });
+    return handleApiResponse<any>(response);
+  },
+  getRuns: async (projectId: string, limit = 50) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/runs?limit=${limit}`);
+    return handleApiResponse<any[]>(response);
+  },
+
+  // Tracking config
+  getTrackingConfig: async (projectId: string) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/tracking`);
+    return handleApiResponse<any>(response);
+  },
+  updateTrackingConfig: async (projectId: string, data: { keywords?: any; entities?: any; llm_enabled?: boolean; llm_model?: string; notification_config?: any }) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/tracking`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  // Engine status
+  getEngineStatus: async (projectId: string) => {
+    const response = await makeRequest(`/api/pulse/projects/${projectId}/engine/status`);
+    return handleApiResponse<any>(response);
+  },
+};
+
+// ============================================================================
+// Sidebar Tree Types
+// ============================================================================
+
+export interface SidebarProject {
+  id: string;
+  name: string;
+  health_status?: string;
+  active_issues_count?: number;
+  knowledge_completeness?: number;
+  last_activity_at?: string;
+}
+
+export interface SidebarProjectFolder {
+  id: string;
+  name: string;
+  projects: SidebarProject[];
+}
+
+export interface SidebarClient {
+  id: string;
+  name: string;
+  slug: string;
+  health_status?: string;
+  active_issues_count?: number;
+  knowledge_completeness?: number;
+  last_activity_at?: string;
+  projects: SidebarProject[];
+  folders: SidebarProjectFolder[];
+}
+
+export interface SidebarSharedBoard {
+  board_id: string;
+  board_name: string;
+  project_id: string;
+  project_name: string;
+  permission: string;
+  share_type: string;
+}
+
+export interface SidebarSharedBoardGroup {
+  source_org_id: string;
+  source_org_name: string;
+  share_type: string;
+  boards: SidebarSharedBoard[];
+}
+
+export interface SidebarOrg {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
+  health_status?: string;
+  active_issues_count?: number;
+  knowledge_completeness?: number;
+  last_activity_at?: string;
+  internal_projects: SidebarProject[];
+  internal_folders: SidebarProjectFolder[];
+  clients: SidebarClient[];
+  shared_boards: SidebarSharedBoardGroup[];
+}
+
+export interface SidebarTree {
+  owned_orgs: SidebarOrg[];
+  member_orgs: SidebarOrg[];
+}
+
+export interface OrganizationData {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  avatar_url?: string;
+  owner_id: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientData {
+  id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  logo_url?: string;
+  website?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// Organizations & Clients API
+// ============================================================================
+
+export const organizationsApi = {
+  // Sidebar tree
+  getSidebarTree: async (): Promise<SidebarTree> => {
+    const response = await makeRequest('/api/sidebar/tree');
+    return handleApiResponse<SidebarTree>(response);
+  },
+
+  // Organizations
+  getAll: async (): Promise<OrganizationData[]> => {
+    const response = await makeRequest('/api/organizations');
+    return handleApiResponse<OrganizationData[]>(response);
+  },
+
+  getById: async (id: string): Promise<OrganizationData> => {
+    const response = await makeRequest(`/api/organizations/${id}`);
+    return handleApiResponse<OrganizationData>(response);
+  },
+
+  create: async (data: { name: string; slug: string; description?: string }): Promise<OrganizationData> => {
+    const response = await makeRequest('/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<OrganizationData>(response);
+  },
+
+  update: async (id: string, data: { name?: string; slug?: string; description?: string }): Promise<OrganizationData> => {
+    const response = await makeRequest(`/api/organizations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<OrganizationData>(response);
+  },
+
+  // Members
+  getMembers: async (orgId: string): Promise<any[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members`);
+    return handleApiResponse<any[]>(response);
+  },
+
+  addMember: async (orgId: string, userId: string, role?: string): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, role }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  removeMember: async (orgId: string, userId: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  // Clients
+  getClients: async (orgId: string): Promise<ClientData[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/clients`);
+    return handleApiResponse<ClientData[]>(response);
+  },
+
+  createClient: async (orgId: string, data: { name: string; slug: string; description?: string; website?: string }): Promise<ClientData> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/clients`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ClientData>(response);
+  },
+
+  updateClient: async (clientId: string, data: { name?: string; slug?: string; description?: string; website?: string }): Promise<ClientData> => {
+    const response = await makeRequest(`/api/clients/${clientId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ClientData>(response);
+  },
+
+  deleteClient: async (clientId: string): Promise<void> => {
+    const response = await makeRequest(`/api/clients/${clientId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  // Board Shares
+  getBoardShares: async (orgId: string): Promise<any[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/board-shares`);
+    return handleApiResponse<any[]>(response);
+  },
+
+  getSharedBoards: async (orgId: string): Promise<any[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/shared-boards`);
+    return handleApiResponse<any[]>(response);
+  },
+
+  createBoardShare: async (orgId: string, data: { board_id: string; target_organization_id: string; permission?: string; share_type?: string }): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/board-shares`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  updateBoardShare: async (shareId: string, data: { permission?: string; share_type?: string; is_active?: boolean }): Promise<any> => {
+    const response = await makeRequest(`/api/board-shares/${shareId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  deleteBoardShare: async (shareId: string): Promise<void> => {
+    const response = await makeRequest(`/api/board-shares/${shareId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ============================================================================
+// Project Folders API
+// ============================================================================
+
+export interface ProjectFolderData {
+  id: string;
+  organization_id: string;
+  client_id?: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
+// Knowledge API
+// ============================================================================
+
+export interface ProjectKnowledgeSource {
+  id: string;
+  project_id: string;
+  source_type: string;
+  source_id: string;
+  source_title: string;
+  source_summary?: string;
+  coverage_score: number;
+  is_active: boolean;
+  is_stale: boolean;
+  auto_registered: boolean;
+  last_refreshed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectKnowledgeCompleteness {
+  project_id: string;
+  total_sources: number;
+  fresh_sources: number;
+  avg_coverage: number;
+  type_count: number;
+  knowledge_completeness: number;
+}
+
+export interface ProjectKnowledgeResponse {
+  project_id: string;
+  completeness?: ProjectKnowledgeCompleteness;
+  total_sources: number;
+  stale_count: number;
+  sources_by_type: Record<string, ProjectKnowledgeSource[]>;
+}
+
+export const knowledgeApi = {
+  getProjectKnowledge: async (projectId: string): Promise<ProjectKnowledgeResponse> => {
+    const response = await makeRequest(`/api/projects/${projectId}/knowledge`);
+    return handleApiResponse<ProjectKnowledgeResponse>(response);
+  },
+
+  refreshSource: async (projectId: string, sourceId: string): Promise<void> => {
+    const response = await makeRequest(`/api/projects/${projectId}/knowledge/${sourceId}/refresh`, {
+      method: 'POST',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  markStale: async (projectId: string, sourceId: string): Promise<void> => {
+    const response = await makeRequest(`/api/projects/${projectId}/knowledge/${sourceId}/stale`, {
+      method: 'POST',
+    });
+    await handleApiResponse<void>(response);
+  },
+};
+
+export const projectFoldersApi = {
+  list: async (orgId: string): Promise<ProjectFolderData[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/project-folders`);
+    return handleApiResponse<ProjectFolderData[]>(response);
+  },
+
+  create: async (orgId: string, data: { name: string; client_id?: string }): Promise<ProjectFolderData> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/project-folders`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProjectFolderData>(response);
+  },
+
+  get: async (folderId: string): Promise<ProjectFolderData> => {
+    const response = await makeRequest(`/api/project-folders/${folderId}`);
+    return handleApiResponse<ProjectFolderData>(response);
+  },
+
+  update: async (folderId: string, data: { name?: string; sort_order?: number; is_active?: boolean }): Promise<ProjectFolderData> => {
+    const response = await makeRequest(`/api/project-folders/${folderId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProjectFolderData>(response);
+  },
+
+  delete: async (folderId: string): Promise<void> => {
+    const response = await makeRequest(`/api/project-folders/${folderId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  addProject: async (folderId: string, projectId: string): Promise<void> => {
+    const response = await makeRequest(`/api/project-folders/${folderId}/projects/${projectId}`, {
+      method: 'PUT',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  removeProject: async (folderId: string, projectId: string): Promise<void> => {
+    const response = await makeRequest(`/api/project-folders/${folderId}/projects/${projectId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+};

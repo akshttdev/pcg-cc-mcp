@@ -25,6 +25,7 @@ pub enum ProjectError {
 pub struct Project {
     pub id: Uuid,
     pub name: String,
+    #[sqlx(try_from = "String")]
     pub git_repo_path: PathBuf,
     pub setup_script: Option<String>,
     pub dev_script: Option<String>,
@@ -36,6 +37,12 @@ pub struct Project {
     /// VIBE spent amount
     #[ts(type = "number")]
     pub vibe_spent_amount: i64,
+    /// Organization this project belongs to
+    pub organization_id: Option<Uuid>,
+    /// Client this project is for (within the organization)
+    pub client_id: Option<Uuid>,
+    /// Folder this project is grouped under
+    pub folder_id: Option<Uuid>,
 
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
@@ -52,6 +59,9 @@ pub struct CreateProject {
     pub dev_script: Option<String>,
     pub cleanup_script: Option<String>,
     pub copy_files: Option<String>,
+    pub organization_id: Option<Uuid>,
+    pub client_id: Option<Uuid>,
+    pub folder_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -86,12 +96,12 @@ impl Project {
     }
 
     pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Project,
-            r#"SELECT id as "id!: Uuid", name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
-                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as "vibe_spent_amount!: i64",
-                      created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
-               FROM projects ORDER BY created_at DESC"#
+        sqlx::query_as::<_, Project>(
+            r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
+                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                      organization_id, client_id, folder_id,
+                      created_at, updated_at
+               FROM projects ORDER BY created_at DESC"#,
         )
         .fetch_all(pool)
         .await
@@ -99,12 +109,11 @@ impl Project {
 
     /// Find the most actively used projects based on recent task activity
     pub async fn find_most_active(pool: &SqlitePool, limit: i32) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Project,
-            r#"
-            SELECT p.id as "id!: Uuid", p.name, p.git_repo_path, p.setup_script, p.dev_script, p.cleanup_script, p.copy_files,
-                   p.vibe_budget_limit, COALESCE(p.vibe_spent_amount, 0) as "vibe_spent_amount!: i64",
-                   p.created_at as "created_at!: DateTime<Utc>", p.updated_at as "updated_at!: DateTime<Utc>"
+        sqlx::query_as::<_, Project>(
+            r#"SELECT p.id, p.name, p.git_repo_path, p.setup_script, p.dev_script, p.cleanup_script, p.copy_files,
+                   p.vibe_budget_limit, COALESCE(p.vibe_spent_amount, 0) as vibe_spent_amount,
+                   p.organization_id, p.client_id,
+                   p.created_at, p.updated_at
             FROM projects p
             WHERE p.id IN (
                 SELECT DISTINCT t.project_id
@@ -112,23 +121,22 @@ impl Project {
                 INNER JOIN task_attempts ta ON ta.task_id = t.id
                 ORDER BY ta.updated_at DESC
             )
-            LIMIT $1
-            "#,
-            limit
+            LIMIT ?"#,
         )
+        .bind(limit)
         .fetch_all(pool)
         .await
     }
 
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Project,
-            r#"SELECT id as "id!: Uuid", name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
-                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as "vibe_spent_amount!: i64",
-                      created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
-               FROM projects WHERE id = $1"#,
-            id
+        sqlx::query_as::<_, Project>(
+            r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
+                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                      organization_id, client_id, folder_id,
+                      created_at, updated_at
+               FROM projects WHERE id = ?"#,
         )
+        .bind(id)
         .fetch_optional(pool)
         .await
     }
@@ -137,14 +145,14 @@ impl Project {
         pool: &SqlitePool,
         git_repo_path: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Project,
-            r#"SELECT id as "id!: Uuid", name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
-                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as "vibe_spent_amount!: i64",
-                      created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
-               FROM projects WHERE git_repo_path = $1"#,
-            git_repo_path
+        sqlx::query_as::<_, Project>(
+            r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
+                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                      organization_id, client_id, folder_id,
+                      created_at, updated_at
+               FROM projects WHERE git_repo_path = ?"#,
         )
+        .bind(git_repo_path)
         .fetch_optional(pool)
         .await
     }
@@ -154,15 +162,15 @@ impl Project {
         git_repo_path: &str,
         exclude_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Project,
-            r#"SELECT id as "id!: Uuid", name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
-                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as "vibe_spent_amount!: i64",
-                      created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
-               FROM projects WHERE git_repo_path = $1 AND id != $2"#,
-            git_repo_path,
-            exclude_id
+        sqlx::query_as::<_, Project>(
+            r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
+                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                      organization_id, client_id, folder_id,
+                      created_at, updated_at
+               FROM projects WHERE git_repo_path = ? AND id != ?"#,
         )
+        .bind(git_repo_path)
+        .bind(exclude_id)
         .fetch_optional(pool)
         .await
     }
@@ -193,21 +201,24 @@ impl Project {
         data: &CreateProject,
         project_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
-        sqlx::query_as!(
-            Project,
-            r#"INSERT INTO projects (id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)
-               RETURNING id as "id!: Uuid", name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
-                         vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as "vibe_spent_amount!: i64",
-                         created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
-            project_id,
-            data.name,
-            data.git_repo_path,
-            data.setup_script,
-            data.dev_script,
-            data.cleanup_script,
-            data.copy_files
+        sqlx::query_as::<_, Project>(
+            r#"INSERT INTO projects (id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files, organization_id, client_id, folder_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
+                         vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                         organization_id, client_id,
+                         created_at, updated_at"#,
         )
+        .bind(project_id)
+        .bind(&data.name)
+        .bind(&data.git_repo_path)
+        .bind(&data.setup_script)
+        .bind(&data.dev_script)
+        .bind(&data.cleanup_script)
+        .bind(&data.copy_files)
+        .bind(data.organization_id)
+        .bind(data.client_id)
+        .bind(data.folder_id)
         .fetch_one(pool)
         .await
     }
@@ -223,21 +234,21 @@ impl Project {
         cleanup_script: Option<String>,
         copy_files: Option<String>,
     ) -> Result<Self, sqlx::Error> {
-        sqlx::query_as!(
-            Project,
-            r#"UPDATE projects SET name = $2, git_repo_path = $3, setup_script = $4, dev_script = $5, cleanup_script = $6, copy_files = $7
-               WHERE id = $1
-               RETURNING id as "id!: Uuid", name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
-                         vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as "vibe_spent_amount!: i64",
-                         created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
-            id,
-            name,
-            git_repo_path,
-            setup_script,
-            dev_script,
-            cleanup_script,
-            copy_files
+        sqlx::query_as::<_, Project>(
+            r#"UPDATE projects SET name = ?, git_repo_path = ?, setup_script = ?, dev_script = ?, cleanup_script = ?, copy_files = ?
+               WHERE id = ?
+               RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
+                         vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                         organization_id, client_id,
+                         created_at, updated_at"#,
         )
+        .bind(&name)
+        .bind(&git_repo_path)
+        .bind(&setup_script)
+        .bind(&dev_script)
+        .bind(&cleanup_script)
+        .bind(&copy_files)
+        .bind(id)
         .fetch_one(pool)
         .await
     }
@@ -307,5 +318,53 @@ impl Project {
         .await?;
 
         Ok(result.count > 0)
+    }
+
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Project>(
+            r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
+                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                      organization_id, client_id, folder_id,
+                      created_at, updated_at
+               FROM projects WHERE organization_id = ? ORDER BY name ASC"#,
+        )
+        .bind(organization_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn find_by_client(
+        pool: &SqlitePool,
+        client_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Project>(
+            r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
+                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                      organization_id, client_id, folder_id,
+                      created_at, updated_at
+               FROM projects WHERE client_id = ? ORDER BY name ASC"#,
+        )
+        .bind(client_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Set or clear the folder assignment for a project
+    pub async fn set_folder(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        folder_id: Option<Uuid>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE projects SET folder_id = ?, updated_at = datetime('now') WHERE id = ?",
+        )
+        .bind(folder_id)
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 }

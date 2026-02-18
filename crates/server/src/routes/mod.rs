@@ -28,6 +28,7 @@ pub mod filesystem;
 pub mod agent_chat;
 pub mod agent_wallets;
 pub mod agents;
+pub mod board_shares;
 pub mod events;
 pub mod execution_processes;
 pub mod execution_summaries;
@@ -64,9 +65,16 @@ pub mod multiplayer;
 pub mod model_pricing;
 pub mod vibe_treasury;
 pub mod topsi;
+pub mod orcha;
 pub mod mesh;
 pub mod peer_rewards;
+pub mod pulse;
 pub mod pythia;
+pub mod organizations;
+pub mod clients;
+pub mod project_folders;
+pub mod sidebar;
+pub mod knowledge;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -111,6 +119,13 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(agent_wallets::router(&deployment))
         .nest("/permissions", permissions::router(&deployment))
         .merge(vibe_treasury::router(&deployment))
+        .merge(pulse::router(&deployment))
+        .merge(organizations::router(&deployment))
+        .merge(clients::router(&deployment))
+        .merge(project_folders::router(&deployment))
+        .merge(board_shares::router(&deployment))
+        .merge(sidebar::router(&deployment))
+        .merge(knowledge::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -153,6 +168,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(tasks::global_router(&deployment))
         .merge(model_pricing::router(&deployment))
         .merge(topsi::topsi_routes())
+        .merge(orcha::orcha_routes())
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(pythia::router(&deployment))

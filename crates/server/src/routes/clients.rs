@@ -1,0 +1,226 @@
+use axum::{
+    Extension, Json, Router,
+    extract::{Path, State},
+    routing::{delete, get},
+};
+use db::models::{
+    client::{Client, ClientMember, CreateClient, CreateClientMember, UpdateClient},
+    project::Project,
+    user::Organization,
+};
+use deployment::Deployment;
+use utils::response::ApiResponse;
+use uuid::Uuid;
+
+use crate::{
+    DeploymentImpl,
+    error::ApiError,
+    middleware::access_control::AccessContext,
+};
+
+/// Check if user has access to an org (is member or admin)
+async fn require_org_access(
+    pool: &sqlx::SqlitePool,
+    access_context: &AccessContext,
+    org_id: Uuid,
+) -> Result<(), ApiError> {
+    if access_context.is_admin {
+        return Ok(());
+    }
+    let role = Organization::get_user_role(pool, org_id, access_context.user_id).await?;
+    if role.is_none() {
+        return Err(ApiError::Forbidden("Not a member of this organization".into()));
+    }
+    Ok(())
+}
+
+/// Check if user has admin access to an org
+async fn require_org_admin(
+    pool: &sqlx::SqlitePool,
+    access_context: &AccessContext,
+    org_id: Uuid,
+) -> Result<(), ApiError> {
+    if access_context.is_admin {
+        return Ok(());
+    }
+    let role = Organization::get_user_role(pool, org_id, access_context.user_id).await?;
+    match role.as_deref() {
+        Some("admin") => Ok(()),
+        _ => Err(ApiError::Forbidden("Only org admins can manage clients".into())),
+    }
+}
+
+/// GET /api/organizations/:org_id/clients — list clients in org
+pub async fn list_clients(
+    Path(org_id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Vec<Client>>>, ApiError> {
+    require_org_access(&deployment.db().pool, &access_context, org_id).await?;
+    let clients = Client::find_by_organization(&deployment.db().pool, org_id).await?;
+    Ok(Json(ApiResponse::success(clients)))
+}
+
+/// POST /api/organizations/:org_id/clients — create client
+pub async fn create_client(
+    Path(org_id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Json(data): Json<CreateClient>,
+) -> Result<Json<ApiResponse<Client>>, ApiError> {
+    require_org_admin(&deployment.db().pool, &access_context, org_id).await?;
+
+    // Check slug uniqueness within org
+    if let Some(_) = Client::find_by_slug(&deployment.db().pool, org_id, &data.slug).await? {
+        return Err(ApiError::Conflict("Client with this slug already exists in the organization".into()));
+    }
+
+    let id = Uuid::new_v4();
+    let client = Client::create(&deployment.db().pool, id, org_id, &data).await?;
+    Ok(Json(ApiResponse::success(client)))
+}
+
+/// GET /api/clients/:id — client details
+pub async fn get_client(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Client>>, ApiError> {
+    let client = Client::find_by_id(&deployment.db().pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
+
+    require_org_access(&deployment.db().pool, &access_context, client.organization_id).await?;
+    Ok(Json(ApiResponse::success(client)))
+}
+
+/// PUT /api/clients/:id — update client
+pub async fn update_client(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Json(data): Json<UpdateClient>,
+) -> Result<Json<ApiResponse<Client>>, ApiError> {
+    let existing = Client::find_by_id(&deployment.db().pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
+
+    require_org_admin(&deployment.db().pool, &access_context, existing.organization_id).await?;
+
+    let client = Client::update(&deployment.db().pool, id, &data).await?;
+    Ok(Json(ApiResponse::success(client)))
+}
+
+/// DELETE /api/clients/:id — soft delete
+pub async fn delete_client(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let existing = Client::find_by_id(&deployment.db().pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
+
+    require_org_admin(&deployment.db().pool, &access_context, existing.organization_id).await?;
+
+    Client::soft_delete(&deployment.db().pool, id, access_context.user_id).await?;
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// GET /api/clients/:id/members — list members
+pub async fn list_client_members(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Vec<ClientMember>>>, ApiError> {
+    let client = Client::find_by_id(&deployment.db().pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
+
+    require_org_access(&deployment.db().pool, &access_context, client.organization_id).await?;
+
+    let members = Client::get_members(&deployment.db().pool, id).await?;
+    Ok(Json(ApiResponse::success(members)))
+}
+
+/// POST /api/clients/:id/members — add member
+pub async fn add_client_member(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Json(data): Json<CreateClientMember>,
+) -> Result<Json<ApiResponse<ClientMember>>, ApiError> {
+    let client = Client::find_by_id(&deployment.db().pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
+
+    require_org_admin(&deployment.db().pool, &access_context, client.organization_id).await?;
+
+    let member_id = Uuid::new_v4();
+    let role = data.role.as_deref().unwrap_or("viewer");
+    let member = Client::add_member(
+        &deployment.db().pool,
+        member_id,
+        id,
+        data.user_id,
+        role,
+        Some(access_context.user_id),
+    )
+    .await?;
+    Ok(Json(ApiResponse::success(member)))
+}
+
+/// DELETE /api/clients/:id/members/:uid — remove member
+pub async fn remove_client_member(
+    Path((id, uid)): Path<(Uuid, Uuid)>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let client = Client::find_by_id(&deployment.db().pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
+
+    require_org_admin(&deployment.db().pool, &access_context, client.organization_id).await?;
+
+    Client::remove_member(&deployment.db().pool, id, uid).await?;
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// GET /api/clients/:id/projects — list projects for client
+pub async fn list_client_projects(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Vec<Project>>>, ApiError> {
+    let client = Client::find_by_id(&deployment.db().pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
+
+    require_org_access(&deployment.db().pool, &access_context, client.organization_id).await?;
+
+    let projects = Project::find_by_client(&deployment.db().pool, id).await?;
+    Ok(Json(ApiResponse::success(projects)))
+}
+
+pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+    Router::new()
+        // Org-scoped client routes
+        .route(
+            "/organizations/{org_id}/clients",
+            get(list_clients).post(create_client),
+        )
+        // Direct client routes
+        .route(
+            "/clients/{id}",
+            get(get_client).put(update_client).delete(delete_client),
+        )
+        .route(
+            "/clients/{id}/members",
+            get(list_client_members).post(add_client_member),
+        )
+        .route(
+            "/clients/{id}/members/{uid}",
+            delete(remove_client_member),
+        )
+        .route("/clients/{id}/projects", get(list_client_projects))
+}

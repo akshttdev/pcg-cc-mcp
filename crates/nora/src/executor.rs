@@ -458,6 +458,9 @@ impl TaskExecutor {
             cleanup_script: None,
             copy_files: None,
             use_existing_repo: false,
+            organization_id: None,
+            client_id: None,
+            folder_id: None,
         };
 
         let project = Project::create(&self.pool, &create_project, project_id)

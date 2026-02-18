@@ -39,7 +39,7 @@ pub use prioritization::{
     Goal as PrioritizationGoal, GoalState, GoalType,
     ExpectedFreeEnergy, EFECalculator,
     PriorityScore, PriorityCalculator, PriorityLevel,
-    Recommendation, PriorityRecommender,
+    Recommendation, RecommendationBatch, PriorityRecommender,
 };
 
 use serde::{Deserialize, Serialize};

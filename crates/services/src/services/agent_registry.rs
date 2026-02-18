@@ -67,6 +67,7 @@ impl AgentDefinitions {
                 "task_coordination".to_string(),
                 "data_analysis".to_string(),
                 "research".to_string(),
+                "pulse_monitoring".to_string(),
             ]),
             tools: Some(vec![
                 "task_api".to_string(),
@@ -75,6 +76,7 @@ impl AgentDefinitions {
                 "speech_to_text".to_string(),
                 "text_to_speech".to_string(),
                 "planning_tools".to_string(),
+                "pulse_api".to_string(),
                 "analytics_api".to_string(),
             ]),
             functions: Some(vec![
@@ -567,12 +569,14 @@ impl AgentDefinitions {
                 "trend_analysis".to_string(),
                 "strategic_planning".to_string(),
                 "report_generation".to_string(),
+                "pulse_monitoring".to_string(),
             ]),
             tools: Some(vec![
                 "web_search".to_string(),
                 "web_fetch".to_string(),
                 "data_analysis".to_string(),
                 "document_generation".to_string(),
+                "pulse_api".to_string(),
                 "domain_api".to_string(),
             ]),
             functions: Some(vec![
@@ -690,10 +694,12 @@ impl AgentDefinitions {
                 "sentiment_analysis".to_string(),
                 "account_discovery".to_string(),
                 "content_analysis".to_string(),
+                "pulse_monitoring".to_string(),
             ]),
             tools: Some(vec![
                 "web_search".to_string(),
                 "web_fetch".to_string(),
+                "pulse_api".to_string(),
                 "social_api".to_string(),
                 "data_analysis".to_string(),
             ]),

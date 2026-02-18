@@ -6,6 +6,8 @@ import { BUILDING_THEMES, BuildingTheme, BuildingType } from '@/lib/virtual-worl
 import { INTERIOR_CAMERA, INTERIOR_ROOM } from '@/lib/virtual-world/constants';
 import { UserAvatar } from '@/components/virtual-world/UserAvatar';
 import { useAuth } from '@/contexts/AuthContext';
+import { TopsiHologram } from '@/components/virtual-world/TopsiHologram';
+import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
 
 interface CustomEnvironmentConfig {
   url: string;
@@ -30,6 +32,7 @@ interface InteriorProject {
   name: string;
   energy: number;
   type: BuildingType;
+  id?: string;
 }
 
 interface BuildingInteriorProps {
@@ -41,6 +44,8 @@ interface BuildingInteriorProps {
 export function BuildingInterior({ project, onExit, playerColor }: BuildingInteriorProps) {
   const { user } = useAuth();
   const isAdmin = user?.is_admin ?? false;
+  const [isChatActive, setIsChatActive] = useState(false);
+  const [chatFocusToken, setChatFocusToken] = useState(0);
   const theme = BUILDING_THEMES[project.type];
   const energyPercent = (project.energy * 100).toFixed(1);
   const customEnv = PROJECT_ENVIRONMENTS[project.name];
@@ -136,6 +141,31 @@ export function BuildingInterior({ project, onExit, playerColor }: BuildingInter
         <p className="font-semibold uppercase tracking-[0.3em] text-cyan-200/70 mb-2">Interior Metrics</p>
         <p>Agent uplinks synchronized. Use Esc or the button to return to the monumental grid.</p>
       </div>
+
+      {/* Project-scoped chat console */}
+      <div className="pointer-events-auto absolute bottom-4 right-4 w-[min(24rem,calc(100%-2rem))]">
+        <button
+          type="button"
+          onClick={() => {
+            setIsChatActive((prev) => !prev);
+            setChatFocusToken((t) => t + 1);
+          }}
+          className="mb-2 rounded-lg border border-cyan-400/40 bg-black/60 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] text-cyan-200 transition hover:bg-cyan-500/10"
+        >
+          {isChatActive ? 'Close Console' : 'Open Console'}
+        </button>
+        {isChatActive && (
+          <AgentChatConsole
+            className="max-h-[50vh]"
+            isInputActive={isChatActive}
+            onRequestCloseInput={() => setIsChatActive(false)}
+            focusToken={chatFocusToken}
+            showHeader={false}
+            selectedProject={{ name: project.name, energy: project.energy }}
+            projectId={project.id}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -196,6 +226,9 @@ function InteriorRoom({ project, theme }: { project: InteriorProject; theme: Bui
         <ringGeometry args={[2.5, 3.3, 64]} />
         <meshBasicMaterial color={theme.hologramColor} transparent opacity={0.5} />
       </mesh>
+
+      {/* Topsi hologram on the holo table */}
+      <TopsiHologram position={[0, 3.5, 0]} projectId={project.id} />
 
       {/* Energy column */}
       <EnergyColumn height={energyColumnHeight} color={theme.hologramColor} />

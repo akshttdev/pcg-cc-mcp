@@ -22,6 +22,8 @@ interface AgentChatConsoleProps {
   showHeader?: boolean;
   extraSystemMessage?: string | null;
   extraSystemMessageVersion?: number;
+  /** When inside a building, scope /topsi commands to this project */
+  projectId?: string;
 }
 
 interface ConsoleMessage {
@@ -74,6 +76,7 @@ export function AgentChatConsole({
   showHeader = true,
   extraSystemMessage,
   extraSystemMessageVersion,
+  projectId,
 }: AgentChatConsoleProps) {
   const { agents, socketConnected, lastEvent } = useAgentDirectory();
   const { spawnPreference, setSpawnPreference, teleport } = useMultiplayerStore();
@@ -114,6 +117,14 @@ export function AgentChatConsole({
         icon: Crown,
         keywords: ['executive', 'assistant'],
         action: () => setDraft('/nora '),
+      },
+      {
+        id: 'topsi',
+        label: '/topsi',
+        description: 'Ask Topsi (project-scoped AI)',
+        icon: Activity,
+        keywords: ['topsi', 'recommend', 'vibe', 'intelligence'],
+        action: () => setDraft('/topsi '),
       },
       {
         id: 'global',
@@ -353,6 +364,55 @@ export function AgentChatConsole({
     [ensureNoraReady, pushMessage, pushSystemMessage]
   );
 
+  const submitTopsiCommand = useCallback(
+    async (payload: string) => {
+      pushMessage({
+        channel: 'direct',
+        author: 'user',
+        label: 'You → Topsi',
+        content: payload,
+      });
+
+      setIsSending(true);
+      try {
+        const response = await fetch('/api/topsi/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            message: payload,
+            sessionId: sessionIdRef.current,
+            projectId: projectId ?? null,
+            context: null,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || `Topsi responded with ${response.status}`);
+        }
+
+        const data = await response.json();
+        pushMessage({
+          channel: 'direct',
+          author: 'agent',
+          label: 'Topsi',
+          content: data.message ?? 'No response from Topsi.',
+        });
+      } catch (error) {
+        console.error(error);
+        pushSystemMessage(
+          `Topsi couldn't process that${
+            error instanceof Error ? ` (${error.message})` : ''
+          }.`
+        );
+      } finally {
+        setIsSending(false);
+      }
+    },
+    [projectId, pushMessage, pushSystemMessage]
+  );
+
   const handleAgentDirective = useCallback(
     async (agent: AgentCoordinationState, payload: string, commandKey: string) => {
       pushMessage({
@@ -465,6 +525,13 @@ export function AgentChatConsole({
           }
           await submitNoraCommand(payload);
           return;
+        case 'topsi':
+          if (!payload) {
+            pushSystemMessage('Ask Topsi something after /topsi.');
+            return;
+          }
+          await submitTopsiCommand(payload);
+          return;
         case 'global':
           if (!payload) {
             pushSystemMessage('Nothing to broadcast.');
@@ -497,7 +564,7 @@ export function AgentChatConsole({
         }
       }
     },
-    [agentCommandMap, handleAgentDirective, handleGlobalBroadcast, handleHelp, handleSpawnpoint, handleTeleport, submitNoraCommand, pushSystemMessage]
+    [agentCommandMap, handleAgentDirective, handleGlobalBroadcast, handleHelp, handleSpawnpoint, handleTeleport, submitNoraCommand, submitTopsiCommand, pushSystemMessage]
   );
 
   const handleSubmit = useCallback(async (): Promise<boolean> => {

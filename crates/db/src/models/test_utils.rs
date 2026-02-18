@@ -204,6 +204,9 @@ pub(crate) async fn create_test_project(pool: &SqlitePool) -> Uuid {
         dev_script: None,
         cleanup_script: None,
         copy_files: None,
+        organization_id: None,
+        client_id: None,
+        folder_id: None,
     };
 
     Project::create(pool, &data, project_id)
