@@ -679,6 +679,14 @@ impl SovereignStorageService {
 // Peer data import
 // ============================================================================
 
+/// Normalize ISO 8601 datetime strings to SQLite text format.
+/// sqlx's DateTime<Utc> decoder for SQLite only accepts "YYYY-MM-DD HH:MM:SS[.fff]"
+/// (space-separated), not the ISO 8601 "T" separator or "Z" suffix.
+fn normalize_dt(s: &str) -> String {
+    let s = s.replace('T', " ");
+    s.trim_end_matches('Z').to_string()
+}
+
 async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
     use sqlx::sqlite::SqliteConnectOptions;
     use std::str::FromStr;
@@ -715,9 +723,9 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
         .bind(row.get("current_stage").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("created_tasks").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("deliverables").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("started_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("completed_at").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("started_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("completed_at").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(normalize_dt))
         .execute(&pool)
         .await;
 
@@ -751,8 +759,8 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
         .bind(row.get("total_size_bytes").and_then(|v| v.as_i64()).unwrap_or(0))
         .bind(row.get("last_error").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -786,7 +794,7 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
         .bind(row.get("codec").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("fps").and_then(|v| v.as_f64()))
         .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -820,8 +828,8 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
         .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("assembling"))
         .bind(row.get("timelines").and_then(|v| v.as_str()).unwrap_or("[]"))
         .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -852,7 +860,7 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
         .bind(row.get("deliverable_targets").and_then(|v| v.as_str()).unwrap_or("[]"))
         .bind(row.get("hero_moments").and_then(|v| v.as_str()).unwrap_or("[]"))
         .bind(row.get("insights").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -919,8 +927,8 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("client_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("folder_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("owner_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -961,10 +969,10 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("board_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("assignee_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("tags").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("due_date").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("due_date").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(normalize_dt))
         .bind(row.get("created_by").and_then(|v| v.as_str()).unwrap_or("system"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -993,8 +1001,8 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("avatar_url").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
         .bind(row.get("is_admin").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1024,8 +1032,8 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("owner_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("settings").and_then(|v| v.as_str()).unwrap_or("{}"))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1081,8 +1089,8 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("logo_url").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("website").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1110,8 +1118,8 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("sort_order").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1139,8 +1147,8 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("board_type").and_then(|v| v.as_str()).unwrap_or("kanban"))
         .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1171,8 +1179,8 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("share_type").and_then(|v| v.as_str()).unwrap_or("org"))
         .bind(row.get("shared_by").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 

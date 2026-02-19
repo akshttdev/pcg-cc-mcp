@@ -427,7 +427,7 @@ export function VirtualEnvironmentPage() {
   }, []);
 
   // Fetch projects from the Dashboard API
-  const { data: apiProjects = [], isLoading: projectsLoading, error: projectsError } = useProjectList();
+  const { data: apiProjects = [], isLoading: projectsLoading, error: projectsError, refetch: refetchProjects } = useProjectList();
 
   // Combine API projects with static demo projects (Fine Art Society)
   const allProjects = useMemo(() => {
@@ -714,13 +714,16 @@ export function VirtualEnvironmentPage() {
         </div>
       )}
 
-      {/* Error overlay */}
+      {/* Non-blocking error banner — projects unavailable but world still usable */}
       {projectsError && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <p className="text-lg text-red-400">Failed to connect to Dashboard API</p>
-            <p className="text-sm text-red-300">{projectsError.message}</p>
-          </div>
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 rounded-lg bg-black/80 border border-red-500/40 text-sm">
+          <span className="text-red-400">Projects unavailable</span>
+          <button
+            onClick={() => refetchProjects()}
+            className="text-xs text-red-300/70 hover:text-red-200 underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
