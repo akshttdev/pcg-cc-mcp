@@ -9,7 +9,7 @@ inquire = "0.7"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 bcrypt = "0.15"
-sqlx = { version = "0.8.6", features = ["runtime-tokio-native-tls", "sqlite"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite"] }
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 tracing = "0.1"
