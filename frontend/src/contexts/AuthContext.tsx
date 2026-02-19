@@ -18,7 +18,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const initializeEquipment = useEquipmentStore((state) => state.initializeForUser);
-  const resetEquipment = useEquipmentStore((state) => state.resetEquipment);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -67,12 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     try {
       await apiLogout();
-      resetEquipment(); // Clear equipment on logout
       setUser(null);
     } catch (error) {
       console.error('Logout failed:', error);
-      // Even if logout API fails, clear local state
-      resetEquipment();
       setUser(null);
     } finally {
       // Hard reload on logout: guarantees all cached user data is gone

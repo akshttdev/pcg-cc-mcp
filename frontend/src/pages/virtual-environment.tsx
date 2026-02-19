@@ -650,7 +650,7 @@ export function VirtualEnvironmentPage() {
         activateConsoleInput();
       }
 
-      if (event.key === 'Escape' && isConsoleInputActive) {
+      if (event.key === 'Escape') {
         event.preventDefault();
         releaseConsoleInput();
       }
@@ -726,6 +726,7 @@ export function VirtualEnvironmentPage() {
         camera={{ position: [80, 60, 80], fov: 60 }}
         shadows
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
+        onPointerDown={releaseConsoleInput}
       >
         {/* Background */}
         <color attach="background" args={['#030508']} />
