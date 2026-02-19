@@ -112,7 +112,7 @@ impl Project {
         sqlx::query_as::<_, Project>(
             r#"SELECT p.id, p.name, p.git_repo_path, p.setup_script, p.dev_script, p.cleanup_script, p.copy_files,
                    p.vibe_budget_limit, COALESCE(p.vibe_spent_amount, 0) as vibe_spent_amount,
-                   p.organization_id, p.client_id,
+                   p.organization_id, p.client_id, p.folder_id,
                    p.created_at, p.updated_at
             FROM projects p
             WHERE p.id IN (
