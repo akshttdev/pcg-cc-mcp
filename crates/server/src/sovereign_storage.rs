@@ -892,7 +892,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             None => continue,
         };
         let result = sqlx::query(
-            "INSERT OR REPLACE INTO users \
+            "INSERT OR IGNORE INTO users \
              (id, username, email, full_name, avatar_url, is_active, is_admin, created_at, updated_at) \
              VALUES (unhex($1), $2, $3, $4, $5, $6, $7, $8, $9)"
         )
@@ -922,7 +922,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             None => continue,
         };
         let result = sqlx::query(
-            "INSERT OR REPLACE INTO organizations \
+            "INSERT OR IGNORE INTO organizations \
              (id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at) \
              VALUES (unhex($1), $2, $3, $4, $5, unhex($6), $7, $8, $9, $10)"
         )
@@ -953,7 +953,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             None => continue,
         };
         let result = sqlx::query(
-            "INSERT OR REPLACE INTO organization_members \
+            "INSERT OR IGNORE INTO organization_members \
              (id, organization_id, user_id, role, granted_at) \
              VALUES (unhex($1), unhex($2), unhex($3), $4, $5)"
         )
@@ -979,7 +979,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             None => continue,
         };
         let result = sqlx::query(
-            "INSERT OR REPLACE INTO clients \
+            "INSERT OR IGNORE INTO clients \
              (id, organization_id, name, slug, description, logo_url, website, is_active, created_at, updated_at) \
              VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10)"
         )
@@ -1010,7 +1010,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             None => continue,
         };
         let result = sqlx::query(
-            "INSERT OR REPLACE INTO project_folders \
+            "INSERT OR IGNORE INTO project_folders \
              (id, organization_id, client_id, name, sort_order, is_active, created_at, updated_at) \
              VALUES (unhex($1), unhex($2), unhex($3), $4, $5, $6, $7, $8)"
         )
@@ -1039,7 +1039,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             None => continue,
         };
         let result = sqlx::query(
-            "INSERT OR REPLACE INTO project_boards \
+            "INSERT OR IGNORE INTO project_boards \
              (id, project_id, name, slug, board_type, description, created_at, updated_at) \
              VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8)"
         )
@@ -1068,7 +1068,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             None => continue,
         };
         let result = sqlx::query(
-            "INSERT OR REPLACE INTO board_shares \
+            "INSERT OR IGNORE INTO board_shares \
              (id, board_id, source_organization_id, target_organization_id, permission, \
               share_type, shared_by, is_active, created_at, updated_at) \
              VALUES (unhex($1), unhex($2), unhex($3), unhex($4), $5, $6, unhex($7), $8, $9, $10)"
@@ -1100,7 +1100,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             None => continue,
         };
         let result = sqlx::query(
-            "INSERT OR REPLACE INTO project_members \
+            "INSERT OR IGNORE INTO project_members \
              (id, project_id, user_id, role, permissions, granted_by, granted_at) \
              VALUES (unhex($1), unhex($2), unhex($3), $4, $5, unhex($6), $7)"
         )
