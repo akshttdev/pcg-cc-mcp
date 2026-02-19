@@ -91,7 +91,9 @@ const noraAcknowledgements = [
 // Spawn positions based on role
 const PLAYER_COLOR = '#ff8800';
 // Admin: spawn on command center floor, outside hologram railing (R > 10)
-const SPAWN_ADMIN: [number, number, number] = [15, COMMAND_CENTER_FLOOR_Y + 1, 15];
+// Y = floor (80) + AVATAR_RADIUS (0.5) + 0.1 puts player within the onGround threshold
+// so they snap to the floor in the first frame instead of floating above it.
+const SPAWN_ADMIN: [number, number, number] = [20, COMMAND_CENTER_FLOOR_Y + 0.6, 0];
 // User: spawn south of command center, facing inward — can see the world and command center above
 const SPAWN_USER: [number, number, number] = [0, 1, 60];
 
