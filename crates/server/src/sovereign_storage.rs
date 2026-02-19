@@ -412,7 +412,7 @@ impl SovereignStorageService {
         let projects: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
             "SELECT hex(id) as id, name, git_repo_path, hex(organization_id) as organization_id, \
              hex(client_id) as client_id, hex(folder_id) as folder_id, hex(owner_id) as owner_id, \
-             hex(board_id) as board_id, created_at, updated_at \
+             created_at, updated_at \
              FROM projects WHERE deleted_at IS NULL LIMIT 500",
         )
         .fetch_all(&pool)
