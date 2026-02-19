@@ -265,11 +265,12 @@ export function UserAvatar({
     };
   }, [isSuspended, onInteract, canFly]);
 
-  // Reset on suspend
+  // Reset on suspend change — clear keys on both suspend AND unsuspend to prevent
+  // keys pressed while typing from leaking into movement after console closes.
   useEffect(() => {
+    const keys = keysRef.current;
+    keys.forward = keys.backward = keys.left = keys.right = keys.up = keys.down = keys.sprint = false;
     if (isSuspended) {
-      const keys = keysRef.current;
-      keys.forward = keys.backward = keys.left = keys.right = keys.up = keys.down = keys.sprint = false;
       velocityRef.current.set(0, 0, 0);
       flightModeRef.current = false;
     }
