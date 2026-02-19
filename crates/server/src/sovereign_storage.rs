@@ -127,6 +127,23 @@ struct SyncPayload {
     agent_flows: Vec<serde_json::Value>,
     #[serde(default)]
     agent_flow_events: Vec<serde_json::Value>,
+    // v0.4.0: org hierarchy, folders, boards, users
+    #[serde(default)]
+    users: Vec<serde_json::Value>,
+    #[serde(default)]
+    organizations: Vec<serde_json::Value>,
+    #[serde(default)]
+    organization_members: Vec<serde_json::Value>,
+    #[serde(default)]
+    clients: Vec<serde_json::Value>,
+    #[serde(default)]
+    project_folders: Vec<serde_json::Value>,
+    #[serde(default)]
+    project_boards: Vec<serde_json::Value>,
+    #[serde(default)]
+    board_shares: Vec<serde_json::Value>,
+    #[serde(default)]
+    project_members: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -276,22 +293,36 @@ impl SovereignStorageService {
                             || !payload.media_files.is_empty()
                             || !payload.edit_sessions.is_empty();
 
+                        let has_org_data = !payload.users.is_empty()
+                            || !payload.organizations.is_empty()
+                            || !payload.project_folders.is_empty()
+                            || !payload.project_boards.is_empty();
+
                         tracing::info!(
-                            "[SOVEREIGN_SYNC] 📨 Peer sync from {} (v{}) — {} projects, {} tasks, {} workflows, {} batches, {} files, {} edit_sessions",
+                            "[SOVEREIGN_SYNC] 📨 Peer sync from {} (v{}) — {} projects, {} tasks, {} orgs, {} boards, {} folders, {} users",
                             payload.from_device,
                             payload.version,
                             payload.projects.len(),
                             payload.tasks.len(),
-                            payload.workflow_executions.len(),
-                            payload.media_batches.len(),
-                            payload.media_files.len(),
-                            payload.edit_sessions.len()
+                            payload.organizations.len(),
+                            payload.project_boards.len(),
+                            payload.project_folders.len(),
+                            payload.users.len()
                         );
 
                         if has_workflow_data {
                             if let Err(e) = import_peer_workflow_data(&db_path_for_peer, &payload).await {
                                 tracing::error!(
                                     "[SOVEREIGN_SYNC] Failed to import peer workflow data: {}",
+                                    e
+                                );
+                            }
+                        }
+
+                        if has_org_data {
+                            if let Err(e) = import_peer_org_data(&db_path_for_peer, &payload).await {
+                                tracing::error!(
+                                    "[SOVEREIGN_SYNC] Failed to import peer org data: {}",
                                     e
                                 );
                             }
@@ -352,15 +383,15 @@ impl SovereignStorageService {
 
         self.last_sync = Some(now);
         tracing::info!(
-            "[SOVEREIGN_SYNC] ✅ Sync complete! Published {} bytes to {} ({} projects, {} tasks, {} agents, {} workflows, {} batches, {} files)",
+            "[SOVEREIGN_SYNC] ✅ Sync complete! Published {} bytes to {} ({} projects, {} tasks, {} agents, {} orgs, {} boards, {} folders)",
             payload_size,
             sync_subject,
             snapshot.projects.len(),
             snapshot.tasks.len(),
             snapshot.agents.len(),
-            snapshot.workflow_executions.len(),
-            snapshot.media_batches.len(),
-            snapshot.media_files.len()
+            snapshot.organizations.len(),
+            snapshot.project_boards.len(),
+            snapshot.project_folders.len()
         );
         Ok(())
     }
@@ -379,7 +410,10 @@ impl SovereignStorageService {
             .context("Failed to open local DB for sync")?;
 
         let projects: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, name, git_repo_path, created_at, updated_at FROM projects WHERE deleted_at IS NULL LIMIT 500",
+            "SELECT hex(id) as id, name, git_repo_path, hex(organization_id) as organization_id, \
+             hex(client_id) as client_id, hex(folder_id) as folder_id, hex(owner_id) as owner_id, \
+             created_at, updated_at \
+             FROM projects WHERE deleted_at IS NULL LIMIT 500",
         )
         .fetch_all(&pool)
         .await
@@ -389,7 +423,10 @@ impl SovereignStorageService {
         .collect();
 
         let tasks: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
-            "SELECT hex(id) as id, hex(project_id) as project_id, title, description, status, priority, assigned_agent, custom_properties, created_at, updated_at FROM tasks WHERE deleted_at IS NULL LIMIT 2000",
+            "SELECT hex(id) as id, hex(project_id) as project_id, title, description, status, priority, \
+             assigned_agent, custom_properties, hex(board_id) as board_id, assignee_id, tags, \
+             due_date, created_by, created_at, updated_at \
+             FROM tasks WHERE deleted_at IS NULL LIMIT 2000",
         )
         .fetch_all(&pool)
         .await
@@ -503,13 +540,114 @@ impl SovereignStorageService {
         .map(|r| r.0)
         .collect();
 
+        // v0.4.0: org hierarchy, folders, boards, users
+        let users: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, username, email, full_name, avatar_url, \
+             is_active, is_admin, created_at, updated_at \
+             FROM users WHERE deleted_at IS NULL",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let organizations: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, name, slug, description, avatar_url, \
+             hex(owner_id) as owner_id, settings, is_active, created_at, updated_at \
+             FROM organizations WHERE deleted_at IS NULL",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let organization_members: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(organization_id) as organization_id, \
+             hex(user_id) as user_id, role, granted_at \
+             FROM organization_members",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let clients: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(organization_id) as organization_id, name, slug, \
+             description, logo_url, website, is_active, created_at, updated_at \
+             FROM clients WHERE deleted_at IS NULL",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let project_folders: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(organization_id) as organization_id, \
+             hex(client_id) as client_id, name, sort_order, is_active, created_at, updated_at \
+             FROM project_folders",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let project_boards: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(project_id) as project_id, name, slug, \
+             board_type, description, created_at, updated_at \
+             FROM project_boards",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let board_shares: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(board_id) as board_id, \
+             hex(source_organization_id) as source_organization_id, \
+             hex(target_organization_id) as target_organization_id, \
+             permission, share_type, hex(shared_by) as shared_by, \
+             is_active, created_at, updated_at \
+             FROM board_shares",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let project_members: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(project_id) as project_id, \
+             hex(user_id) as user_id, role, permissions, \
+             hex(granted_by) as granted_by, granted_at \
+             FROM project_members",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
         pool.close().await;
 
         Ok(SyncPayload {
             from_device: self.config.device_id.clone(),
             to_provider: self.config.provider_id.clone(),
             timestamp: timestamp.to_string(),
-            version: "0.3.0".to_string(),
+            version: "0.4.0".to_string(),
             db_size_bytes: db_size,
             projects,
             tasks,
@@ -521,6 +659,14 @@ impl SovereignStorageService {
             media_batch_analyses,
             agent_flows,
             agent_flow_events,
+            users,
+            organizations,
+            organization_members,
+            clients,
+            project_folders,
+            project_boards,
+            board_shares,
+            project_members,
         })
     }
 }
@@ -726,6 +872,295 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
     Ok(())
 }
 
+/// Import org hierarchy data from peer nodes (v0.4.0)
+/// Uses INSERT OR REPLACE so that updates propagate for reference data.
+/// Import order respects FK constraints.
+async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
+    let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&db_url)
+        .await
+        .context("Failed to open local DB for peer org import")?;
+
+    let mut imported = OrgImportCounts::default();
+
+    // 1. Users (no FK deps) — exclude password_hash for security
+    for row in &payload.users {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR REPLACE INTO users \
+             (id, username, email, full_name, avatar_url, is_active, is_admin, created_at, updated_at) \
+             VALUES (unhex($1), $2, $3, $4, $5, $6, $7, $8, $9)"
+        )
+        .bind(id)
+        .bind(row.get("username").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("email").and_then(|v| v.as_str()))
+        .bind(row.get("full_name").and_then(|v| v.as_str()))
+        .bind(row.get("avatar_url").and_then(|v| v.as_str()))
+        .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
+        .bind(row.get("is_admin").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.users += 1;
+            }
+        }
+    }
+
+    // 2. Organizations (FK: users.owner_id)
+    for row in &payload.organizations {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR REPLACE INTO organizations \
+             (id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at) \
+             VALUES (unhex($1), $2, $3, $4, $5, unhex($6), $7, $8, $9, $10)"
+        )
+        .bind(id)
+        .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("description").and_then(|v| v.as_str()))
+        .bind(row.get("avatar_url").and_then(|v| v.as_str()))
+        .bind(row.get("owner_id").and_then(|v| v.as_str()))
+        .bind(row.get("settings").and_then(|v| v.as_str()).unwrap_or("{}"))
+        .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.organizations += 1;
+            }
+        }
+    }
+
+    // 3. Organization members (FK: organizations, users)
+    for row in &payload.organization_members {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR REPLACE INTO organization_members \
+             (id, organization_id, user_id, role, granted_at) \
+             VALUES (unhex($1), unhex($2), unhex($3), $4, $5)"
+        )
+        .bind(id)
+        .bind(row.get("organization_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("user_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("role").and_then(|v| v.as_str()).unwrap_or("member"))
+        .bind(row.get("granted_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.organization_members += 1;
+            }
+        }
+    }
+
+    // 4. Clients (FK: organizations)
+    for row in &payload.clients {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR REPLACE INTO clients \
+             (id, organization_id, name, slug, description, logo_url, website, is_active, created_at, updated_at) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10)"
+        )
+        .bind(id)
+        .bind(row.get("organization_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("description").and_then(|v| v.as_str()))
+        .bind(row.get("logo_url").and_then(|v| v.as_str()))
+        .bind(row.get("website").and_then(|v| v.as_str()))
+        .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.clients += 1;
+            }
+        }
+    }
+
+    // 5. Project folders (FK: organizations, clients)
+    for row in &payload.project_folders {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR REPLACE INTO project_folders \
+             (id, organization_id, client_id, name, sort_order, is_active, created_at, updated_at) \
+             VALUES (unhex($1), unhex($2), unhex($3), $4, $5, $6, $7, $8)"
+        )
+        .bind(id)
+        .bind(row.get("organization_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("client_id").and_then(|v| v.as_str()))
+        .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("sort_order").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.project_folders += 1;
+            }
+        }
+    }
+
+    // 6. Project boards (FK: projects — already synced)
+    for row in &payload.project_boards {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR REPLACE INTO project_boards \
+             (id, project_id, name, slug, board_type, description, created_at, updated_at) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8)"
+        )
+        .bind(id)
+        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("board_type").and_then(|v| v.as_str()).unwrap_or("kanban"))
+        .bind(row.get("description").and_then(|v| v.as_str()))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.project_boards += 1;
+            }
+        }
+    }
+
+    // 7. Board shares (FK: project_boards, organizations)
+    for row in &payload.board_shares {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR REPLACE INTO board_shares \
+             (id, board_id, source_organization_id, target_organization_id, permission, \
+              share_type, shared_by, is_active, created_at, updated_at) \
+             VALUES (unhex($1), unhex($2), unhex($3), unhex($4), $5, $6, unhex($7), $8, $9, $10)"
+        )
+        .bind(id)
+        .bind(row.get("board_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("source_organization_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("target_organization_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("permission").and_then(|v| v.as_str()).unwrap_or("read"))
+        .bind(row.get("share_type").and_then(|v| v.as_str()).unwrap_or("org"))
+        .bind(row.get("shared_by").and_then(|v| v.as_str()))
+        .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.board_shares += 1;
+            }
+        }
+    }
+
+    // 8. Project members (FK: projects, users)
+    for row in &payload.project_members {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR REPLACE INTO project_members \
+             (id, project_id, user_id, role, permissions, granted_by, granted_at) \
+             VALUES (unhex($1), unhex($2), unhex($3), $4, $5, unhex($6), $7)"
+        )
+        .bind(id)
+        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("user_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("role").and_then(|v| v.as_str()).unwrap_or("member"))
+        .bind(row.get("permissions").and_then(|v| v.as_str()).unwrap_or("{}"))
+        .bind(row.get("granted_by").and_then(|v| v.as_str()))
+        .bind(row.get("granted_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.project_members += 1;
+            }
+        }
+    }
+
+    pool.close().await;
+
+    if imported.total() > 0 {
+        tracing::info!(
+            "[SOVEREIGN_SYNC] ✅ Imported peer org data: {} users, {} orgs, {} org_members, \
+             {} clients, {} folders, {} boards, {} shares, {} project_members",
+            imported.users,
+            imported.organizations,
+            imported.organization_members,
+            imported.clients,
+            imported.project_folders,
+            imported.project_boards,
+            imported.board_shares,
+            imported.project_members
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Default)]
+struct OrgImportCounts {
+    users: usize,
+    organizations: usize,
+    organization_members: usize,
+    clients: usize,
+    project_folders: usize,
+    project_boards: usize,
+    board_shares: usize,
+    project_members: usize,
+}
+
+impl OrgImportCounts {
+    fn total(&self) -> usize {
+        self.users + self.organizations + self.organization_members
+            + self.clients + self.project_folders + self.project_boards
+            + self.board_shares + self.project_members
+    }
+}
+
 #[derive(Default)]
 struct ImportCounts {
     workflow_executions: usize,
@@ -733,13 +1168,25 @@ struct ImportCounts {
     media_files: usize,
     edit_sessions: usize,
     media_batch_analyses: usize,
+    users: usize,
+    organizations: usize,
+    organization_members: usize,
+    clients: usize,
+    project_folders: usize,
+    project_boards: usize,
+    board_shares: usize,
+    project_members: usize,
 }
 
 impl ImportCounts {
     fn total(&self) -> usize {
         self.workflow_executions + self.media_batches + self.media_files
             + self.edit_sessions + self.media_batch_analyses
+            + self.users + self.organizations + self.organization_members
+            + self.clients + self.project_folders + self.project_boards
+            + self.board_shares + self.project_members
     }
+
 }
 
 // ============================================================================
