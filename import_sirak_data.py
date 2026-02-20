@@ -41,6 +41,7 @@ TABLES_TO_IMPORT = [
 
     # Execution
     'execution_processes',
+    'execution_artifacts',
     'execution_process_logs',
     'executor_sessions',
 
@@ -58,6 +59,24 @@ TABLES_TO_IMPORT = [
     'agent_conversations',
     'agent_conversation_messages',
     'agent_wallets',
+
+    # CRM
+    'crm_pipelines',
+    'crm_pipeline_stages',
+    'crm_contacts',
+    'crm_deals',
+    'crm_activities',
+
+    # Clients & onboarding
+    'clients',
+    'project_onboarding',
+
+    # Pulse
+    'pulse_tracking_configs',
+    'pulse_sources',
+
+    # Board shares
+    'board_shares',
 
     # Other content
     'time_entries',
