@@ -144,6 +144,11 @@ struct SyncPayload {
     board_shares: Vec<serde_json::Value>,
     #[serde(default)]
     project_members: Vec<serde_json::Value>,
+    // v0.5.0: execution artifacts and task linking
+    #[serde(default)]
+    execution_artifacts: Vec<serde_json::Value>,
+    #[serde(default)]
+    task_artifacts: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -298,8 +303,11 @@ impl SovereignStorageService {
                             || !payload.project_folders.is_empty()
                             || !payload.project_boards.is_empty();
 
+                        let has_artifact_data = !payload.execution_artifacts.is_empty()
+                            || !payload.task_artifacts.is_empty();
+
                         tracing::info!(
-                            "[SOVEREIGN_SYNC] 📨 Peer sync from {} (v{}) — {} projects, {} tasks, {} orgs, {} boards, {} folders, {} users",
+                            "[SOVEREIGN_SYNC] 📨 Peer sync from {} (v{}) — {} projects, {} tasks, {} orgs, {} boards, {} folders, {} users, {} artifacts",
                             payload.from_device,
                             payload.version,
                             payload.projects.len(),
@@ -307,7 +315,8 @@ impl SovereignStorageService {
                             payload.organizations.len(),
                             payload.project_boards.len(),
                             payload.project_folders.len(),
-                            payload.users.len()
+                            payload.users.len(),
+                            payload.execution_artifacts.len()
                         );
 
                         if has_workflow_data {
@@ -323,6 +332,15 @@ impl SovereignStorageService {
                             if let Err(e) = import_peer_org_data(&db_path_for_peer, &payload).await {
                                 tracing::error!(
                                     "[SOVEREIGN_SYNC] Failed to import peer org data: {}",
+                                    e
+                                );
+                            }
+                        }
+
+                        if has_artifact_data {
+                            if let Err(e) = import_peer_artifact_data(&db_path_for_peer, &payload).await {
+                                tracing::error!(
+                                    "[SOVEREIGN_SYNC] Failed to import peer artifact data: {}",
                                     e
                                 );
                             }
@@ -383,7 +401,7 @@ impl SovereignStorageService {
 
         self.last_sync = Some(now);
         tracing::info!(
-            "[SOVEREIGN_SYNC] ✅ Sync complete! Published {} bytes to {} ({} projects, {} tasks, {} agents, {} orgs, {} boards, {} folders)",
+            "[SOVEREIGN_SYNC] ✅ Sync complete! Published {} bytes to {} ({} projects, {} tasks, {} agents, {} orgs, {} boards, {} folders, {} artifacts, {} task_artifacts)",
             payload_size,
             sync_subject,
             snapshot.projects.len(),
@@ -391,7 +409,9 @@ impl SovereignStorageService {
             snapshot.agents.len(),
             snapshot.organizations.len(),
             snapshot.project_boards.len(),
-            snapshot.project_folders.len()
+            snapshot.project_folders.len(),
+            snapshot.execution_artifacts.len(),
+            snapshot.task_artifacts.len()
         );
         Ok(())
     }
@@ -641,13 +661,40 @@ impl SovereignStorageService {
         .map(|r| r.0)
         .collect();
 
+        // v0.5.0: execution artifacts
+        let execution_artifacts: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(execution_process_id) as execution_process_id, \
+             artifact_type, title, content, file_path, metadata, phase, \
+             hex(created_by_agent_id) as created_by_agent_id, review_status, \
+             hex(parent_artifact_id) as parent_artifact_id, created_at \
+             FROM execution_artifacts LIMIT 10000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let task_artifacts: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(task_id) as task_id, hex(artifact_id) as artifact_id, \
+             artifact_role, display_order, pinned, added_at, added_by \
+             FROM task_artifacts LIMIT 50000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
         pool.close().await;
 
         Ok(SyncPayload {
             from_device: self.config.device_id.clone(),
             to_provider: self.config.provider_id.clone(),
             timestamp: timestamp.to_string(),
-            version: "0.4.0".to_string(),
+            version: "0.5.0".to_string(),
             db_size_bytes: db_size,
             projects,
             tasks,
@@ -667,6 +714,8 @@ impl SovereignStorageService {
             project_boards,
             board_shares,
             project_members,
+            execution_artifacts,
+            task_artifacts,
         })
     }
 }
@@ -1135,6 +1184,97 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
             imported.project_boards,
             imported.board_shares,
             imported.project_members
+        );
+    }
+
+    Ok(())
+}
+
+/// Import execution artifacts and task-artifact links from peer nodes (v0.5.0)
+async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
+    let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&db_url)
+        .await
+        .context("Failed to open local DB for peer artifact import")?;
+
+    let mut artifacts_imported: usize = 0;
+    let mut task_artifacts_imported: usize = 0;
+
+    // 1. Import execution_artifacts
+    for row in &payload.execution_artifacts {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO execution_artifacts \
+             (id, execution_process_id, artifact_type, title, content, file_path, \
+              metadata, phase, created_by_agent_id, review_status, parent_artifact_id, created_at) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, unhex($9), $10, unhex($11), $12)"
+        )
+        .bind(id)
+        .bind(row.get("execution_process_id").and_then(|v| v.as_str()))
+        .bind(row.get("artifact_type").and_then(|v| v.as_str()).unwrap_or("plan"))
+        .bind(row.get("title").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("content").and_then(|v| v.as_str()))
+        .bind(row.get("file_path").and_then(|v| v.as_str()))
+        .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
+        .bind(row.get("phase").and_then(|v| v.as_str()))
+        .bind(row.get("created_by_agent_id").and_then(|v| v.as_str()))
+        .bind(row.get("review_status").and_then(|v| v.as_str()).unwrap_or("none"))
+        .bind(row.get("parent_artifact_id").and_then(|v| v.as_str()))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                artifacts_imported += 1;
+            }
+        }
+    }
+
+    // 2. Import task_artifacts (depends on tasks + execution_artifacts)
+    for row in &payload.task_artifacts {
+        let task_id = match row.get("task_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let artifact_id = match row.get("artifact_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO task_artifacts \
+             (task_id, artifact_id, artifact_role, display_order, pinned, added_at, added_by) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7)"
+        )
+        .bind(task_id)
+        .bind(artifact_id)
+        .bind(row.get("artifact_role").and_then(|v| v.as_str()).unwrap_or("supporting"))
+        .bind(row.get("display_order").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("pinned").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("added_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("added_by").and_then(|v| v.as_str()))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                task_artifacts_imported += 1;
+            }
+        }
+    }
+
+    pool.close().await;
+
+    if artifacts_imported > 0 || task_artifacts_imported > 0 {
+        tracing::info!(
+            "[SOVEREIGN_SYNC] ✅ Imported peer artifact data: {} execution_artifacts, {} task_artifacts",
+            artifacts_imported,
+            task_artifacts_imported
         );
     }
 
