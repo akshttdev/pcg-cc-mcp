@@ -144,11 +144,17 @@ struct SyncPayload {
     board_shares: Vec<serde_json::Value>,
     #[serde(default)]
     project_members: Vec<serde_json::Value>,
-    // v0.5.0: execution artifacts and task linking
+    // v0.5.0: execution artifacts, task linking, and execution history
     #[serde(default)]
     execution_artifacts: Vec<serde_json::Value>,
     #[serde(default)]
     task_artifacts: Vec<serde_json::Value>,
+    #[serde(default)]
+    task_attempts: Vec<serde_json::Value>,
+    #[serde(default)]
+    execution_processes: Vec<serde_json::Value>,
+    #[serde(default)]
+    activity_logs: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -304,7 +310,10 @@ impl SovereignStorageService {
                             || !payload.project_boards.is_empty();
 
                         let has_artifact_data = !payload.execution_artifacts.is_empty()
-                            || !payload.task_artifacts.is_empty();
+                            || !payload.task_artifacts.is_empty()
+                            || !payload.task_attempts.is_empty()
+                            || !payload.execution_processes.is_empty()
+                            || !payload.activity_logs.is_empty();
 
                         tracing::info!(
                             "[SOVEREIGN_SYNC] 📨 Peer sync from {} (v{}) — {} projects, {} tasks, {} orgs, {} boards, {} folders, {} users, {} artifacts",
@@ -401,7 +410,7 @@ impl SovereignStorageService {
 
         self.last_sync = Some(now);
         tracing::info!(
-            "[SOVEREIGN_SYNC] ✅ Sync complete! Published {} bytes to {} ({} projects, {} tasks, {} agents, {} orgs, {} boards, {} folders, {} artifacts, {} task_artifacts)",
+            "[SOVEREIGN_SYNC] ✅ Sync v0.5.0! {} bytes → {} ({} projects, {} tasks, {} agents, {} orgs, {} boards | {} artifacts, {} task_artifacts, {} attempts, {} processes, {} activity_logs)",
             payload_size,
             sync_subject,
             snapshot.projects.len(),
@@ -409,9 +418,11 @@ impl SovereignStorageService {
             snapshot.agents.len(),
             snapshot.organizations.len(),
             snapshot.project_boards.len(),
-            snapshot.project_folders.len(),
             snapshot.execution_artifacts.len(),
-            snapshot.task_artifacts.len()
+            snapshot.task_artifacts.len(),
+            snapshot.task_attempts.len(),
+            snapshot.execution_processes.len(),
+            snapshot.activity_logs.len()
         );
         Ok(())
     }
@@ -688,6 +699,43 @@ impl SovereignStorageService {
         .map(|r| r.0)
         .collect();
 
+        let task_attempts: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(task_id) as task_id, executor, \
+             created_at, updated_at, base_branch, branch \
+             FROM task_attempts WHERE deleted_at IS NULL LIMIT 5000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let execution_processes: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(task_attempt_id) as task_attempt_id, status, \
+             exit_code, started_at, completed_at, created_at, updated_at, run_reason, \
+             executor_action \
+             FROM execution_processes LIMIT 10000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let activity_logs: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT id, task_id, actor_id, actor_type, action, \
+             previous_state, new_state, metadata, timestamp \
+             FROM activity_logs LIMIT 50000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
         pool.close().await;
 
         Ok(SyncPayload {
@@ -716,6 +764,9 @@ impl SovereignStorageService {
             project_members,
             execution_artifacts,
             task_artifacts,
+            task_attempts,
+            execution_processes,
+            activity_logs,
         })
     }
 }
@@ -1202,7 +1253,71 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
     let mut artifacts_imported: usize = 0;
     let mut task_artifacts_imported: usize = 0;
 
-    // 1. Import execution_artifacts
+    let mut task_attempts_imported: usize = 0;
+    let mut execution_processes_imported: usize = 0;
+    let mut activity_logs_imported: usize = 0;
+
+    // 1. Import task_attempts (depends on tasks)
+    for row in &payload.task_attempts {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO task_attempts \
+             (id, task_id, executor, created_at, updated_at, base_branch, branch) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7)"
+        )
+        .bind(id)
+        .bind(row.get("task_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("executor").and_then(|v| v.as_str()))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("base_branch").and_then(|v| v.as_str()).unwrap_or("main"))
+        .bind(row.get("branch").and_then(|v| v.as_str()))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                task_attempts_imported += 1;
+            }
+        }
+    }
+
+    // 2. Import execution_processes (depends on task_attempts)
+    for row in &payload.execution_processes {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO execution_processes \
+             (id, task_attempt_id, status, exit_code, started_at, completed_at, \
+              created_at, updated_at, run_reason, executor_action) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10)"
+        )
+        .bind(id)
+        .bind(row.get("task_attempt_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("completed"))
+        .bind(row.get("exit_code").and_then(|v| v.as_i64()).map(|v| v as i32))
+        .bind(row.get("started_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("completed_at").and_then(|v| v.as_str()))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("run_reason").and_then(|v| v.as_str()).unwrap_or("codingagent"))
+        .bind(row.get("executor_action").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                execution_processes_imported += 1;
+            }
+        }
+    }
+
+    // 3. Import execution_artifacts (depends on execution_processes)
     for row in &payload.execution_artifacts {
         let id = match row.get("id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -1236,7 +1351,7 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
         }
     }
 
-    // 2. Import task_artifacts (depends on tasks + execution_artifacts)
+    // 4. Import task_artifacts (depends on tasks + execution_artifacts)
     for row in &payload.task_artifacts {
         let task_id = match row.get("task_id").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -1268,13 +1383,48 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
         }
     }
 
+    // 5. Import activity_logs (TEXT-based IDs, no unhex needed)
+    for row in &payload.activity_logs {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO activity_logs \
+             (id, task_id, actor_id, actor_type, action, previous_state, new_state, metadata, timestamp) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+        )
+        .bind(id)
+        .bind(row.get("task_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("actor_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("actor_type").and_then(|v| v.as_str()).unwrap_or("system"))
+        .bind(row.get("action").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("previous_state").and_then(|v| v.as_str()))
+        .bind(row.get("new_state").and_then(|v| v.as_str()))
+        .bind(row.get("metadata").and_then(|v| v.as_str()))
+        .bind(row.get("timestamp").and_then(|v| v.as_str()).unwrap_or(""))
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                activity_logs_imported += 1;
+            }
+        }
+    }
+
     pool.close().await;
 
-    if artifacts_imported > 0 || task_artifacts_imported > 0 {
+    let total = artifacts_imported + task_artifacts_imported + task_attempts_imported
+        + execution_processes_imported + activity_logs_imported;
+    if total > 0 {
         tracing::info!(
-            "[SOVEREIGN_SYNC] ✅ Imported peer artifact data: {} execution_artifacts, {} task_artifacts",
+            "[SOVEREIGN_SYNC] ✅ Imported peer v0.5.0 data: {} artifacts, {} task_artifacts, {} task_attempts, {} exec_processes, {} activity_logs",
             artifacts_imported,
-            task_artifacts_imported
+            task_artifacts_imported,
+            task_attempts_imported,
+            execution_processes_imported,
+            activity_logs_imported
         );
     }
 
