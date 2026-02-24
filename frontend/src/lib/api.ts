@@ -2913,6 +2913,363 @@ export const crmApi = {
   },
 };
 
+// CRM Pipeline API
+export const crmPipelinesApi = {
+  listPipelines: async (
+    projectId: string,
+    options?: { pipelineType?: string }
+  ): Promise<CrmPipelineRecord[]> => {
+    const params = new URLSearchParams({ project_id: projectId });
+    if (options?.pipelineType) params.set('pipeline_type', options.pipelineType);
+    const response = await makeRequest(`/api/crm/pipelines?${params}`);
+    return handleApiResponse<CrmPipelineRecord[]>(response);
+  },
+
+  getPipeline: async (id: string): Promise<CrmPipelineWithStagesRecord> => {
+    const response = await makeRequest(`/api/crm/pipelines/${id}`);
+    return handleApiResponse<CrmPipelineWithStagesRecord>(response);
+  },
+
+  createPipeline: async (data: {
+    project_id: string;
+    name: string;
+    description?: string;
+    pipeline_type: string;
+    icon?: string;
+    color?: string;
+  }): Promise<CrmPipelineRecord> => {
+    const response = await makeRequest('/api/crm/pipelines', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmPipelineRecord>(response);
+  },
+
+  updatePipeline: async (
+    id: string,
+    data: { name?: string; description?: string; is_active?: boolean; icon?: string; color?: string }
+  ): Promise<CrmPipelineRecord> => {
+    const response = await makeRequest(`/api/crm/pipelines/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmPipelineRecord>(response);
+  },
+
+  deletePipeline: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/pipelines/${id}`, { method: 'DELETE' });
+    await handleApiResponse<void>(response);
+  },
+
+  listStages: async (pipelineId: string): Promise<CrmPipelineStageRecord[]> => {
+    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages`);
+    return handleApiResponse<CrmPipelineStageRecord[]>(response);
+  },
+
+  createStage: async (
+    pipelineId: string,
+    data: {
+      name: string;
+      description?: string;
+      color: string;
+      position: number;
+      is_closed?: boolean;
+      is_won?: boolean;
+      probability: number;
+    }
+  ): Promise<CrmPipelineStageRecord> => {
+    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, pipeline_id: pipelineId }),
+    });
+    return handleApiResponse<CrmPipelineStageRecord>(response);
+  },
+
+  updateStage: async (
+    pipelineId: string,
+    stageId: string,
+    data: {
+      name?: string;
+      description?: string;
+      color?: string;
+      position?: number;
+      is_closed?: boolean;
+      is_won?: boolean;
+      probability?: number;
+    }
+  ): Promise<CrmPipelineStageRecord> => {
+    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages/${stageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmPipelineStageRecord>(response);
+  },
+
+  deleteStage: async (pipelineId: string, stageId: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages/${stageId}`, {
+      method: 'DELETE',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  reorderStages: async (pipelineId: string, stageIds: string[]): Promise<CrmPipelineStageRecord[]> => {
+    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ stage_ids: stageIds }),
+    });
+    return handleApiResponse<CrmPipelineStageRecord[]>(response);
+  },
+};
+
+// CRM Pipeline record types (from API response)
+export interface CrmPipelineRecord {
+  id: string;
+  project_id: string;
+  name: string;
+  description?: string;
+  pipeline_type: string;
+  is_active?: number;
+  is_default?: number;
+  icon?: string;
+  color?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmPipelineStageRecord {
+  id: string;
+  pipeline_id: string;
+  name: string;
+  description?: string;
+  color: string;
+  position: number;
+  is_closed?: number;
+  is_won?: number;
+  probability: number;
+  auto_move_after_days?: number;
+  notify_on_enter?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmPipelineWithStagesRecord extends CrmPipelineRecord {
+  stages: CrmPipelineStageRecord[];
+}
+
+// CRM Deal record types
+export interface CrmDealRecord {
+  id: string;
+  project_id: string;
+  crm_contact_id?: string;
+  crm_pipeline_id?: string;
+  crm_stage_id?: string;
+  position?: number;
+  name: string;
+  description?: string;
+  amount?: number;
+  currency: string;
+  pipeline: string;
+  stage: string;
+  probability: number;
+  expected_close_date?: string;
+  actual_close_date?: string;
+  last_activity_at?: string;
+  owner_user_id?: string;
+  assigned_agent_id?: string;
+  tags?: string;
+  custom_fields?: string;
+  lost_reason?: string;
+  win_reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmDealWithContactRecord extends CrmDealRecord {
+  contact_name?: string;
+  contact_email?: string;
+  contact_company?: string;
+  contact_avatar_url?: string;
+}
+
+export interface KanbanStageWithDealsRecord {
+  stage: CrmPipelineStageRecord;
+  deals: CrmDealWithContactRecord[];
+  total_amount: number;
+}
+
+export interface KanbanBoardDataRecord {
+  pipeline_id: string;
+  pipeline_name: string;
+  stages: KanbanStageWithDealsRecord[];
+}
+
+// CRM Deals API
+export const crmDealsApi = {
+  listDeals: async (options: {
+    project_id?: string;
+    pipeline_id?: string;
+    stage_id?: string;
+    contact_id?: string;
+  }): Promise<CrmDealRecord[]> => {
+    const params = new URLSearchParams();
+    if (options.project_id) params.set('project_id', options.project_id);
+    if (options.pipeline_id) params.set('pipeline_id', options.pipeline_id);
+    if (options.stage_id) params.set('stage_id', options.stage_id);
+    if (options.contact_id) params.set('contact_id', options.contact_id);
+    const response = await makeRequest(`/api/crm/deals?${params}`);
+    return handleApiResponse<CrmDealRecord[]>(response);
+  },
+
+  getKanbanData: async (pipelineId: string): Promise<KanbanBoardDataRecord> => {
+    const response = await makeRequest(`/api/crm/deals/kanban/${pipelineId}`);
+    return handleApiResponse<KanbanBoardDataRecord>(response);
+  },
+
+  getDeal: async (id: string): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${id}`);
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  createDeal: async (data: {
+    project_id: string;
+    crm_contact_id?: string;
+    crm_pipeline_id?: string;
+    crm_stage_id?: string;
+    name: string;
+    description?: string;
+    amount?: number;
+    currency?: string;
+    expected_close_date?: string;
+    tags?: string[];
+    custom_fields?: Record<string, unknown>;
+  }): Promise<CrmDealRecord> => {
+    const response = await makeRequest('/api/crm/deals', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  updateDeal: async (
+    id: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: Record<string, any>
+  ): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  moveDeal: async (
+    id: string,
+    data: { stage_id: string; position: number }
+  ): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${id}/stage`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  deleteDeal: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/deals/${id}`, { method: 'DELETE' });
+    await handleApiResponse<void>(response);
+  },
+
+  getMetrics: async (projectId: string, pipelineId?: string): Promise<PipelineMetricsRecord> => {
+    const params = new URLSearchParams({ project_id: projectId });
+    if (pipelineId) params.set('pipeline_id', pipelineId);
+    const response = await makeRequest(`/api/crm/deals/metrics?${params}`);
+    return handleApiResponse<PipelineMetricsRecord>(response);
+  },
+};
+
+// CRM Activities API
+export interface CrmActivityRecord {
+  id: string;
+  project_id: string;
+  crm_contact_id?: string;
+  crm_deal_id?: string;
+  activity_type: string;
+  subject?: string;
+  description?: string;
+  outcome?: string;
+  email_message_id?: string;
+  social_mention_id?: string;
+  task_id?: string;
+  performed_by_user?: string;
+  performed_by_agent_id?: string;
+  metadata?: string;
+  duration_minutes?: number;
+  activity_at: string;
+  created_at: string;
+}
+
+export interface PipelineMetricsRecord {
+  pipeline_id: string;
+  total_deals: number;
+  total_value: number;
+  weighted_value: number;
+  avg_deal_size: number;
+  win_rate: number;
+  deals_by_stage: Array<{
+    stage_id: string;
+    stage_name: string;
+    count: number;
+    total_value: number;
+  }>;
+  monthly_summary: Array<{
+    month: string;
+    new_deals: number;
+    won_deals: number;
+    lost_deals: number;
+    total_value: number;
+  }>;
+}
+
+export const crmActivitiesApi = {
+  listActivities: async (options: {
+    project_id?: string;
+    contact_id?: string;
+    deal_id?: string;
+    limit?: number;
+  }): Promise<CrmActivityRecord[]> => {
+    const params = new URLSearchParams();
+    if (options.project_id) params.set('project_id', options.project_id);
+    if (options.contact_id) params.set('contact_id', options.contact_id);
+    if (options.deal_id) params.set('deal_id', options.deal_id);
+    if (options.limit) params.set('limit', options.limit.toString());
+    const response = await makeRequest(`/api/crm/activities?${params}`);
+    return handleApiResponse<CrmActivityRecord[]>(response);
+  },
+
+  createActivity: async (data: {
+    project_id: string;
+    crm_contact_id?: string;
+    crm_deal_id?: string;
+    activity_type: string;
+    subject?: string;
+    description?: string;
+    outcome?: string;
+    performed_by_user?: string;
+    duration_minutes?: number;
+    metadata?: Record<string, unknown>;
+  }): Promise<CrmActivityRecord> => {
+    const response = await makeRequest('/api/crm/activities', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmActivityRecord>(response);
+  },
+
+  deleteActivity: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/activities/${id}`, { method: 'DELETE' });
+    await handleApiResponse<void>(response);
+  },
+};
+
 // Aptos Blockchain Types
 export interface AptosBalance {
   address: string;

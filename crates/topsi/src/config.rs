@@ -37,8 +37,8 @@ pub struct LLMConfig {
 impl Default for LLMConfig {
     fn default() -> Self {
         Self {
-            provider: "openai".to_string(),
-            model: "gpt-4o-mini".to_string(),
+            provider: "ollama".to_string(),
+            model: "llama3.2:latest".to_string(),
             temperature: 0.7,
             max_tokens: 4096,
             api_key_env: None,

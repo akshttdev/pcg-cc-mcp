@@ -21,7 +21,7 @@ pub mod topology;
 pub mod tools;
 
 pub use agent::{
-    TopsiAgent, TopsiRequest, TopsiRequestType,
+    TopsiAgent, TopsiRequest, TopsiRequestType, TaskExecutionBridge,
     access_control::{AccessControl, AccessScope, UserContext, ProjectAccess, ProjectRole},
 };
 pub use config::TopsiConfig;

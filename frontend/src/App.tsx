@@ -17,6 +17,12 @@ import MissionControlPage from '@/pages/mission-control';
 import { WorkflowsPage } from '@/pages/workflows';
 import { SocialPage } from '@/pages/social';
 import { CrmPage } from '@/pages/crm';
+import { CrmSalesPage } from '@/pages/crm-sales';
+import { CrmDeliveryPage } from '@/pages/crm-delivery';
+import { CrmClientsPage } from '@/pages/crm-clients';
+import { CrmConferencesPage } from '@/pages/crm-conferences';
+import { CrmContactDetailPage } from '@/pages/crm-contact-detail';
+import { CrmOverviewPage } from '@/pages/crm-overview';
 import { VirtualEnvironmentPage } from '@/pages/virtual-environment';
 import { EmbedVirtualEnvironmentPage } from '@/pages/embed/virtual-environment';
 import MeshPage from '@/pages/mesh';
@@ -239,6 +245,30 @@ function AppContent() {
                     <Route
                       path="/projects/:projectId/crm"
                       element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/projects/:projectId/crm/sales"
+                      element={<ProtectedRoute><CrmSalesPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/projects/:projectId/crm/delivery"
+                      element={<ProtectedRoute><CrmDeliveryPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/projects/:projectId/crm/clients"
+                      element={<ProtectedRoute><CrmClientsPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/projects/:projectId/crm/conferences"
+                      element={<ProtectedRoute><CrmConferencesPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/projects/:projectId/crm/contacts/:contactId"
+                      element={<ProtectedRoute><CrmContactDetailPage /></ProtectedRoute>}
+                    />
+                    <Route
+                      path="/projects/:projectId/crm/overview"
+                      element={<ProtectedRoute><CrmOverviewPage /></ProtectedRoute>}
                     />
                     {/* Project Knowledge - knowledge sheaf view */}
                     <Route

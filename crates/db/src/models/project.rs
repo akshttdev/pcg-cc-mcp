@@ -206,7 +206,7 @@ impl Project {
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                          vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                         organization_id, client_id,
+                         organization_id, client_id, folder_id,
                          created_at, updated_at"#,
         )
         .bind(project_id)
@@ -239,7 +239,7 @@ impl Project {
                WHERE id = ?
                RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                          vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                         organization_id, client_id,
+                         organization_id, client_id, folder_id,
                          created_at, updated_at"#,
         )
         .bind(&name)

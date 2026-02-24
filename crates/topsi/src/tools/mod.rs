@@ -221,7 +221,7 @@ pub fn get_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "create_task",
-                "description": "Create a new task and optionally assign it to an agent. SMART CONTEXT: If project_id is not specified, Topsi will automatically: (1) use the only project if user has exactly one, (2) create a new project if user has none, or (3) analyze available projects and suggest the best match if multiple exist.",
+                "description": "Create a new task and optionally assign it to an agent. When agent_name is provided, execution starts automatically — do NOT also call start_task_execution. SMART CONTEXT: If project_id is not specified, Topsi will automatically: (1) use the only project if user has exactly one, (2) create a new project if user has none, or (3) analyze available projects and suggest the best match if multiple exist.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -239,7 +239,11 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         },
                         "agent_name": {
                             "type": "string",
-                            "description": "Agent to assign the task to (e.g., 'Scout', 'Nora', 'Maci'). Optional."
+                            "description": "Agent to assign and auto-execute the task with (e.g., 'claude', 'Scout', 'Nora', 'Maci'). Execution starts immediately."
+                        },
+                        "auto_execute": {
+                            "type": "boolean",
+                            "description": "Whether to auto-start execution when agent_name is set. Defaults to true."
                         },
                         "status": {
                             "type": "string",
@@ -258,6 +262,122 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {}
+                }
+            }
+        }),
+        // ==================== EXECUTION & ORCHESTRATION TOOLS ====================
+        json!({
+            "type": "function",
+            "function": {
+                "name": "start_task_execution",
+                "description": "Start executing a task by spawning a coding agent. Creates a task attempt and triggers the executor pipeline. The agent will work in an isolated git worktree and stream logs in real-time.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "UUID of the task to execute"
+                        },
+                        "agent_name": {
+                            "type": "string",
+                            "description": "Agent to use: 'claude' (default), 'gemini', 'amp', 'codex'"
+                        },
+                        "additional_prompt": {
+                            "type": "string",
+                            "description": "Optional extra instructions for the agent beyond the task description"
+                        }
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_task_status",
+                "description": "Get the current status of a task including its latest execution attempt, recent log output, and completion state. Use to monitor running tasks.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "UUID of the task to check"
+                        },
+                        "include_logs": {
+                            "type": "boolean",
+                            "description": "Whether to include recent log lines (default: true)"
+                        },
+                        "log_lines": {
+                            "type": "integer",
+                            "description": "Number of recent log lines to include (default: 20)"
+                        }
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "update_task",
+                "description": "Update a task's status, description, priority, or assignment. Use to mark tasks done, reassign, or add context.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "UUID of the task to update"
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "New status: 'todo', 'in_progress', 'done', 'cancelled'"
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Updated title"
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Updated description"
+                        },
+                        "priority": {
+                            "type": "string",
+                            "description": "Priority: 'low', 'medium', 'high', 'critical'"
+                        },
+                        "assigned_agent": {
+                            "type": "string",
+                            "description": "Agent name to assign/reassign to"
+                        }
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_tasks",
+                "description": "List tasks for a project with filtering by status, priority, or agent. Returns titles, statuses, and latest execution info.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {
+                            "type": "string",
+                            "description": "Project UUID (optional — inferred if user has one project)"
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "Filter: 'todo', 'in_progress', 'done', 'in_review'"
+                        },
+                        "assigned_agent": {
+                            "type": "string",
+                            "description": "Filter by agent name"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results (default 20)"
+                        }
+                    }
                 }
             }
         }),

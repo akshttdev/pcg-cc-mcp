@@ -9,19 +9,27 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Calendar, DollarSign, Mail, MoreVertical, Building2, Trash2, Edit } from 'lucide-react';
+import { Calendar, DollarSign, Mail, MoreVertical, Building2, Trash2, Edit, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
 import { formatDistanceToNow } from 'date-fns';
+
+interface BoardProgressInfo {
+  boardName: string;
+  completedAssets: number;
+  totalAssets: number;
+  percentage: number;
+}
 
 interface CrmDealCardProps {
   deal: CrmDealWithContact;
   onEdit?: (deal: CrmDealWithContact) => void;
   onDelete?: (deal: CrmDealWithContact) => void;
   isDragging?: boolean;
+  boardProgress?: BoardProgressInfo;
 }
 
-export function CrmDealCard({ deal, onEdit, onDelete, isDragging }: CrmDealCardProps) {
+export function CrmDealCard({ deal, onEdit, onDelete, isDragging, boardProgress }: CrmDealCardProps) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: deal.id,
     data: {
@@ -162,6 +170,30 @@ export function CrmDealCard({ deal, onEdit, onDelete, isDragging }: CrmDealCardP
             </Badge>
           )}
         </div>
+
+        {/* Board asset progress (delivery pipeline deals) */}
+        {boardProgress && boardProgress.totalAssets > 0 && (
+          <div className="space-y-1 pt-1 border-t">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                {boardProgress.boardName}
+              </span>
+              <span className="font-medium">
+                {boardProgress.completedAssets}/{boardProgress.totalAssets}
+              </span>
+            </div>
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all',
+                  boardProgress.percentage === 100 ? 'bg-green-500' : 'bg-blue-500'
+                )}
+                style={{ width: `${boardProgress.percentage}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Probability indicator */}
         {deal.probability > 0 && (

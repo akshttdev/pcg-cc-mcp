@@ -23,6 +23,8 @@ pub enum CrmPipelineError {
 pub enum PipelineType {
     Conferences,
     Clients,
+    Sales,
+    Delivery,
     Custom,
 }
 
@@ -31,6 +33,8 @@ impl std::fmt::Display for PipelineType {
         let s = match self {
             PipelineType::Conferences => "conferences",
             PipelineType::Clients => "clients",
+            PipelineType::Sales => "sales",
+            PipelineType::Delivery => "delivery",
             PipelineType::Custom => "custom",
         };
         write!(f, "{}", s)
@@ -44,6 +48,8 @@ impl std::str::FromStr for PipelineType {
         match s.to_lowercase().as_str() {
             "conferences" => Ok(PipelineType::Conferences),
             "clients" => Ok(PipelineType::Clients),
+            "sales" => Ok(PipelineType::Sales),
+            "delivery" => Ok(PipelineType::Delivery),
             "custom" => Ok(PipelineType::Custom),
             _ => Err(format!("Unknown pipeline type: {}", s)),
         }
@@ -282,6 +288,22 @@ impl CrmPipeline {
             Self::create_clients_pipeline(pool, project_id).await?;
         }
 
+        // Check if sales pipeline exists
+        if Self::find_by_type(pool, project_id, PipelineType::Sales)
+            .await?
+            .is_none()
+        {
+            Self::create_sales_pipeline(pool, project_id).await?;
+        }
+
+        // Check if delivery pipeline exists
+        if Self::find_by_type(pool, project_id, PipelineType::Delivery)
+            .await?
+            .is_none()
+        {
+            Self::create_delivery_pipeline(pool, project_id).await?;
+        }
+
         Ok(())
     }
 
@@ -357,6 +379,98 @@ impl CrmPipeline {
             ("Negotiation", "#EF4444", 3, false, false, 75),
             ("Closed Won", "#22C55E", 4, true, true, 100),
             ("Closed Lost", "#9CA3AF", 5, true, false, 0),
+        ];
+
+        for (name, color, position, is_closed, is_won, probability) in stages {
+            CrmPipelineStage::create(
+                pool,
+                CreateCrmPipelineStage {
+                    pipeline_id: pipeline.id,
+                    name: name.to_string(),
+                    description: None,
+                    color: color.to_string(),
+                    position,
+                    is_closed: Some(is_closed),
+                    is_won: Some(is_won),
+                    probability,
+                },
+            )
+            .await?;
+        }
+
+        Ok(pipeline)
+    }
+
+    async fn create_sales_pipeline(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Self, CrmPipelineError> {
+        let pipeline = Self::create(
+            pool,
+            CreateCrmPipeline {
+                project_id,
+                name: "Sales Pipeline".to_string(),
+                description: Some("Agency sales process: Lead → Proposal → Win/Lose".to_string()),
+                pipeline_type: PipelineType::Sales,
+                icon: Some("trending-up".to_string()),
+                color: Some("#3B82F6".to_string()),
+            },
+        )
+        .await?;
+
+        let stages = vec![
+            ("Lead (Research)", "#3B82F6", 0, false, false, 10),
+            ("Proposal (Schedule Call)", "#F59E0B", 1, false, false, 30),
+            ("Presented", "#8B5CF6", 2, false, false, 60),
+            ("Won", "#22C55E", 3, true, true, 100),
+            ("Lost", "#9CA3AF", 4, true, false, 0),
+        ];
+
+        for (name, color, position, is_closed, is_won, probability) in stages {
+            CrmPipelineStage::create(
+                pool,
+                CreateCrmPipelineStage {
+                    pipeline_id: pipeline.id,
+                    name: name.to_string(),
+                    description: None,
+                    color: color.to_string(),
+                    position,
+                    is_closed: Some(is_closed),
+                    is_won: Some(is_won),
+                    probability,
+                },
+            )
+            .await?;
+        }
+
+        Ok(pipeline)
+    }
+
+    async fn create_delivery_pipeline(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Self, CrmPipelineError> {
+        let pipeline = Self::create(
+            pool,
+            CreateCrmPipeline {
+                project_id,
+                name: "Client Delivery".to_string(),
+                description: Some("Client delivery pipeline: Onboarding → Brand Guide → Online Presence → Social Stack → Monthly Retainer".to_string()),
+                pipeline_type: PipelineType::Delivery,
+                icon: Some("package".to_string()),
+                color: Some("#8B5CF6".to_string()),
+            },
+        )
+        .await?;
+
+        let stages = vec![
+            ("Onboarding", "#3B82F6", 0, false, false, 5),
+            ("Brand Guide", "#8B5CF6", 1, false, false, 20),
+            ("Online Presence", "#F59E0B", 2, false, false, 40),
+            ("Social Stack", "#EC4899", 3, false, false, 60),
+            ("Monthly Retainer", "#14B8A6", 4, false, false, 80),
+            ("Active Retainer", "#22C55E", 5, true, true, 100),
+            ("Completed", "#9CA3AF", 6, true, true, 100),
         ];
 
         for (name, color, position, is_closed, is_won, probability) in stages {

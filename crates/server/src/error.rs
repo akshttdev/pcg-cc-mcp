@@ -8,7 +8,10 @@ use db::models::{
     agent_flow::AgentFlowError,
     agent_flow_event::AgentFlowEventError,
     artifact_review::ArtifactReviewError,
+    crm_activity::CrmActivityError,
     crm_contact::CrmContactError,
+    crm_deal::CrmDealError,
+    crm_pipeline::CrmPipelineError,
     email_account::EmailAccountError,
     execution_artifact::ExecutionArtifactError,
     execution_process::ExecutionProcessError,
@@ -64,6 +67,12 @@ pub enum ApiError {
     EmailAccount(#[from] EmailAccountError),
     #[error(transparent)]
     CrmContact(#[from] CrmContactError),
+    #[error(transparent)]
+    CrmPipeline(#[from] CrmPipelineError),
+    #[error(transparent)]
+    CrmDeal(#[from] CrmDealError),
+    #[error(transparent)]
+    CrmActivity(#[from] CrmActivityError),
     #[error("Multipart error: {0}")]
     Multipart(#[from] MultipartError),
     #[error("IO error: {0}")]
@@ -239,6 +248,20 @@ impl IntoResponse for ApiError {
             ApiError::CrmContact(e) => match e {
                 CrmContactError::NotFound => (StatusCode::NOT_FOUND, "CrmContactNotFound"),
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, "CrmContactError"),
+            },
+            ApiError::CrmPipeline(e) => match e {
+                CrmPipelineError::NotFound => (StatusCode::NOT_FOUND, "CrmPipelineNotFound"),
+                CrmPipelineError::StageNotFound => (StatusCode::NOT_FOUND, "CrmStageNotFound"),
+                CrmPipelineError::AlreadyExists => (StatusCode::CONFLICT, "CrmPipelineAlreadyExists"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "CrmPipelineError"),
+            },
+            ApiError::CrmDeal(e) => match e {
+                CrmDealError::NotFound => (StatusCode::NOT_FOUND, "CrmDealNotFound"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "CrmDealError"),
+            },
+            ApiError::CrmActivity(e) => match e {
+                CrmActivityError::NotFound => (StatusCode::NOT_FOUND, "CrmActivityNotFound"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "CrmActivityError"),
             },
         };
 

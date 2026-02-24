@@ -145,28 +145,22 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         headers['Authorization'] = `Bearer ${sessionToken}`;
       }
 
-      const res = await fetch(resolveApiUrl('/api/topsi/voice/interaction'), {
+      const res = await fetch(resolveApiUrl('/api/topsi/chat'), {
         method: 'POST',
         headers,
         credentials: 'include', // Send auth cookies
         body: JSON.stringify({
+          message: userMessage,
           sessionId,
-          textInput: userMessage,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
         const responseData = data.data || data;
-        const responseText = responseData.responseText || 'I received your message.';
-        const hasAudio = responseData.audioResponse && responseData.audioResponse.length > 100;
+        const responseText = responseData.message || 'I received your message.';
 
-        addMessage('assistant', responseText, hasAudio);
-
-        // Play audio if available and speaker is on
-        if (hasAudio && isSpeakerOn) {
-          playAudio(responseData.audioResponse);
-        }
+        addMessage('assistant', responseText);
 
         // Emit event to notify other components to refresh
         // This triggers refresh of projects, tasks, etc. when Topsi makes changes

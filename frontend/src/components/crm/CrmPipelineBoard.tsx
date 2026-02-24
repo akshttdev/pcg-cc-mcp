@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import NiceModal from '@ebay/nice-modal-react';
 import { useCrmKanban, useCrmPipelineByType, useMoveDeal, useCreateDeal, useUpdateDeal, useDeleteDeal } from '@/hooks/useCrmPipeline';
+import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
 import { CrmDealCard } from './CrmDealCard';
 import { CrmDealForm } from './CrmDealForm';
 import type { PipelineType, CrmDealWithContact, CrmPipelineStage, CreateCrmDeal, UpdateCrmDeal } from '@/types/crm';
@@ -93,6 +94,11 @@ export function CrmPipelineBoard({
   const createDeal = useCreateDeal();
   const updateDeal = useUpdateDeal();
   const deleteDeal = useDeleteDeal();
+
+  // Board progress for delivery pipeline deals
+  const { getProgressForStage } = useProjectBoardProgress(
+    pipelineType === 'delivery' ? projectId : undefined
+  );
 
   // Configure sensors for drag and drop
   const sensors = useSensors(
@@ -323,16 +329,30 @@ export function CrmPipelineBoard({
                 </CardHeader>
                 <CardContent className="p-2 pt-0 flex-1 overflow-y-auto">
                   <DroppableColumn stage={stageData.stage} isOver={overId === stageData.stage.id}>
-                    {stageData.deals.map((deal) => (
-                      <div key={deal.id} className="group">
-                        <CrmDealCard
-                          deal={deal}
-                          onEdit={handleEditDeal}
-                          onDelete={handleDeleteDeal}
-                          isDragging={activeDeal?.id === deal.id}
-                        />
-                      </div>
-                    ))}
+                    {stageData.deals.map((deal) => {
+                      const progress = pipelineType === 'delivery'
+                        ? getProgressForStage(stageData.stage.name)
+                        : undefined;
+                      const boardProgressInfo = progress
+                        ? {
+                            boardName: progress.boardName,
+                            completedAssets: progress.completedAssets,
+                            totalAssets: progress.totalAssets,
+                            percentage: progress.percentage,
+                          }
+                        : undefined;
+                      return (
+                        <div key={deal.id} className="group">
+                          <CrmDealCard
+                            deal={deal}
+                            onEdit={handleEditDeal}
+                            onDelete={handleDeleteDeal}
+                            isDragging={activeDeal?.id === deal.id}
+                            boardProgress={boardProgressInfo}
+                          />
+                        </div>
+                      );
+                    })}
                     {stageData.deals.length === 0 && (
                       <div className="text-center py-8 text-sm text-muted-foreground">
                         Drop deals here
