@@ -334,7 +334,7 @@ export function RalphLoopProgress({
                 Iteration History
               </h4>
               <div className="space-y-2 max-h-48 overflow-y-auto">
-                {iterations.slice().reverse().map((iteration) => (
+                {iterations.slice().reverse().map((iteration: RalphIteration) => (
                   <IterationRow key={iteration.id} iteration={iteration} />
                 ))}
               </div>

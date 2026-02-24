@@ -5,13 +5,12 @@ import * as THREE from 'three';
 
 // Preload the gallery model so it's ready when the building renders
 useGLTF.preload('/environments/fine-art-gallery.glb');
-import { BuildingType, BUILDING_THEMES, getBuildingType } from '@/lib/virtual-world/buildingTypes';
-import { ENTRY_PROMPT_HEIGHT, DOOR_WIDTH, DOOR_HEIGHT } from '@/lib/virtual-world/constants';
+import { BuildingType, BUILDING_THEMES, getBuildingType } from '@/lib/vibeland/buildingTypes';
+import { ENTRY_PROMPT_HEIGHT, DOOR_WIDTH, DOOR_HEIGHT } from '@/lib/vibeland/constants';
 
 // Default footprint for hover/select ring and walkway calculations
 const DEFAULT_HALF_WIDTH = 25;
 const DEFAULT_HALF_LENGTH = 50;
-const DEFAULT_FOOTPRINT_RADIUS = Math.sqrt(DEFAULT_HALF_WIDTH ** 2 + DEFAULT_HALF_LENGTH ** 2);
 
 export const PUBLIC_PROJECTS = new Set(['Fine Art Society']);
 

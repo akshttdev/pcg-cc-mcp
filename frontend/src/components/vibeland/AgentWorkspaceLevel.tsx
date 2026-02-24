@@ -7,7 +7,7 @@ import {
   WORKSPACE_OUTER_RADIUS,
   WORKSPACE_INNER_RADIUS,
   COMMAND_CENTER_Y,
-} from '@/lib/virtual-world/spatialSystem';
+} from '@/lib/vibeland/spatialSystem';
 
 // Re-export for backward compatibility
 export { WORKSPACE_FLOOR_Y, COMMAND_CENTER_Y };
@@ -305,7 +305,7 @@ function WedgeFloorAccent({
 // ============================================================================
 
 // Re-export from spatial system
-export { getFloorHeightAt as getRampYAtPosition } from '@/lib/virtual-world/spatialSystem';
+export { getFloorHeightAt as getRampYAtPosition } from '@/lib/vibeland/spatialSystem';
 
 export function getAgentBayPosition(agentName: string): [number, number, number] | null {
   const bayIndex = AGENT_BAYS.findIndex(bay => bay.agentName === agentName);

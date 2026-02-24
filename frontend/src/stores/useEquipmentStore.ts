@@ -108,43 +108,27 @@ export const useEquipmentStore = create<EquipmentStore>()(
         const hasAdminEquipment = currentInventory.length === 4 && currentInventory.includes('crown');
         const equipmentMatchesRole = isAdmin ? hasAdminEquipment : currentInventory.length === 0;
 
-        console.log('[EquipmentStore] initializeForUser called:', {
-          userId,
-          isAdmin,
-          currentUser,
-          currentInventory,
-          hasAdminEquipment,
-          equipmentMatchesRole,
-          willSkip: currentUser === userId && equipmentMatchesRole
-        });
 
         // Only skip if already initialized for this user AND equipment matches their role
         if (currentUser === userId && equipmentMatchesRole) {
-          console.log('[EquipmentStore] Skipping - already correctly initialized for this user');
           return;
         }
 
-        console.log('[EquipmentStore] Reinitializing - user or equipment mismatch');
 
         // Set up equipment based on admin status
-        console.log('[EquipmentStore] Setting up equipment, isAdmin:', isAdmin);
         if (isAdmin) {
-          console.log('[EquipmentStore] Setting ADMIN equipment:', ADMIN_INVENTORY, ADMIN_EQUIPMENT);
           set({
             inventory: [...ADMIN_INVENTORY],
             equipped: { ...ADMIN_EQUIPMENT },
             initializedForUser: userId,
           });
-          console.log('[EquipmentStore] After set, state:', get());
         } else {
-          console.log('[EquipmentStore] Setting EMPTY equipment');
           // Regular users start with empty inventory and no equipment
           set({
             inventory: [],
             equipped: { ...EMPTY_EQUIPMENT },
             initializedForUser: userId,
           });
-          console.log('[EquipmentStore] After set, state:', get());
         }
       },
 

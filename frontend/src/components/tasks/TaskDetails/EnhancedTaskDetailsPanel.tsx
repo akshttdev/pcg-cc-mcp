@@ -151,11 +151,9 @@ export function EnhancedTaskDetailsPanel({
 
     agentsApi.getByName(agentName)
       .then((agent) => {
-        console.log('[TaskPanel] Resolved agent ID for persistence:', agent.id, agent.short_name);
         setExecutingAgentId(agent.id);
       })
-      .catch((err) => {
-        console.log('[TaskPanel] Could not resolve agent ID:', err.message);
+      .catch(() => {
       });
   }, [task.assigned_agent, executingAgentId]);
 
@@ -167,12 +165,10 @@ export function EnhancedTaskDetailsPanel({
     agentsApi.getConversationBySession(executingAgentId, sessionId)
       .then((result) => {
         if (result && result.messages) {
-          console.log('[TaskPanel] Loaded', result.messages.length, 'chat messages for activity');
           setChatMessages(result.messages);
         }
       })
-      .catch((err) => {
-        console.log('[TaskPanel] Could not load chat messages:', err.message);
+      .catch(() => {
       });
   }, [executingAgentId, task.id]);
 
@@ -278,13 +274,6 @@ export function EnhancedTaskDetailsPanel({
     async (message: string, agentName?: string): Promise<string> => {
       const targetAgentName = executingAgentName || agentName || task.assigned_agent;
 
-      console.log('[TaskPanel] handleSendMessage called:', {
-        messagePreview: message.substring(0, 50) + '...',
-        targetAgentName,
-        executingAgentName,
-        assignedAgent: task.assigned_agent,
-        taskId: task.id,
-      });
 
       // Helper to wrap fetch with timeout
       const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs: number): Promise<Response> => {
@@ -344,9 +333,7 @@ export function EnhancedTaskDetailsPanel({
       // Try agent-specific chat if we have an agent name
       if (targetAgentName) {
         try {
-          console.log('[TaskPanel] Looking up agent:', targetAgentName);
           const agent = await agentsApi.getByName(targetAgentName);
-          console.log('[TaskPanel] Found agent:', agent.id, agent.short_name);
 
           // Save agent ID for persistence
           if (!executingAgentId) {
@@ -365,7 +352,6 @@ export function EnhancedTaskDetailsPanel({
             stream: false,
           };
 
-          console.log('[TaskPanel] Calling agent chat API...');
 
           // Use fetchWithTimeout for agent chat (30 second timeout)
           const response = await fetchWithTimeout(
@@ -392,7 +378,6 @@ export function EnhancedTaskDetailsPanel({
           }
 
           const data = await response.json();
-          console.log('[TaskPanel] Got agent response:', data.content?.substring(0, 100) + '...');
           return data.content;
         } catch (error) {
           console.warn(`[TaskPanel] Agent chat failed for ${targetAgentName}:`, error);
@@ -402,12 +387,10 @@ export function EnhancedTaskDetailsPanel({
             throw error;
           }
 
-          console.log('[TaskPanel] Falling back to Nora...');
         }
       }
 
       // Fallback: route through Nora with timeout
-      console.log('[TaskPanel] Using Nora fallback');
       const agentContext = targetAgentName ? `[To ${targetAgentName}] ` : '';
       const contextualMessage = `${agentContext}Regarding task "${task.title}": ${message}`;
 
@@ -444,7 +427,6 @@ export function EnhancedTaskDetailsPanel({
         }
 
         const data = await response.json();
-        console.log('[TaskPanel] Nora response:', data);
         return data.content || data.message || data.response || 'Response received';
       } catch (error) {
         console.error('[TaskPanel] Chat error:', error);
@@ -721,11 +703,9 @@ export function EnhancedTaskDetailsPanel({
               className="h-full"
               onUpload={async () => {
                 // TODO: Implement file upload
-                console.log('File upload requested');
               }}
               onLinkAdd={async () => {
                 // TODO: Implement link addition
-                console.log('Add link requested');
               }}
             />
           )}

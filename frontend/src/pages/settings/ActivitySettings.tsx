@@ -148,13 +148,11 @@ export function ActivitySettings() {
   };
 
   const handleExportLogs = () => {
-    console.log('Exporting activity logs...');
     alert('Activity logs will be downloaded as CSV');
   };
 
   const handleClearLogs = () => {
     if (confirm('Are you sure you want to clear all activity logs?')) {
-      console.log('Clearing activity logs...');
       alert('Activity logs cleared');
     }
   };

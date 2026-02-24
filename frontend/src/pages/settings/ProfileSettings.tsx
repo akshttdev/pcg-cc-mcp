@@ -34,7 +34,6 @@ export function ProfileSettings() {
     setIsSaving(true);
     try {
       // TODO: Implement actual API call to save profile
-      console.log('Saving profile:', { name, email, title, bio, location });
       await new Promise((resolve) => setTimeout(resolve, 500));
       alert('Profile updated successfully!');
     } catch (error) {
@@ -47,7 +46,6 @@ export function ProfileSettings() {
 
   const handleAvatarUpload = () => {
     // TODO: Implement avatar upload
-    console.log('Avatar upload clicked');
   };
 
   return (
