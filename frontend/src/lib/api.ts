@@ -86,6 +86,23 @@ import {
   AirtablePushTaskRequest,
 } from 'shared/types';
 
+// CRM Pipeline & Deal Types
+import type {
+  CrmPipeline,
+  CrmPipelineStage,
+  CrmPipelineWithStages,
+  CreateCrmPipeline,
+  UpdateCrmPipeline,
+  CreateCrmPipelineStage,
+  UpdateCrmPipelineStage,
+  KanbanBoardData,
+  CrmDealRecord,
+  CreateCrmDeal,
+  UpdateCrmDeal,
+  MoveDealRequest,
+  PipelineType,
+} from '@/types/crm';
+
 // Re-export types for convenience
 export type { RepositoryInfo } from 'shared/types';
 export type {
@@ -565,6 +582,15 @@ export const projectsApi = {
     return handleApiResponse<void>(response);
   },
 
+  // Client Assignment
+  setClient: async (projectId: string, clientId: string | null): Promise<void> => {
+    const response = await makeRequest(`/api/projects/${projectId}/client`, {
+      method: 'PUT',
+      body: JSON.stringify({ client_id: clientId }),
+    });
+    return handleApiResponse<void>(response);
+  },
+
   // Brand Profile APIs
   getBrandProfile: async (projectId: string): Promise<BrandProfile | null> => {
     const response = await makeRequest(
@@ -760,6 +786,20 @@ export const tasksApi = {
       method: 'DELETE',
     });
     return handleApiResponse<void>(response);
+  },
+
+  archive: async (taskId: string): Promise<Task> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/archive`, {
+      method: 'POST',
+    });
+    return handleApiResponse<Task>(response);
+  },
+
+  unarchive: async (taskId: string): Promise<Task> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/archive`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<Task>(response);
   },
 };
 
@@ -2913,6 +2953,183 @@ export const crmApi = {
   },
 };
 
+// ============================================================================
+// CRM Pipeline & Deal API
+// ============================================================================
+
+export type {
+  CrmPipeline,
+  CrmPipelineStage,
+  CrmPipelineWithStages,
+  CreateCrmPipeline,
+  UpdateCrmPipeline,
+  CreateCrmPipelineStage,
+  UpdateCrmPipelineStage,
+  KanbanBoardData,
+  CrmDealRecord,
+  CreateCrmDeal,
+  UpdateCrmDeal,
+  MoveDealRequest,
+  PipelineType,
+};
+
+export const crmPipelinesApi = {
+  /** List pipelines for a project or organization */
+  listPipelines: async (
+    projectId: string,
+    options?: { pipelineType?: PipelineType; organizationId?: string }
+  ): Promise<CrmPipeline[]> => {
+    const params = new URLSearchParams();
+    if (options?.organizationId) {
+      params.set('organization_id', options.organizationId);
+    } else {
+      params.set('project_id', projectId);
+    }
+    if (options?.pipelineType) params.set('pipeline_type', options.pipelineType);
+    const response = await makeRequest(`/api/crm/pipelines?${params.toString()}`);
+    return handleApiResponse<CrmPipeline[]>(response);
+  },
+
+  /** List pipelines for an organization */
+  listOrgPipelines: async (orgId: string): Promise<CrmPipeline[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/crm/pipelines`);
+    return handleApiResponse<CrmPipeline[]>(response);
+  },
+
+  /** Get a single pipeline with its stages */
+  getPipeline: async (id: string): Promise<CrmPipelineWithStages> => {
+    const response = await makeRequest(`/api/crm/pipelines/${id}`);
+    return handleApiResponse<CrmPipelineWithStages>(response);
+  },
+
+  /** Get a pipeline with stages under an org (by pipeline id) */
+  getOrgPipeline: async (orgId: string, pipelineId: string): Promise<CrmPipelineWithStages> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/crm/pipelines/${pipelineId}`
+    );
+    return handleApiResponse<CrmPipelineWithStages>(response);
+  },
+
+  createPipeline: async (data: CreateCrmPipeline): Promise<CrmPipeline> => {
+    const response = await makeRequest('/api/crm/pipelines', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmPipeline>(response);
+  },
+
+  updatePipeline: async (id: string, data: UpdateCrmPipeline): Promise<CrmPipeline> => {
+    const response = await makeRequest(`/api/crm/pipelines/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmPipeline>(response);
+  },
+
+  deletePipeline: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/pipelines/${id}`, { method: 'DELETE' });
+    await handleApiResponse<void>(response);
+  },
+
+  listStages: async (pipelineId: string): Promise<CrmPipelineStage[]> => {
+    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages`);
+    return handleApiResponse<CrmPipelineStage[]>(response);
+  },
+
+  createStage: async (
+    pipelineId: string,
+    data: Omit<CreateCrmPipelineStage, 'pipeline_id'>
+  ): Promise<CrmPipelineStage> => {
+    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmPipelineStage>(response);
+  },
+
+  updateStage: async (
+    pipelineId: string,
+    stageId: string,
+    data: UpdateCrmPipelineStage
+  ): Promise<CrmPipelineStage> => {
+    const response = await makeRequest(
+      `/api/crm/pipelines/${pipelineId}/stages/${stageId}`,
+      { method: 'PATCH', body: JSON.stringify(data) }
+    );
+    return handleApiResponse<CrmPipelineStage>(response);
+  },
+
+  deleteStage: async (pipelineId: string, stageId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/crm/pipelines/${pipelineId}/stages/${stageId}`,
+      { method: 'DELETE' }
+    );
+    await handleApiResponse<void>(response);
+  },
+
+  reorderStages: async (
+    pipelineId: string,
+    stageIds: string[]
+  ): Promise<CrmPipelineStage[]> => {
+    const response = await makeRequest(`/api/crm/pipelines/${pipelineId}/stages/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ stage_ids: stageIds }),
+    });
+    return handleApiResponse<CrmPipelineStage[]>(response);
+  },
+};
+
+export const crmDealsApi = {
+  createDeal: async (data: CreateCrmDeal): Promise<CrmDealRecord> => {
+    const response = await makeRequest('/api/crm/deals', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  updateDeal: async (id: string, data: UpdateCrmDeal): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  moveDeal: async (dealId: string, data: MoveDealRequest): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/stage`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  deleteDeal: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/crm/deals/${id}`, { method: 'DELETE' });
+    await handleApiResponse<void>(response);
+  },
+
+  /** Get Kanban board data for a pipeline (deals grouped by stage) */
+  getKanbanData: async (pipelineId: string): Promise<KanbanBoardData> => {
+    const response = await makeRequest(`/api/crm/deals/kanban/${pipelineId}`);
+    return handleApiResponse<KanbanBoardData>(response);
+  },
+
+  /** Get Kanban board for an org-scoped pipeline */
+  getOrgKanbanData: async (orgId: string, pipelineId: string): Promise<KanbanBoardData> => {
+    const response = await makeRequest(
+      `/api/organizations/${orgId}/crm/pipelines/${pipelineId}/kanban`
+    );
+    return handleApiResponse<KanbanBoardData>(response);
+  },
+
+  /** List all deals for an organization */
+  listOrgDeals: async (orgId: string): Promise<CrmDealRecord[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/crm/deals`);
+    return handleApiResponse<CrmDealRecord[]>(response);
+  },
+};
+
 // Aptos Blockchain Types
 export interface AptosBalance {
   address: string;
@@ -3589,6 +3806,315 @@ export const projectFoldersApi = {
     const response = await makeRequest(`/api/project-folders/${folderId}/projects/${projectId}`, {
       method: 'DELETE',
     });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ============================================================================
+// AGENT EXECUTION CONFIG & RALPH
+// ============================================================================
+
+export type ExecutionMode = 'standard' | 'ralph' | 'parallel' | 'pipeline';
+export type RalphLoopStatus = 'initializing' | 'running' | 'validating' | 'complete' | 'maxreached' | 'failed' | 'cancelled';
+
+export interface AgentExecutionProfile {
+  id: string;
+  name: string;
+  description: string | null;
+  execution_mode: ExecutionMode;
+  max_iterations: number | null;
+  completion_promise: string | null;
+  exit_signal_key: string | null;
+  backpressure_commands: string | null;
+  iteration_delay_ms: number | null;
+  iteration_timeout_ms: number | null;
+  total_timeout_ms: number | null;
+  preserve_session: boolean | null;
+}
+
+export interface AgentExecutionConfig {
+  id: string;
+  agent_id: string;
+  execution_profile_id: string | null;
+  execution_mode_override: ExecutionMode | null;
+  max_iterations_override: number | null;
+  backpressure_commands_override: string | null;
+  system_prompt_prefix: string | null;
+  system_prompt_suffix: string | null;
+  auto_commit_on_success: boolean | null;
+  auto_create_pr_on_complete: boolean | null;
+  require_tests_pass: boolean | null;
+  is_active: boolean | null;
+  created_at: string;
+  updated_at: string;
+  type?: 'Found';
+}
+
+export interface CreateAgentExecutionConfig {
+  execution_profile_id?: string | null;
+  execution_mode_override?: ExecutionMode | null;
+  max_iterations_override?: number | null;
+  backpressure_commands_override?: string;
+  system_prompt_prefix?: string;
+  system_prompt_suffix?: string;
+  auto_commit_on_success?: boolean;
+  auto_create_pr_on_complete?: boolean;
+  require_tests_pass?: boolean;
+}
+
+export interface UpdateAgentExecutionConfig extends CreateAgentExecutionConfig {}
+
+export interface RalphLoopState {
+  id: string;
+  task_attempt_id: string;
+  agent_id: string | null;
+  current_iteration: number;
+  max_iterations: number;
+  session_id: string | null;
+  status: RalphLoopStatus;
+  completion_promise: string | null;
+  completion_detected_at: string | null;
+  final_validation_passed: boolean | null;
+  total_tokens_used: number | null;
+  total_cost_cents: number | null;
+  started_at: string;
+  completed_at: string | null;
+  last_iteration_at: string | null;
+  last_error: string | null;
+  consecutive_failures: number | null;
+  type?: 'Found';
+}
+
+export interface RalphIteration {
+  id: string;
+  ralph_loop_id: string;
+  execution_process_id: string | null;
+  iteration_number: number;
+  status: string;
+  completion_signal_found: boolean | null;
+  exit_signal_found: boolean | null;
+  all_backpressure_passed: boolean | null;
+  tokens_used: number | null;
+  cost_cents: number | null;
+  duration_ms: number | null;
+  started_at: string;
+  completed_at: string | null;
+  output_summary: string | null;
+  files_modified: number | null;
+  commits_made: number | null;
+}
+
+export const agentExecutionConfigApi = {
+  listProfiles: async (): Promise<AgentExecutionProfile[]> => {
+    const response = await makeRequest('/api/execution-profiles');
+    return handleApiResponse<AgentExecutionProfile[]>(response);
+  },
+  getAgentConfig: async (agentId: string): Promise<AgentExecutionConfig | { type: 'NotFound' }> => {
+    const response = await makeRequest(`/api/agents/${agentId}/execution-config`);
+    return handleApiResponse<AgentExecutionConfig | { type: 'NotFound' }>(response);
+  },
+  createAgentConfig: async (agentId: string, data: CreateAgentExecutionConfig): Promise<AgentExecutionConfig> => {
+    const response = await makeRequest(`/api/agents/${agentId}/execution-config`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<AgentExecutionConfig>(response);
+  },
+  updateAgentConfig: async (agentId: string, data: UpdateAgentExecutionConfig): Promise<AgentExecutionConfig> => {
+    const response = await makeRequest(`/api/agents/${agentId}/execution-config`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<AgentExecutionConfig>(response);
+  },
+};
+
+export const ralphApi = {
+  getLoopState: async (loopId: string): Promise<RalphLoopState> => {
+    const response = await makeRequest(`/api/ralph/loops/${loopId}`);
+    return handleApiResponse<RalphLoopState>(response);
+  },
+  getByAttempt: async (taskAttemptId: string): Promise<RalphLoopState | { type: 'NotFound' }> => {
+    const response = await makeRequest(`/api/ralph/by-attempt/${taskAttemptId}`);
+    return handleApiResponse<RalphLoopState | { type: 'NotFound' }>(response);
+  },
+  getIterations: async (loopId: string): Promise<RalphIteration[]> => {
+    const response = await makeRequest(`/api/ralph/loops/${loopId}/iterations`);
+    return handleApiResponse<RalphIteration[]>(response);
+  },
+  cancelLoop: async (loopId: string): Promise<void> => {
+    const response = await makeRequest(`/api/ralph/loops/${loopId}/cancel`, { method: 'POST' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ============================================================================
+// COMMUNICATIONS (CALLS & SMS)
+// ============================================================================
+
+export interface CallLogRecord {
+  id: string;
+  project_id: string;
+  call_sid: string;
+  parent_call_sid: string | null;
+  from_number: string;
+  to_number: string;
+  from_formatted: string | null;
+  to_formatted: string | null;
+  caller_name: string | null;
+  direction: string;
+  status: string;
+  answered_by: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  duration_seconds: number | null;
+  recording_url: string | null;
+  transcription: string | null;
+  summary: string | null;
+  sentiment: string | null;
+  crm_contact_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CallStats {
+  total: number;
+  inbound: number;
+  outbound: number;
+  completed: number;
+  missed: number;
+  total_duration_seconds: number;
+}
+
+export interface SmsMessageRecord {
+  id: string;
+  project_id: string;
+  message_sid: string;
+  from_number: string;
+  to_number: string;
+  body: string;
+  direction: string;
+  status: string;
+  sentiment: string | null;
+  crm_contact_id: string | null;
+  is_read: number;
+  is_starred: number;
+  needs_response: number;
+  auto_response: string | null;
+  date_sent: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SmsStats {
+  total: number;
+  inbound: number;
+  outbound: number;
+  unread: number;
+  needs_response: number;
+}
+
+export const communicationsApi = {
+  listCalls: async (params: { project_id: string; limit?: number }): Promise<CallLogRecord[]> => {
+    const qs = new URLSearchParams({ project_id: params.project_id, limit: String(params.limit ?? 50) });
+    const response = await makeRequest(`/api/communications/calls?${qs}`);
+    return handleApiResponse<CallLogRecord[]>(response);
+  },
+  getCallStats: async (projectId: string): Promise<CallStats> => {
+    const response = await makeRequest(`/api/communications/calls/stats/${projectId}`);
+    return handleApiResponse<CallStats>(response);
+  },
+  listSms: async (params: { project_id: string; limit?: number }): Promise<SmsMessageRecord[]> => {
+    const qs = new URLSearchParams({ project_id: params.project_id, limit: String(params.limit ?? 50) });
+    const response = await makeRequest(`/api/communications/sms?${qs}`);
+    return handleApiResponse<SmsMessageRecord[]>(response);
+  },
+  getSmsStats: async (projectId: string): Promise<SmsStats> => {
+    const response = await makeRequest(`/api/communications/sms/stats/${projectId}`);
+    return handleApiResponse<SmsStats>(response);
+  },
+  markSmsRead: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/communications/sms/${id}/read`, { method: 'POST' });
+    return handleApiResponse<void>(response);
+  },
+  toggleSmsStar: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/communications/sms/${id}/star`, { method: 'POST' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ============================================================================
+// EMAIL MESSAGES
+// ============================================================================
+
+export interface EmailMessageRecord {
+  id: string;
+  email_account_id: string;
+  project_id: string;
+  provider_message_id: string;
+  thread_id: string | null;
+  from_address: string;
+  from_name: string | null;
+  to_addresses: string;
+  subject: string | null;
+  body_text: string | null;
+  body_html: string | null;
+  snippet: string | null;
+  has_attachments: number;
+  is_read: number;
+  is_starred: number;
+  is_draft: number;
+  is_sent: number;
+  is_archived: number;
+  is_trash: number;
+  sentiment: string | null;
+  priority: string | null;
+  needs_response: number;
+  received_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailInboxStats {
+  total: number;
+  unread: number;
+  starred: number;
+  needs_response: number;
+  by_account: Array<{ account_id: string; email_address: string; total: number; unread: number }>;
+}
+
+export const emailMessagesApi = {
+  listMessages: async (params: {
+    project_id: string;
+    email_account_id?: string;
+    is_read?: boolean;
+    is_starred?: boolean;
+    needs_response?: boolean;
+    limit?: number;
+  }): Promise<EmailMessageRecord[]> => {
+    const qs = new URLSearchParams({ project_id: params.project_id });
+    if (params.email_account_id) qs.set('email_account_id', params.email_account_id);
+    if (params.is_read !== undefined) qs.set('is_read', String(params.is_read));
+    if (params.is_starred !== undefined) qs.set('is_starred', String(params.is_starred));
+    if (params.needs_response !== undefined) qs.set('needs_response', String(params.needs_response));
+    if (params.limit) qs.set('limit', String(params.limit));
+    const response = await makeRequest(`/api/email/messages?${qs}`);
+    return handleApiResponse<EmailMessageRecord[]>(response);
+  },
+  getInboxStats: async (projectId: string): Promise<EmailInboxStats> => {
+    const response = await makeRequest(`/api/email/messages/stats/${projectId}`);
+    return handleApiResponse<EmailInboxStats>(response);
+  },
+  markAsRead: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/email/messages/${id}/read`, { method: 'POST' });
+    return handleApiResponse<void>(response);
+  },
+  toggleStar: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/email/messages/${id}/star`, { method: 'POST' });
+    return handleApiResponse<void>(response);
+  },
+  moveToTrash: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/email/messages/${id}/trash`, { method: 'POST' });
     return handleApiResponse<void>(response);
   },
 };

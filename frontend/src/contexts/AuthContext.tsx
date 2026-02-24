@@ -27,12 +27,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Initialize equipment when user changes
   useEffect(() => {
     if (user) {
-      console.log('[AuthContext] User changed, initializing equipment:', {
-        userId: user.id,
-        username: user.username,
-        is_admin: user.is_admin,
-        typeof_is_admin: typeof user.is_admin
-      });
       initializeEquipment(user.id, user.is_admin);
     }
   }, [user, initializeEquipment]);

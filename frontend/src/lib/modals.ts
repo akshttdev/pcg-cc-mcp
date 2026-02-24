@@ -81,7 +81,6 @@ export function removeModal(modal: string): void {
  */
 export function hideAllModals(): void {
   // NiceModal doesn't have a direct hideAll, so we'll implement as needed
-  console.log('Hide all modals - implement as needed');
 }
 
 /**

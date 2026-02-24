@@ -92,7 +92,7 @@ export function TopsiPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [isSpeakerOn, _setIsSpeakerOn] = useState(true);
 
   // Voice refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);

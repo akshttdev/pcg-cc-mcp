@@ -37,6 +37,8 @@ import {
   Pencil,
   Trash2,
   FolderMinus,
+  Target,
+  TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -93,7 +95,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse' },
   { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh' },
-  { label: 'Virtual World', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
+  { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'Settings', icon: Settings, to: '/settings', id: 'settings' },
 ];
 
@@ -867,7 +869,7 @@ function ClientGroup({
 
 function SharedBoardGroup({
   group,
-  projectId,
+  projectId: _projectId,
 }: {
   group: SidebarSharedBoardGroupType;
   projectId?: string;
@@ -994,6 +996,32 @@ function OrgSection({
       </CollapsibleTrigger>
       <CollapsibleContent className="pl-2">
         <div className="space-y-0.5">
+          {/* Org-level CRM pipeline boards */}
+          <div className="flex gap-1 px-1 py-1">
+            <Link
+              to={`/organizations/${org.id}/crm/acquisition`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground flex-1',
+                location.pathname === `/organizations/${org.id}/crm/acquisition` &&
+                  'bg-accent text-accent-foreground'
+              )}
+            >
+              <Target className="h-3 w-3 text-amber-500 shrink-0" />
+              <span>Acquisition</span>
+            </Link>
+            <Link
+              to={`/organizations/${org.id}/crm/lifecycle`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground flex-1',
+                location.pathname === `/organizations/${org.id}/crm/lifecycle` &&
+                  'bg-accent text-accent-foreground'
+              )}
+            >
+              <TrendingUp className="h-3 w-3 text-emerald-500 shrink-0" />
+              <span>Lifecycle</span>
+            </Link>
+          </div>
+
           {/* Internal projects and folders (no client) */}
           {(org.internal_projects.length > 0 || (org.internal_folders || []).length > 0) && (
             <div className="space-y-0.5 py-0.5">

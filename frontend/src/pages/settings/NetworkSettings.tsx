@@ -1,17 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Network,
   Wifi,
   WifiOff,
-  RefreshCw,
   Plus,
   Trash2,
   CheckCircle2,
@@ -66,7 +63,6 @@ async function fetchJson<T>(url: string): Promise<T> {
 export function NetworkSettings() {
   const queryClient = useQueryClient();
   const [newAgent, setNewAgent] = useState('');
-  const [newSoftware, setNewSoftware] = useState('');
 
   // Fetch APN Core identity
   const { data: apnIdentity, isLoading: apnLoading } = useQuery<ApnIdentity>({
@@ -83,7 +79,7 @@ export function NetworkSettings() {
   });
 
   // Fetch capabilities from APN Core
-  const { data: capabilities, isLoading: capsLoading } = useQuery<Capabilities>({
+  const { data: capabilities } = useQuery<Capabilities>({
     queryKey: ['apn-capabilities'],
     queryFn: async () => {
       const res = await fetch(resolveApiUrl('/api/mesh/stats'));
@@ -251,7 +247,7 @@ export function NetworkSettings() {
       </div>
 
       {/* VIBE Economics Summary */}
-      {pythiaConnected && economicsStats && (
+      {pythiaConnected && Boolean(economicsStats) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">VIBE Economics</CardTitle>

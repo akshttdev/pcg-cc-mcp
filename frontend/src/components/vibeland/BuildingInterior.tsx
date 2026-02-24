@@ -2,11 +2,11 @@ import { Suspense, useRef, useState, useEffect, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Text, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { BUILDING_THEMES, BuildingTheme, BuildingType } from '@/lib/virtual-world/buildingTypes';
-import { INTERIOR_CAMERA, INTERIOR_ROOM } from '@/lib/virtual-world/constants';
-import { UserAvatar } from '@/components/virtual-world/UserAvatar';
+import { BUILDING_THEMES, BuildingTheme, BuildingType } from '@/lib/vibeland/buildingTypes';
+import { INTERIOR_CAMERA, INTERIOR_ROOM } from '@/lib/vibeland/constants';
+import { UserAvatar } from '@/components/vibeland/UserAvatar';
 import { useAuth } from '@/contexts/AuthContext';
-import { TopsiHologram } from '@/components/virtual-world/TopsiHologram';
+import { TopsiHologram } from '@/components/vibeland/TopsiHologram';
 import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
 
 interface CustomEnvironmentConfig {

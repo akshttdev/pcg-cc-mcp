@@ -198,6 +198,17 @@ const DialogFooter = ({
 );
 DialogFooter.displayName = 'DialogFooter';
 
+const DialogTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }
+>(({ asChild, children, ...props }, ref) => {
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children as React.ReactElement<React.HTMLAttributes<HTMLElement>>, props as React.HTMLAttributes<HTMLElement>);
+  }
+  return <button ref={ref} {...props}>{children}</button>;
+});
+DialogTrigger.displayName = 'DialogTrigger';
+
 export {
   Dialog,
   DialogContent,
@@ -205,4 +216,5 @@ export {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 };

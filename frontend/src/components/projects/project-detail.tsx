@@ -774,7 +774,6 @@ const brandTagline = useMemo(() => {
               setBrandProfile(migrated);
               // Clear localStorage after successful migration
               window.localStorage.removeItem(brandProfileKey);
-              console.log('[BrandProfile] Migrated from localStorage to database');
               return;
             } catch (err) {
               console.error('Failed to migrate brand profile:', err);
