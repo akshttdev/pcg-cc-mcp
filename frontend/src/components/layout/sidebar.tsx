@@ -37,6 +37,9 @@ import {
   Pencil,
   Trash2,
   FolderMinus,
+  TrendingUp,
+  Package,
+  Calendar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -136,6 +139,75 @@ function HealthDot({ status }: { status?: string }) {
       className={cn('inline-block w-1.5 h-1.5 rounded-full shrink-0', color)}
       title={`Health: ${status}`}
     />
+  );
+}
+
+// ============================================================================
+// CrmSidebarLinks — expandable CRM sub-navigation for a project
+// ============================================================================
+
+function CrmSidebarLinks({
+  projectId,
+  location,
+  indent = 'pl-5',
+}: {
+  projectId: string;
+  location: ReturnType<typeof useLocation>;
+  indent?: string;
+}) {
+  const isCrmActive = location.pathname.startsWith(`/projects/${projectId}/crm`);
+  const [expanded, setExpanded] = useState(isCrmActive);
+
+  const crmLinks = [
+    { label: 'Overview', to: `/projects/${projectId}/crm/overview`, icon: BarChart3 },
+    { label: 'Sales Pipeline', to: `/projects/${projectId}/crm/sales`, icon: TrendingUp },
+    { label: 'Client Delivery', to: `/projects/${projectId}/crm/delivery`, icon: Package },
+    { label: 'Contacts', to: `/projects/${projectId}/crm`, icon: Users },
+    { label: 'Conferences', to: `/projects/${projectId}/crm/conferences`, icon: Calendar },
+  ];
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            `flex items-center gap-2 ${indent} pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground w-full text-left`,
+            isCrmActive && 'text-accent-foreground'
+          )}
+        >
+          <Users className="h-3 w-3 text-muted-foreground" />
+          <span className="flex-1">CRM</span>
+          {expanded ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-0.5">
+          {crmLinks.map((link) => {
+            const Icon = link.icon;
+            const isActive = link.to === `/projects/${projectId}/crm`
+              ? location.pathname === link.to
+              : location.pathname === link.to;
+            return (
+              <Link
+                key={link.to}
+                to={link.to}
+                className={cn(
+                  `flex items-center gap-2 ${indent} pl-7 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground`,
+                  isActive && 'bg-accent text-accent-foreground'
+                )}
+              >
+                <Icon className="h-3 w-3 text-muted-foreground" />
+                <span>{link.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -314,18 +386,8 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
             <span className="font-medium">Controller</span>
           </Link>
 
-          {/* CRM Board Link */}
-          <Link
-            to={`/projects/${project.id}/crm`}
-            className={cn(
-              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-              location.pathname === `/projects/${project.id}/crm` &&
-                'bg-accent text-accent-foreground'
-            )}
-          >
-            <Users className="h-3 w-3 text-muted-foreground" />
-            <span>CRM</span>
-          </Link>
+          {/* CRM Section */}
+          <CrmSidebarLinks projectId={project.id} location={location} indent="pl-5" />
 
           {/* Social Media Link */}
           <Link
@@ -509,18 +571,8 @@ function SortableSidebarProjectFolder({
               <span className="font-medium">Controller</span>
             </Link>
 
-            {/* CRM */}
-            <Link
-              to={`/projects/${project.id}/crm`}
-              className={cn(
-                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === `/projects/${project.id}/crm` &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <Users className="h-3 w-3 text-muted-foreground" />
-              <span>CRM</span>
-            </Link>
+            {/* CRM Section */}
+            <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
 
             {/* Social */}
             <Link
@@ -867,7 +919,7 @@ function ClientGroup({
 
 function SharedBoardGroup({
   group,
-  projectId,
+  projectId: _projectId,
 }: {
   group: SidebarSharedBoardGroupType;
   projectId?: string;

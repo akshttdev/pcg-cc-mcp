@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Project } from 'shared/types';
 import {
@@ -400,6 +400,7 @@ export function CrmPage() {
                       <ContactCard
                         key={contact.id}
                         contact={contact}
+                        projectId={selectedProjectId!}
                         onEdit={() => setEditingContact(contact)}
                         onDelete={() => deleteContactMutation.mutate(contact.id)}
                       />
@@ -453,13 +454,16 @@ export function CrmPage() {
 
 function ContactCard({
   contact,
+  projectId,
   onEdit,
   onDelete,
 }: {
   contact: CrmContactRecord;
+  projectId: string;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const navigate = useNavigate();
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage] ?? {
     label: contact.lifecycle_stage,
     color: '#6B7280',
@@ -497,7 +501,10 @@ function ContactCard({
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <h4 className="font-medium truncate">
+          <h4
+            className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline"
+            onClick={() => navigate(`/projects/${projectId}/crm/contacts/${contact.id}`)}
+          >
             {contact.full_name || contact.email || 'Unnamed Contact'}
           </h4>
           <Badge

@@ -59,7 +59,10 @@ pub mod social_accounts;
 pub mod social_posts;
 pub mod social_inbox;
 pub mod email_accounts;
+pub mod crm_activities;
 pub mod crm_contacts;
+pub mod crm_deals;
+pub mod crm_pipelines;
 pub mod onboarding;
 pub mod multiplayer;
 pub mod model_pricing;
@@ -109,6 +112,9 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(social_inbox::router(&deployment))
         .merge(email_accounts::router(&deployment))
         .merge(crm_contacts::router(&deployment))
+        .merge(crm_pipelines::router(&deployment))
+        .merge(crm_deals::router(&deployment))
+        .merge(crm_activities::router(&deployment))
         .merge(dropbox::router())
         .merge(agents::routes())
         .merge(agent_chat::routes())

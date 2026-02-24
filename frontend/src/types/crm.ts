@@ -1,5 +1,184 @@
 // CRM Types
 
+// Pipeline types for Kanban boards
+export type PipelineType = 'conferences' | 'clients' | 'sales' | 'delivery' | 'custom';
+
+// Pipeline stage (matches backend CrmPipelineStage)
+export interface CrmPipelineStage {
+  id: string;
+  pipeline_id: string;
+  name: string;
+  description?: string;
+  color: string;
+  position: number;
+  is_closed?: number;
+  is_won?: number;
+  probability: number;
+  auto_move_after_days?: number;
+  notify_on_enter?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Pipeline (matches backend CrmPipeline)
+export interface CrmPipeline {
+  id: string;
+  project_id: string;
+  name: string;
+  description?: string;
+  pipeline_type: string;
+  is_active?: number;
+  is_default?: number;
+  icon?: string;
+  color?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmPipelineWithStages extends CrmPipeline {
+  stages: CrmPipelineStage[];
+}
+
+// Create/Update pipeline types
+export interface CreateCrmPipeline {
+  project_id: string;
+  name: string;
+  description?: string;
+  pipeline_type: PipelineType;
+  icon?: string;
+  color?: string;
+}
+
+export interface UpdateCrmPipeline {
+  name?: string;
+  description?: string;
+  is_active?: boolean;
+  icon?: string;
+  color?: string;
+}
+
+// Deal with contact info for Kanban display (matches backend CrmDealWithContact)
+export interface CrmDealWithContact {
+  id: string;
+  project_id: string;
+  crm_contact_id?: string;
+  crm_pipeline_id?: string;
+  crm_stage_id?: string;
+  position?: number;
+  name: string;
+  description?: string;
+  amount?: number;
+  currency: string;
+  pipeline: string;
+  stage: string;
+  probability: number;
+  expected_close_date?: string;
+  actual_close_date?: string;
+  last_activity_at?: string;
+  owner_user_id?: string;
+  assigned_agent_id?: string;
+  zoho_deal_id?: string;
+  external_ids?: string;
+  tags?: string;
+  custom_fields?: string;
+  lost_reason?: string;
+  win_reason?: string;
+  created_at: string;
+  updated_at: string;
+  contact_name?: string;
+  contact_email?: string;
+  contact_company?: string;
+  contact_avatar_url?: string;
+}
+
+// Kanban board data structure
+export interface KanbanStageWithDeals {
+  stage: CrmPipelineStage;
+  deals: CrmDealWithContact[];
+  total_amount: number;
+}
+
+export interface KanbanBoardData {
+  pipeline_id: string;
+  pipeline_name: string;
+  stages: KanbanStageWithDeals[];
+}
+
+// Create/Update deal types
+export interface CreateCrmDeal {
+  project_id: string;
+  crm_contact_id?: string;
+  crm_pipeline_id?: string;
+  crm_stage_id?: string;
+  name: string;
+  description?: string;
+  amount?: number;
+  currency?: string;
+  expected_close_date?: string;
+  tags?: string[];
+  custom_fields?: Record<string, unknown>;
+}
+
+export interface UpdateCrmDeal {
+  crm_contact_id?: string;
+  crm_pipeline_id?: string;
+  crm_stage_id?: string;
+  position?: number;
+  name?: string;
+  description?: string;
+  amount?: number;
+  currency?: string;
+  expected_close_date?: string;
+  owner_user_id?: string;
+  assigned_agent_id?: string;
+  tags?: string[];
+  custom_fields?: Record<string, unknown>;
+  lost_reason?: string;
+  win_reason?: string;
+}
+
+export interface MoveDealRequest {
+  stage_id: string;
+  position: number;
+}
+
+// Create activity type for logging
+export interface CreateCrmActivity {
+  project_id: string;
+  crm_contact_id?: string;
+  crm_deal_id?: string;
+  activity_type: CrmActivityType;
+  subject?: string;
+  description?: string;
+  outcome?: string;
+  performed_by_user?: string;
+  duration_minutes?: number;
+  metadata?: Record<string, unknown>;
+}
+
+// Pipeline metrics types
+export interface PipelineMetrics {
+  pipeline_id: string;
+  total_deals: number;
+  total_value: number;
+  weighted_value: number;
+  avg_deal_size: number;
+  win_rate: number;
+  deals_by_stage: Array<{
+    stage_id: string;
+    stage_name: string;
+    count: number;
+    total_value: number;
+  }>;
+  monthly_summary: Array<{
+    month: string;
+    new_deals: number;
+    won_deals: number;
+    lost_deals: number;
+    total_value: number;
+  }>;
+}
+
 export type ContactSource =
   | 'manual'
   | 'email'

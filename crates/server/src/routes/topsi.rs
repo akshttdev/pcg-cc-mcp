@@ -17,13 +17,17 @@ use tokio::sync::RwLock;
 use topsi::{
     TopsiAgent, TopsiConfig, TopsiError, TopsiRequest, TopsiRequestType, TopsiResponse,
     TopologySummary, DetectedIssue, UserContext, AccessScope, ProjectAccess,
-    RecommendationBatch,
+    RecommendationBatch, TaskExecutionBridge,
     initialize_topsi,
 };
 use ts_rs::TS;
 use uuid::Uuid;
 
 use deployment::Deployment;
+use db::models::task_attempt::{CreateTaskAttempt, TaskAttempt};
+use executors::executors::BaseCodingAgent;
+use executors::profile::ExecutorProfileId;
+use services::services::container::ContainerService;
 
 // Import voice types from Nora
 use nora::voice::{
@@ -32,6 +36,76 @@ use nora::voice::{
 };
 
 use crate::{DeploymentImpl, error::ApiError};
+
+/// Bridge between Topsi and the Deployment layer for task execution
+struct DeploymentBridge {
+    deployment: DeploymentImpl,
+}
+
+#[async_trait::async_trait]
+impl TaskExecutionBridge for DeploymentBridge {
+    async fn start_task_attempt(
+        &self,
+        task_id: Uuid,
+        executor_name: &str,
+        base_branch: &str,
+    ) -> std::result::Result<serde_json::Value, String> {
+        // Parse executor name to BaseCodingAgent enum
+        let base_agent: BaseCodingAgent = executor_name
+            .parse()
+            .map_err(|_| format!("Unknown executor '{}'. Available: CLAUDE_CODE, AMP, GEMINI, CODEX", executor_name))?;
+
+        let executor_profile_id = ExecutorProfileId::new(base_agent);
+
+        // Create task attempt in DB
+        let task_attempt = TaskAttempt::create(
+            &self.deployment.db().pool,
+            &CreateTaskAttempt {
+                executor: executor_profile_id.executor,
+                base_branch: base_branch.to_string(),
+            },
+            task_id,
+        )
+        .await
+        .map_err(|e| format!("Failed to create task attempt: {}", e))?;
+
+        // Start execution via container service
+        let execution_process = self
+            .deployment
+            .container()
+            .start_attempt(&task_attempt, executor_profile_id.clone())
+            .await
+            .map_err(|e| format!("Failed to start execution: {}", e))?;
+
+        // Track analytics
+        self.deployment
+            .track_if_analytics_allowed(
+                "task_attempt_started_by_topsi",
+                serde_json::json!({
+                    "task_id": task_attempt.task_id.to_string(),
+                    "executor": &executor_profile_id.executor,
+                    "attempt_id": task_attempt.id.to_string(),
+                }),
+            )
+            .await;
+
+        tracing::info!(
+            "[TOPSI] Started execution process {} for task {} via {}",
+            execution_process.id,
+            task_id,
+            executor_name
+        );
+
+        Ok(serde_json::json!({
+            "success": true,
+            "task_attempt_id": task_attempt.id.to_string(),
+            "execution_process_id": execution_process.id.to_string(),
+            "executor": executor_name,
+            "status": "started",
+            "message": format!("Task execution started with {} agent", executor_name)
+        }))
+    }
+}
 
 /// Global Topsi agent instance
 static TOPSI_INSTANCE: tokio::sync::OnceCell<Arc<RwLock<Option<TopsiAgent>>>> =
@@ -66,10 +140,11 @@ impl TopsiManager {
         &self,
         request: TopsiRequest,
         user_context: &UserContext,
+        session_id: Option<&str>,
     ) -> Result<TopsiResponse, TopsiError> {
         let agent = self.agent.read().await;
         if let Some(topsi) = agent.as_ref() {
-            topsi.process_request(request, user_context).await
+            topsi.process_request(request, user_context, session_id).await
         } else {
             Err(TopsiError::NotInitialized(
                 "Topsi agent not initialized".to_string(),
@@ -334,6 +409,11 @@ pub async fn initialize_topsi_handler(
     let mut config = request.config.unwrap_or_default();
     apply_topsi_llm_overrides(&mut config);
 
+    // Create the execution bridge with deployment handle
+    let bridge = Arc::new(DeploymentBridge {
+        deployment: state.clone(),
+    });
+
     let topsi_agent = initialize_topsi(config)
         .await
         .map_err(|e| {
@@ -341,7 +421,8 @@ pub async fn initialize_topsi_handler(
             ApiError::InternalError(format!("Topsi initialization failed: {}", e))
         })?
         .with_database(state.db().pool.clone())
-        .await;
+        .await
+        .with_execution_bridge(bridge);
 
     let topsi_id = topsi_agent.id.to_string();
 
@@ -390,11 +471,17 @@ pub async fn initialize_topsi_on_startup(state: &DeploymentImpl) -> Result<Strin
     let mut config = TopsiConfig::default();
     apply_topsi_llm_overrides(&mut config);
 
+    // Create the execution bridge with deployment handle
+    let bridge = Arc::new(DeploymentBridge {
+        deployment: state.clone(),
+    });
+
     let topsi_agent = initialize_topsi(config)
         .await
         .map_err(|e| format!("Topsi initialization failed: {}", e))?
         .with_database(state.db().pool.clone())
-        .await;
+        .await
+        .with_execution_bridge(bridge);
 
     let topsi_id = topsi_agent.id.to_string();
 
@@ -494,12 +581,14 @@ pub async fn chat_with_topsi(
     let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
     let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
+    let session_id = request.session_id.clone();
+
     let topsi_request = TopsiRequest::new(TopsiRequestType::Chat {
         message: request.message,
     });
 
     let response = topsi
-        .process_request(topsi_request, &user_context)
+        .process_request(topsi_request, &user_context, Some(&session_id))
         .await
         .map_err(|e| {
             tracing::error!("Topsi processing error: {}", e);
@@ -530,7 +619,7 @@ pub async fn get_topology_overview(
     });
 
     let response = topsi
-        .process_request(topsi_request, &user_context)
+        .process_request(topsi_request, &user_context, None)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to get topology: {}", e)))?;
 
@@ -585,7 +674,7 @@ pub async fn get_project_topology(
     });
 
     let response = topsi
-        .process_request(topsi_request, &user_context)
+        .process_request(topsi_request, &user_context, None)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to get topology: {}", e)))?;
 
@@ -621,7 +710,7 @@ pub async fn detect_issues(
     });
 
     let response = topsi
-        .process_request(topsi_request, &user_context)
+        .process_request(topsi_request, &user_context, None)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to detect issues: {}", e)))?;
 
@@ -674,7 +763,7 @@ pub async fn detect_project_issues(
     });
 
     let response = topsi
-        .process_request(topsi_request, &user_context)
+        .process_request(topsi_request, &user_context, None)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to detect issues: {}", e)))?;
 
@@ -755,7 +844,7 @@ pub async fn get_recommendations(
     });
 
     let response = topsi
-        .process_request(topsi_request, &user_context)
+        .process_request(topsi_request, &user_context, None)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to get recommendations: {}", e)))?;
 
@@ -797,7 +886,7 @@ pub async fn get_project_recommendations(
     });
 
     let response = topsi
-        .process_request(topsi_request, &user_context)
+        .process_request(topsi_request, &user_context, None)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to get recommendations: {}", e)))?;
 
@@ -829,7 +918,7 @@ pub async fn execute_command(
     });
 
     let response = topsi
-        .process_request(topsi_request, &user_context)
+        .process_request(topsi_request, &user_context, None)
         .await
         .map_err(|e| {
             tracing::error!("Command execution error: {}", e);
@@ -1199,7 +1288,7 @@ pub async fn voice_interaction(
     });
 
     let response = topsi
-        .process_request(topsi_request, &user_context)
+        .process_request(topsi_request, &user_context, None)
         .await
         .map_err(|e| ApiError::InternalError(format!("Topsi processing failed: {}", e)))?;
 

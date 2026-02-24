@@ -63,6 +63,8 @@ pub mod social_mention;
 pub mod email_account;
 pub mod crm_activity;
 pub mod crm_contact;
+pub mod crm_deal;
+pub mod crm_pipeline;
 pub mod model_pricing;
 pub mod sms_message;
 pub mod vibe_deposit;
