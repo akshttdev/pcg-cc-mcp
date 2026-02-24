@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertTriangle, Plus, Sparkles } from 'lucide-react';
+import { AlertTriangle, Archive, Plus, Sparkles } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { projectsApi, tasksApi, attemptsApi, agentsApi, resolveApiUrl } from '@/lib/api';
 import type { AgentChatRequest } from 'shared/types';
@@ -83,6 +83,7 @@ export function ProjectTasks() {
   const [project, setProject] = useState<Project | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const { currentViewType, useEnhancedCards, setUseEnhancedCards } = useViewStore();
@@ -241,8 +242,15 @@ export function ProjectTasks() {
     return params.get('board') ?? null;
   }, [location.search]);
 
+  const archivedCount = useMemo(() => tasks.filter((t) => t.archived_at).length, [tasks]);
+
   const filteredTasks = useMemo(() => {
     let result = tasks;
+
+    // Hide archived tasks unless explicitly requested
+    if (!showArchived) {
+      result = result.filter((t) => !t.archived_at);
+    }
 
     if (boardFilter) {
       if (boardFilter === 'unassigned') {
@@ -269,7 +277,7 @@ export function ProjectTasks() {
     }
 
     return result;
-  }, [tasks, boardFilter, searchQuery, projectId, getActiveFilters]);
+  }, [tasks, boardFilter, searchQuery, projectId, getActiveFilters, showArchived]);
 
   // Memoize grouped filtered tasks
   const groupedFilteredTasks = useMemo(() => {
@@ -381,6 +389,25 @@ export function ProjectTasks() {
       }
     },
     [tasksById, projectId, selectedTask, handleClosePanel]
+  );
+
+  const handleArchiveTask = useCallback(
+    async (task: Task) => {
+      try {
+        if (task.archived_at) {
+          await tasksApi.unarchive(task.id);
+        } else {
+          await tasksApi.archive(task.id);
+          if (selectedTask?.id === task.id) {
+            handleClosePanel();
+          }
+        }
+        // UI will update via WebSocket stream
+      } catch (err) {
+        setError('Failed to archive task');
+      }
+    },
+    [selectedTask, handleClosePanel]
   );
 
   const handleEditTaskCallback = useCallback(
@@ -688,6 +715,21 @@ export function ProjectTasks() {
                   {selectionMode ? 'Done' : 'Select'}
                 </Button>
                 <Button
+                  variant={showArchived ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setShowArchived(!showArchived)}
+                  className="gap-2"
+                  title={showArchived ? 'Hide archived tasks' : 'Show archived tasks'}
+                >
+                  <Archive className="h-4 w-4" />
+                  {showArchived ? 'Archived' : 'Archived'}
+                  {archivedCount > 0 && (
+                    <span className="ml-1 rounded-full bg-muted-foreground/20 px-1.5 py-0.5 text-[10px] font-medium">
+                      {archivedCount}
+                    </span>
+                  )}
+                </Button>
+                <Button
                   variant={useEnhancedCards ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setUseEnhancedCards(!useEnhancedCards)}
@@ -803,6 +845,7 @@ export function ProjectTasks() {
                 onEditTask={handleEditTaskCallback}
                 onDeleteTask={handleDeleteTask}
                 onDuplicateTask={handleDuplicateTaskCallback}
+                onArchiveTask={handleArchiveTask}
                 onViewTaskDetails={handleViewTaskDetails}
                 selectedTask={selectedTask || undefined}
                 selectionMode={selectionMode}
@@ -817,6 +860,7 @@ export function ProjectTasks() {
                 agentFlowMap={agentFlowMap}
                 useEnhancedCards={useEnhancedCards}
                 onSendMessageToAgent={handleSendMessageToAgent}
+                showArchived={showArchived}
               />
             </div>
           )}

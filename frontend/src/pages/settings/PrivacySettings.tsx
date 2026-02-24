@@ -25,15 +25,6 @@ export function PrivacySettings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      console.log('Saving privacy settings:', {
-        profileVisibility,
-        showEmail,
-        showActivity,
-        allowAnalytics,
-        marketingEmails,
-        twoFactorEnabled,
-        sessionTimeout,
-      });
       await new Promise((resolve) => setTimeout(resolve, 500));
       alert('Privacy settings updated successfully!');
     } catch (error) {
@@ -45,13 +36,11 @@ export function PrivacySettings() {
   };
 
   const handleExportData = () => {
-    console.log('Exporting user data...');
     alert('Data export will be sent to your email');
   };
 
   const handleDeleteAccount = () => {
     if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-      console.log('Delete account requested');
       alert('Account deletion requires additional verification. Check your email.');
     }
   };

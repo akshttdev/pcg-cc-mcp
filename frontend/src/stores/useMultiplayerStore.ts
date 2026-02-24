@@ -70,7 +70,6 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log('[Multiplayer] Connected to server');
         set({ isConnected: true, connectionError: null, localPlayerId: userId });
 
         // Send join message
@@ -94,8 +93,7 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
         set({ connectionError: 'Connection error' });
       };
 
-      ws.onclose = (event) => {
-        console.log('[Multiplayer] Disconnected:', event.code, event.reason);
+      ws.onclose = (_event) => {
         set({
           isConnected: false,
           ws: null,
@@ -157,7 +155,6 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
       equipment,
     };
     ws.send(JSON.stringify(message));
-    console.log('[Multiplayer] Sent equipment update:', equipment);
   },
 
   setSpawnPreference: (projectSlug) => {
@@ -200,7 +197,6 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
             }
           }
           set({ remotePlayers: players });
-          console.log('[Multiplayer] Received players snapshot:', players.size, 'players');
           break;
         }
 
@@ -215,7 +211,6 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
             lastUpdate: Date.now(),
           });
           set({ remotePlayers: newPlayers });
-          console.log('[Multiplayer] Player joined:', message.player.displayName);
           break;
         }
 
@@ -224,7 +219,6 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
           const newPlayers = new Map(remotePlayers);
           newPlayers.delete(message.player_id);
           set({ remotePlayers: newPlayers });
-          console.log('[Multiplayer] Player left:', message.player_id);
           break;
         }
 
@@ -263,7 +257,6 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
               lastUpdate: Date.now(),
             });
             set({ remotePlayers: newPlayers });
-            console.log('[Multiplayer] Equipment updated for:', message.player_id, message.equipment);
           }
           break;
         }
@@ -271,14 +264,12 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
         case 'spawn_preference_updated': {
           if (message.success) {
             set({ spawnPreference: message.project_slug });
-            console.log('[Multiplayer] Spawn preference updated:', message.project_slug);
           }
           break;
         }
 
         case 'teleport_result': {
           if (message.success) {
-            console.log('[Multiplayer] Teleported to:', message.destination);
           } else {
             console.error('[Multiplayer] Teleport failed:', message.error);
           }

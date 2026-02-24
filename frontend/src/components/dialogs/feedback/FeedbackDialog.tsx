@@ -16,13 +16,6 @@ import NiceModal, { useModal } from '@ebay/nice-modal-react';
 
 type FeedbackType = 'bug' | 'feature' | 'improvement' | 'question' | 'other';
 
-interface FeedbackData {
-  type: FeedbackType;
-  title: string;
-  description: string;
-  email?: string;
-  severity?: 'low' | 'medium' | 'high' | 'critical';
-}
 
 const FEEDBACK_TYPES = [
   {
@@ -80,16 +73,7 @@ export const FeedbackDialog = NiceModal.create(() => {
     setIsSubmitting(true);
 
     try {
-      const feedbackData: FeedbackData = {
-        type,
-        title: title.trim(),
-        description: description.trim(),
-        email: email.trim() || undefined,
-        severity: type === 'bug' ? severity : undefined,
-      };
-
-      // Log to console for now (later can send to backend/analytics)
-      console.log('Feedback submitted:', feedbackData);
+      // TODO: send feedbackData to backend/analytics
 
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 500));

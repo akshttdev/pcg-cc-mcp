@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { knowledgeApi } from '@/lib/api';
@@ -7,6 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Loader } from '@/components/ui/loader';
 import {
   BookOpen,
@@ -18,6 +26,7 @@ import {
   Network,
   RefreshCw,
   AlertTriangle,
+  Eye,
 } from 'lucide-react';
 
 const SOURCE_TYPE_META: Record<string, { label: string; icon: typeof BookOpen }> = {
@@ -41,9 +50,11 @@ const ALL_SOURCE_TYPES = [
 function SourceCard({
   source,
   projectId,
+  onView,
 }: {
   source: ProjectKnowledgeSource;
   projectId: string;
+  onView: (source: ProjectKnowledgeSource) => void;
 }) {
   const queryClient = useQueryClient();
 
@@ -88,6 +99,17 @@ function SourceCard({
             </div>
           </div>
           <div className="flex gap-1 shrink-0">
+            {source.source_summary && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground"
+                onClick={() => onView(source)}
+              >
+                <Eye className="h-3 w-3 mr-1" />
+                View
+              </Button>
+            )}
             {source.is_stale ? (
               <Button
                 variant="ghost"
@@ -120,6 +142,7 @@ function SourceCard({
 
 export function KnowledgePage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const [viewingSource, setViewingSource] = useState<ProjectKnowledgeSource | null>(null);
 
   const { data, isLoading, error } = useQuery<ProjectKnowledgeResponse>({
     queryKey: ['projectKnowledge', projectId],
@@ -257,12 +280,34 @@ export function KnowledgePage() {
               </div>
             ) : (
               data.sources_by_type[type].map((source) => (
-                <SourceCard key={source.id} source={source} projectId={projectId} />
+                <SourceCard key={source.id} source={source} projectId={projectId} onView={setViewingSource} />
               ))
             )}
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* Full content viewer dialog */}
+      <Dialog open={!!viewingSource} onOpenChange={(open) => { if (!open) setViewingSource(null); }}>
+        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              {viewingSource && SOURCE_TYPE_META[viewingSource.source_type] && (
+                (() => {
+                  const Icon = SOURCE_TYPE_META[viewingSource.source_type].icon;
+                  return <Icon className="h-4 w-4 text-muted-foreground shrink-0" />;
+                })()
+              )}
+              {viewingSource?.source_title}
+            </DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="flex-1 mt-2">
+            <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed p-1 pr-4">
+              {viewingSource?.source_summary}
+            </pre>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

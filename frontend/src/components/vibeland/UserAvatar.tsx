@@ -9,7 +9,7 @@ import {
   performCollisionCheck,
   AVATAR_HEIGHT,
   AVATAR_RADIUS,
-} from '@/lib/virtual-world/spatialSystem';
+} from '@/lib/vibeland/spatialSystem';
 import { useEquipmentStore } from '@/stores/useEquipmentStore';
 import { CrownEquipment, BluntEquipment, FireCapeEquipment, GodBookEquipment } from './equipment';
 
@@ -121,6 +121,17 @@ export function UserAvatar({
   const maxTrailLength = 25;
   const hasCameraSnappedRef = useRef(false);
 
+  // Always-current refs so closures in useFrame and event handlers never go stale
+  const isSuspendedRef = useRef(isSuspended);
+  useEffect(() => {
+    isSuspendedRef.current = isSuspended;
+  }, [isSuspended]);
+
+  const onInteractRef = useRef(onInteract);
+  useEffect(() => {
+    onInteractRef.current = onInteract;
+  }, [onInteract]);
+
   // Mouse controls
   useEffect(() => {
     const canvas = gl.domElement;
@@ -139,7 +150,7 @@ export function UserAvatar({
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (isDraggingRef.current && !isSuspended) {
+      if (isDraggingRef.current && !isSuspendedRef.current) {
         const deltaX = e.clientX - lastMouseXRef.current;
         cameraAngleTargetRef.current -= deltaX * 0.004;
         lastMouseXRef.current = e.clientX;
@@ -162,21 +173,24 @@ export function UserAvatar({
       canvas.removeEventListener('mouseleave', handleMouseUp);
       canvas.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [gl, isSuspended]);
+  }, [gl]);
 
   // Keyboard controls
   useEffect(() => {
     const keys = keysRef.current;
     const velocity = velocityRef.current;
 
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
+      if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' '].includes(key)) {
+      }
       if (key === 'e') {
-        if (!isSuspended && onInteract) onInteract();
+        if (!isSuspendedRef.current && onInteractRef.current) onInteractRef.current();
         return;
       }
 
-      if (isSuspended) return;
+      if (isSuspendedRef.current) return;
 
       switch (key) {
         case 'w':
@@ -224,7 +238,7 @@ export function UserAvatar({
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (isSuspended) return;
+      if (isSuspendedRef.current) return;
       switch (e.key.toLowerCase()) {
         case 'w':
         case 'arrowup':
@@ -263,13 +277,14 @@ export function UserAvatar({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isSuspended, onInteract, canFly]);
+  }, [canFly]);
 
-  // Reset on suspend
+  // Reset on suspend change — clear keys on both suspend AND unsuspend to prevent
+  // keys pressed while typing from leaking into movement after console closes.
   useEffect(() => {
+    const keys = keysRef.current;
+    keys.forward = keys.backward = keys.left = keys.right = keys.up = keys.down = keys.sprint = false;
     if (isSuspended) {
-      const keys = keysRef.current;
-      keys.forward = keys.backward = keys.left = keys.right = keys.up = keys.down = keys.sprint = false;
       velocityRef.current.set(0, 0, 0);
       flightModeRef.current = false;
     }
@@ -289,10 +304,21 @@ export function UserAvatar({
     // Smooth camera angle
     cameraAngleRef.current += (cameraAngleTargetRef.current - cameraAngleRef.current) * 0.08 * dtScale;
 
-    if (isSuspended) {
+    if (isSuspendedRef.current) {
       groupRef.current.position.copy(position);
       camera.lookAt(position.clone().add(new THREE.Vector3(0, 4, 0)));
       return;
+    }
+
+    // DEBUG: log once when movement keys first become active (rate-limited)
+    if (keys.forward || keys.backward || keys.left || keys.right) {
+      if (!(groupRef.current as any).__dbgLogged) {
+        (groupRef.current as any).__dbgLogged = true;
+      }
+    } else {
+      if ((groupRef.current as any).__dbgLogged) {
+        (groupRef.current as any).__dbgLogged = false;
+      }
     }
 
     // Get floor height (use override if provided)

@@ -13,8 +13,8 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Grid, Environment, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
-import { UserAvatar } from '@/components/virtual-world/UserAvatar';
+import { ProjectBuilding } from '@/components/vibeland/ProjectBuilding';
+import { UserAvatar } from '@/components/vibeland/UserAvatar';
 import { validateExternalToken, type UserProfile } from '@/lib/external-auth-api';
 import { cn } from '@/lib/utils';
 

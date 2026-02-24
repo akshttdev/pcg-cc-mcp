@@ -287,27 +287,32 @@ impl SovereignStorageService {
             }
         });
 
-        // Spawn peer sync handler — imports workflow data from other nodes
-        let my_device_for_peer = self.config.device_id.clone();
+        // Spawn peer sync handler — imports data from all nodes (including self-loop;
+        // INSERT OR IGNORE / upsert ensures deduplication is handled at DB level)
         let db_path_for_peer = self.config.db_path.clone();
         tokio::spawn(async move {
             while let Some(msg) = peer_sub.next().await {
                 match serde_json::from_slice::<SyncPayload>(&msg.payload) {
                     Ok(payload) => {
-                        // Skip our own messages
-                        if payload.from_device == my_device_for_peer {
-                            continue;
-                        }
+                        // Note: we intentionally do NOT skip messages where from_device
+                        // == our own device_id. When two nodes share the same device_id
+                        // (e.g. space-terminal configured as pythia-master-814d37f4),
+                        // filtering them out would block all cross-device sync. The
+                        // INSERT OR IGNORE / upsert logic handles deduplication safely.
 
                         let has_workflow_data = !payload.workflow_executions.is_empty()
                             || !payload.media_batches.is_empty()
                             || !payload.media_files.is_empty()
                             || !payload.edit_sessions.is_empty();
 
-                        let has_org_data = !payload.users.is_empty()
+                        let has_org_data = !payload.projects.is_empty()
+                            || !payload.tasks.is_empty()
+                            || !payload.users.is_empty()
                             || !payload.organizations.is_empty()
+                            || !payload.clients.is_empty()
                             || !payload.project_folders.is_empty()
-                            || !payload.project_boards.is_empty();
+                            || !payload.project_boards.is_empty()
+                            || !payload.project_members.is_empty();
 
                         let has_artifact_data = !payload.execution_artifacts.is_empty()
                             || !payload.task_artifacts.is_empty()
@@ -410,14 +415,14 @@ impl SovereignStorageService {
 
         self.last_sync = Some(now);
         tracing::info!(
-            "[SOVEREIGN_SYNC] ✅ Sync v0.5.0! {} bytes → {} ({} projects, {} tasks, {} agents, {} orgs, {} boards | {} artifacts, {} task_artifacts, {} attempts, {} processes, {} activity_logs)",
+            "[SOVEREIGN_SYNC] ✅ Sync v0.5.0! {} bytes → {} ({} projects, {} tasks, {} folders, {} boards, {} orgs | {} artifacts, {} task_artifacts, {} attempts, {} processes, {} activity_logs)",
             payload_size,
             sync_subject,
             snapshot.projects.len(),
             snapshot.tasks.len(),
-            snapshot.agents.len(),
-            snapshot.organizations.len(),
+            snapshot.project_folders.len(),
             snapshot.project_boards.len(),
+            snapshot.organizations.len(),
             snapshot.execution_artifacts.len(),
             snapshot.task_artifacts.len(),
             snapshot.task_attempts.len(),
@@ -775,11 +780,23 @@ impl SovereignStorageService {
 // Peer data import
 // ============================================================================
 
+/// Normalize ISO 8601 datetime strings to SQLite text format.
+/// sqlx's DateTime<Utc> decoder for SQLite only accepts "YYYY-MM-DD HH:MM:SS[.fff]"
+/// (space-separated), not the ISO 8601 "T" separator or "Z" suffix.
+fn normalize_dt(s: &str) -> String {
+    let s = s.replace('T', " ");
+    s.trim_end_matches('Z').to_string()
+}
+
 async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
-    let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
+    use sqlx::sqlite::SqliteConnectOptions;
+    use std::str::FromStr;
+
+    let db_url = format!("sqlite://{}", db_path.display());
+    let options = SqliteConnectOptions::from_str(&db_url)?.foreign_keys(false);
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
-        .connect(&db_url)
+        .connect_with(options)
         .await
         .context("Failed to open local DB for peer import")?;
 
@@ -801,15 +818,15 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
         .bind(row.get("agent_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("workflow_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("workflow_name").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("project_id").and_then(|v| v.as_str()))
+        .bind(row.get("project_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("state").and_then(|v| v.as_str()).unwrap_or("{}"))
         .bind(row.get("context").and_then(|v| v.as_str()).unwrap_or("{}"))
         .bind(row.get("current_stage").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("created_tasks").and_then(|v| v.as_str()))
-        .bind(row.get("deliverables").and_then(|v| v.as_str()))
-        .bind(row.get("started_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("completed_at").and_then(|v| v.as_str()))
+        .bind(row.get("created_tasks").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("deliverables").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("started_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("completed_at").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(normalize_dt))
         .execute(&pool)
         .await;
 
@@ -833,18 +850,18 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
         )
         .bind(id)
-        .bind(row.get("project_id").and_then(|v| v.as_str()))
-        .bind(row.get("reference_name").and_then(|v| v.as_str()))
+        .bind(row.get("project_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("reference_name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("source_url").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("storage_tier").and_then(|v| v.as_str()).unwrap_or("hot"))
         .bind(row.get("checksum_required").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
         .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("ready"))
         .bind(row.get("file_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("total_size_bytes").and_then(|v| v.as_i64()).unwrap_or(0))
-        .bind(row.get("last_error").and_then(|v| v.as_str()))
+        .bind(row.get("last_error").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -872,13 +889,13 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
         .bind(row.get("filename").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("file_path").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("size_bytes").and_then(|v| v.as_i64()).unwrap_or(0))
-        .bind(row.get("checksum_sha256").and_then(|v| v.as_str()))
+        .bind(row.get("checksum_sha256").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("duration_seconds").and_then(|v| v.as_f64()))
-        .bind(row.get("resolution").and_then(|v| v.as_str()))
-        .bind(row.get("codec").and_then(|v| v.as_str()))
+        .bind(row.get("resolution").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("codec").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("fps").and_then(|v| v.as_f64()))
         .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -906,14 +923,14 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
         .bind(row.get("batch_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("deliverable_type").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("aspect_ratios").and_then(|v| v.as_str()).unwrap_or("[]"))
-        .bind(row.get("reference_style").and_then(|v| v.as_str()))
+        .bind(row.get("reference_style").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("include_captions").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("imovie_project").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("assembling"))
         .bind(row.get("timelines").and_then(|v| v.as_str()).unwrap_or("[]"))
         .bind(row.get("metadata").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -944,7 +961,7 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
         .bind(row.get("deliverable_targets").and_then(|v| v.as_str()).unwrap_or("[]"))
         .bind(row.get("hero_moments").and_then(|v| v.as_str()).unwrap_or("[]"))
         .bind(row.get("insights").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -976,14 +993,96 @@ async fn import_peer_workflow_data(db_path: &std::path::Path, payload: &SyncPayl
 /// Uses INSERT OR REPLACE so that updates propagate for reference data.
 /// Import order respects FK constraints.
 async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
-    let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
+    use sqlx::sqlite::SqliteConnectOptions;
+    use std::str::FromStr;
+
+    // Disable FK enforcement so we can import data even when foreign keys
+    // reference rows that haven't been synced yet. INSERT OR IGNORE handles
+    // deduplication; the upsert on tasks handles updates.
+    let db_url = format!("sqlite://{}", db_path.display());
+    let options = SqliteConnectOptions::from_str(&db_url)?
+        .foreign_keys(false);
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
-        .connect(&db_url)
+        .connect_with(options)
         .await
         .context("Failed to open local DB for peer org import")?;
 
     let mut imported = OrgImportCounts::default();
+
+    // 0a. Projects — no org/client FK enforcement in SQLite by default; insert before tasks
+    for row in &payload.projects {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO projects \
+             (id, name, git_repo_path, organization_id, client_id, folder_id, owner_id, created_at, updated_at) \
+             VALUES (unhex($1), $2, $3, unhex($4), unhex($5), unhex($6), unhex($7), $8, $9)"
+        )
+        .bind(id)
+        .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("git_repo_path").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("organization_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("client_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("folder_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("owner_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.projects += 1;
+            }
+        }
+    }
+
+    // 0b. Tasks — upsert: insert new, update status/title/etc if peer has newer updated_at
+    for row in &payload.tasks {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT INTO tasks \
+             (id, project_id, title, description, status, priority, assigned_agent, \
+              custom_properties, board_id, assignee_id, tags, due_date, created_by, \
+              created_at, updated_at) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, unhex($9), $10, $11, $12, $13, $14, $15) \
+             ON CONFLICT(id) DO UPDATE SET \
+               title=excluded.title, description=excluded.description, status=excluded.status, \
+               priority=excluded.priority, assigned_agent=excluded.assigned_agent, \
+               assignee_id=excluded.assignee_id, tags=excluded.tags, \
+               custom_properties=excluded.custom_properties, updated_at=excluded.updated_at \
+             WHERE excluded.updated_at > tasks.updated_at"
+        )
+        .bind(id)
+        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("title").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("status").and_then(|v| v.as_str()).unwrap_or("todo"))
+        .bind(row.get("priority").and_then(|v| v.as_str()).unwrap_or("medium"))
+        .bind(row.get("assigned_agent").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("custom_properties").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("board_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("assignee_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("tags").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("due_date").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(normalize_dt))
+        .bind(row.get("created_by").and_then(|v| v.as_str()).unwrap_or("system"))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                imported.tasks += 1;
+            }
+        }
+    }
 
     // 1. Users (no FK deps) — exclude password_hash for security
     for row in &payload.users {
@@ -998,13 +1097,13 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         )
         .bind(id)
         .bind(row.get("username").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("email").and_then(|v| v.as_str()))
-        .bind(row.get("full_name").and_then(|v| v.as_str()))
-        .bind(row.get("avatar_url").and_then(|v| v.as_str()))
+        .bind(row.get("email").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("full_name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("avatar_url").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
         .bind(row.get("is_admin").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1029,13 +1128,13 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(id)
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("description").and_then(|v| v.as_str()))
-        .bind(row.get("avatar_url").and_then(|v| v.as_str()))
-        .bind(row.get("owner_id").and_then(|v| v.as_str()))
+        .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("avatar_url").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("owner_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("settings").and_then(|v| v.as_str()).unwrap_or("{}"))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1087,12 +1186,12 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("organization_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("description").and_then(|v| v.as_str()))
-        .bind(row.get("logo_url").and_then(|v| v.as_str()))
-        .bind(row.get("website").and_then(|v| v.as_str()))
+        .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("logo_url").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("website").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1116,12 +1215,12 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         )
         .bind(id)
         .bind(row.get("organization_id").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("client_id").and_then(|v| v.as_str()))
+        .bind(row.get("client_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("sort_order").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1148,9 +1247,9 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("slug").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("board_type").and_then(|v| v.as_str()).unwrap_or("kanban"))
-        .bind(row.get("description").and_then(|v| v.as_str()))
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("description").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1179,10 +1278,10 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("target_organization_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("permission").and_then(|v| v.as_str()).unwrap_or("read"))
         .bind(row.get("share_type").and_then(|v| v.as_str()).unwrap_or("org"))
-        .bind(row.get("shared_by").and_then(|v| v.as_str()))
+        .bind(row.get("shared_by").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
-        .bind(row.get("created_at").and_then(|v| v.as_str()).unwrap_or(""))
-        .bind(row.get("updated_at").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
         .execute(&pool)
         .await;
 
@@ -1209,7 +1308,7 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
         .bind(row.get("user_id").and_then(|v| v.as_str()).unwrap_or(""))
         .bind(row.get("role").and_then(|v| v.as_str()).unwrap_or("member"))
         .bind(row.get("permissions").and_then(|v| v.as_str()).unwrap_or("{}"))
-        .bind(row.get("granted_by").and_then(|v| v.as_str()))
+        .bind(row.get("granted_by").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
         .bind(row.get("granted_at").and_then(|v| v.as_str()).unwrap_or(""))
         .execute(&pool)
         .await;
@@ -1225,8 +1324,10 @@ async fn import_peer_org_data(db_path: &std::path::Path, payload: &SyncPayload) 
 
     if imported.total() > 0 {
         tracing::info!(
-            "[SOVEREIGN_SYNC] ✅ Imported peer org data: {} users, {} orgs, {} org_members, \
-             {} clients, {} folders, {} boards, {} shares, {} project_members",
+            "[SOVEREIGN_SYNC] ✅ Imported peer data: {} projects, {} tasks, {} users, {} orgs, \
+             {} org_members, {} clients, {} folders, {} boards, {} shares, {} project_members",
+            imported.projects,
+            imported.tasks,
             imported.users,
             imported.organizations,
             imported.organization_members,
@@ -1433,6 +1534,8 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
 
 #[derive(Default)]
 struct OrgImportCounts {
+    projects: usize,
+    tasks: usize,
     users: usize,
     organizations: usize,
     organization_members: usize,
@@ -1445,7 +1548,8 @@ struct OrgImportCounts {
 
 impl OrgImportCounts {
     fn total(&self) -> usize {
-        self.users + self.organizations + self.organization_members
+        self.projects + self.tasks
+            + self.users + self.organizations + self.organization_members
             + self.clients + self.project_folders + self.project_boards
             + self.board_shares + self.project_members
     }

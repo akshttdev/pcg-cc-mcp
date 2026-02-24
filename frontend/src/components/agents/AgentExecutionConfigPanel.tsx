@@ -52,6 +52,7 @@ import {
 import {
   agentExecutionConfigApi,
   type AgentExecutionConfig,
+  type AgentExecutionProfile,
   type ExecutionMode,
   type CreateAgentExecutionConfig,
   type UpdateAgentExecutionConfig,
@@ -97,7 +98,7 @@ export function AgentExecutionConfigPanel({
   const {
     data: profiles = [],
     isLoading: profilesLoading,
-  } = useQuery({
+  } = useQuery<AgentExecutionProfile[]>({
     queryKey: ['execution-profiles'],
     queryFn: agentExecutionConfigApi.listProfiles,
   });
