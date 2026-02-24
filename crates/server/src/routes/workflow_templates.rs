@@ -7,6 +7,8 @@ use axum::{
     Router,
 };
 use db::models::{
+    crm_activity::CrmActivity,
+    crm_contact::CrmContact,
     project::{CreateProject, Project},
     project_board::{CreateProjectBoard, ProjectBoard, ProjectBoardType},
     project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
@@ -285,7 +287,12 @@ async fn convert_deal(
         .await;
     }
 
-    // 6. Update the deal's custom_fields to link to the new project
+    // 6. Seed knowledge from deal context (η: F_crm → F_knowledge)
+    //    Carry deal metadata, contact profile, and activity history into the
+    //    new project's knowledge sheaf so agents start with full context.
+    seed_deal_knowledge(pool, project.id, &deal, deal_id).await;
+
+    // 7. Update the deal's custom_fields to link to the new project
     let existing_custom_fields: serde_json::Value = deal
         .custom_fields
         .as_deref()
@@ -322,6 +329,127 @@ async fn convert_deal(
         dependencies_created,
         template_used: template.id,
     })))
+}
+
+/// Seed project knowledge from deal context.
+/// Implements the natural transformation η: F_crm → F_knowledge,
+/// carrying CRM data into the project's knowledge sheaf at conversion time.
+async fn seed_deal_knowledge(
+    pool: &sqlx::SqlitePool,
+    project_id: Uuid,
+    deal: &db::models::crm_deal::CrmDeal,
+    deal_id: Uuid,
+) {
+    // 1. Deal context → context_injection source
+    let mut deal_parts: Vec<String> = Vec::new();
+    deal_parts.push(format!("Deal: {}", deal.name));
+    if let Some(ref desc) = deal.description {
+        deal_parts.push(format!("Description: {}", desc));
+    }
+    if let Some(amount) = deal.amount {
+        deal_parts.push(format!("Value: {} {}", amount, deal.currency));
+    }
+    deal_parts.push(format!("Stage: {} ({}% probability)", deal.stage, deal.probability));
+    if let Some(ref close) = deal.expected_close_date {
+        deal_parts.push(format!("Expected close: {}", close.format("%Y-%m-%d")));
+    }
+    if let Some(ref tags) = deal.tags {
+        deal_parts.push(format!("Tags: {}", tags));
+    }
+    let deal_summary = deal_parts.join("\n");
+
+    let _ = ProjectKnowledgeSource::upsert_source(
+        pool,
+        project_id,
+        &KnowledgeSourceType::ContextInjection,
+        &format!("deal_context_{}", deal_id),
+        "Deal Context",
+        Some(&deal_summary),
+        0.5,
+    )
+    .await;
+
+    // 2. Contact profile → entity source (reusable across projects)
+    if let Some(contact_id) = deal.crm_contact_id {
+        if let Ok(contact) = CrmContact::find_by_id(pool, contact_id).await {
+            let mut contact_parts: Vec<String> = Vec::new();
+            if let Some(ref name) = contact.full_name {
+                contact_parts.push(format!("Name: {}", name));
+            }
+            if let Some(ref company) = contact.company_name {
+                contact_parts.push(format!("Company: {}", company));
+            }
+            if let Some(ref title) = contact.job_title {
+                contact_parts.push(format!("Title: {}", title));
+            }
+            if let Some(ref email) = contact.email {
+                contact_parts.push(format!("Email: {}", email));
+            }
+            if let Some(ref phone) = contact.phone {
+                contact_parts.push(format!("Phone: {}", phone));
+            }
+            if let Some(ref linkedin) = contact.linkedin_url {
+                contact_parts.push(format!("LinkedIn: {}", linkedin));
+            }
+            if let Some(ref website) = contact.website {
+                contact_parts.push(format!("Website: {}", website));
+            }
+            contact_parts.push(format!("Lifecycle: {}", contact.lifecycle_stage));
+            contact_parts.push(format!("Lead score: {}", contact.lead_score));
+            if contact.total_revenue > 0.0 {
+                contact_parts.push(format!("Total revenue: ${:.2}", contact.total_revenue));
+            }
+            let contact_summary = contact_parts.join("\n");
+
+            let contact_title = contact
+                .full_name
+                .as_deref()
+                .unwrap_or("Contact");
+
+            let _ = ProjectKnowledgeSource::upsert_source(
+                pool,
+                project_id,
+                &KnowledgeSourceType::Entity,
+                &format!("contact_{}", contact_id),
+                &format!("Contact: {}", contact_title),
+                Some(&contact_summary),
+                0.6,
+            )
+            .await;
+        }
+    }
+
+    // 3. Recent deal activities → context_injection source
+    if let Ok(activities) = CrmActivity::find_by_deal(pool, deal_id, Some(20)).await {
+        if !activities.is_empty() {
+            let activity_lines: Vec<String> = activities
+                .iter()
+                .map(|a| {
+                    let subject = a.subject.as_deref().unwrap_or("");
+                    let outcome = a.outcome.as_deref().map(|o| format!(" → {}", o)).unwrap_or_default();
+                    format!(
+                        "[{}] {}: {}{}",
+                        a.activity_at.format("%Y-%m-%d"),
+                        a.activity_type,
+                        subject,
+                        outcome,
+                    )
+                })
+                .collect();
+            let activity_summary = activity_lines.join("\n");
+
+            let _ = ProjectKnowledgeSource::upsert_source(
+                pool,
+                project_id,
+                &KnowledgeSourceType::ContextInjection,
+                &format!("deal_activities_{}", deal_id),
+                &format!("Deal Activity History ({} activities)", activities.len()),
+                Some(&activity_summary),
+                0.4,
+            )
+            .await;
+        }
+    }
 }
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
