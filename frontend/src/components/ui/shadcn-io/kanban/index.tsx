@@ -170,7 +170,6 @@ function restrictToBoundingRectWithRightPadding(
   boundingRect: ClientRect,
   rightPadding: number
 ): Transform {
-  console.log(rect, boundingRect);
   const value = {
     ...transform,
   };

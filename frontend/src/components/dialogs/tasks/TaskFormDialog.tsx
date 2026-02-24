@@ -492,11 +492,9 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
 
     const handleSubmit = useCallback(async () => {
       if (!title.trim() || !projectId) {
-        console.log('[TaskFormDialog] Submit blocked - missing title or projectId');
         return;
       }
 
-      console.log('[TaskFormDialog] handleSubmit called, isEditMode:', isEditMode);
       setIsSubmitting(true);
 
       let imageIds: string[] | undefined;
@@ -524,12 +522,10 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
       const dueDateIso = dueDate ? new Date(dueDate).toISOString() : null;
 
       // Close modal FIRST before any async operations
-      console.log('[TaskFormDialog] Closing modal NOW');
       modal.hide();
       setIsSubmitting(false);
 
       if (isEditMode && task) {
-        console.log('[TaskFormDialog] Updating task:', task.id);
         updateTask.mutate({
           taskId: task.id,
           data: {
@@ -552,7 +548,6 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
         });
       } else {
         const createdBy = createdByFallback;
-        console.log('[TaskFormDialog] Creating new task');
         createTask.mutate({
           project_id: projectId,
           title,
@@ -601,16 +596,13 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
 
     const handleCreateAndStart = useCallback(async () => {
       if (!title.trim() || !projectId) {
-        console.log('[TaskFormDialog] Create & Start blocked - missing title or projectId');
         return;
       }
 
       if (isEditMode) {
-        console.log('[TaskFormDialog] Create & Start not available in edit mode');
         return;
       }
 
-      console.log('[TaskFormDialog] handleCreateAndStart called');
       setIsSubmittingAndStart(true);
 
       const imageIds =
@@ -639,11 +631,9 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
       }
 
       // Close modal FIRST before mutation
-      console.log('[TaskFormDialog] Closing modal NOW (Create & Start)');
       modal.hide();
       setIsSubmittingAndStart(false);
 
-      console.log('[TaskFormDialog] Creating and starting task');
       createAndStart.mutate({
         task: {
           project_id: projectId,

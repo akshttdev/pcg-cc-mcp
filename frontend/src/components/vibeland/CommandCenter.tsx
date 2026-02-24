@@ -7,7 +7,7 @@ import {
   STAIRWELL_OUTER_RADIUS,
   WORKSPACE_OUTER_RADIUS,
   HOLOGRAM_RAILING_RADIUS,
-} from '@/lib/virtual-world/spatialSystem';
+} from '@/lib/vibeland/spatialSystem';
 
 const FLOOR_ELEVATION = 80;
 const SPIRE_HEIGHT = 20;

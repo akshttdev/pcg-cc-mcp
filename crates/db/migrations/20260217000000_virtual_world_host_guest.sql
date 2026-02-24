@@ -16,10 +16,11 @@ ALTER TABLE users ADD COLUMN invited_by BLOB
     REFERENCES users(id) ON DELETE SET NULL;
 
 -- Promote existing device owners to host role
--- (devices table may not exist on all deployments, so promote admins instead)
 UPDATE users
 SET user_role = 'host'
-WHERE is_admin = 1;
+WHERE id IN (
+    SELECT DISTINCT owner_id FROM devices
+);
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- Virtual Spaces: one per host, their territory in the virtual world

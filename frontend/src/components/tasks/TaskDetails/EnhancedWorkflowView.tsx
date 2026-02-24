@@ -204,11 +204,9 @@ export function EnhancedWorkflowView({
 
     const loadPersistedMessages = async () => {
       try {
-        console.log('[WorkflowView] Loading persisted messages for agent:', executingAgentId, 'session:', sessionId);
         const result = await agentsApi.getConversationBySession(executingAgentId, sessionId);
 
         if (result && result.messages && result.messages.length > 0) {
-          console.log('[WorkflowView] Found', result.messages.length, 'persisted messages');
 
           // Convert to StreamEntry format
           const loadedMessages: StreamEntry[] = result.messages.map((msg) => ({
@@ -283,7 +281,6 @@ export function EnhancedWorkflowView({
   useEffect(() => {
     if (initialPrompt && !hasAutoPrompted && onSendMessage && chatMessages.length === 0) {
       setHasAutoPrompted(true);
-      console.log('[WorkflowView] Auto-sending initial prompt to agent');
 
       // Add user message to show what was sent
       const userMessage: StreamEntry = {

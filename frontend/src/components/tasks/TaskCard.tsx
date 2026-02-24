@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
 import {
+  Archive,
   CheckCircle,
   Copy,
   Edit,
@@ -35,12 +36,14 @@ interface TaskCardProps {
   onEdit: (task: Task) => void;
   onDelete: (taskId: string) => void;
   onDuplicate?: (task: Task) => void;
+  onArchive?: (task: Task) => void;
   onViewDetails: (task: Task) => void;
   isOpen?: boolean;
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelection?: (taskId: string) => void;
   agentFlow?: AgentFlow;
+  dimmed?: boolean;
 }
 
 export function TaskCard({
@@ -50,12 +53,14 @@ export function TaskCard({
   onEdit,
   onDelete,
   onDuplicate,
+  onArchive,
   onViewDetails,
   isOpen,
   selectionMode,
   isSelected,
   onToggleSelection,
   agentFlow,
+  dimmed,
 }: TaskCardProps) {
   const handleClick = useCallback(() => {
     if (selectionMode && onToggleSelection) {
@@ -89,6 +94,7 @@ export function TaskCard({
       onClick={handleClick}
       isOpen={isOpen}
       forwardedRef={localRef}
+      className={dimmed ? 'opacity-60' : undefined}
     >
       <div className="flex flex-1 gap-2 items-center min-w-0">
         {/* Checkbox for selection mode */}
@@ -181,6 +187,12 @@ export function TaskCard({
                     Duplicate
                   </DropdownMenuItem>
                 )}
+                {onArchive && (
+                  <DropdownMenuItem onClick={() => onArchive(task)}>
+                    <Archive className="h-4 w-4 mr-2" />
+                    {task.archived_at ? 'Unarchive' : 'Archive'}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   onClick={() => onDelete(task.id)}
                   className="text-destructive"
@@ -209,7 +221,7 @@ export function TaskCard({
               title={`${task.vibe_cost} VIBE${task.vibe_model ? ` (${task.vibe_model})` : ''}`}
             >
               <Zap className="h-2.5 w-2.5" />
-              <span>{task.vibe_cost}</span>
+              <span>{Number(task.vibe_cost)}</span>
               <span className="text-amber-500 dark:text-amber-500/70">VIBE</span>
             </div>
           )}

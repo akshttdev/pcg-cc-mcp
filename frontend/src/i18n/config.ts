@@ -65,10 +65,6 @@ i18n
 
 // Debug logging in development
 if (import.meta.env.DEV) {
-  console.log('i18n initialized:', i18n.isInitialized);
-  console.log('i18n language:', i18n.language);
-  console.log('i18n namespaces:', i18n.options.ns);
-  console.log('Common bundle loaded:', i18n.hasResourceBundle('en', 'common'));
 }
 
 // Function to update language from config

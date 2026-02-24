@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Grid, Environment, Stars, SpotLight, Text } from '@react-three/drei';
+import { Grid, Environment, Stars, SpotLight } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   type LucideIcon,
@@ -15,20 +15,20 @@ import {
   Map as MapIcon,
   Shirt,
 } from 'lucide-react';
-import { CommandCenter } from '@/components/virtual-world/CommandCenter';
-import { NoraAvatar } from '@/components/virtual-world/NoraAvatar';
-import { WanderingAgent } from '@/components/virtual-world/WanderingAgent';
-import { ToposDataSphere } from '@/components/virtual-world/ToposDataSphere';
-import { UserAvatar } from '@/components/virtual-world/UserAvatar';
-import { MultiplayerManager } from '@/components/virtual-world/MultiplayerManager';
+import { CommandCenter } from '@/components/vibeland/CommandCenter';
+import { NoraAvatar } from '@/components/vibeland/NoraAvatar';
+import { WanderingAgent } from '@/components/vibeland/WanderingAgent';
+import { ToposDataSphere } from '@/components/vibeland/ToposDataSphere';
+import { UserAvatar } from '@/components/vibeland/UserAvatar';
+import { MultiplayerManager } from '@/components/vibeland/MultiplayerManager';
 import { useMultiplayerStore } from '@/stores/useMultiplayerStore';
-import { AgentWorkspaceLevel, getAgentBayBounds } from '@/components/virtual-world/AgentWorkspaceLevel';
-import { SpiralStaircase } from '@/components/virtual-world/SpiralStaircase';
+import { AgentWorkspaceLevel, getAgentBayBounds } from '@/components/vibeland/AgentWorkspaceLevel';
+import { SpiralStaircase } from '@/components/vibeland/SpiralStaircase';
 import { AgentChatConsole } from '@/components/nora/AgentChatConsole';
-import { OrchaAvatar } from '@/components/virtual-world/OrchaAvatar';
-import { InventoryPanel, EquipmentPanel } from '@/components/virtual-world/hud';
-import { ENTRY_TRIGGER_DISTANCE, BUILDING_HALF_LENGTH } from '@/lib/virtual-world/constants';
-import { ProjectBuilding } from '@/components/virtual-world/ProjectBuilding';
+import { OrchaAvatar } from '@/components/vibeland/OrchaAvatar';
+import { InventoryPanel, EquipmentPanel } from '@/components/vibeland/hud';
+import { ENTRY_TRIGGER_DISTANCE, BUILDING_HALF_LENGTH } from '@/lib/vibeland/constants';
+import { ProjectBuilding } from '@/components/vibeland/ProjectBuilding';
 import { cn } from '@/lib/utils';
 import { useProjectList } from '@/hooks/api/useProjectList';
 import { useAuth } from '@/contexts/AuthContext';
@@ -77,21 +77,12 @@ const HUD_PANEL_META: Record<HudPanelId, { title: string; description: string }>
   equipment: { title: 'Equipment', description: 'Currently equipped gear. Click slots to unequip.' },
 };
 
-const noraAcknowledgements = [
-  'Routing orchestration energy to',
-  'Illuminating systems for',
-  'Calibrating systems for',
-  'Summoning agents around',
-  'Focusing the grid on',
-  'Deploying sub-agents to',
-  'Synchronizing timelines with',
-  'Amplifying signal for',
-];
-
 // Spawn positions based on role
 const PLAYER_COLOR = '#ff8800';
 // Admin: spawn on command center floor, outside hologram railing (R > 10)
-const SPAWN_ADMIN: [number, number, number] = [15, COMMAND_CENTER_FLOOR_Y + 1, 15];
+// Y = floor (80) + AVATAR_RADIUS (0.5) + 0.1 puts player within the onGround threshold
+// so they snap to the floor in the first frame instead of floating above it.
+const SPAWN_ADMIN: [number, number, number] = [20, COMMAND_CENTER_FLOOR_Y + 0.6, 0];
 // User: spawn south of command center, facing inward — can see the world and command center above
 const SPAWN_USER: [number, number, number] = [0, 1, 60];
 
@@ -207,71 +198,7 @@ function generateProjectsFromAPI(apiProjects: Project[], accessibleIds: Set<stri
 }
 
 // ─── Zone Landmark Component ──────────────────────────────────────────────────
-// Each non-PCG zone appears as a glowing beacon/obelisk in the 3D world
 
-function ZoneLandmark({ name, host, position, color }: {
-  name: string;
-  host: string;
-  position: [number, number, number];
-  color: string;
-}) {
-  const pulseRef = useRef<THREE.PointLight>(null);
-
-  useFrame((state) => {
-    if (!pulseRef.current) return;
-    pulseRef.current.intensity = 1.5 + Math.sin(state.clock.elapsedTime * 1.5) * 0.5;
-  });
-
-
-  return (
-    <group position={position}>
-      {/* Ground ring */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.1, 0]}>
-        <ringGeometry args={[18, 20, 48]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} transparent opacity={0.4} side={THREE.DoubleSide} />
-      </mesh>
-
-      {/* Central obelisk */}
-      <mesh position={[0, 20, 0]}>
-        <cylinderGeometry args={[0.8, 2, 40, 6]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.8} transparent opacity={0.85} />
-      </mesh>
-
-      {/* Top crystal */}
-      <mesh position={[0, 42, 0]}>
-        <octahedronGeometry args={[3.5, 0]} />
-        <meshStandardMaterial color="#ffffff" emissive={color} emissiveIntensity={1.5} transparent opacity={0.9} />
-      </mesh>
-
-      {/* Pulsing point light */}
-      <pointLight ref={pulseRef} color={color} intensity={2} distance={80} />
-
-      {/* Zone name label */}
-      <Text
-        position={[0, 50, 0]}
-        fontSize={6}
-        color="#ffffff"
-        anchorX="center"
-        anchorY="middle"
-        outlineWidth={0.3}
-        outlineColor={color}
-      >
-        {name}
-      </Text>
-
-      {/* Host label */}
-      <Text
-        position={[0, 43, 0]}
-        fontSize={3.5}
-        color={color}
-        anchorX="center"
-        anchorY="middle"
-      >
-        @{host}
-      </Text>
-    </group>
-  );
-}
 
 function AtmosphericLighting() {
   return (
@@ -425,7 +352,7 @@ export function VirtualEnvironmentPage() {
   }, []);
 
   // Fetch projects from the Dashboard API
-  const { data: apiProjects = [], isLoading: projectsLoading, error: projectsError } = useProjectList();
+  const { data: apiProjects = [], isLoading: projectsLoading, error: projectsError, refetch: refetchProjects } = useProjectList();
 
   // Combine API projects with static demo projects (Fine Art Society)
   const allProjects = useMemo(() => {
@@ -461,7 +388,7 @@ export function VirtualEnvironmentPage() {
     [worldZones, isAdmin]
   );
 
-  const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
+  const [selectedProject] = useState<ProjectData | null>(null);
   const [noraLine, setNoraLine] = useState('Command Center online. Syncing with Dashboard...');
   const [noraStatusVersion, setNoraStatusVersion] = useState(1);
 
@@ -476,6 +403,18 @@ export function VirtualEnvironmentPage() {
   // activeZone = the zone beacon the user has entered (null = in global world)
   const [activeZone, setActiveZone] = useState<VirtualZone | null>(null);
   const [isConsoleInputActive, setIsConsoleInputActive] = useState(false);
+
+  // DEBUG: track keyboard events reaching window
+  const [debugLastKey, setDebugLastKey] = useState('none');
+  const [debugKeyCount, setDebugKeyCount] = useState(0);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      setDebugLastKey(e.key);
+      setDebugKeyCount(c => c + 1);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
   const [consoleFocusVersion, setConsoleFocusVersion] = useState(0);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [activeHudPanel, setActiveHudPanel] = useState<HudPanelId | null>(null);
@@ -516,15 +455,6 @@ export function VirtualEnvironmentPage() {
       return !prev;
     });
   }, [releaseConsoleInput]);
-
-  // handleSelect kept for future zone/project selection use
-  const _handleSelect = useCallback((project: ProjectData) => {
-    setSelectedProject(project);
-    const line = noraAcknowledgements[
-      Math.floor(Math.random() * noraAcknowledgements.length)
-    ];
-    updateNoraLine(`${line} ${project.name}.`);
-  }, [updateNoraLine]);
 
   const sendPositionUpdate = useMultiplayerStore((s) => s.sendPositionUpdate);
   const multiplayerIsConnected = useMultiplayerStore((s) => s.isConnected);
@@ -702,6 +632,10 @@ export function VirtualEnvironmentPage() {
 
   return (
     <div className="relative h-full min-h-[calc(100vh-6rem)] bg-black text-white">
+      {/* DEBUG OVERLAY — remove once movement is confirmed working */}
+      <div style={{position:'fixed',top:8,left:'50%',transform:'translateX(-50%)',zIndex:99999,background:'rgba(0,0,0,0.85)',color:'#0ff',padding:'4px 14px',borderRadius:6,fontSize:11,fontFamily:'monospace',pointerEvents:'none',whiteSpace:'nowrap'}}>
+        key: <b>{debugLastKey}</b> ({debugKeyCount}) | suspended: <b style={{color: isConsoleInputActive ? '#f55' : '#0f0'}}>{isConsoleInputActive ? 'YES ⛔' : 'no ✓'}</b>
+      </div>
       {/* Loading overlay */}
       {projectsLoading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
@@ -712,13 +646,16 @@ export function VirtualEnvironmentPage() {
         </div>
       )}
 
-      {/* Error overlay */}
+      {/* Non-blocking error banner — projects unavailable but world still usable */}
       {projectsError && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <p className="text-lg text-red-400">Failed to connect to Dashboard API</p>
-            <p className="text-sm text-red-300">{projectsError.message}</p>
-          </div>
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 rounded-lg bg-black/80 border border-red-500/40 text-sm">
+          <span className="text-red-400">Projects unavailable</span>
+          <button
+            onClick={() => refetchProjects()}
+            className="text-xs text-red-300/70 hover:text-red-200 underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -1063,9 +1000,6 @@ interface MiniMapProps {
 
 function SystemsPanel({ projects, selectedProject, userPosition, zones = STATIC_ZONES }: SystemsPanelProps) {
   const [userX, , userZ] = userPosition;
-  const _averageEnergy = projects.length
-    ? projects.reduce((sum, project) => sum + project.energy, 0) / projects.length
-    : 0;
   const topProject = projects.length
     ? [...projects].sort((a, b) => b.energy - a.energy)[0]
     : null;

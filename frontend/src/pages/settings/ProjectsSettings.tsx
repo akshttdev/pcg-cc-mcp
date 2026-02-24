@@ -8,7 +8,8 @@ import {
   Calendar,
   Shield,
   Coins,
-  Loader2
+  Loader2,
+  Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,7 +41,14 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { ProjectMembersDialog } from '@/components/dialogs/project-members-dialog';
+import { projectsApi, organizationsApi, type ClientData } from '@/lib/api';
 import type { Project } from 'shared/types';
+
+// Extended project type that includes org/client fields returned by the API
+interface ProjectWithOrg extends Project {
+  organization_id?: string;
+  client_id?: string;
+}
 
 interface VibeBudgetResponse {
   vibe_budget_limit: number | null;
@@ -52,7 +60,7 @@ interface VibeBudgetResponse {
 const api = {
   listProjects: async (filters?: {
     search?: string;
-  }): Promise<Project[]> => {
+  }): Promise<ProjectWithOrg[]> => {
     const params = new URLSearchParams();
     if (filters?.search) params.append('search', filters.search);
 
@@ -95,17 +103,30 @@ const api = {
 export function ProjectsSettings() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectWithOrg | null>(null);
   const [membersDialogOpen, setMembersDialogOpen] = useState(false);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
-  const [budgetProject, setBudgetProject] = useState<Project | null>(null);
+  const [budgetProject, setBudgetProject] = useState<ProjectWithOrg | null>(null);
   const [budgetLimit, setBudgetLimit] = useState<string>('');
   const [unlimitedBudget, setUnlimitedBudget] = useState(true);
+  const [clientDialogOpen, setClientDialogOpen] = useState(false);
+  const [clientProject, setClientProject] = useState<ProjectWithOrg | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string>('none');
 
   // Fetch projects
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects', searchQuery],
     queryFn: () => api.listProjects({ search: searchQuery }),
+  });
+
+  // Fetch clients for the client assignment dialog
+  const { data: availableClients = [] } = useQuery({
+    queryKey: ['clients', clientProject?.organization_id],
+    queryFn: () =>
+      clientProject?.organization_id
+        ? organizationsApi.getClients(clientProject.organization_id)
+        : Promise.resolve([] as ClientData[]),
+    enabled: clientDialogOpen && !!clientProject?.organization_id,
   });
 
   // Budget mutation
@@ -122,12 +143,39 @@ export function ProjectsSettings() {
     },
   });
 
-  const handleManageAccess = (project: Project) => {
+  // Client assignment mutation
+  const clientMutation = useMutation({
+    mutationFn: ({ projectId, clientId }: { projectId: string; clientId: string | null }) =>
+      projectsApi.setClient(projectId, clientId),
+    onSuccess: () => {
+      toast.success('Client assignment updated');
+      setClientDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['sidebar-tree'] });
+    },
+    onError: (error) => {
+      toast.error(`Failed to update client: ${error.message}`);
+    },
+  });
+
+  const handleAssignClient = (project: ProjectWithOrg) => {
+    setClientProject(project);
+    setSelectedClientId(project.client_id ?? 'none');
+    setClientDialogOpen(true);
+  };
+
+  const handleSaveClient = () => {
+    if (!clientProject) return;
+    const clientId = selectedClientId === 'none' ? null : selectedClientId;
+    clientMutation.mutate({ projectId: clientProject.id, clientId });
+  };
+
+  const handleManageAccess = (project: ProjectWithOrg) => {
     setSelectedProject(project);
     setMembersDialogOpen(true);
   };
 
-  const handleManageBudget = (project: Project) => {
+  const handleManageBudget = (project: ProjectWithOrg) => {
     setBudgetProject(project);
     if (project.vibe_budget_limit !== null) {
       setBudgetLimit(project.vibe_budget_limit.toString());
@@ -317,6 +365,12 @@ export function ProjectsSettings() {
                               <Users className="h-4 w-4 mr-2" />
                               Manage Members
                             </DropdownMenuItem>
+                            {project.organization_id && (
+                              <DropdownMenuItem onClick={() => handleAssignClient(project)}>
+                                <Building2 className="h-4 w-4 mr-2" />
+                                Assign to Client
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -338,6 +392,59 @@ export function ProjectsSettings() {
           projectName={selectedProject.name}
         />
       )}
+
+      {/* Assign to Client Dialog */}
+      <Dialog open={clientDialogOpen} onOpenChange={setClientDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign to Client</DialogTitle>
+            <DialogDescription>
+              Move <strong>{clientProject?.name}</strong> under a client in its organization. Select "No client" to make it an internal project.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Client</Label>
+              {!clientProject?.organization_id ? (
+                <p className="text-sm text-muted-foreground">
+                  This project is not linked to an organization and cannot be assigned to a client.
+                </p>
+              ) : (
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  value={selectedClientId}
+                  onChange={(e) => setSelectedClientId(e.target.value)}
+                >
+                  <option value="none">No client (internal project)</option>
+                  {availableClients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClientDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveClient}
+              disabled={clientMutation.isPending || !clientProject?.organization_id}
+            >
+              {clientMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* VIBE Budget Dialog */}
       <Dialog open={budgetDialogOpen} onOpenChange={setBudgetDialogOpen}>

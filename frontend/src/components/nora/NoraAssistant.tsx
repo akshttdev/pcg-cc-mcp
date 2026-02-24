@@ -324,7 +324,6 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
     try {
       // Stop listening while we process (prevents feedback)
       if (continuousMode && isListening) {
-        console.log('[Voice Conversation] Pausing listening while processing...');
         stopVoiceRecording();
       }
 
@@ -348,12 +347,10 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
           
           // Set up handler to resume listening after Nora finishes speaking
           audioElement.onended = () => {
-            console.log('[Voice Conversation] Nora finished speaking');
             setIsSpeaking(false);
             
             // In continuous mode, automatically resume listening
             if (continuousMode && shouldContinueListeningRef.current) {
-              console.log('[Voice Conversation] Auto-resuming listening after Nora spoke');
               setTimeout(() => {
                 void startSpeechRecognition();
               }, 300); // Small delay to prevent picking up tail end of audio
@@ -382,7 +379,6 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
         } else {
           // No voice response - resume listening immediately in continuous mode
           if (continuousMode && shouldContinueListeningRef.current) {
-            console.log('[Voice Conversation] No voice response, resuming listening');
             setTimeout(() => void startSpeechRecognition(), 100);
           }
         }
@@ -402,7 +398,6 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
   const startSpeechRecognition = async () => {
     // Don't start if Nora is currently speaking (prevents feedback)
     if (isSpeaking) {
-      console.log('[Voice Conversation] Skipping start - Nora is speaking');
       return;
     }
     
@@ -432,7 +427,6 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       let lastUpdateTime = Date.now();
 
       recognition.onresult = async (event: SpeechRecognitionEvent) => {
-        console.log('[Speech Recognition] onresult fired, resultIndex:', event.resultIndex, 'results.length:', event.results.length);
         let finalTranscript = '';
         let interim = '';
 
@@ -453,7 +447,6 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
         const now = Date.now();
         lastUpdateTime = now;
 
-        console.log('[Speech Recognition] Processed - final:', finalTranscript, 'interim:', interim);
 
         if (interim) {
           setInterimTranscript(accumulatedTranscript + ' ' + interim);
@@ -473,23 +466,18 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
               clearTimeout(silenceTimeoutRef.current);
             }
             
-            console.log('[Pause Detection] Setting timeout, accumulated:', accumulatedTranscript);
             
             // Monitor for silence - send after 1.5s of no new speech
             silenceTimeoutRef.current = window.setTimeout(async () => {
               const timeSinceLastUpdate = Date.now() - lastUpdateTime;
-              console.log('[Pause Detection] Timeout fired, time since last update:', timeSinceLastUpdate, 'ms');
-              console.log('[Pause Detection] Accumulated text:', accumulatedTranscript);
               
               // Check if enough time has passed since last update
               if (timeSinceLastUpdate >= 1400 && accumulatedTranscript.trim()) {
                 const messageToSend = accumulatedTranscript.trim();
-                console.log('[Pause Detection] Sending message:', messageToSend);
                 accumulatedTranscript = '';
                 setInterimTranscript('');
                 await sendMessage(messageToSend, 'voiceInteraction');
               } else {
-                console.log('[Pause Detection] Not sending - timeSinceLastUpdate:', timeSinceLastUpdate, 'accumulated:', accumulatedTranscript);
               }
             }, 1500);
           } else {
@@ -506,7 +494,6 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
 
       recognition.onerror = async (event: Event) => {
         const errorEvent = event as SpeechRecognitionErrorEvent;
-        console.log('[Speech Recognition] Error:', errorEvent.error);
         
         // In continuous mode, handle errors more gracefully
         if (shouldContinueListeningRef.current) {
@@ -532,13 +519,11 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
               return;
             }
             
-            console.log('[Speech Recognition] Ignoring benign error in continuous mode:', errorEvent.error);
             return;
           }
           
           // Ignore no-speech errors - they're normal
           if (errorEvent.error === 'no-speech') {
-            console.log('[Speech Recognition] Ignoring benign error in continuous mode:', errorEvent.error);
             return;
           }
           
@@ -547,16 +532,13 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             networkErrorRetryCount.current += 1;
             
             if (networkErrorRetryCount.current <= 3) {
-              console.log(`[Speech Recognition] Network error, retry ${networkErrorRetryCount.current}/3 in 2 seconds...`);
               setTimeout(() => {
                 if (shouldContinueListeningRef.current) {
-                  console.log('[Speech Recognition] Retrying after network error...');
                   void startSpeechRecognition();
                 }
               }, 2000);
               return;
             } else {
-              console.log('[Speech Recognition] Max network retries reached, stopping');
               addMessage('nora', 'I\'m unable to connect to the speech recognition service. This could be due to network issues or browser limitations. Please try using Push-to-Talk mode (🎤 button) instead, which works offline.');
               // Auto-switch to push-to-talk mode
               setContinuousMode(false);
@@ -565,13 +547,11 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
           
           // Audio capture errors - might be temporary
           if (errorEvent.error === 'audio-capture' || errorEvent.error === 'not-allowed') {
-            console.log('[Speech Recognition] Audio error:', errorEvent.error);
             addMessage('nora', `I'm having trouble accessing your microphone. Error: ${errorEvent.error}`);
           }
         }
         
         // Fatal error or push-to-talk mode - stop everything
-        console.log('[Speech Recognition] Fatal error, stopping');
         shouldContinueListeningRef.current = false;
         speechRecognitionRef.current = null;
         setIsListening(false);
@@ -583,22 +563,15 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       };
 
       recognition.onend = () => {
-        console.log('[Speech Recognition] onend fired, shouldContinue:', shouldContinueListeningRef.current);
-        console.log('[Speech Recognition] speechRecognitionRef.current exists:', !!speechRecognitionRef.current);
         
         // In continuous mode, restart recognition automatically
         if (shouldContinueListeningRef.current) {
           // Use longer delay to prevent rapid restart loops
           setTimeout(() => {
-            console.log('[Speech Recognition] Timeout fired, attempting restart...');
-            console.log('[Speech Recognition] Ref still exists:', !!speechRecognitionRef.current);
-            console.log('[Speech Recognition] Should still continue:', shouldContinueListeningRef.current);
             
             if (speechRecognitionRef.current && shouldContinueListeningRef.current) {
               try {
-                console.log('[Speech Recognition] Calling recognition.start()');
                 recognition.start();
-                console.log('[Speech Recognition] Successfully restarted');
               } catch (error) {
                 console.error('[Speech Recognition] Error during restart:', error);
                 // If already started, that's fine - ignore the error
@@ -609,11 +582,9 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
                 }
               }
             } else {
-              console.log('[Speech Recognition] Skipping restart - ref or shouldContinue is false');
             }
           }, 300); // Increased from 100ms to 300ms to prevent rapid loops
         } else {
-          console.log('[Speech Recognition] Not restarting, cleaning up');
           speechRecognitionRef.current = null;
           setIsListening(false);
           setInterimTranscript('');
@@ -621,7 +592,6 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       };
 
       recognition.onspeechend = () => {
-        console.log('[Speech Recognition] onspeechend fired');
         // In push-to-talk mode, stop on speech end
         // In continuous mode, keep listening
         if (!continuousMode) {
@@ -631,22 +601,17 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
 
       // Add additional event listeners for debugging (not in TypeScript types but exist in runtime)
       (recognition as any).onstart = () => {
-        console.log('[Speech Recognition] onstart fired - recognition is now active');
       };
 
       (recognition as any).onsoundstart = () => {
-        console.log('[Speech Recognition] onsoundstart - sound detected');
       };
 
       (recognition as any).onsoundend = () => {
-        console.log('[Speech Recognition] onsoundend - sound ended');
       };
 
       (recognition as any).onspeechstart = () => {
-        console.log('[Speech Recognition] onspeechstart - speech detected');
       };
 
-      console.log('[Speech Recognition] Starting recognition in', continuousMode ? 'CONTINUOUS' : 'PUSH-TO-TALK', 'mode');
       recognition.start();
       speechRecognitionRef.current = recognition;
       setIsListening(true);

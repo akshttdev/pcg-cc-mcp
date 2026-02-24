@@ -105,7 +105,6 @@ const useMeshStats = () => {
           setLoading(false);
           return;
         } catch (tauriErr) {
-          console.debug('Tauri command failed, falling back to API:', tauriErr);
         }
       }
 

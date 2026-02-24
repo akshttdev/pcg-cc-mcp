@@ -10,7 +10,7 @@ import {
   STAIRWELL_OUTER_RADIUS,
   HOLOGRAM_RADIUS,
   HOLOGRAM_RAILING_RADIUS,
-} from '@/lib/virtual-world/spatialSystem';
+} from '@/lib/vibeland/spatialSystem';
 
 // Staircase visual configuration
 const STAIR_COUNT = 32;
