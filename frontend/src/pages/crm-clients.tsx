@@ -22,3 +22,43 @@ export function CrmClientsPage() {
     />
   );
 }
+
+export function CrmAcquisitionPage() {
+  const { orgId } = useParams<{ orgId: string }>();
+
+  if (!orgId) {
+    return (
+      <div className="h-full flex items-center justify-center text-muted-foreground">
+        Organization not found
+      </div>
+    );
+  }
+
+  return (
+    <CrmPipelineBoard
+      orgId={orgId}
+      pipelineType="sales"
+      title="Acquisition Pipeline"
+    />
+  );
+}
+
+export function CrmLifecyclePage() {
+  const { orgId } = useParams<{ orgId: string }>();
+
+  if (!orgId) {
+    return (
+      <div className="h-full flex items-center justify-center text-muted-foreground">
+        Organization not found
+      </div>
+    );
+  }
+
+  return (
+    <CrmPipelineBoard
+      orgId={orgId}
+      pipelineType="delivery"
+      title="Client Lifecycle"
+    />
+  );
+}

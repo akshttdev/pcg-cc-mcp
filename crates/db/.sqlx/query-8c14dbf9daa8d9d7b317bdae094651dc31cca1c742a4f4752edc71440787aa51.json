@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO agents (\n                id, wallet_address, short_name, designation, description,\n                personality, voice_style, avatar_url,\n                capabilities, tools, functions,\n                default_model, fallback_models, model_config,\n                status, autonomy_level, max_concurrent_tasks, priority_weight,\n                parent_agent_id, team_id, created_by\n            ) VALUES (\n                $1, $2, $3, $4, $5,\n                $6, $7, $8,\n                $9, $10, $11,\n                $12, $13, $14,\n                $15, $16, $17, $18,\n                $19, $20, $21\n            )\n            RETURNING\n                id as \"id!: Uuid\",\n                wallet_address,\n                short_name,\n                designation,\n                description,\n                personality,\n                voice_style,\n                avatar_url,\n                capabilities,\n                tools,\n                functions,\n                default_model,\n                fallback_models,\n                model_config,\n                status as \"status!: AgentStatus\",\n                autonomy_level as \"autonomy_level!: AutonomyLevel\",\n                max_concurrent_tasks,\n                priority_weight,\n                tasks_completed,\n                tasks_failed,\n                total_execution_time_ms,\n                average_rating,\n                version,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\",\n                created_by,\n                parent_agent_id as \"parent_agent_id: Uuid\",\n                team_id",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                wallet_address,\n                short_name,\n                designation,\n                description,\n                personality,\n                voice_style,\n                avatar_url,\n                capabilities,\n                tools,\n                functions,\n                default_model,\n                fallback_models,\n                model_config,\n                status as \"status!: AgentStatus\",\n                autonomy_level as \"autonomy_level!: AutonomyLevel\",\n                max_concurrent_tasks,\n                priority_weight,\n                tasks_completed,\n                tasks_failed,\n                total_execution_time_ms,\n                average_rating,\n                version,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\",\n                created_by,\n                parent_agent_id as \"parent_agent_id: Uuid\",\n                team_id,\n                owner_id as \"owner_id: Uuid\",\n                agent_tier\n            FROM agents\n            ORDER BY short_name ASC",
   "describe": {
     "columns": [
       {
@@ -142,10 +142,20 @@
         "name": "team_id",
         "ordinal": 27,
         "type_info": "Text"
+      },
+      {
+        "name": "owner_id: Uuid",
+        "ordinal": 28,
+        "type_info": "Blob"
+      },
+      {
+        "name": "agent_tier",
+        "ordinal": 29,
+        "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 21
+      "Right": 0
     },
     "nullable": [
       false,
@@ -166,17 +176,19 @@
       false,
       true,
       true,
-      false,
-      false,
-      false,
+      true,
+      true,
+      true,
+      true,
       true,
       false,
       false,
-      false,
       true,
       true,
-      true
+      true,
+      true,
+      false
     ]
   },
-  "hash": "b20a9f3f7603c66ffd78812a69943f16645b6ab4c24729063f030f9075ab0391"
+  "hash": "8c14dbf9daa8d9d7b317bdae094651dc31cca1c742a4f4752edc71440787aa51"
 }

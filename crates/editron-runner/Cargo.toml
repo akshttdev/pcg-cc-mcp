@@ -1,0 +1,28 @@
+[package]
+name = "editron-runner"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone Editron Event Recap pipeline runner"
+
+[[bin]]
+name = "editron-runner"
+path = "src/main.rs"
+
+[dependencies]
+services = { path = "../services" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[lints.clippy]
+print_stdout = "allow"
+print_stderr = "allow"
+
+[lints.rust]
+unsafe_code = "deny"

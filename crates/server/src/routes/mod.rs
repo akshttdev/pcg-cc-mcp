@@ -80,6 +80,7 @@ pub mod clients;
 pub mod project_folders;
 pub mod sidebar;
 pub mod knowledge;
+pub mod workflow_templates;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -136,6 +137,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(board_shares::router(&deployment))
         .merge(sidebar::router(&deployment))
         .merge(knowledge::router(&deployment))
+        .merge(workflow_templates::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,

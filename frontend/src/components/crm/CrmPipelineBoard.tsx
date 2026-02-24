@@ -21,14 +21,16 @@ import { Plus, DollarSign, Settings, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import NiceModal from '@ebay/nice-modal-react';
-import { useCrmKanban, useCrmPipelineByType, useMoveDeal, useCreateDeal, useUpdateDeal, useDeleteDeal } from '@/hooks/useCrmPipeline';
+import { useCrmKanban, useCrmPipelineByType, useOrgCrmPipelineByType, useOrgCrmKanban, useMoveDeal, useCreateDeal, useUpdateDeal, useDeleteDeal } from '@/hooks/useCrmPipeline';
 import { useProjectBoardProgress } from '@/hooks/useProjectBoardProgress';
 import { CrmDealCard } from './CrmDealCard';
 import { CrmDealForm } from './CrmDealForm';
+import { CrmDealDetailPanel } from './CrmDealDetailPanel';
 import type { PipelineType, CrmDealWithContact, CrmPipelineStage, CreateCrmDeal, UpdateCrmDeal } from '@/types/crm';
 
 interface CrmPipelineBoardProps {
-  projectId: string;
+  projectId?: string;
+  orgId?: string;
   pipelineType: PipelineType;
   title?: string;
   onSettingsClick?: () => void;
@@ -67,27 +69,45 @@ function DroppableColumn({
 
 export function CrmPipelineBoard({
   projectId,
+  orgId,
   pipelineType,
   title,
   onSettingsClick,
 }: CrmPipelineBoardProps) {
   const [activeDeal, setActiveDeal] = useState<CrmDealWithContact | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<CrmDealWithContact | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<CrmDealWithContact | undefined>();
   const [initialStageId, setInitialStageId] = useState<string | undefined>();
 
-  // Fetch pipeline by type
-  const { data: pipeline, isLoading: isPipelineLoading } = useCrmPipelineByType(
-    projectId,
+  const isOrgMode = !!orgId;
+
+  // Fetch pipeline by type — org-scoped or project-scoped
+  const projectPipeline = useCrmPipelineByType(
+    projectId || '',
     pipelineType
   );
+  const orgPipeline = useOrgCrmPipelineByType(
+    orgId || '',
+    pipelineType
+  );
+  const { data: pipeline, isLoading: isPipelineLoading } = isOrgMode
+    ? orgPipeline
+    : projectPipeline;
 
-  // Fetch Kanban data once we have the pipeline
+  // Fetch Kanban data once we have the pipeline — org-scoped or project-scoped
+  const projectKanban = useCrmKanban(
+    !isOrgMode ? pipeline?.id : undefined
+  );
+  const orgKanbanResult = useOrgCrmKanban(
+    orgId || '',
+    isOrgMode ? pipeline?.id : undefined
+  );
   const {
     data: kanbanData,
     isLoading: isKanbanLoading,
     isRefetching,
-  } = useCrmKanban(pipeline?.id);
+  } = isOrgMode ? orgKanbanResult : projectKanban;
 
   // Mutations
   const moveDeal = useMoveDeal();
@@ -345,6 +365,7 @@ export function CrmPipelineBoard({
                         <div key={deal.id} className="group">
                           <CrmDealCard
                             deal={deal}
+                            onClick={setSelectedDeal}
                             onEdit={handleEditDeal}
                             onDelete={handleDeleteDeal}
                             isDragging={activeDeal?.id === deal.id}
@@ -381,7 +402,7 @@ export function CrmPipelineBoard({
         <CrmDealForm
           open={formOpen}
           onOpenChange={setFormOpen}
-          projectId={projectId}
+          projectId={projectId || pipeline.project_id}
           pipelineId={pipeline.id}
           stages={stages}
           deal={editingDeal}
@@ -389,6 +410,23 @@ export function CrmPipelineBoard({
           onSubmit={handleFormSubmit}
         />
       )}
+
+      {/* Deal Detail Panel */}
+      <CrmDealDetailPanel
+        deal={selectedDeal}
+        isOpen={!!selectedDeal}
+        onClose={() => setSelectedDeal(null)}
+        onEdit={(deal) => {
+          setSelectedDeal(null);
+          handleEditDeal(deal);
+        }}
+        onDelete={(deal) => {
+          setSelectedDeal(null);
+          handleDeleteDeal(deal);
+        }}
+        orgId={orgId}
+        projectId={projectId || pipeline?.project_id}
+      />
     </div>
   );
 }

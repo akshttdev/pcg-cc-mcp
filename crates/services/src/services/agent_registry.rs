@@ -128,7 +128,7 @@ impl AgentDefinitions {
             team_id: Some("core".to_string()),
             created_by: Some("system".to_string()),
             owner_id: None,
-            agent_tier: None,
+            agent_tier: Some("admin".to_string()),
         }
     }
 
@@ -249,7 +249,7 @@ impl AgentDefinitions {
             team_id: Some("creative".to_string()),
             created_by: Some("system".to_string()),
             owner_id: None,
-            agent_tier: None,
+            agent_tier: Some("admin".to_string()),
         }
     }
 
@@ -375,7 +375,7 @@ impl AgentDefinitions {
             team_id: Some("creative".to_string()),
             created_by: Some("system".to_string()),
             owner_id: None,
-            agent_tier: None,
+            agent_tier: Some("admin".to_string()),
         }
     }
 
@@ -522,7 +522,7 @@ impl AgentDefinitions {
             team_id: Some("creative".to_string()),
             created_by: Some("system".to_string()),
             owner_id: None,
-            agent_tier: None,
+            agent_tier: Some("admin".to_string()),
         }
     }
 
@@ -649,7 +649,7 @@ impl AgentDefinitions {
             team_id: Some("strategy".to_string()),
             created_by: Some("system".to_string()),
             owner_id: None,
-            agent_tier: None,
+            agent_tier: Some("admin".to_string()),
         }
     }
 
@@ -763,7 +763,7 @@ impl AgentDefinitions {
             team_id: Some("research".to_string()),
             created_by: Some("system".to_string()),
             owner_id: None,
-            agent_tier: None,
+            agent_tier: Some("admin".to_string()),
         }
     }
 
@@ -907,7 +907,7 @@ impl AgentDefinitions {
             team_id: Some("engineering".to_string()),
             created_by: Some("system".to_string()),
             owner_id: None,
-            agent_tier: None,
+            agent_tier: Some("admin".to_string()),
         }
     }
 }
