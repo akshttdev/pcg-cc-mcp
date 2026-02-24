@@ -15,6 +15,12 @@ ALTER TABLE users ADD COLUMN user_role TEXT NOT NULL DEFAULT 'guest'
 ALTER TABLE users ADD COLUMN invited_by BLOB
     REFERENCES users(id) ON DELETE SET NULL;
 
+-- Create devices table if it doesn't exist (no-op if already present)
+CREATE TABLE IF NOT EXISTS devices (
+    id       BLOB PRIMARY KEY NOT NULL DEFAULT (randomblob(16)),
+    owner_id BLOB REFERENCES users(id)
+);
+
 -- Promote existing device owners to host role
 UPDATE users
 SET user_role = 'host'

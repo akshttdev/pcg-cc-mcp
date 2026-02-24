@@ -34,5 +34,6 @@ pub mod vibe_pricing;
 pub mod visual_qc;
 pub mod scene_analysis;
 pub mod beat_analysis;
+pub mod editron;
 pub mod recap_assembly;
 pub mod user_onboarding;

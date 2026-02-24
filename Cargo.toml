@@ -17,7 +17,8 @@ members = [
     "apn-app/src-tauri",
     "frontend/src-tauri",
     "crates/cli",
-    "crates/setup-wizard"
+    "crates/setup-wizard",
+    "crates/editron-runner"
 ]
 exclude = [
     "src-tauri"

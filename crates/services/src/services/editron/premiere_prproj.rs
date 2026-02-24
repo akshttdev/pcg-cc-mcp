@@ -248,8 +248,8 @@ impl PrprojRecutEngine {
         }
 
         // Update TrackItems list in the VideoClipTrack
-        let track_items_re = Regex::new(
-            r"(<ClipItems Version=""3"">\s*<TrackItems Version=""1"">)([\s\S]*?)(</TrackItems>)"
+        let _track_items_re = Regex::new(
+            r#"(<ClipItems Version="3">\s*<TrackItems Version="1">)([\s\S]*?)(</TrackItems>)"#
         ).map_err(|e| EditronError::InvalidFormat(e.to_string()))?;
 
         // Build replacement manually since regex with special chars is tricky

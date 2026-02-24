@@ -429,6 +429,11 @@ export const projectsApi = {
     return handleApiResponse<Project>(response);
   },
 
+  getByClientId: async (clientId: string): Promise<Project[]> => {
+    const response = await makeRequest(`/api/projects/by-client/${encodeURIComponent(clientId)}`);
+    return handleApiResponse<Project[]>(response);
+  },
+
   create: async (data: CreateProject): Promise<Project> => {
     const response = await makeRequest('/api/projects', {
       method: 'POST',
@@ -3238,6 +3243,76 @@ export const crmActivitiesApi = {
   deleteActivity: async (id: string): Promise<void> => {
     const response = await makeRequest(`/api/crm/activities/${id}`, { method: 'DELETE' });
     await handleApiResponse<void>(response);
+  },
+};
+
+// ── Workflow Templates ──
+
+export interface WorkflowTaskTemplate {
+  title: string;
+  description: string;
+  position: number;
+  task_type: 'agent' | 'human_review' | 'hybrid';
+  agent_role?: string;
+  requires_approval: boolean;
+  priority: string;
+  depends_on: number[];
+  knowledge_inputs: string[];
+  knowledge_outputs: string[];
+  tags: string[];
+}
+
+export interface WorkflowPhaseTemplate {
+  name: string;
+  description: string;
+  position: number;
+  is_recurring: boolean;
+  tasks: WorkflowTaskTemplate[];
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  client_type: 'foundation_build' | 'managed_growth' | 'custom';
+  is_recurring: boolean;
+  phases: WorkflowPhaseTemplate[];
+}
+
+export interface DealConversionResult {
+  project_id: string;
+  project_name: string;
+  boards_created: number;
+  tasks_created: number;
+  dependencies_created: number;
+  template_used: string;
+}
+
+export interface ConvertDealRequest {
+  template_id: string;
+  project_name?: string;
+  organization_id?: string;
+  client_id?: string;
+  git_repo_path?: string;
+}
+
+export const workflowTemplatesApi = {
+  list: async (): Promise<WorkflowTemplate[]> => {
+    const response = await makeRequest('/api/workflow-templates');
+    return handleApiResponse<WorkflowTemplate[]>(response);
+  },
+
+  get: async (id: string): Promise<WorkflowTemplate> => {
+    const response = await makeRequest(`/api/workflow-templates/${encodeURIComponent(id)}`);
+    return handleApiResponse<WorkflowTemplate>(response);
+  },
+
+  convertDeal: async (dealId: string, data: ConvertDealRequest): Promise<DealConversionResult> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/convert`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DealConversionResult>(response);
   },
 };
 

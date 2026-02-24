@@ -404,7 +404,7 @@ impl DirectiveGenerator {
                     .iter()
                     .any(|s| &s.act == act && s.emotional_beat);
 
-                // Score and rank available B-roll for this act
+                // Score and rank available B-roll for this act (9-signal scoring)
                 let energy_prefs = act_energy_prefs[act_idx].1;
                 let type_prefs = act_type_prefs[act_idx].1;
 
@@ -416,22 +416,86 @@ impl DirectiveGenerator {
                         let asset = &catalog.assets[idx];
                         let mut score = 0.0;
 
-                        // Energy match
-                        if energy_prefs.contains(&asset.energy_level) {
-                            score += 3.0;
+                        // 1. Energy match (3.0 pts) — continuous scoring from measured energy
+                        if let Some(ref scene) = asset.scene_analysis {
+                            let target = match act {
+                                ActLabel::Act1Intro => 0.3,
+                                ActLabel::Act2Challenge => 0.5,
+                                ActLabel::Act3Solution => 0.6,
+                                ActLabel::Act4Results => 0.85,
+                                ActLabel::Act5Close => 0.4,
+                            };
+                            score += (1.0 - (scene.overall_energy - target).abs()) * 3.0;
+                        } else if energy_prefs.contains(&asset.energy_level) {
+                            score += 3.0; // Fallback to heuristic
                         }
 
-                        // Type match
+                        // 2. Media type match (2.0 pts)
                         if type_prefs.contains(&asset.media_type) {
                             score += 2.0;
                         }
 
-                        // Prefer longer clips (more usable footage)
+                        // 3. Duration (1.0 pt)
                         score += (asset.duration_seconds / 30.0).min(1.0);
 
-                        // Prefer higher resolution
+                        // 4. Resolution (0.5 pt)
                         if asset.width >= 3840 {
                             score += 0.5;
+                        }
+
+                        // 5. Scene content type match (2.0 pts)
+                        if let Some(ref scene) = asset.scene_analysis {
+                            let content_prefs: &[SceneContentType] = match act {
+                                ActLabel::Act1Intro => &[SceneContentType::Establishing, SceneContentType::Ambient],
+                                ActLabel::Act2Challenge => &[SceneContentType::Intimate, SceneContentType::Ambient],
+                                ActLabel::Act3Solution => &[SceneContentType::HighEnergy, SceneContentType::Intimate],
+                                ActLabel::Act4Results => &[SceneContentType::HighEnergy],
+                                ActLabel::Act5Close => &[SceneContentType::Establishing, SceneContentType::Ambient],
+                            };
+                            if content_prefs.contains(&scene.dominant_content_type) {
+                                score += 2.0;
+                            }
+                        }
+
+                        // 6. Composition quality (2.0 pts) — from Visual QC
+                        if let Some(ref qc) = asset.visual_qc {
+                            score += qc.best_composition_score * 2.0;
+                        }
+
+                        // 7. QC pass bonus (1.0 pt)
+                        if let Some(ref qc) = asset.visual_qc {
+                            if qc.qc_passed {
+                                score += 1.0;
+                            }
+                        }
+
+                        // 8. Semantic tag match (2.0 pts)
+                        let tag_prefs: &[&str] = match act {
+                            ActLabel::Act1Intro => &["aerial", "establishing", "wide-shot", "exterior"],
+                            ActLabel::Act2Challenge => &["team", "behind-the-scenes", "intimate", "person"],
+                            ActLabel::Act3Solution => &["cinematic", "well-composed", "energetic"],
+                            ActLabel::Act4Results => &["high-energy", "crowd", "peak-energy", "fast-motion"],
+                            ActLabel::Act5Close => &["aerial", "establishing", "calm", "wide-shot"],
+                        };
+                        let tag_hits = asset
+                            .content_tags
+                            .iter()
+                            .filter(|t| tag_prefs.contains(&t.as_str()))
+                            .count();
+                        score += (tag_hits as f64 * 0.5).min(2.0);
+
+                        // 9. Peak moment (1.0 pt) — for high-energy acts
+                        if matches!(act, ActLabel::Act3Solution | ActLabel::Act4Results) {
+                            if let Some(ref scene) = asset.scene_analysis {
+                                let peak = scene
+                                    .segments
+                                    .iter()
+                                    .map(|s| s.energy_score)
+                                    .fold(0.0f64, f64::max);
+                                if peak > 0.7 {
+                                    score += 1.0;
+                                }
+                            }
                         }
 
                         (score, idx)
@@ -448,11 +512,37 @@ impl DirectiveGenerator {
                     .map(|(_, idx)| {
                         let asset = &catalog.assets[*idx];
                         used_indices.insert(*idx);
+
+                        // Intelligent in-point: Visual QC best → scene peak → 0.0
+                        let in_point = asset
+                            .visual_qc
+                            .as_ref()
+                            .map(|qc| qc.best_in_point)
+                            .or_else(|| {
+                                asset.scene_analysis.as_ref().map(|s| s.peak_energy_timestamp)
+                            })
+                            .unwrap_or(0.0);
+
+                        let out_point = (in_point
+                            + asset.duration_seconds.min(per_act_duration / clips_needed as f64))
+                            .min(asset.duration_seconds);
+
+                        // Beat-snap: align in/out to nearest strong beat if beat grid available
+                        let (snapped_in, snapped_out) =
+                            if let Some(ref grid) = catalog.music_beat_grid {
+                                (
+                                    snap_to_beat(in_point, &grid.beats),
+                                    snap_to_beat(out_point, &grid.beats),
+                                )
+                            } else {
+                                (in_point, out_point)
+                            };
+
                         BRollClip {
                             asset_index: *idx,
                             filename: asset.filename.clone(),
-                            in_point_seconds: 0.0,
-                            out_point_seconds: asset.duration_seconds.min(per_act_duration / clips_needed as f64),
+                            in_point_seconds: snapped_in,
+                            out_point_seconds: snapped_out,
                         }
                     })
                     .collect();
@@ -672,6 +762,21 @@ fn extract_themes(text: &str) -> Vec<String> {
     }
 
     themes
+}
+
+/// Snap a timestamp to the nearest strong cut point on the beat grid.
+fn snap_to_beat(timestamp: f64, beats: &[BeatPoint]) -> f64 {
+    beats
+        .iter()
+        .filter(|b| b.is_strong_cut_point)
+        .min_by(|a, b| {
+            (a.timestamp - timestamp)
+                .abs()
+                .partial_cmp(&(b.timestamp - timestamp).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|b| b.timestamp)
+        .unwrap_or(timestamp)
 }
 
 /// Heuristic act assignment based on position in the transcript.

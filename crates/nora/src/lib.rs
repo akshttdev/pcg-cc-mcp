@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod brain;
 pub mod cache;
+pub mod content_editing;
 pub mod context;
 pub mod coordination;
 pub mod editron_tracking;

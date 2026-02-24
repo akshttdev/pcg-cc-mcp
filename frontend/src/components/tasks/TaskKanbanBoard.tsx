@@ -22,12 +22,14 @@ interface TaskKanbanBoardProps {
   onEditTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
   onDuplicateTask?: (task: Task) => void;
+  onArchiveTask?: (task: Task) => void;
   onViewTaskDetails: (task: Task) => void;
   selectedTask?: Task;
   selectionMode?: boolean;
   isSelected?: (taskId: string) => boolean;
   onToggleSelection?: (taskId: string) => void;
   agentFlowMap?: Map<string, AgentFlow>;
+  showArchived?: boolean;
   // New props for enhanced cards
   useEnhancedCards?: boolean;
   defaultCardMode?: TaskCardMode;

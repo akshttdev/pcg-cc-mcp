@@ -155,6 +155,17 @@ struct SyncPayload {
     execution_processes: Vec<serde_json::Value>,
     #[serde(default)]
     activity_logs: Vec<serde_json::Value>,
+    // v0.6.0: CRM data federation
+    #[serde(default)]
+    crm_pipelines: Vec<serde_json::Value>,
+    #[serde(default)]
+    crm_pipeline_stages: Vec<serde_json::Value>,
+    #[serde(default)]
+    crm_contacts: Vec<serde_json::Value>,
+    #[serde(default)]
+    crm_deals: Vec<serde_json::Value>,
+    #[serde(default)]
+    crm_activities: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -320,6 +331,11 @@ impl SovereignStorageService {
                             || !payload.execution_processes.is_empty()
                             || !payload.activity_logs.is_empty();
 
+                        let has_crm_data = !payload.crm_pipelines.is_empty()
+                            || !payload.crm_contacts.is_empty()
+                            || !payload.crm_deals.is_empty()
+                            || !payload.crm_activities.is_empty();
+
                         tracing::info!(
                             "[SOVEREIGN_SYNC] 📨 Peer sync from {} (v{}) — {} projects, {} tasks, {} orgs, {} boards, {} folders, {} users, {} artifacts",
                             payload.from_device,
@@ -355,6 +371,15 @@ impl SovereignStorageService {
                             if let Err(e) = import_peer_artifact_data(&db_path_for_peer, &payload).await {
                                 tracing::error!(
                                     "[SOVEREIGN_SYNC] Failed to import peer artifact data: {}",
+                                    e
+                                );
+                            }
+                        }
+
+                        if has_crm_data {
+                            if let Err(e) = import_peer_crm_data(&db_path_for_peer, &payload).await {
+                                tracing::error!(
+                                    "[SOVEREIGN_SYNC] Failed to import peer CRM data: {}",
                                     e
                                 );
                             }
@@ -741,13 +766,94 @@ impl SovereignStorageService {
         .map(|r| r.0)
         .collect();
 
+        // v0.6.0: CRM data
+        let crm_pipelines: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(project_id) as project_id, name, description, \
+             pipeline_type, is_active, is_default, icon, color, created_at, updated_at \
+             FROM crm_pipelines LIMIT 500",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let crm_pipeline_stages: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(pipeline_id) as pipeline_id, name, description, \
+             color, position, is_closed, is_won, probability, \
+             auto_move_after_days, notify_on_enter, created_at, updated_at \
+             FROM crm_pipeline_stages LIMIT 5000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let crm_contacts: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(project_id) as project_id, first_name, last_name, \
+             full_name, email, phone, mobile, avatar_url, company_name, job_title, department, \
+             linkedin_url, twitter_handle, website, source, lifecycle_stage, lead_score, \
+             last_activity_at, last_contacted_at, last_replied_at, owner_user_id, \
+             hex(assigned_agent_id) as assigned_agent_id, zoho_contact_id, gmail_contact_id, \
+             external_ids, tags, lists, custom_fields, \
+             address_line1, address_line2, city, state, postal_code, country, \
+             email_opt_in, sms_opt_in, do_not_contact, \
+             email_count, meeting_count, deal_count, total_revenue, \
+             created_at, updated_at \
+             FROM crm_contacts LIMIT 10000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let crm_deals: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(project_id) as project_id, \
+             hex(crm_contact_id) as crm_contact_id, name, description, amount, currency, \
+             pipeline, stage, probability, expected_close_date, actual_close_date, \
+             last_activity_at, owner_user_id, hex(assigned_agent_id) as assigned_agent_id, \
+             zoho_deal_id, external_ids, tags, custom_fields, lost_reason, win_reason, \
+             hex(crm_pipeline_id) as crm_pipeline_id, hex(crm_stage_id) as crm_stage_id, \
+             position, created_at, updated_at \
+             FROM crm_deals LIMIT 10000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
+        let crm_activities: Vec<serde_json::Value> = sqlx::query_as::<_, JsonRow>(
+            "SELECT hex(id) as id, hex(project_id) as project_id, \
+             hex(crm_contact_id) as crm_contact_id, hex(crm_deal_id) as crm_deal_id, \
+             activity_type, subject, description, outcome, \
+             hex(email_message_id) as email_message_id, \
+             hex(social_mention_id) as social_mention_id, \
+             hex(task_id) as task_id, \
+             performed_by_user, hex(performed_by_agent_id) as performed_by_agent_id, \
+             metadata, duration_minutes, activity_at, created_at \
+             FROM crm_activities LIMIT 50000",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.0)
+        .collect();
+
         pool.close().await;
 
         Ok(SyncPayload {
             from_device: self.config.device_id.clone(),
             to_provider: self.config.provider_id.clone(),
             timestamp: timestamp.to_string(),
-            version: "0.5.0".to_string(),
+            version: "0.6.0".to_string(),
             db_size_bytes: db_size,
             projects,
             tasks,
@@ -772,6 +878,11 @@ impl SovereignStorageService {
             task_attempts,
             execution_processes,
             activity_logs,
+            crm_pipelines,
+            crm_pipeline_stages,
+            crm_contacts,
+            crm_deals,
+            crm_activities,
         })
     }
 }
@@ -1526,6 +1637,286 @@ async fn import_peer_artifact_data(db_path: &std::path::Path, payload: &SyncPayl
             task_attempts_imported,
             execution_processes_imported,
             activity_logs_imported
+        );
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// CRM data import (v0.6.0)
+// ============================================================================
+
+async fn import_peer_crm_data(db_path: &std::path::Path, payload: &SyncPayload) -> Result<()> {
+    use sqlx::sqlite::SqliteConnectOptions;
+    use std::str::FromStr;
+
+    let db_url = format!("sqlite://{}", db_path.display());
+    let options = SqliteConnectOptions::from_str(&db_url)?.foreign_keys(false);
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .context("Failed to open local DB for peer CRM import")?;
+
+    let mut pipelines_imported: usize = 0;
+    let mut stages_imported: usize = 0;
+    let mut contacts_imported: usize = 0;
+    let mut deals_imported: usize = 0;
+    let mut activities_imported: usize = 0;
+
+    // 1. Import crm_pipelines (depends on projects)
+    for row in &payload.crm_pipelines {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO crm_pipelines \
+             (id, project_id, name, description, pipeline_type, is_active, is_default, \
+              icon, color, created_at, updated_at) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10, $11)"
+        )
+        .bind(id)
+        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("description").and_then(|v| v.as_str()))
+        .bind(row.get("pipeline_type").and_then(|v| v.as_str()).unwrap_or("custom"))
+        .bind(row.get("is_active").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
+        .bind(row.get("is_default").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("icon").and_then(|v| v.as_str()))
+        .bind(row.get("color").and_then(|v| v.as_str()))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                pipelines_imported += 1;
+            }
+        }
+    }
+
+    // 2. Import crm_pipeline_stages (depends on crm_pipelines)
+    for row in &payload.crm_pipeline_stages {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO crm_pipeline_stages \
+             (id, pipeline_id, name, description, color, position, is_closed, is_won, \
+              probability, auto_move_after_days, notify_on_enter, created_at, updated_at) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)"
+        )
+        .bind(id)
+        .bind(row.get("pipeline_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("description").and_then(|v| v.as_str()))
+        .bind(row.get("color").and_then(|v| v.as_str()).unwrap_or("#6B7280"))
+        .bind(row.get("position").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("is_closed").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("is_won").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("probability").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("auto_move_after_days").and_then(|v| v.as_i64()).map(|v| v as i32))
+        .bind(row.get("notify_on_enter").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                stages_imported += 1;
+            }
+        }
+    }
+
+    // 3. Import crm_contacts (depends on projects)
+    for row in &payload.crm_contacts {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO crm_contacts \
+             (id, project_id, first_name, last_name, full_name, email, phone, mobile, \
+              avatar_url, company_name, job_title, department, linkedin_url, twitter_handle, \
+              website, source, lifecycle_stage, lead_score, last_activity_at, last_contacted_at, \
+              last_replied_at, owner_user_id, assigned_agent_id, zoho_contact_id, gmail_contact_id, \
+              external_ids, tags, lists, custom_fields, \
+              address_line1, address_line2, city, state, postal_code, country, \
+              email_opt_in, sms_opt_in, do_not_contact, \
+              email_count, meeting_count, deal_count, total_revenue, \
+              created_at, updated_at) \
+             VALUES (unhex($1), unhex($2), $3, $4, $5, $6, $7, $8, $9, $10, \
+                     $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, \
+                     $21, $22, unhex($23), $24, $25, $26, $27, $28, $29, \
+                     $30, $31, $32, $33, $34, $35, $36, $37, $38, \
+                     $39, $40, $41, $42, $43, $44)"
+        )
+        .bind(id)
+        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("first_name").and_then(|v| v.as_str()))
+        .bind(row.get("last_name").and_then(|v| v.as_str()))
+        .bind(row.get("full_name").and_then(|v| v.as_str()))
+        .bind(row.get("email").and_then(|v| v.as_str()))
+        .bind(row.get("phone").and_then(|v| v.as_str()))
+        .bind(row.get("mobile").and_then(|v| v.as_str()))
+        .bind(row.get("avatar_url").and_then(|v| v.as_str()))
+        .bind(row.get("company_name").and_then(|v| v.as_str()))
+        .bind(row.get("job_title").and_then(|v| v.as_str()))
+        .bind(row.get("department").and_then(|v| v.as_str()))
+        .bind(row.get("linkedin_url").and_then(|v| v.as_str()))
+        .bind(row.get("twitter_handle").and_then(|v| v.as_str()))
+        .bind(row.get("website").and_then(|v| v.as_str()))
+        .bind(row.get("source").and_then(|v| v.as_str()))
+        .bind(row.get("lifecycle_stage").and_then(|v| v.as_str()).unwrap_or("lead"))
+        .bind(row.get("lead_score").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("last_activity_at").and_then(|v| v.as_str()).map(normalize_dt))
+        .bind(row.get("last_contacted_at").and_then(|v| v.as_str()).map(normalize_dt))
+        .bind(row.get("last_replied_at").and_then(|v| v.as_str()).map(normalize_dt))
+        .bind(row.get("owner_user_id").and_then(|v| v.as_str()))
+        .bind(row.get("assigned_agent_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("zoho_contact_id").and_then(|v| v.as_str()))
+        .bind(row.get("gmail_contact_id").and_then(|v| v.as_str()))
+        .bind(row.get("external_ids").and_then(|v| v.as_str()))
+        .bind(row.get("tags").and_then(|v| v.as_str()))
+        .bind(row.get("lists").and_then(|v| v.as_str()))
+        .bind(row.get("custom_fields").and_then(|v| v.as_str()))
+        .bind(row.get("address_line1").and_then(|v| v.as_str()))
+        .bind(row.get("address_line2").and_then(|v| v.as_str()))
+        .bind(row.get("city").and_then(|v| v.as_str()))
+        .bind(row.get("state").and_then(|v| v.as_str()))
+        .bind(row.get("postal_code").and_then(|v| v.as_str()))
+        .bind(row.get("country").and_then(|v| v.as_str()))
+        .bind(row.get("email_opt_in").and_then(|v| v.as_i64()).unwrap_or(1) as i32)
+        .bind(row.get("sms_opt_in").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("do_not_contact").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("email_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("meeting_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("deal_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("total_revenue").and_then(|v| v.as_f64()).unwrap_or(0.0))
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                contacts_imported += 1;
+            }
+        }
+    }
+
+    // 4. Import crm_deals (depends on crm_contacts, crm_pipelines, crm_pipeline_stages)
+    for row in &payload.crm_deals {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO crm_deals \
+             (id, project_id, crm_contact_id, name, description, amount, currency, \
+              pipeline, stage, probability, expected_close_date, actual_close_date, \
+              last_activity_at, owner_user_id, assigned_agent_id, zoho_deal_id, \
+              external_ids, tags, custom_fields, lost_reason, win_reason, \
+              crm_pipeline_id, crm_stage_id, position, created_at, updated_at) \
+             VALUES (unhex($1), unhex($2), unhex($3), $4, $5, $6, $7, $8, $9, $10, \
+                     $11, $12, $13, $14, unhex($15), $16, $17, $18, $19, $20, $21, \
+                     unhex($22), unhex($23), $24, $25, $26)"
+        )
+        .bind(id)
+        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("crm_contact_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("description").and_then(|v| v.as_str()))
+        .bind(row.get("amount").and_then(|v| v.as_f64()))
+        .bind(row.get("currency").and_then(|v| v.as_str()).unwrap_or("USD"))
+        .bind(row.get("pipeline").and_then(|v| v.as_str()).unwrap_or("default"))
+        .bind(row.get("stage").and_then(|v| v.as_str()).unwrap_or("qualification"))
+        .bind(row.get("probability").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("expected_close_date").and_then(|v| v.as_str()).map(normalize_dt))
+        .bind(row.get("actual_close_date").and_then(|v| v.as_str()).map(normalize_dt))
+        .bind(row.get("last_activity_at").and_then(|v| v.as_str()).map(normalize_dt))
+        .bind(row.get("owner_user_id").and_then(|v| v.as_str()))
+        .bind(row.get("assigned_agent_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("zoho_deal_id").and_then(|v| v.as_str()))
+        .bind(row.get("external_ids").and_then(|v| v.as_str()))
+        .bind(row.get("tags").and_then(|v| v.as_str()))
+        .bind(row.get("custom_fields").and_then(|v| v.as_str()))
+        .bind(row.get("lost_reason").and_then(|v| v.as_str()))
+        .bind(row.get("win_reason").and_then(|v| v.as_str()))
+        .bind(row.get("crm_pipeline_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("crm_stage_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("position").and_then(|v| v.as_i64()).unwrap_or(0) as i32)
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("updated_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                deals_imported += 1;
+            }
+        }
+    }
+
+    // 5. Import crm_activities (depends on crm_contacts, crm_deals)
+    for row in &payload.crm_activities {
+        let id = match row.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => continue,
+        };
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO crm_activities \
+             (id, project_id, crm_contact_id, crm_deal_id, activity_type, subject, \
+              description, outcome, email_message_id, social_mention_id, task_id, \
+              performed_by_user, performed_by_agent_id, metadata, duration_minutes, \
+              activity_at, created_at) \
+             VALUES (unhex($1), unhex($2), unhex($3), unhex($4), $5, $6, $7, $8, \
+                     unhex($9), unhex($10), unhex($11), $12, unhex($13), $14, $15, $16, $17)"
+        )
+        .bind(id)
+        .bind(row.get("project_id").and_then(|v| v.as_str()).unwrap_or(""))
+        .bind(row.get("crm_contact_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("crm_deal_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("activity_type").and_then(|v| v.as_str()).unwrap_or("custom"))
+        .bind(row.get("subject").and_then(|v| v.as_str()))
+        .bind(row.get("description").and_then(|v| v.as_str()))
+        .bind(row.get("outcome").and_then(|v| v.as_str()))
+        .bind(row.get("email_message_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("social_mention_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("task_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("performed_by_user").and_then(|v| v.as_str()))
+        .bind(row.get("performed_by_agent_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+        .bind(row.get("metadata").and_then(|v| v.as_str()))
+        .bind(row.get("duration_minutes").and_then(|v| v.as_i64()).map(|v| v as i32))
+        .bind(row.get("activity_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .bind(row.get("created_at").and_then(|v| v.as_str()).map(normalize_dt).unwrap_or_default())
+        .execute(&pool)
+        .await;
+
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                activities_imported += 1;
+            }
+        }
+    }
+
+    pool.close().await;
+
+    let total = pipelines_imported + stages_imported + contacts_imported
+        + deals_imported + activities_imported;
+    if total > 0 {
+        tracing::info!(
+            "[SOVEREIGN_SYNC] ✅ Imported peer v0.6.0 CRM data: {} pipelines, {} stages, {} contacts, {} deals, {} activities",
+            pipelines_imported,
+            stages_imported,
+            contacts_imported,
+            deals_imported,
+            activities_imported
         );
     }
 

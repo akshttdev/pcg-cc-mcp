@@ -605,6 +605,7 @@ mod tests {
             interview_assets: vec![],
             broll_assets: vec![],
             music_assets: vec![],
+            music_beat_grid: None,
         };
 
         let output_dir = std::env::temp_dir().join("content_editing_test");

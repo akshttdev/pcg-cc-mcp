@@ -323,6 +323,18 @@ impl MusicAutomationEngine {
                 "wedding" | "romantic" | "love" => {
                     genres.extend(vec![MusicGenre::Acoustic, MusicGenre::Classical, MusicGenre::Indie]);
                 }
+                "automotive" | "car" | "motorsport" | "racing" => {
+                    genres.extend(vec![MusicGenre::Electronic, MusicGenre::Rock, MusicGenre::Trap]);
+                }
+                "concert" | "festival" | "live music" => {
+                    genres.extend(vec![MusicGenre::Electronic, MusicGenre::House, MusicGenre::Pop]);
+                }
+                "gala" | "formal" | "awards" => {
+                    genres.extend(vec![MusicGenre::Orchestral, MusicGenre::Electronic, MusicGenre::Pop]);
+                }
+                "parade" | "celebration" | "carnival" => {
+                    genres.extend(vec![MusicGenre::Pop, MusicGenre::Funk, MusicGenre::Electronic]);
+                }
                 _ => {}
             }
         }
@@ -831,6 +843,27 @@ fi
             ("product", "product"),
             ("beauty", "beauty"),
             ("makeup", "beauty"),
+            ("car", "automotive"),
+            ("auto", "automotive"),
+            ("vehicle", "automotive"),
+            ("motor", "automotive"),
+            ("race", "automotive"),
+            ("mopar", "automotive"),
+            ("muscle", "automotive"),
+            ("truck", "automotive"),
+            ("hotrod", "automotive"),
+            ("hot rod", "automotive"),
+            ("cruise", "automotive"),
+            ("concert", "concert"),
+            ("festival", "concert"),
+            ("live music", "concert"),
+            ("gala", "gala"),
+            ("awards", "gala"),
+            ("charity", "gala"),
+            ("black tie", "gala"),
+            ("parade", "parade"),
+            ("carnival", "parade"),
+            ("march", "parade"),
         ];
 
         for (keyword, category) in keywords {

@@ -38,43 +38,39 @@ pub async fn get_projects(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
+    let pool = &deployment.db().pool;
+
     // If admin, return all projects
     if access_context.is_admin {
-        let projects = Project::find_all(&deployment.db().pool).await?;
+        let projects = Project::find_all(pool).await?;
         return Ok(ResponseJson(ApiResponse::success(projects)));
     }
 
-    // For regular users, get only projects they have access to
+    // For regular users: direct project memberships + org-based access
     let user_id_bytes = access_context.user_id.as_bytes().to_vec();
 
-    #[derive(sqlx::FromRow)]
-    struct ProjectRow {
-        id: Vec<u8>,
-    }
-
-    let project_ids: Vec<Uuid> = sqlx::query_as::<_, ProjectRow>(
-        "SELECT DISTINCT project_id as id FROM project_members WHERE user_id = ?",
+    // Single query: union of direct memberships and org-based projects
+    let projects = sqlx::query_as::<_, Project>(
+        r#"SELECT DISTINCT p.* FROM projects p
+           LEFT JOIN project_members pm ON pm.project_id = p.id
+           LEFT JOIN organization_members om ON om.organization_id = p.organization_id
+           WHERE (pm.user_id = ?1 OR om.user_id = ?1)
+             AND p.deleted_at IS NULL"#,
     )
     .bind(&user_id_bytes)
-    .fetch_all(&deployment.db().pool)
+    .fetch_all(pool)
     .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to fetch user projects: {}", e)))?
-    .into_iter()
-    .filter_map(|row| Uuid::from_slice(&row.id).ok())
-    .collect();
+    .map_err(|e| ApiError::InternalError(format!("Failed to fetch user projects: {}", e)))?;
 
-    if project_ids.is_empty() {
-        return Ok(ResponseJson(ApiResponse::success(vec![])));
-    }
+    Ok(ResponseJson(ApiResponse::success(projects)))
+}
 
-    // Fetch all accessible projects
-    let mut projects = Vec::new();
-    for project_id in project_ids {
-        if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, project_id).await {
-            projects.push(project);
-        }
-    }
-
+/// GET /api/projects/by-client/:client_id — projects for a given client
+pub async fn get_projects_by_client(
+    Path(client_id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
+    let projects = Project::find_by_client(&deployment.db().pool, client_id).await?;
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
 
@@ -977,6 +973,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
     let projects_router = Router::new()
         .route("/", get(get_projects).post(create_project))
+        .route("/by-client/{client_id}", get(get_projects_by_client))
         .nest("/{id}", project_id_router)
         .layer(from_fn_with_state(
             deployment.clone(),

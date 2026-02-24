@@ -242,14 +242,14 @@ export function ProjectTasks() {
     return params.get('board') ?? null;
   }, [location.search]);
 
-  const archivedCount = useMemo(() => tasks.filter((t) => t.archived_at).length, [tasks]);
+  const archivedCount = useMemo(() => tasks.filter((t) => (t as Record<string, unknown>).archived_at).length, [tasks]);
 
   const filteredTasks = useMemo(() => {
     let result = tasks;
 
     // Hide archived tasks unless explicitly requested
     if (!showArchived) {
-      result = result.filter((t) => !t.archived_at);
+      result = result.filter((t) => !(t as Record<string, unknown>).archived_at);
     }
 
     if (boardFilter) {
@@ -394,7 +394,7 @@ export function ProjectTasks() {
   const handleArchiveTask = useCallback(
     async (task: Task) => {
       try {
-        if (task.archived_at) {
+        if ((task as Record<string, unknown>).archived_at) {
           await tasksApi.unarchive(task.id);
         } else {
           await tasksApi.archive(task.id);

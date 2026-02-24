@@ -23,6 +23,7 @@ pub enum MusicPlatform {
     PremiumBeat,
     AudioJungle,
     Musicbed,
+    Soundstripe,
     Local, // Local library
 }
 
@@ -96,6 +97,128 @@ impl MusicMood {
             MusicMood::Modern => "modern",
             MusicMood::Cinematic => "cinematic",
             MusicMood::Documentary => "documentary",
+        }
+    }
+
+    /// Epidemic Sound API search term
+    pub fn epidemic_term(&self) -> &'static str {
+        match self {
+            MusicMood::Uplifting => "uplifting",
+            MusicMood::Inspirational => "inspirational",
+            MusicMood::Happy => "happy",
+            MusicMood::Energetic => "energetic",
+            MusicMood::Powerful => "powerful",
+            MusicMood::Epic => "epic",
+            MusicMood::Dramatic => "dramatic",
+            MusicMood::Emotional => "emotional",
+            MusicMood::Sad => "sad",
+            MusicMood::Melancholic => "melancholic",
+            MusicMood::Peaceful => "peaceful",
+            MusicMood::Relaxing => "relaxing",
+            MusicMood::Ambient => "ambient",
+            MusicMood::Mysterious => "mysterious",
+            MusicMood::Suspenseful => "suspenseful",
+            MusicMood::Dark => "dark",
+            MusicMood::Aggressive => "aggressive",
+            MusicMood::Playful => "playful",
+            MusicMood::Romantic => "romantic",
+            MusicMood::Nostalgic => "nostalgic",
+            MusicMood::Corporate => "corporate",
+            MusicMood::Modern => "modern",
+            MusicMood::Cinematic => "cinematic",
+            MusicMood::Documentary => "documentary",
+        }
+    }
+
+    /// Parse Epidemic Sound mood term to MusicMood
+    pub fn from_epidemic_term(term: &str) -> Option<Self> {
+        match term.to_lowercase().as_str() {
+            "uplifting" | "upbeat" => Some(MusicMood::Uplifting),
+            "inspirational" | "inspiring" => Some(MusicMood::Inspirational),
+            "happy" | "joyful" | "cheerful" => Some(MusicMood::Happy),
+            "energetic" | "energy" | "high energy" => Some(MusicMood::Energetic),
+            "powerful" | "strong" => Some(MusicMood::Powerful),
+            "epic" | "heroic" => Some(MusicMood::Epic),
+            "dramatic" | "drama" => Some(MusicMood::Dramatic),
+            "emotional" | "emotive" | "sentimental" => Some(MusicMood::Emotional),
+            "sad" | "somber" | "sorrowful" => Some(MusicMood::Sad),
+            "melancholic" | "melancholy" | "bittersweet" => Some(MusicMood::Melancholic),
+            "peaceful" | "serene" | "tranquil" => Some(MusicMood::Peaceful),
+            "relaxing" | "calm" | "chill" | "laid back" => Some(MusicMood::Relaxing),
+            "ambient" | "atmospheric" => Some(MusicMood::Ambient),
+            "mysterious" | "mystery" | "enigmatic" => Some(MusicMood::Mysterious),
+            "suspenseful" | "tense" | "tension" | "thriller" => Some(MusicMood::Suspenseful),
+            "dark" | "moody" | "sinister" => Some(MusicMood::Dark),
+            "aggressive" | "intense" | "fierce" => Some(MusicMood::Aggressive),
+            "playful" | "fun" | "quirky" => Some(MusicMood::Playful),
+            "romantic" | "love" | "tender" => Some(MusicMood::Romantic),
+            "nostalgic" | "retro" | "vintage" => Some(MusicMood::Nostalgic),
+            "corporate" | "business" | "professional" => Some(MusicMood::Corporate),
+            "modern" | "contemporary" | "trendy" => Some(MusicMood::Modern),
+            "cinematic" | "film" | "movie" => Some(MusicMood::Cinematic),
+            "documentary" | "factual" => Some(MusicMood::Documentary),
+            _ => None,
+        }
+    }
+
+    /// Soundstripe API search term
+    pub fn soundstripe_term(&self) -> &'static str {
+        match self {
+            MusicMood::Uplifting => "Uplifting",
+            MusicMood::Inspirational => "Inspirational",
+            MusicMood::Happy => "Happy",
+            MusicMood::Energetic => "Energetic",
+            MusicMood::Powerful => "Powerful",
+            MusicMood::Epic => "Epic",
+            MusicMood::Dramatic => "Dramatic",
+            MusicMood::Emotional => "Emotional",
+            MusicMood::Sad => "Sad",
+            MusicMood::Melancholic => "Melancholy",
+            MusicMood::Peaceful => "Peaceful",
+            MusicMood::Relaxing => "Relaxing",
+            MusicMood::Ambient => "Ambient",
+            MusicMood::Mysterious => "Mysterious",
+            MusicMood::Suspenseful => "Suspenseful",
+            MusicMood::Dark => "Dark",
+            MusicMood::Aggressive => "Aggressive",
+            MusicMood::Playful => "Playful",
+            MusicMood::Romantic => "Romantic",
+            MusicMood::Nostalgic => "Nostalgic",
+            MusicMood::Corporate => "Corporate",
+            MusicMood::Modern => "Modern",
+            MusicMood::Cinematic => "Cinematic",
+            MusicMood::Documentary => "Documentary",
+        }
+    }
+
+    /// Parse Soundstripe mood term to MusicMood
+    pub fn from_soundstripe_term(term: &str) -> Option<Self> {
+        match term.to_lowercase().as_str() {
+            "uplifting" => Some(MusicMood::Uplifting),
+            "inspirational" | "inspiring" => Some(MusicMood::Inspirational),
+            "happy" | "cheerful" | "feel good" => Some(MusicMood::Happy),
+            "energetic" | "high energy" => Some(MusicMood::Energetic),
+            "powerful" => Some(MusicMood::Powerful),
+            "epic" => Some(MusicMood::Epic),
+            "dramatic" => Some(MusicMood::Dramatic),
+            "emotional" | "sentimental" => Some(MusicMood::Emotional),
+            "sad" | "somber" => Some(MusicMood::Sad),
+            "melancholy" | "melancholic" => Some(MusicMood::Melancholic),
+            "peaceful" | "serene" => Some(MusicMood::Peaceful),
+            "relaxing" | "calm" | "chill" => Some(MusicMood::Relaxing),
+            "ambient" => Some(MusicMood::Ambient),
+            "mysterious" => Some(MusicMood::Mysterious),
+            "suspenseful" | "tense" => Some(MusicMood::Suspenseful),
+            "dark" | "moody" => Some(MusicMood::Dark),
+            "aggressive" | "intense" => Some(MusicMood::Aggressive),
+            "playful" | "fun" | "quirky" => Some(MusicMood::Playful),
+            "romantic" => Some(MusicMood::Romantic),
+            "nostalgic" | "retro" => Some(MusicMood::Nostalgic),
+            "corporate" | "business" => Some(MusicMood::Corporate),
+            "modern" | "contemporary" => Some(MusicMood::Modern),
+            "cinematic" => Some(MusicMood::Cinematic),
+            "documentary" => Some(MusicMood::Documentary),
+            _ => None,
         }
     }
 }
@@ -435,6 +558,55 @@ impl MusicLibrary {
                 "High-energy tracks with strong beats drive action and fitness content. \
                 Electronic and hip-hop elements add modern edge."
             ),
+            "automotive" | "car" | "car show" | "cars" | "motorsport" | "racing" | "mopar" | "muscle car" => (
+                MusicSearchCriteria {
+                    moods: vec![MusicMood::Energetic, MusicMood::Powerful, MusicMood::Modern],
+                    genres: vec![MusicGenre::Electronic, MusicGenre::Rock, MusicGenre::Trap],
+                    min_bpm: Some(115),
+                    max_bpm: Some(140),
+                    instrumental: Some(true),
+                    ..Default::default()
+                },
+                "Driving electronic and rock tracks with heavy bass and powerful builds match \
+                the energy of automotive events. 115-140 BPM provides a muscular, kinetic feel \
+                without being frantic. Trap elements add modern punch for car show recaps."
+            ),
+            "concert" | "music event" | "festival" | "live music" => (
+                MusicSearchCriteria {
+                    moods: vec![MusicMood::Energetic, MusicMood::Epic, MusicMood::Uplifting],
+                    genres: vec![MusicGenre::Electronic, MusicGenre::House, MusicGenre::Pop],
+                    min_bpm: Some(120),
+                    max_bpm: Some(135),
+                    instrumental: Some(true),
+                    ..Default::default()
+                },
+                "Festival-energy electronic and house tracks complement concert and live music recaps. \
+                Uplifting builds with anthemic drops mirror the crowd energy arc."
+            ),
+            "gala" | "formal" | "charity" | "awards" | "black tie" => (
+                MusicSearchCriteria {
+                    moods: vec![MusicMood::Inspirational, MusicMood::Cinematic, MusicMood::Uplifting],
+                    genres: vec![MusicGenre::Orchestral, MusicGenre::Electronic, MusicGenre::Pop],
+                    min_bpm: Some(90),
+                    max_bpm: Some(120),
+                    instrumental: Some(true),
+                    ..Default::default()
+                },
+                "Elegant orchestral textures with modern production suit formal galas and awards. \
+                Mid-tempo pacing feels sophisticated without dragging."
+            ),
+            "parade" | "march" | "celebration" | "carnival" => (
+                MusicSearchCriteria {
+                    moods: vec![MusicMood::Happy, MusicMood::Energetic, MusicMood::Uplifting],
+                    genres: vec![MusicGenre::Pop, MusicGenre::Funk, MusicGenre::Electronic],
+                    min_bpm: Some(110),
+                    max_bpm: Some(130),
+                    instrumental: Some(true),
+                    ..Default::default()
+                },
+                "Upbeat, celebratory tracks with funky grooves and bright energy capture the \
+                communal joy of parades and outdoor celebrations."
+            ),
             _ => (
                 MusicSearchCriteria::lifestyle_upbeat(),
                 "General upbeat music suitable for most content types."
@@ -659,6 +831,162 @@ impl MusicLibrary {
     }
 }
 
+impl MusicGenre {
+    /// Epidemic Sound API search term
+    pub fn epidemic_term(&self) -> &'static str {
+        match self {
+            MusicGenre::Pop => "pop",
+            MusicGenre::Rock => "rock",
+            MusicGenre::Electronic => "electronic",
+            MusicGenre::HipHop => "hip hop",
+            MusicGenre::RnB => "r&b",
+            MusicGenre::Jazz => "jazz",
+            MusicGenre::Classical => "classical",
+            MusicGenre::Orchestral => "orchestral",
+            MusicGenre::Acoustic => "acoustic",
+            MusicGenre::Folk => "folk",
+            MusicGenre::Country => "country",
+            MusicGenre::Blues => "blues",
+            MusicGenre::Funk => "funk",
+            MusicGenre::Soul => "soul",
+            MusicGenre::Reggae => "reggae",
+            MusicGenre::Latin => "latin",
+            MusicGenre::World => "world",
+            MusicGenre::Indie => "indie",
+            MusicGenre::Alternative => "alternative",
+            MusicGenre::Metal => "metal",
+            MusicGenre::Punk => "punk",
+            MusicGenre::LoFi => "lo-fi",
+            MusicGenre::Chillhop => "chillhop",
+            MusicGenre::House => "house",
+            MusicGenre::Techno => "techno",
+            MusicGenre::Trap => "trap",
+            MusicGenre::DrumAndBass => "drum and bass",
+            MusicGenre::Dubstep => "dubstep",
+            MusicGenre::Ambient => "ambient",
+            MusicGenre::NewAge => "new age",
+            MusicGenre::Soundtrack => "soundtrack",
+            MusicGenre::Trailer => "trailer",
+        }
+    }
+
+    /// Parse Epidemic Sound genre term to MusicGenre
+    pub fn from_epidemic_term(term: &str) -> Option<Self> {
+        match term.to_lowercase().replace(['-', '_'], " ").trim() {
+            "pop" => Some(MusicGenre::Pop),
+            "rock" => Some(MusicGenre::Rock),
+            "electronic" | "edm" | "electronica" => Some(MusicGenre::Electronic),
+            "hip hop" | "hiphop" | "rap" => Some(MusicGenre::HipHop),
+            "r&b" | "rnb" | "r and b" => Some(MusicGenre::RnB),
+            "jazz" => Some(MusicGenre::Jazz),
+            "classical" => Some(MusicGenre::Classical),
+            "orchestral" | "orchestra" => Some(MusicGenre::Orchestral),
+            "acoustic" => Some(MusicGenre::Acoustic),
+            "folk" => Some(MusicGenre::Folk),
+            "country" => Some(MusicGenre::Country),
+            "blues" => Some(MusicGenre::Blues),
+            "funk" => Some(MusicGenre::Funk),
+            "soul" => Some(MusicGenre::Soul),
+            "reggae" => Some(MusicGenre::Reggae),
+            "latin" => Some(MusicGenre::Latin),
+            "world" => Some(MusicGenre::World),
+            "indie" => Some(MusicGenre::Indie),
+            "alternative" | "alt" => Some(MusicGenre::Alternative),
+            "metal" => Some(MusicGenre::Metal),
+            "punk" => Some(MusicGenre::Punk),
+            "lo fi" | "lofi" => Some(MusicGenre::LoFi),
+            "chillhop" => Some(MusicGenre::Chillhop),
+            "house" => Some(MusicGenre::House),
+            "techno" => Some(MusicGenre::Techno),
+            "trap" => Some(MusicGenre::Trap),
+            "drum and bass" | "dnb" => Some(MusicGenre::DrumAndBass),
+            "dubstep" => Some(MusicGenre::Dubstep),
+            "ambient" => Some(MusicGenre::Ambient),
+            "new age" => Some(MusicGenre::NewAge),
+            "soundtrack" | "score" => Some(MusicGenre::Soundtrack),
+            "trailer" | "cinematic" => Some(MusicGenre::Trailer),
+            _ => None,
+        }
+    }
+
+    /// Soundstripe API search term (title case for JSON:API tags)
+    pub fn soundstripe_term(&self) -> &'static str {
+        match self {
+            MusicGenre::Pop => "Pop",
+            MusicGenre::Rock => "Rock",
+            MusicGenre::Electronic => "Electronic",
+            MusicGenre::HipHop => "Hip Hop",
+            MusicGenre::RnB => "R&B",
+            MusicGenre::Jazz => "Jazz",
+            MusicGenre::Classical => "Classical",
+            MusicGenre::Orchestral => "Orchestral",
+            MusicGenre::Acoustic => "Acoustic",
+            MusicGenre::Folk => "Folk",
+            MusicGenre::Country => "Country",
+            MusicGenre::Blues => "Blues",
+            MusicGenre::Funk => "Funk",
+            MusicGenre::Soul => "Soul",
+            MusicGenre::Reggae => "Reggae",
+            MusicGenre::Latin => "Latin",
+            MusicGenre::World => "World",
+            MusicGenre::Indie => "Indie",
+            MusicGenre::Alternative => "Alternative",
+            MusicGenre::Metal => "Metal",
+            MusicGenre::Punk => "Punk",
+            MusicGenre::LoFi => "Lo-Fi",
+            MusicGenre::Chillhop => "Chillhop",
+            MusicGenre::House => "House",
+            MusicGenre::Techno => "Techno",
+            MusicGenre::Trap => "Trap",
+            MusicGenre::DrumAndBass => "Drum and Bass",
+            MusicGenre::Dubstep => "Dubstep",
+            MusicGenre::Ambient => "Ambient",
+            MusicGenre::NewAge => "New Age",
+            MusicGenre::Soundtrack => "Soundtrack",
+            MusicGenre::Trailer => "Trailer",
+        }
+    }
+
+    /// Parse Soundstripe genre term to MusicGenre
+    pub fn from_soundstripe_term(term: &str) -> Option<Self> {
+        match term.to_lowercase().as_str() {
+            "pop" => Some(MusicGenre::Pop),
+            "rock" => Some(MusicGenre::Rock),
+            "electronic" | "edm" => Some(MusicGenre::Electronic),
+            "hip hop" | "hip-hop" | "hiphop" => Some(MusicGenre::HipHop),
+            "r&b" | "rnb" => Some(MusicGenre::RnB),
+            "jazz" => Some(MusicGenre::Jazz),
+            "classical" => Some(MusicGenre::Classical),
+            "orchestral" => Some(MusicGenre::Orchestral),
+            "acoustic" => Some(MusicGenre::Acoustic),
+            "folk" => Some(MusicGenre::Folk),
+            "country" => Some(MusicGenre::Country),
+            "blues" => Some(MusicGenre::Blues),
+            "funk" => Some(MusicGenre::Funk),
+            "soul" => Some(MusicGenre::Soul),
+            "reggae" => Some(MusicGenre::Reggae),
+            "latin" => Some(MusicGenre::Latin),
+            "world" => Some(MusicGenre::World),
+            "indie" => Some(MusicGenre::Indie),
+            "alternative" => Some(MusicGenre::Alternative),
+            "metal" => Some(MusicGenre::Metal),
+            "punk" => Some(MusicGenre::Punk),
+            "lo-fi" | "lofi" | "lo fi" => Some(MusicGenre::LoFi),
+            "chillhop" => Some(MusicGenre::Chillhop),
+            "house" => Some(MusicGenre::House),
+            "techno" => Some(MusicGenre::Techno),
+            "trap" => Some(MusicGenre::Trap),
+            "drum and bass" | "drum & bass" | "dnb" => Some(MusicGenre::DrumAndBass),
+            "dubstep" => Some(MusicGenre::Dubstep),
+            "ambient" => Some(MusicGenre::Ambient),
+            "new age" => Some(MusicGenre::NewAge),
+            "soundtrack" | "score" => Some(MusicGenre::Soundtrack),
+            "trailer" | "cinematic" => Some(MusicGenre::Trailer),
+            _ => None,
+        }
+    }
+}
+
 /// Generate suggested music search terms for content
 pub fn suggest_search_terms(content_description: &str) -> Vec<String> {
     let desc_lower = content_description.to_lowercase();
@@ -714,5 +1042,48 @@ mod tests {
         let terms = suggest_search_terms("upbeat fashion lifestyle video");
         assert!(terms.contains(&"fashion".to_string()));
         assert!(terms.contains(&"uplifting".to_string()));
+    }
+
+    #[test]
+    fn test_epidemic_mood_term_mapping() {
+        assert_eq!(MusicMood::Uplifting.epidemic_term(), "uplifting");
+        assert_eq!(MusicMood::Cinematic.epidemic_term(), "cinematic");
+        assert_eq!(MusicMood::from_epidemic_term("happy"), Some(MusicMood::Happy));
+        assert_eq!(MusicMood::from_epidemic_term("cheerful"), Some(MusicMood::Happy));
+        assert_eq!(MusicMood::from_epidemic_term("unknown_mood"), None);
+    }
+
+    #[test]
+    fn test_soundstripe_mood_term_mapping() {
+        assert_eq!(MusicMood::Uplifting.soundstripe_term(), "Uplifting");
+        assert_eq!(MusicMood::Melancholic.soundstripe_term(), "Melancholy");
+        assert_eq!(MusicMood::from_soundstripe_term("Uplifting"), Some(MusicMood::Uplifting));
+        assert_eq!(MusicMood::from_soundstripe_term("feel good"), Some(MusicMood::Happy));
+        assert_eq!(MusicMood::from_soundstripe_term("nope"), None);
+    }
+
+    #[test]
+    fn test_epidemic_genre_term_mapping() {
+        assert_eq!(MusicGenre::HipHop.epidemic_term(), "hip hop");
+        assert_eq!(MusicGenre::DrumAndBass.epidemic_term(), "drum and bass");
+        assert_eq!(MusicGenre::from_epidemic_term("hip hop"), Some(MusicGenre::HipHop));
+        assert_eq!(MusicGenre::from_epidemic_term("edm"), Some(MusicGenre::Electronic));
+        assert_eq!(MusicGenre::from_epidemic_term("nope"), None);
+    }
+
+    #[test]
+    fn test_soundstripe_genre_term_mapping() {
+        assert_eq!(MusicGenre::HipHop.soundstripe_term(), "Hip Hop");
+        assert_eq!(MusicGenre::LoFi.soundstripe_term(), "Lo-Fi");
+        assert_eq!(MusicGenre::from_soundstripe_term("Hip Hop"), Some(MusicGenre::HipHop));
+        assert_eq!(MusicGenre::from_soundstripe_term("lo-fi"), Some(MusicGenre::LoFi));
+        assert_eq!(MusicGenre::from_soundstripe_term("nope"), None);
+    }
+
+    #[test]
+    fn test_music_platform_soundstripe() {
+        let platform = MusicPlatform::Soundstripe;
+        let json = serde_json::to_string(&platform).unwrap();
+        assert!(json.contains("soundstripe"));
     }
 }

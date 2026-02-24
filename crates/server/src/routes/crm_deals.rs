@@ -78,8 +78,14 @@ async fn get_deal(
 /// POST /crm/deals - Create deal
 async fn create_deal(
     State(deployment): State<DeploymentImpl>,
-    Json(data): Json<CreateCrmDeal>,
+    Json(mut data): Json<CreateCrmDeal>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
+    // Sanitize amount — reject Infinity/NaN
+    if let Some(amt) = data.amount {
+        if !amt.is_finite() {
+            data.amount = None;
+        }
+    }
     let pool = &deployment.db().pool;
     let deal = CrmDeal::create(pool, data).await?;
 
@@ -108,8 +114,14 @@ async fn create_deal(
 async fn update_deal(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
-    Json(data): Json<UpdateCrmDeal>,
+    Json(mut data): Json<UpdateCrmDeal>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
+    // Sanitize amount — reject Infinity/NaN
+    if let Some(amt) = data.amount {
+        if !amt.is_finite() {
+            data.amount = None;
+        }
+    }
     let pool = &deployment.db().pool;
     let deal = CrmDeal::update(pool, id, data).await?;
     Ok(Json(ApiResponse::success(deal)))

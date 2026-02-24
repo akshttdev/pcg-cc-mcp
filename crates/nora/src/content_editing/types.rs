@@ -216,6 +216,128 @@ pub enum EnergyLevel {
     High,
 }
 
+// ---------------------------------------------------------------------------
+// Deep Analysis Types (populated by Phase 4 analysis engines)
+// ---------------------------------------------------------------------------
+
+/// Content type classification for a video segment (from SceneAnalysisEngine).
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum SceneContentType {
+    HighEnergy,
+    Establishing,
+    Intimate,
+    Transition,
+    Ambient,
+}
+
+/// A single analyzed segment within a clip.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneSegment {
+    pub timestamp: f64,
+    pub duration: f64,
+    pub brightness: f64,
+    pub motion_intensity: f64,
+    pub complexity: f64,
+    pub energy_score: f64,
+    pub content_type: SceneContentType,
+}
+
+/// Complete scene analysis for one clip.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipSceneAnalysis {
+    pub segments: Vec<SceneSegment>,
+    pub overall_energy: f64,
+    pub peak_energy_timestamp: f64,
+    pub dominant_content_type: SceneContentType,
+    pub usable: bool,
+}
+
+/// A single analyzed frame with composition scores (from VisualQcEngine).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FrameAnalysis {
+    pub timestamp: f64,
+    pub composition_score: f64,
+    pub subject_score: f64,
+    pub thirds_score: f64,
+    pub headroom_score: f64,
+    pub exposure_score: f64,
+    pub sharpness_score: f64,
+    pub subject_label: Option<String>,
+    pub notes: String,
+}
+
+/// Suggested crop region for reframing a clip.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualCropRegion {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub rationale: String,
+}
+
+/// Visual QC result for one clip.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipVisualQc {
+    pub best_in_point: f64,
+    pub best_composition_score: f64,
+    pub qc_passed: bool,
+    pub recommended_crop: Option<VisualCropRegion>,
+    pub summary: String,
+    pub analyzed_frames: Vec<FrameAnalysis>,
+}
+
+/// A single beat point on the music grid (from BeatAnalysisEngine).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct BeatPoint {
+    pub timestamp: f64,
+    pub beat_number: u32,
+    pub bar_number: u32,
+    pub beat_in_bar: u32,
+    pub is_downbeat: bool,
+    pub energy_at_beat: f64,
+    pub is_strong_cut_point: bool,
+}
+
+/// A structural section of a music track.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicStructureSection {
+    pub name: String,
+    pub start: f64,
+    pub end: f64,
+    pub energy_level: f64,
+    pub suggested_content: String,
+}
+
+/// A single energy measurement at a point in time.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicEnergyPoint {
+    pub timestamp: f64,
+    pub normalized_energy: f64,
+}
+
+/// Complete beat/music analysis for one track.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicBeatAnalysis {
+    pub bpm: f64,
+    pub beat_interval: f64,
+    pub total_beats: u32,
+    pub beats_per_bar: u32,
+    pub beats: Vec<BeatPoint>,
+    pub sections: Vec<MusicStructureSection>,
+    pub energy_curve: Vec<MusicEnergyPoint>,
+}
+
 /// A single cataloged media file with technical metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -239,6 +361,13 @@ pub struct MediaAsset {
     pub content_tags: Vec<String>,
     /// Frames per second
     pub fps: f64,
+    // --- Analysis results (populated by Phase 4 deep analysis) ---
+    /// Scene analysis from SceneAnalysisEngine
+    pub scene_analysis: Option<ClipSceneAnalysis>,
+    /// Visual QC from VisualQcEngine
+    pub visual_qc: Option<ClipVisualQc>,
+    /// Beat analysis from BeatAnalysisEngine (for music tracks)
+    pub beat_analysis: Option<MusicBeatAnalysis>,
 }
 
 /// The full shot catalog produced by Phase 4.
@@ -250,6 +379,8 @@ pub struct ShotCatalog {
     pub interview_assets: Vec<usize>,
     pub broll_assets: Vec<usize>,
     pub music_assets: Vec<usize>,
+    /// Beat analysis for the selected music track
+    pub music_beat_grid: Option<MusicBeatAnalysis>,
 }
 
 /// A soundbite verified against the actual transcript.

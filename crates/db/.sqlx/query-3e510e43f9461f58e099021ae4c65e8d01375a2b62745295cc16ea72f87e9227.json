@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO peer_nodes (\n                id, node_id, peer_id, wallet_address, capabilities,\n                cpu_cores, ram_mb, storage_gb, gpu_available, gpu_model, hostname,\n                last_heartbeat_at\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, datetime('now', 'subsec'))\n            ON CONFLICT(node_id) DO UPDATE SET\n                peer_id = excluded.peer_id,\n                wallet_address = excluded.wallet_address,\n                capabilities = excluded.capabilities,\n                cpu_cores = excluded.cpu_cores,\n                ram_mb = excluded.ram_mb,\n                storage_gb = excluded.storage_gb,\n                gpu_available = excluded.gpu_available,\n                gpu_model = excluded.gpu_model,\n                hostname = excluded.hostname,\n                last_heartbeat_at = datetime('now', 'subsec'),\n                updated_at = datetime('now', 'subsec')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": []
+  },
+  "hash": "3e510e43f9461f58e099021ae4c65e8d01375a2b62745295cc16ea72f87e9227"
+}

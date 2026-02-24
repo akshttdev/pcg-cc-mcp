@@ -23,13 +23,14 @@ interface BoardProgressInfo {
 
 interface CrmDealCardProps {
   deal: CrmDealWithContact;
+  onClick?: (deal: CrmDealWithContact) => void;
   onEdit?: (deal: CrmDealWithContact) => void;
   onDelete?: (deal: CrmDealWithContact) => void;
   isDragging?: boolean;
   boardProgress?: BoardProgressInfo;
 }
 
-export function CrmDealCard({ deal, onEdit, onDelete, isDragging, boardProgress }: CrmDealCardProps) {
+export function CrmDealCard({ deal, onClick, onEdit, onDelete, isDragging, boardProgress }: CrmDealCardProps) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: deal.id,
     data: {
@@ -68,14 +69,22 @@ export function CrmDealCard({ deal, onEdit, onDelete, isDragging, boardProgress 
     ? formatDistanceToNow(new Date(deal.last_activity_at), { addSuffix: true })
     : null;
 
+  const handleClick = (e: React.MouseEvent) => {
+    // Don't open panel if clicking the dropdown menu or its trigger
+    if ((e.target as HTMLElement).closest('[data-deal-menu]')) return;
+    onClick?.(deal);
+  };
+
   return (
     <Card
       ref={setNodeRef}
       style={style}
       className={cn(
         'cursor-grab active:cursor-grabbing transition-shadow hover:shadow-md',
-        isDragging && 'opacity-50 shadow-lg ring-2 ring-primary'
+        isDragging && 'opacity-50 shadow-lg ring-2 ring-primary',
+        onClick && !isDragging && 'cursor-pointer'
       )}
+      onClick={handleClick}
       {...listeners}
       {...attributes}
     >
@@ -106,6 +115,7 @@ export function CrmDealCard({ deal, onEdit, onDelete, isDragging, boardProgress 
                 variant="ghost"
                 size="sm"
                 className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                data-deal-menu
                 onClick={(e) => e.stopPropagation()}
               >
                 <MoreVertical className="h-3 w-3" />

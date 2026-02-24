@@ -448,6 +448,7 @@ pub enum NoraExecutiveTool {
         bpm_hint: Option<f64>,
         target_aspect_ratio: Option<String>,
         project_id: Option<String>,
+        project_name: Option<String>,
     },
 
     /// Execute an FFmpeg render script produced by AssembleRecapEdit
@@ -455,6 +456,52 @@ pub enum NoraExecutiveTool {
         render_script: String,
         render_output: String,
         xml_path: String,
+    },
+
+    /// Federated music search across all configured platforms
+    SearchMusic {
+        query: Option<String>,
+        moods: Option<Vec<String>>,
+        genres: Option<Vec<String>>,
+        min_bpm: Option<u32>,
+        max_bpm: Option<u32>,
+        min_duration: Option<f64>,
+        max_duration: Option<f64>,
+        instrumental: Option<bool>,
+        platforms: Option<Vec<String>>,
+        page: Option<u32>,
+        per_page: Option<u32>,
+    },
+
+    /// Download a music track by platform-prefixed ID
+    DownloadMusicTrack {
+        track_id: String,
+        filename: Option<String>,
+        output_dir: Option<String>,
+    },
+
+    /// Recommend music based on video content analysis or content type
+    RecommendMusicForVideo {
+        video_path: Option<String>,
+        content_type: Option<String>,
+        target_duration: Option<f64>,
+        auto_search: Option<bool>,
+    },
+
+    /// Get preview/stream URL and basic info for a track
+    PreviewMusicTrack {
+        track_id: String,
+    },
+
+    /// Get full metadata for a specific track
+    GetMusicTrackDetails {
+        track_id: String,
+    },
+
+    /// Analyze a local audio file for BPM, energy, sections
+    AnalyzeMusicTrack {
+        audio_path: String,
+        bpm_hint: Option<f64>,
     },
 }
 
@@ -1305,6 +1352,176 @@ impl ExecutiveTools {
                     }
                 }
             }),
+            // === Music Discovery & Download Tools ===
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "search_music",
+                    "description": "Search for music tracks across all configured platforms (Artlist, Epidemic Sound, Soundstripe). Returns tracks matching the given criteria with platform availability status. Use moods, genres, BPM ranges, and duration to find the perfect track for a video project.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Free-text search query (e.g., 'upbeat corporate', 'cinematic piano')"
+                            },
+                            "moods": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Mood filters (e.g., ['uplifting', 'energetic', 'cinematic'])"
+                            },
+                            "genres": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Genre filters (e.g., ['electronic', 'pop', 'orchestral'])"
+                            },
+                            "min_bpm": {
+                                "type": "integer",
+                                "description": "Minimum BPM (beats per minute)"
+                            },
+                            "max_bpm": {
+                                "type": "integer",
+                                "description": "Maximum BPM"
+                            },
+                            "min_duration": {
+                                "type": "number",
+                                "description": "Minimum track duration in seconds"
+                            },
+                            "max_duration": {
+                                "type": "number",
+                                "description": "Maximum track duration in seconds"
+                            },
+                            "instrumental": {
+                                "type": "boolean",
+                                "description": "Filter for instrumental-only tracks (no vocals)"
+                            },
+                            "platforms": {
+                                "type": "array",
+                                "items": { "type": "string", "enum": ["artlist", "epidemic", "soundstripe"] },
+                                "description": "Limit search to specific platforms (default: all configured)"
+                            },
+                            "page": {
+                                "type": "integer",
+                                "description": "Page number (default: 1)"
+                            },
+                            "per_page": {
+                                "type": "integer",
+                                "description": "Results per page (default: 20)"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "download_music_track",
+                    "description": "Download a music track to local storage by its platform-prefixed ID (e.g., 'artlist:12345', 'epidemic:67890', 'soundstripe:abc'). Returns the local file path.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "track_id": {
+                                "type": "string",
+                                "description": "Platform-prefixed track ID (e.g., 'artlist:12345', 'epidemic:67890', 'soundstripe:abc')"
+                            },
+                            "filename": {
+                                "type": "string",
+                                "description": "Optional output filename (default: 'Artist - Title.mp3')"
+                            },
+                            "output_dir": {
+                                "type": "string",
+                                "description": "Optional output directory path (default: editron work_dir/music/<platform>)"
+                            }
+                        },
+                        "required": ["track_id"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "recommend_music_for_video",
+                    "description": "Get music recommendations based on video content type or analysis. Returns search criteria and optionally auto-searches configured platforms.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "video_path": {
+                                "type": "string",
+                                "description": "Path to video file for content analysis"
+                            },
+                            "content_type": {
+                                "type": "string",
+                                "description": "Content category: 'lifestyle', 'corporate', 'cinematic', 'chill', 'fitness', 'fashion'"
+                            },
+                            "target_duration": {
+                                "type": "number",
+                                "description": "Target video duration in seconds (finds tracks at least this long)"
+                            },
+                            "auto_search": {
+                                "type": "boolean",
+                                "description": "If true, automatically search configured platforms with the recommended criteria (default: false)"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "preview_music_track",
+                    "description": "Get preview/stream URL and basic info for a music track. For Epidemic Sound tracks, also returns ML-detected highlight timestamps.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "track_id": {
+                                "type": "string",
+                                "description": "Platform-prefixed track ID (e.g., 'artlist:12345', 'epidemic:67890')"
+                            }
+                        },
+                        "required": ["track_id"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "get_music_track_details",
+                    "description": "Get full metadata for a specific music track. For Epidemic Sound, enriches with beat timestamps and similar track recommendations.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "track_id": {
+                                "type": "string",
+                                "description": "Platform-prefixed track ID (e.g., 'artlist:12345', 'epidemic:67890', 'soundstripe:abc')"
+                            }
+                        },
+                        "required": ["track_id"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "analyze_music_track",
+                    "description": "Analyze a local audio file for BPM, energy profile, sections, and beat grid. Uses the same engine as AnalyzeBeatGrid but returns a music-focused summary.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "audio_path": {
+                                "type": "string",
+                                "description": "Path to the local audio file to analyze"
+                            },
+                            "bpm_hint": {
+                                "type": "number",
+                                "description": "Optional BPM hint if known (improves accuracy)"
+                            }
+                        },
+                        "required": ["audio_path"]
+                    }
+                }
+            }),
         ]
     }
 
@@ -2090,7 +2307,8 @@ impl ExecutiveTools {
                 let bpm_hint = arguments.get("bpm_hint").and_then(|v| v.as_f64());
                 let target_aspect_ratio = arguments.get("target_aspect_ratio").and_then(|v| v.as_str()).map(String::from);
                 let project_id = arguments.get("project_id").and_then(|v| v.as_str()).map(String::from);
-                Some(NoraExecutiveTool::AssembleRecapEdit { batch_id, audio_path, bpm_hint, target_aspect_ratio, project_id })
+                let project_name = arguments.get("project_name").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::AssembleRecapEdit { batch_id, audio_path, bpm_hint, target_aspect_ratio, project_id, project_name })
             }
             "execute_render_script" => {
                 let render_script = arguments.get("render_script")?.as_str()?.to_string();
@@ -2103,6 +2321,55 @@ impl ExecutiveTools {
                     .unwrap_or("")
                     .to_string();
                 Some(NoraExecutiveTool::ExecuteRenderScript { render_script, render_output, xml_path })
+            }
+            "search_music" => {
+                let query = arguments.get("query").and_then(|v| v.as_str()).map(String::from);
+                let moods = arguments.get("moods").and_then(|v| v.as_array()).map(|arr| {
+                    arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                });
+                let genres = arguments.get("genres").and_then(|v| v.as_array()).map(|arr| {
+                    arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                });
+                let min_bpm = arguments.get("min_bpm").and_then(|v| v.as_u64()).map(|v| v as u32);
+                let max_bpm = arguments.get("max_bpm").and_then(|v| v.as_u64()).map(|v| v as u32);
+                let min_duration = arguments.get("min_duration").and_then(|v| v.as_f64());
+                let max_duration = arguments.get("max_duration").and_then(|v| v.as_f64());
+                let instrumental = arguments.get("instrumental").and_then(|v| v.as_bool());
+                let platforms = arguments.get("platforms").and_then(|v| v.as_array()).map(|arr| {
+                    arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+                });
+                let page = arguments.get("page").and_then(|v| v.as_u64()).map(|v| v as u32);
+                let per_page = arguments.get("per_page").and_then(|v| v.as_u64()).map(|v| v as u32);
+                Some(NoraExecutiveTool::SearchMusic {
+                    query, moods, genres, min_bpm, max_bpm, min_duration, max_duration,
+                    instrumental, platforms, page, per_page,
+                })
+            }
+            "download_music_track" => {
+                let track_id = arguments.get("track_id")?.as_str()?.to_string();
+                let filename = arguments.get("filename").and_then(|v| v.as_str()).map(String::from);
+                let output_dir = arguments.get("output_dir").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::DownloadMusicTrack { track_id, filename, output_dir })
+            }
+            "recommend_music_for_video" => {
+                let video_path = arguments.get("video_path").and_then(|v| v.as_str()).map(String::from);
+                let content_type = arguments.get("content_type").and_then(|v| v.as_str()).map(String::from);
+                let target_duration = arguments.get("target_duration").and_then(|v| v.as_f64());
+                let auto_search = arguments.get("auto_search").and_then(|v| v.as_bool());
+                Some(NoraExecutiveTool::RecommendMusicForVideo { video_path, content_type, target_duration, auto_search })
+            }
+            "preview_music_track" => {
+                let track_id = arguments.get("track_id")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::PreviewMusicTrack { track_id })
+            }
+            "get_music_track_details" => {
+                let track_id = arguments.get("track_id")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::GetMusicTrackDetails { track_id })
+            }
+            "analyze_music_track" => {
+                let audio_path = arguments.get("audio_path")?.as_str()?.to_string();
+                let bpm_hint = arguments.get("bpm_hint").and_then(|v| v.as_f64());
+                Some(NoraExecutiveTool::AnalyzeMusicTrack { audio_path, bpm_hint })
             }
             "create_calendar_event" => {
                 let title = arguments.get("title")?.as_str()?.to_string();
@@ -2763,6 +3030,13 @@ impl ExecutiveTools {
                     required: false,
                     default_value: None,
                 },
+                ToolParameter {
+                    name: "project_name".to_string(),
+                    parameter_type: ParameterType::String,
+                    description: "Project name used for output filenames and XML metadata (e.g. 'MOPAR Car Show')".to_string(),
+                    required: false,
+                    default_value: Some(serde_json::json!("Recap")),
+                },
             ],
             required_permissions: vec![Permission::Execute],
             estimated_duration: Some("3-10 minutes".to_string()),
@@ -2845,6 +3119,12 @@ impl ExecutiveTools {
             NoraExecutiveTool::AnalyzeBeatGrid { .. } => "analyze_beat_grid".to_string(),
             NoraExecutiveTool::AssembleRecapEdit { .. } => "assemble_recap_edit".to_string(),
             NoraExecutiveTool::ExecuteRenderScript { .. } => "execute_render_script".to_string(),
+            NoraExecutiveTool::SearchMusic { .. } => "search_music".to_string(),
+            NoraExecutiveTool::DownloadMusicTrack { .. } => "download_music_track".to_string(),
+            NoraExecutiveTool::RecommendMusicForVideo { .. } => "recommend_music_for_video".to_string(),
+            NoraExecutiveTool::PreviewMusicTrack { .. } => "preview_music_track".to_string(),
+            NoraExecutiveTool::GetMusicTrackDetails { .. } => "get_music_track_details".to_string(),
+            NoraExecutiveTool::AnalyzeMusicTrack { .. } => "analyze_music_track".to_string(),
 
             // Add more mappings...
             _ => "unknown_tool".to_string(),
@@ -4292,7 +4572,9 @@ impl ExecutiveTools {
                 bpm_hint,
                 target_aspect_ratio,
                 project_id: _,
+                project_name,
             } => {
+                let name_slug = project_name.as_deref().unwrap_or("Recap").replace(' ', "_");
                 if let Some(pipeline) = &self.media_pipeline {
                     tracing::info!("[TOOL] Assembling recap edit for batch: {} with audio: {}", batch_id, audio_path);
 
@@ -4322,10 +4604,12 @@ impl ExecutiveTools {
                         if !matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mxf" | "mkv") { continue; }
                         let file_path = pipeline.get_batch_dir(batch_uuid).join(&file.filename);
                         if !file_path.exists() { continue; }
-                        if let Ok(analysis) = scene_engine.analyze_clip(&file_path, 3.0).await {
+                        if let Ok(analysis) = scene_engine.analyze_clip(&file_path, 1.0).await {
                             clip_analyses.push(analysis);
                         }
                     }
+                    // Assign energy quartiles before assembly
+                    services::services::scene_analysis::assign_energy_quartiles(&mut clip_analyses);
                     let total_usable = clip_analyses.iter().filter(|c| c.usable).count() as u32;
                     let scene_result = services::services::scene_analysis::SceneAnalysisResult {
                         batch_id: batch_id.clone(),
@@ -4364,7 +4648,7 @@ impl ExecutiveTools {
 
                     let assembly_result = services::services::recap_assembly::RecapAssemblyResult {
                         id: Uuid::new_v4().to_string(),
-                        name: "Art Access After Dark - Recap".to_string(),
+                        name: format!("{} - Recap", project_name.as_deref().unwrap_or("Recap")),
                         duration: music_window.duration,
                         width,
                         height,
@@ -4390,11 +4674,11 @@ impl ExecutiveTools {
 
                     let work_dir = pipeline.visual_qc_work_dir(batch_uuid);
                     let _ = tokio::fs::create_dir_all(&work_dir).await;
-                    let xml_path = work_dir.join("After_Dark_Recap_BeatLocked.xml");
+                    let xml_path = work_dir.join(format!("{}_BeatLocked.xml", name_slug));
                     let _ = tokio::fs::write(&xml_path, &xml).await;
 
                     // Generate FFmpeg render script with transitions
-                    let render_output = work_dir.join("After_Dark_Recap_v2.mp4");
+                    let render_output = work_dir.join(format!("{}_v1.mp4", name_slug));
                     let render_script = services::services::recap_assembly::RecapAssemblyEngine::generate_render_script(
                         &placements,
                         &audio_path,
@@ -4528,6 +4812,577 @@ impl ExecutiveTools {
                             "error": format!("Failed to execute render script: {}", e),
                         }))
                     }
+                }
+            }
+
+            // === Music Discovery & Download Tools ===
+            NoraExecutiveTool::SearchMusic {
+                query, moods, genres, min_bpm, max_bpm, min_duration, max_duration,
+                instrumental, platforms, page, per_page,
+            } => {
+                tracing::info!("[TOOL] SearchMusic: query={:?}, moods={:?}, genres={:?}", query, moods, genres);
+
+                use services::services::editron::{
+                    load_music_platform_configs,
+                    music::{MusicSearchCriteria, MusicMood, MusicGenre},
+                    artlist::ArtlistClient,
+                    epidemic::EpidemicSoundClient,
+                    soundstripe::SoundstripeClient,
+                };
+
+                let (artlist_cfg, epidemic_cfg, soundstripe_cfg) = load_music_platform_configs();
+
+                // Build search criteria
+                let criteria = MusicSearchCriteria {
+                    query,
+                    moods: moods.unwrap_or_default().iter().filter_map(|m| {
+                        MusicMood::from_epidemic_term(m)
+                            .or_else(|| MusicMood::from_artlist_term(m))
+                    }).collect(),
+                    genres: genres.unwrap_or_default().iter().filter_map(|g| {
+                        MusicGenre::from_epidemic_term(g)
+                            .or_else(|| MusicGenre::from_artlist_term(g))
+                    }).collect(),
+                    min_duration,
+                    max_duration,
+                    min_bpm,
+                    max_bpm,
+                    has_vocals: None,
+                    instrumental,
+                    platforms: vec![],
+                };
+
+                let page_num = page.unwrap_or(1);
+                let results_per_page = per_page.unwrap_or(20);
+                let platform_filter = platforms.unwrap_or_default();
+
+                let mut all_tracks = Vec::new();
+                let mut platform_status = serde_json::Map::new();
+
+                // Search Artlist
+                let search_artlist = platform_filter.is_empty() || platform_filter.iter().any(|p| p == "artlist");
+                if search_artlist {
+                    if artlist_cfg.is_configured() {
+                        match ArtlistClient::from_config(&artlist_cfg) {
+                            Ok(client) => {
+                                match client.search_tracks(&criteria, page_num, results_per_page).await {
+                                    Ok(tracks) => {
+                                        platform_status.insert("artlist".to_string(), serde_json::json!({"status": "ok", "count": tracks.len()}));
+                                        all_tracks.extend(tracks);
+                                    }
+                                    Err(e) => {
+                                        platform_status.insert("artlist".to_string(), serde_json::json!({"status": "error", "error": e.to_string()}));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                platform_status.insert("artlist".to_string(), serde_json::json!({"status": "error", "error": e.to_string()}));
+                            }
+                        }
+                    } else {
+                        platform_status.insert("artlist".to_string(), serde_json::json!({"status": "not_configured"}));
+                    }
+                }
+
+                // Search Epidemic Sound
+                let search_epidemic = platform_filter.is_empty() || platform_filter.iter().any(|p| p == "epidemic");
+                if search_epidemic {
+                    if epidemic_cfg.is_configured() {
+                        match EpidemicSoundClient::from_config(&epidemic_cfg) {
+                            Ok(client) => {
+                                match client.search_tracks(&criteria, page_num, results_per_page).await {
+                                    Ok(tracks) => {
+                                        platform_status.insert("epidemic".to_string(), serde_json::json!({"status": "ok", "count": tracks.len()}));
+                                        all_tracks.extend(tracks);
+                                    }
+                                    Err(e) => {
+                                        platform_status.insert("epidemic".to_string(), serde_json::json!({"status": "error", "error": e.to_string()}));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                platform_status.insert("epidemic".to_string(), serde_json::json!({"status": "error", "error": e.to_string()}));
+                            }
+                        }
+                    } else {
+                        platform_status.insert("epidemic".to_string(), serde_json::json!({"status": "not_configured"}));
+                    }
+                }
+
+                // Search Soundstripe
+                let search_soundstripe = platform_filter.is_empty() || platform_filter.iter().any(|p| p == "soundstripe");
+                if search_soundstripe {
+                    if soundstripe_cfg.is_configured() {
+                        match SoundstripeClient::from_config(&soundstripe_cfg) {
+                            Ok(client) => {
+                                match client.search_tracks(&criteria, page_num, results_per_page).await {
+                                    Ok(tracks) => {
+                                        platform_status.insert("soundstripe".to_string(), serde_json::json!({"status": "ok", "count": tracks.len()}));
+                                        all_tracks.extend(tracks);
+                                    }
+                                    Err(e) => {
+                                        platform_status.insert("soundstripe".to_string(), serde_json::json!({"status": "error", "error": e.to_string()}));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                platform_status.insert("soundstripe".to_string(), serde_json::json!({"status": "error", "error": e.to_string()}));
+                            }
+                        }
+                    } else {
+                        platform_status.insert("soundstripe".to_string(), serde_json::json!({"status": "not_configured"}));
+                    }
+                }
+
+                let track_summaries: Vec<serde_json::Value> = all_tracks.iter().map(|t| {
+                    serde_json::json!({
+                        "id": t.id,
+                        "title": t.title,
+                        "artist": t.artist,
+                        "duration": t.duration,
+                        "bpm": t.bpm,
+                        "genre": format!("{:?}", t.genre),
+                        "moods": t.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
+                        "platform": format!("{:?}", t.platform),
+                        "preview_url": t.preview_url,
+                        "url": t.url,
+                    })
+                }).collect();
+
+                Ok(serde_json::json!({
+                    "success": true,
+                    "total_results": track_summaries.len(),
+                    "tracks": track_summaries,
+                    "platforms": serde_json::Value::Object(platform_status),
+                }))
+            }
+
+            NoraExecutiveTool::DownloadMusicTrack { track_id, filename, output_dir } => {
+                tracing::info!("[TOOL] DownloadMusicTrack: {}", track_id);
+
+                use services::services::editron::load_music_platform_configs;
+
+                // Parse platform prefix
+                let (platform, raw_id) = match track_id.split_once(':') {
+                    Some((p, id)) => (p.to_string(), id.to_string()),
+                    None => return Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Invalid track_id format. Must be 'platform:id' (e.g., 'artlist:12345')"
+                    })),
+                };
+
+                let (artlist_cfg, epidemic_cfg, soundstripe_cfg) = load_music_platform_configs();
+
+                let result: Result<(String, String), String> = match platform.as_str() {
+                    "artlist" => {
+                        if !artlist_cfg.is_configured() {
+                            Err("Artlist not configured (set ARTLIST_CLIENT_ID and ARTLIST_CLIENT_SECRET)".to_string())
+                        } else {
+                            match services::services::editron::artlist::ArtlistClient::from_config(&artlist_cfg) {
+                                Ok(client) => {
+                                    match client.get_download_url(&raw_id).await {
+                                        Ok(url) => {
+                                            let track = client.get_track(&raw_id).await.ok();
+                                            let default_name = track.map(|t| format!("{} - {}.mp3", t.artist, t.title))
+                                                .unwrap_or_else(|| format!("artlist_{}.mp3", raw_id));
+                                            Ok((url, default_name))
+                                        }
+                                        Err(e) => Err(e.to_string()),
+                                    }
+                                }
+                                Err(e) => Err(e.to_string()),
+                            }
+                        }
+                    }
+                    "epidemic" => {
+                        if !epidemic_cfg.is_configured() {
+                            Err("Epidemic Sound not configured (set ES_ACCESS_KEY_ID and ES_ACCESS_KEY_SECRET)".to_string())
+                        } else {
+                            match services::services::editron::epidemic::EpidemicSoundClient::from_config(&epidemic_cfg) {
+                                Ok(client) => {
+                                    match client.get_download_url(&raw_id, "mp3", "high").await {
+                                        Ok(url) => {
+                                            let track = client.get_track(&raw_id).await.ok();
+                                            let default_name = track.map(|t| format!("{} - {}.mp3", t.artist, t.title))
+                                                .unwrap_or_else(|| format!("epidemic_{}.mp3", raw_id));
+                                            Ok((url, default_name))
+                                        }
+                                        Err(e) => Err(e.to_string()),
+                                    }
+                                }
+                                Err(e) => Err(e.to_string()),
+                            }
+                        }
+                    }
+                    "soundstripe" => {
+                        if !soundstripe_cfg.is_configured() {
+                            Err("Soundstripe not configured (set SOUNDSTRIPE_API_KEY)".to_string())
+                        } else {
+                            match services::services::editron::soundstripe::SoundstripeClient::from_config(&soundstripe_cfg) {
+                                Ok(client) => {
+                                    match client.get_track(&raw_id).await {
+                                        Ok(track) => {
+                                            if let Some(url) = &track.preview_url {
+                                                let default_name = format!("{} - {}.mp3", track.artist, track.title);
+                                                Ok((url.clone(), default_name))
+                                            } else {
+                                                Err("No download URL available for this Soundstripe track".to_string())
+                                            }
+                                        }
+                                        Err(e) => Err(e.to_string()),
+                                    }
+                                }
+                                Err(e) => Err(e.to_string()),
+                            }
+                        }
+                    }
+                    _ => Err(format!("Unknown platform: '{}'. Use 'artlist', 'epidemic', or 'soundstripe'", platform)),
+                };
+
+                match result {
+                    Ok((download_url, default_name)) => {
+                        let safe_filename = filename.unwrap_or(default_name)
+                            .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+                        let dir = output_dir.unwrap_or_else(|| format!("/tmp/music/{}", platform));
+                        let dir_path = std::path::Path::new(&dir);
+                        let _ = tokio::fs::create_dir_all(dir_path).await;
+                        let output_path = dir_path.join(&safe_filename);
+
+                        match reqwest::Client::new().get(&download_url).send().await {
+                            Ok(response) => {
+                                if !response.status().is_success() {
+                                    return Ok(serde_json::json!({"success": false, "error": format!("Download failed with status: {}", response.status())}));
+                                }
+                                match response.bytes().await {
+                                    Ok(bytes) => {
+                                        match tokio::fs::write(&output_path, &bytes).await {
+                                            Ok(_) => {
+                                                tracing::info!("[TOOL] Downloaded {} bytes to {}", bytes.len(), output_path.display());
+                                                Ok(serde_json::json!({
+                                                    "success": true,
+                                                    "message": format!("Track downloaded to {}", output_path.display()),
+                                                    "path": output_path.to_string_lossy(),
+                                                    "size_bytes": bytes.len(),
+                                                    "platform": platform,
+                                                    "track_id": track_id,
+                                                }))
+                                            }
+                                            Err(e) => Ok(serde_json::json!({"success": false, "error": format!("Failed to write file: {}", e)})),
+                                        }
+                                    }
+                                    Err(e) => Ok(serde_json::json!({"success": false, "error": format!("Failed to read download bytes: {}", e)})),
+                                }
+                            }
+                            Err(e) => Ok(serde_json::json!({"success": false, "error": format!("Download request failed: {}", e)})),
+                        }
+                    }
+                    Err(e) => Ok(serde_json::json!({"success": false, "error": e})),
+                }
+            }
+
+            NoraExecutiveTool::RecommendMusicForVideo {
+                video_path: _, content_type, target_duration, auto_search,
+            } => {
+                tracing::info!("[TOOL] RecommendMusicForVideo: content_type={:?}, duration={:?}", content_type, target_duration);
+
+                use services::services::editron::music::MusicLibrary;
+
+                let lib = MusicLibrary::new("/tmp/music", "ffmpeg");
+                let ct = content_type.as_deref().unwrap_or("lifestyle");
+                let dur = target_duration.unwrap_or(0.0);
+                let recommendation = lib.recommend_for_content(ct, dur);
+
+                let mut response = serde_json::json!({
+                    "success": true,
+                    "content_type": ct,
+                    "recommendation": {
+                        "rationale": recommendation.rationale,
+                        "search_url": recommendation.search_url,
+                        "criteria": {
+                            "moods": recommendation.criteria.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
+                            "genres": recommendation.criteria.genres.iter().map(|g| format!("{:?}", g)).collect::<Vec<_>>(),
+                            "min_bpm": recommendation.criteria.min_bpm,
+                            "max_bpm": recommendation.criteria.max_bpm,
+                            "instrumental": recommendation.criteria.instrumental,
+                            "min_duration": recommendation.criteria.min_duration,
+                            "max_duration": recommendation.criteria.max_duration,
+                        }
+                    }
+                });
+
+                // Auto-search if requested
+                if auto_search == Some(true) {
+                    use services::services::editron::{
+                        load_music_platform_configs,
+                        artlist::ArtlistClient,
+                        epidemic::EpidemicSoundClient,
+                        soundstripe::SoundstripeClient,
+                    };
+
+                    let (artlist_cfg, epidemic_cfg, soundstripe_cfg) = load_music_platform_configs();
+                    let mut tracks = Vec::new();
+
+                    if artlist_cfg.is_configured() {
+                        if let Ok(client) = ArtlistClient::from_config(&artlist_cfg) {
+                            if let Ok(results) = client.search_tracks(&recommendation.criteria, 1, 10).await {
+                                tracks.extend(results);
+                            }
+                        }
+                    }
+                    if epidemic_cfg.is_configured() {
+                        if let Ok(client) = EpidemicSoundClient::from_config(&epidemic_cfg) {
+                            if let Ok(results) = client.search_tracks(&recommendation.criteria, 1, 10).await {
+                                tracks.extend(results);
+                            }
+                        }
+                    }
+                    if soundstripe_cfg.is_configured() {
+                        if let Ok(client) = SoundstripeClient::from_config(&soundstripe_cfg) {
+                            if let Ok(results) = client.search_tracks(&recommendation.criteria, 1, 10).await {
+                                tracks.extend(results);
+                            }
+                        }
+                    }
+
+                    let track_list: Vec<serde_json::Value> = tracks.iter().map(|t| {
+                        serde_json::json!({
+                            "id": t.id,
+                            "title": t.title,
+                            "artist": t.artist,
+                            "duration": t.duration,
+                            "bpm": t.bpm,
+                            "platform": format!("{:?}", t.platform),
+                            "preview_url": t.preview_url,
+                        })
+                    }).collect();
+
+                    response.as_object_mut().unwrap().insert("search_results".to_string(), serde_json::json!(track_list));
+                    response.as_object_mut().unwrap().insert("total_results".to_string(), serde_json::json!(tracks.len()));
+                }
+
+                Ok(response)
+            }
+
+            NoraExecutiveTool::PreviewMusicTrack { track_id } => {
+                tracing::info!("[TOOL] PreviewMusicTrack: {}", track_id);
+
+                use services::services::editron::load_music_platform_configs;
+
+                let (platform, raw_id) = match track_id.split_once(':') {
+                    Some((p, id)) => (p.to_string(), id.to_string()),
+                    None => return Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Invalid track_id format. Must be 'platform:id'"
+                    })),
+                };
+
+                let (artlist_cfg, epidemic_cfg, soundstripe_cfg) = load_music_platform_configs();
+
+                let track_result: Result<serde_json::Value, String> = match platform.as_str() {
+                    "artlist" => {
+                        if !artlist_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Artlist not configured"})); }
+                        match services::services::editron::artlist::ArtlistClient::from_config(&artlist_cfg) {
+                            Ok(client) => match client.get_track(&raw_id).await {
+                                Ok(t) => Ok(serde_json::json!({
+                                    "preview_url": t.preview_url,
+                                    "title": t.title,
+                                    "artist": t.artist,
+                                    "duration": t.duration,
+                                    "bpm": t.bpm,
+                                    "platform": "artlist",
+                                })),
+                                Err(e) => Err(e.to_string()),
+                            },
+                            Err(e) => Err(e.to_string()),
+                        }
+                    }
+                    "epidemic" => {
+                        if !epidemic_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Epidemic Sound not configured"})); }
+                        match services::services::editron::epidemic::EpidemicSoundClient::from_config(&epidemic_cfg) {
+                            Ok(client) => match client.get_track(&raw_id).await {
+                                Ok(t) => {
+                                    let highlights = client.get_highlights(&raw_id, &[15, 30, 60]).await.ok();
+                                    Ok(serde_json::json!({
+                                        "preview_url": t.preview_url,
+                                        "title": t.title,
+                                        "artist": t.artist,
+                                        "duration": t.duration,
+                                        "bpm": t.bpm,
+                                        "platform": "epidemic",
+                                        "highlights": highlights,
+                                    }))
+                                }
+                                Err(e) => Err(e.to_string()),
+                            },
+                            Err(e) => Err(e.to_string()),
+                        }
+                    }
+                    "soundstripe" => {
+                        if !soundstripe_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Soundstripe not configured"})); }
+                        match services::services::editron::soundstripe::SoundstripeClient::from_config(&soundstripe_cfg) {
+                            Ok(client) => match client.get_track(&raw_id).await {
+                                Ok(t) => Ok(serde_json::json!({
+                                    "preview_url": t.preview_url,
+                                    "title": t.title,
+                                    "artist": t.artist,
+                                    "duration": t.duration,
+                                    "bpm": t.bpm,
+                                    "platform": "soundstripe",
+                                })),
+                                Err(e) => Err(e.to_string()),
+                            },
+                            Err(e) => Err(e.to_string()),
+                        }
+                    }
+                    _ => Err(format!("Unknown platform: '{}'", platform)),
+                };
+
+                match track_result {
+                    Ok(info) => Ok(serde_json::json!({"success": true, "track": info})),
+                    Err(e) => Ok(serde_json::json!({"success": false, "error": e})),
+                }
+            }
+
+            NoraExecutiveTool::GetMusicTrackDetails { track_id } => {
+                tracing::info!("[TOOL] GetMusicTrackDetails: {}", track_id);
+
+                use services::services::editron::load_music_platform_configs;
+
+                let (platform, raw_id) = match track_id.split_once(':') {
+                    Some((p, id)) => (p.to_string(), id.to_string()),
+                    None => return Ok(serde_json::json!({
+                        "success": false,
+                        "error": "Invalid track_id format. Must be 'platform:id'"
+                    })),
+                };
+
+                let (artlist_cfg, epidemic_cfg, soundstripe_cfg) = load_music_platform_configs();
+
+                match platform.as_str() {
+                    "artlist" => {
+                        if !artlist_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Artlist not configured"})); }
+                        match services::services::editron::artlist::ArtlistClient::from_config(&artlist_cfg) {
+                            Ok(client) => match client.get_track(&raw_id).await {
+                                Ok(t) => Ok(serde_json::json!({
+                                    "success": true,
+                                    "track": {
+                                        "id": t.id, "title": t.title, "artist": t.artist,
+                                        "duration": t.duration, "bpm": t.bpm, "key": t.key,
+                                        "genre": format!("{:?}", t.genre),
+                                        "moods": t.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
+                                        "tags": t.tags, "platform": "artlist",
+                                        "url": t.url, "preview_url": t.preview_url,
+                                    }
+                                })),
+                                Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                            },
+                            Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                        }
+                    }
+                    "epidemic" => {
+                        if !epidemic_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Epidemic Sound not configured"})); }
+                        match services::services::editron::epidemic::EpidemicSoundClient::from_config(&epidemic_cfg) {
+                            Ok(client) => match client.get_track(&raw_id).await {
+                                Ok(t) => {
+                                    // Enrich with beats and similar
+                                    let beats = client.get_beats(&raw_id).await.ok();
+                                    let similar = client.get_similar(&raw_id).await.ok();
+                                    let similar_summary: Option<Vec<serde_json::Value>> = similar.map(|s| {
+                                        s.iter().take(5).map(|t| serde_json::json!({
+                                            "id": t.id, "title": t.title, "artist": t.artist,
+                                        })).collect()
+                                    });
+
+                                    Ok(serde_json::json!({
+                                        "success": true,
+                                        "track": {
+                                            "id": t.id, "title": t.title, "artist": t.artist,
+                                            "duration": t.duration, "bpm": t.bpm, "key": t.key,
+                                            "genre": format!("{:?}", t.genre),
+                                            "moods": t.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
+                                            "tags": t.tags, "platform": "epidemic",
+                                            "url": t.url, "preview_url": t.preview_url,
+                                            "beats": beats,
+                                            "similar_tracks": similar_summary,
+                                        }
+                                    }))
+                                }
+                                Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                            },
+                            Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                        }
+                    }
+                    "soundstripe" => {
+                        if !soundstripe_cfg.is_configured() { return Ok(serde_json::json!({"success": false, "error": "Soundstripe not configured"})); }
+                        match services::services::editron::soundstripe::SoundstripeClient::from_config(&soundstripe_cfg) {
+                            Ok(client) => match client.get_track(&raw_id).await {
+                                Ok(t) => Ok(serde_json::json!({
+                                    "success": true,
+                                    "track": {
+                                        "id": t.id, "title": t.title, "artist": t.artist,
+                                        "duration": t.duration, "bpm": t.bpm, "key": t.key,
+                                        "genre": format!("{:?}", t.genre),
+                                        "moods": t.moods.iter().map(|m| format!("{:?}", m)).collect::<Vec<_>>(),
+                                        "tags": t.tags, "platform": "soundstripe",
+                                        "url": t.url, "preview_url": t.preview_url,
+                                    }
+                                })),
+                                Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                            },
+                            Err(e) => Ok(serde_json::json!({"success": false, "error": e.to_string()})),
+                        }
+                    }
+                    _ => Ok(serde_json::json!({"success": false, "error": format!("Unknown platform: '{}'", platform)})),
+                }
+            }
+
+            NoraExecutiveTool::AnalyzeMusicTrack { audio_path, bpm_hint } => {
+                tracing::info!("[TOOL] AnalyzeMusicTrack: {}", audio_path);
+
+                let path = std::path::PathBuf::from(&audio_path);
+                if !path.exists() {
+                    return Ok(serde_json::json!({"success": false, "error": format!("Audio file not found: {}", audio_path)}));
+                }
+
+                let engine = services::services::beat_analysis::BeatAnalysisEngine::new();
+
+                match engine.analyze(&path, bpm_hint, 4).await {
+                    Ok(result) => {
+                        let section_summaries: Vec<serde_json::Value> = result.sections.iter().map(|s| {
+                            serde_json::json!({
+                                "name": s.name,
+                                "start": s.start,
+                                "end": s.end,
+                                "duration": s.end - s.start,
+                                "energy": s.energy_level,
+                                "suggested_content": format!("{:?}", s.suggested_content),
+                            })
+                        }).collect();
+
+                        // Compute energy profile summary
+                        let avg_energy = if !result.sections.is_empty() {
+                            result.sections.iter().map(|s| s.energy_level).sum::<f64>() / result.sections.len() as f64
+                        } else {
+                            0.5
+                        };
+
+                        Ok(serde_json::json!({
+                            "success": true,
+                            "message": format!("Music analysis complete: {:.1} BPM, {:.1}s duration", result.bpm, result.duration),
+                            "bpm": result.bpm,
+                            "duration": result.duration,
+                            "beat_interval": result.beat_interval,
+                            "total_beats": result.total_beats,
+                            "sections": section_summaries,
+                            "energy_profile": {
+                                "average": avg_energy,
+                                "peak_section": result.sections.iter().max_by(|a, b| a.energy_level.partial_cmp(&b.energy_level).unwrap_or(std::cmp::Ordering::Equal)).map(|s| &s.name),
+                            },
+                            "transition_markers": result.transition_markers.len(),
+                            "processing_time_ms": result.processing_time_ms,
+                        }))
+                    }
+                    Err(e) => Ok(serde_json::json!({"success": false, "error": format!("Music analysis failed: {}", e)})),
                 }
             }
 

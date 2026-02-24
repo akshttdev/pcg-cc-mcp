@@ -142,6 +142,35 @@ export interface MoveDealRequest {
   position: number;
 }
 
+// Pipeline stage create/update types (used by api.ts)
+export interface CreateCrmPipelineStage {
+  pipeline_id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  position: number;
+  is_closed?: boolean;
+  is_won?: boolean;
+  probability?: number;
+  auto_move_after_days?: number;
+  notify_on_enter?: boolean;
+}
+
+export interface UpdateCrmPipelineStage {
+  name?: string;
+  description?: string;
+  color?: string;
+  position?: number;
+  is_closed?: boolean;
+  is_won?: boolean;
+  probability?: number;
+  auto_move_after_days?: number;
+  notify_on_enter?: boolean;
+}
+
+// Alias for deal record as returned by list APIs
+export type CrmDealRecord = CrmDealWithContact;
+
 // Create activity type for logging
 export interface CreateCrmActivity {
   project_id: string;
