@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,13 +21,16 @@ import {
   ArtifactPanel,
   ExecutionTimeline,
   LiveCommsPanel,
-  generateMockEvents,
 } from '@/components/mission-control';
+import type { CommEvent } from '@/components/mission-control/LiveCommsPanel';
 import {
   useMissionControlDashboard,
   useExecutionArtifacts,
 } from '@/hooks/useMissionControl';
 import { useExecutionEvents } from '@/hooks/useExecutionEvents';
+import { useEventStream } from '@/lib/event-stream';
+import type { AgentFlowEvent } from '@/lib/event-stream';
+import { useAuth } from '@/contexts/AuthContext';
 import { SlotUtilizationBadge, CompactSlotIndicator } from '@/components/parallel-execution';
 import {
   ExecutionControlPanel,
@@ -39,16 +42,73 @@ import {
   PendingApprovalsIndicator,
 } from '@/components/autonomy';
 
+/** Map an AgentFlowEvent to a CommEvent for the LiveCommsPanel */
+function mapFlowEventToCommEvent(event: AgentFlowEvent): CommEvent {
+  let eventData: Record<string, unknown> = {};
+  try {
+    eventData = JSON.parse(event.event_data);
+  } catch { /* non-JSON event_data is fine */ }
+
+  const eventType = event.event_type.toLowerCase();
+  let type: CommEvent['type'] = 'system_event';
+  let actor = (eventData.agent_codename as string) ?? (eventData.agent as string) ?? 'System';
+  let message = (eventData.message as string) ?? (eventData.summary as string) ?? event.event_type;
+
+  if (eventType.includes('execution_started') || eventType.includes('stage_started')) {
+    type = 'agent_message';
+    message = (eventData.stage_name as string)
+      ? `Starting stage: ${eventData.stage_name}`
+      : `Execution started${eventData.workflow_name ? ` — ${eventData.workflow_name}` : ''}`;
+  } else if (eventType.includes('stage_completed')) {
+    type = 'checkpoint';
+    message = `Completed stage: ${(eventData.stage_name as string) ?? 'unknown'}`;
+  } else if (eventType.includes('execution_completed')) {
+    type = 'checkpoint';
+    message = `Execution completed${eventData.duration_ms ? ` in ${((eventData.duration_ms as number) / 1000).toFixed(1)}s` : ''}`;
+  } else if (eventType.includes('execution_failed')) {
+    type = 'system_event';
+    message = `Execution failed: ${(eventData.error as string) ?? 'unknown error'}`;
+  } else if (eventType.includes('task_created') || eventType.includes('artifact')) {
+    type = 'plan_update';
+    message = (eventData.title as string) ?? (eventData.artifact_type as string) ?? event.event_type;
+  } else if (eventType.includes('approval') || eventType.includes('human')) {
+    type = 'human_action';
+    actor = (eventData.user_name as string) ?? 'Human';
+  } else if (eventType.includes('agent_message') || eventType.includes('chat')) {
+    type = 'agent_message';
+  }
+
+  return {
+    id: event.id,
+    timestamp: new Date(event.created_at),
+    type,
+    actor,
+    message,
+    metadata: eventData,
+  };
+}
+
+const MAX_COMM_EVENTS = 200;
+
 export default function MissionControlPage() {
   const { data: dashboard, isLoading, refetch } = useMissionControlDashboard();
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
   const { data: artifacts = [] } = useExecutionArtifacts(selectedExecutionId ?? undefined);
+  const { user } = useAuth();
 
   // Real-time execution events from SSE/WebSocket
   const { activeExecutions, completedExecutions, connected: eventsConnected, activeCount } = useExecutionEvents();
 
-  // Fallback to mock events if no real events (for demo purposes)
-  const [mockEvents] = useState(generateMockEvents);
+  // Real-time flow events from SSE stream → mapped to CommEvents for LiveCommsPanel
+  const [commEvents, setCommEvents] = useState<CommEvent[]>([]);
+  const onFlowEvents = useCallback((events: AgentFlowEvent[]) => {
+    setCommEvents((prev) => {
+      const mapped = events.map(mapFlowEventToCommEvent);
+      const combined = [...prev, ...mapped];
+      return combined.slice(-MAX_COMM_EVENTS);
+    });
+  }, []);
+  useEventStream({ onEvents: onFlowEvents });
 
   const selectedExecution = dashboard?.active_executions.find(
     (e) => e.process.id === selectedExecutionId
@@ -370,8 +430,8 @@ export default function MissionControlPage() {
                 {/* Execution Control Panel */}
                 <ExecutionControlPanel
                   executionId={selectedExecution.process.id}
-                  currentUserId="current-user"
-                  currentUserName="You"
+                  currentUserId={user?.id ?? 'anonymous'}
+                  currentUserName={user?.full_name ?? user?.username ?? 'You'}
                 />
 
                 {/* Artifacts panel */}
@@ -404,8 +464,8 @@ export default function MissionControlPage() {
                     <TabsContent value="checkpoints" className="flex-1 mt-2 overflow-hidden">
                       <CheckpointReviewPanel
                         executionId={selectedExecution.process.id}
-                        currentUserId="current-user"
-                        currentUserName="You"
+                        currentUserId={user?.id ?? 'anonymous'}
+                        currentUserName={user?.full_name ?? user?.username ?? 'You'}
                         className="h-full"
                       />
                     </TabsContent>
@@ -425,7 +485,7 @@ export default function MissionControlPage() {
                     </TabsContent>
 
                     <TabsContent value="comms" className="flex-1 mt-2 overflow-hidden">
-                      <LiveCommsPanel events={mockEvents} className="h-full" />
+                      <LiveCommsPanel events={commEvents} className="h-full" />
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -441,7 +501,7 @@ export default function MissionControlPage() {
 
                 {/* Live coordination panel - always visible */}
                 <div className="h-64">
-                  <LiveCommsPanel events={mockEvents} className="h-full" />
+                  <LiveCommsPanel events={commEvents} className="h-full" />
                 </div>
               </>
             )}
