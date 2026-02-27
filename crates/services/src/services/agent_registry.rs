@@ -113,11 +113,12 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("gpt-4o".to_string()),
-            fallback_models: Some(vec!["gpt-4".to_string(), "claude-sonnet-4".to_string()]),
+            default_model: Some("claude-sonnet-4-20250514".to_string()),
+            fallback_models: Some(vec!["claude-3-5-sonnet-20241022".to_string(), "gpt-4o".to_string()]),
             model_config: Some(json!({
+                "provider": "anthropic",
                 "temperature": 0.7,
-                "max_tokens": 4096,
+                "max_tokens": 8192,
                 "system_prompt_prefix": "You are Nora, the Chief Orchestration Agent."
             })),
             status: Some(AgentStatus::Active),
@@ -227,10 +228,10 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("gpt-oss".to_string()),  // Use local Ollama for chat
-            fallback_models: Some(vec!["gpt-4o".to_string(), "claude-sonnet-4".to_string()]),
+            default_model: Some("claude-sonnet-4-20250514".to_string()),
+            fallback_models: Some(vec!["claude-3-5-sonnet-20241022".to_string(), "gpt-4o".to_string()]),
             model_config: Some(json!({
-                "provider": "ollama",  // Route to local Ollama
+                "provider": "anthropic",
                 "temperature": 0.8,
                 "max_tokens": 4096,
                 "system_prompt_prefix": "You are Maci, the Master Cinematographer.",
@@ -360,9 +361,10 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("gpt-4o".to_string()),
-            fallback_models: Some(vec!["gpt-4".to_string(), "claude-sonnet-4".to_string()]),
+            default_model: Some("claude-sonnet-4-20250514".to_string()),
+            fallback_models: Some(vec!["claude-3-5-sonnet-20241022".to_string(), "gpt-4o".to_string()]),
             model_config: Some(json!({
+                "provider": "anthropic",
                 "temperature": 0.3,
                 "max_tokens": 2048,
                 "system_prompt_prefix": "You are Editron, a Master Video Editor."
@@ -503,10 +505,10 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("gpt-oss".to_string()),  // Use local Ollama for chat
-            fallback_models: Some(vec!["gpt-4o".to_string(), "claude-sonnet-4".to_string()]),
+            default_model: Some("claude-sonnet-4-20250514".to_string()),
+            fallback_models: Some(vec!["claude-3-5-sonnet-20241022".to_string(), "gpt-4o".to_string()]),
             model_config: Some(json!({
-                "provider": "ollama",  // Route to local Ollama
+                "provider": "anthropic",
                 "temperature": 0.8,
                 "max_tokens": 4096,
                 "system_prompt_prefix": "You are Genesis, the Brand Identity Architect.",
@@ -634,9 +636,10 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("gpt-4o".to_string()),
-            fallback_models: Some(vec!["gpt-4".to_string(), "claude-sonnet-4".to_string()]),
+            default_model: Some("claude-sonnet-4-20250514".to_string()),
+            fallback_models: Some(vec!["claude-3-5-sonnet-20241022".to_string(), "gpt-4o".to_string()]),
             model_config: Some(json!({
+                "provider": "anthropic",
                 "temperature": 0.3,
                 "max_tokens": 8192,
                 "system_prompt_prefix": "You are Astra, Strategy & Research Analyst. Data-driven. Thorough. Actionable."
@@ -748,9 +751,10 @@ impl AgentDefinitions {
                     example_usage: None,
                 },
             ]),
-            default_model: Some("gpt-4o".to_string()),
-            fallback_models: Some(vec!["gpt-4".to_string(), "claude-sonnet-4".to_string()]),
+            default_model: Some("claude-sonnet-4-20250514".to_string()),
+            fallback_models: Some(vec!["claude-3-5-sonnet-20241022".to_string(), "gpt-4o".to_string()]),
             model_config: Some(json!({
+                "provider": "anthropic",
                 "temperature": 0.3,
                 "max_tokens": 8192,
                 "system_prompt_prefix": "You are Scout, Social Intelligence Analyst. Observant. Analytical. Insightful."

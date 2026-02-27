@@ -1129,8 +1129,13 @@ async fn get_or_init_voice_engine() -> Result<Arc<RwLock<Option<VoiceEngine>>>, 
             tracing::info!("Initializing Topsi voice engine...");
 
             // Check for Chatterbox availability, fall back to OpenAI if not available
-            let chatterbox_port = std::env::var("CHATTERBOX_PORT").unwrap_or_else(|_| "8102".to_string());
-            let chatterbox_url = format!("http://localhost:{}/health", chatterbox_port);
+            // Respect CHATTERBOX_URL env var (e.g. http://localhost:8100), else check CHATTERBOX_PORT
+            let chatterbox_url = std::env::var("CHATTERBOX_URL")
+                .map(|url| format!("{}/health", url.trim_end_matches('/')))
+                .unwrap_or_else(|_| {
+                    let port = std::env::var("CHATTERBOX_PORT").unwrap_or_else(|_| "8100".to_string());
+                    format!("http://localhost:{}/health", port)
+                });
             let chatterbox_available = reqwest::Client::new()
                 .get(&chatterbox_url)
                 .timeout(std::time::Duration::from_secs(2))

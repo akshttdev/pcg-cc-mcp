@@ -66,7 +66,7 @@ impl TTSConfig {
                 "fable".to_string(),             // OpenAI British-leaning female
                 "nova".to_string(),              // OpenAI warm female
                 "echo".to_string(),              // OpenAI clear male
-                "Rachel".to_string(),            // ElevenLabs British voice
+                "ZtcPZrt9K4w8e1OB9M6w".to_string(), // ElevenLabs: Mia Moore - Studio Presenter
                 "en-GB-SoniaNeural".to_string(), // Azure British
             ],
             fallback_providers: vec![
@@ -75,6 +75,36 @@ impl TTSConfig {
                 TTSProvider::Azure,
                 TTSProvider::System,
             ],
+        }
+    }
+
+    /// Auto-detect best TTS provider based on available API keys.
+    /// Uses ElevenLabs if ELEVENLABS_API_KEY is set, otherwise falls back to Chatterbox.
+    pub fn auto_detect() -> Self {
+        if std::env::var("ELEVENLABS_API_KEY").is_ok() {
+            tracing::info!("ElevenLabs API key found, using premium TTS");
+            Self {
+                provider: TTSProvider::ElevenLabs,
+                voice_id: "ZtcPZrt9K4w8e1OB9M6w".to_string(), // ElevenLabs: Mia Moore - Studio Presenter (British, young, conversational)
+                speed: 1.0,
+                volume: 0.85,
+                pitch: 1.0,
+                quality: TTSQuality::Premium,
+                british_voice_preferences: vec![
+                    "ZtcPZrt9K4w8e1OB9M6w".to_string(), // ElevenLabs: Mia Moore - Studio Presenter
+                    "p225".to_string(),              // Coqui VCTK young British female
+                    "fable".to_string(),             // OpenAI British-leaning female
+                    "nova".to_string(),              // OpenAI warm female
+                    "en-GB-SoniaNeural".to_string(), // Azure British
+                ],
+                fallback_providers: vec![
+                    TTSProvider::OpenAI,
+                    TTSProvider::Chatterbox,
+                    TTSProvider::System,
+                ],
+            }
+        } else {
+            Self::british_executive() // Chatterbox local fallback
         }
     }
 

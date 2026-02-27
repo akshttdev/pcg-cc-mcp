@@ -247,15 +247,15 @@ pub fn get_recommended_provider(agent_name: &str) -> LLMProvider {
         // Research agents → Anthropic (Claude is better at analysis)
         "scout" | "researcher" | "oracle" => LLMProvider::Anthropic,
 
-        // Orchestration → OpenAI (good at coordination)
-        "nora" | "orchestrator" => LLMProvider::OpenAI,
+        // Orchestration → Anthropic (Claude excels at complex reasoning and coordination)
+        "nora" | "orchestrator" => LLMProvider::Anthropic,
 
-        // Visual/Creative → OpenAI (GPT-4o has vision), also Anthropic (Claude Vision)
-        "maci" | "editron" | "cinematographer" => LLMProvider::OpenAI,
+        // Visual/Creative → Anthropic (Claude Vision + strong reasoning)
+        "maci" | "editron" | "cinematographer" => LLMProvider::Anthropic,
         "spectra" | "visual-qc" | "master-cinematographer" => LLMProvider::Anthropic,
 
-        // Strategy → Either works well
-        "astra" | "genesis" => LLMProvider::OpenAI,
+        // Strategy → Anthropic (strong at analysis and synthesis)
+        "astra" | "genesis" => LLMProvider::Anthropic,
 
         // Default to Anthropic for unknown agents
         _ => LLMProvider::Anthropic,

@@ -20,13 +20,14 @@ use cinematics::{CinematicsConfig, CinematicsService};
 use nora::{
     NoraAgent, NoraConfig, NoraError,
     agent::{NoraRequest, NoraRequestType, NoraResponse, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority},
-    brain::LLMConfig,
+    brain::{LLMConfig, infer_provider_from_model},
+    LLMProvider,
     coordination::{AgentCoordinationState, CoordinationEvent, CoordinationStats},
     graph::{GraphNodeStatus, GraphPlan, GraphPlanSummary},
     memory::{BudgetStatus, ProjectContext, ProjectStatus},
     personality::PersonalityConfig,
     tools::{NoraExecutiveTool, ToolExecutionResult},
-    voice::{SpeechResponse, VoiceConfig, VoiceEngine, VoiceError, VoiceInteraction},
+    voice::{SpeechResponse, TTSConfig, VoiceConfig, VoiceEngine, VoiceError, VoiceInteraction},
 };
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -764,7 +765,10 @@ pub async fn initialize_nora_on_startup(state: &DeploymentImpl) -> Result<String
     let mut config = NoraConfig::default();
     apply_llm_overrides(&mut config);
 
-    // Load persisted voice configuration if available
+    // Auto-detect ElevenLabs before DB load (DB config wins if it exists)
+    config.voice.tts = TTSConfig::auto_detect();
+
+    // Load persisted voice configuration if available (overrides auto-detect)
     if let Ok(Some(persisted_config)) =
         db::models::nora_config::NoraVoiceConfig::get(&state.db().pool).await
     {
@@ -2262,7 +2266,21 @@ fn apply_llm_overrides(config: &mut NoraConfig) {
     }
 
     if let Ok(model) = std::env::var("NORA_LLM_MODEL") {
-        config.llm.get_or_insert_with(LLMConfig::default).model = model;
+        let llm = config.llm.get_or_insert_with(LLMConfig::default);
+        llm.model = model.clone();
+        // Auto-infer provider from model name
+        llm.provider = infer_provider_from_model(&model);
+        tracing::info!("Nora LLM model set to: {} (provider: {:?})", model, llm.provider);
+    }
+
+    // Explicit provider override (takes precedence over inference)
+    if let Ok(provider) = std::env::var("NORA_LLM_PROVIDER") {
+        let llm = config.llm.get_or_insert_with(LLMConfig::default);
+        llm.provider = match provider.to_lowercase().as_str() {
+            "anthropic" | "claude" => LLMProvider::Anthropic,
+            "openai" | "gpt" => LLMProvider::OpenAI,
+            _ => LLMProvider::Ollama,
+        };
     }
 
     if let Ok(endpoint) = std::env::var("NORA_LLM_ENDPOINT") {
