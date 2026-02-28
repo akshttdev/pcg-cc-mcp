@@ -3,7 +3,11 @@
 //! These endpoints handle incoming phone calls via Twilio,
 //! enabling users to interact with NORA by calling a phone number.
 //! Now uses NORA's voice engine for TTS instead of Twilio's Polly.
+//!
+//! Also wires caller memory: CRM lookup, CallLog creation, AgentConversation
+//! persistence, new-caller onboarding, and VIBE-sponsored first calls.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,25 +19,66 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use nora::{
-    agent::{NoraRequest, NoraRequestType, RequestPriority},
-    twilio::{
-        TwilioCallHandler, TwilioCallRequest, TwilioConfig, TwilioSpeechResult,
-        TwilioStatusCallback, TwimlBuilder, get_audio_cache,
-    },
-    voice::AudioFormat,
+use db::models::agent_conversation::{
+    AgentConversation, AgentConversationMessage, ConversationStatus,
 };
+use db::models::call_log::{CallDirection, CallLog, CallStatus, CreateCallLog, UpdateCallLog};
+use db::models::crm_contact::{
+    ContactSource, CreateCrmContact, CrmContact, LifecycleStage,
+};
+use nora::twilio::{
+    TwilioCallHandler, TwilioCallRequest, TwilioConfig, TwilioSpeechResult,
+    TwilioStatusCallback, TwimlBuilder, get_audio_cache,
+};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, routes::nora::get_nora_instance};
+use deployment::Deployment;
 
 /// Global Twilio call handler
 static TWILIO_HANDLER: tokio::sync::OnceCell<Arc<TwilioCallHandler>> =
     tokio::sync::OnceCell::const_new();
+
+/// In-memory map: call_sid → CallDbContext (active calls only)
+static CALL_DB_CONTEXTS: Lazy<Arc<Mutex<HashMap<String, CallDbContext>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// Who is calling — drives system prompt + context depth
+#[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
+enum CallerRole {
+    /// PCG admin (is_admin=true)
+    PcgAdmin,
+    /// PCG team member (user_role='host')
+    PcgTeam,
+    /// Known external client (returning)
+    ReturningClient,
+    /// Brand new / unknown caller
+    NewCaller,
+}
+
+/// Per-call DB context kept in memory while a call is active
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct CallDbContext {
+    call_log_id: Uuid,
+    conversation_id: Uuid,
+    crm_contact_id: Uuid,
+    project_id: Uuid,
+    caller_role: CallerRole,
+    /// PCG user ID if caller is a PCG team member
+    pcg_user_id: Option<Uuid>,
+    /// Caller profile pre-serialised as JSON string for the LLM
+    caller_profile_json: String,
+    /// Pre-built PCG team context (projects/tasks) — only for host callers
+    pcg_team_context_json: Option<String>,
+}
 
 /// Get or initialize the Twilio call handler
 async fn get_twilio_handler() -> Option<Arc<TwilioCallHandler>> {
@@ -62,7 +107,7 @@ pub fn twilio_routes() -> Router<DeploymentImpl> {
         .route("/twilio/voice", post(handle_incoming_call))
         .route("/twilio/speech", post(handle_speech_input))
         .route("/twilio/audio/{audio_id}", get(serve_audio))
-        .route("/twilio/status", post(handle_status_callback))
+        .route("/twilio/status", post(handle_call_status))
         .route("/twilio/fallback", post(handle_fallback))
         .route("/twilio/health", get(twilio_health))
 }
@@ -85,9 +130,6 @@ pub struct TwilioHealthResponse {
 /// Maximum time allowed for TTS generation (Twilio has ~15s timeout, leave margin for response)
 const TTS_TIMEOUT: Duration = Duration::from_secs(8);
 
-/// Maximum time allowed for LLM + TTS combined
-const TOTAL_PROCESSING_TIMEOUT: Duration = Duration::from_secs(12);
-
 /// Generate audio using NORA's voice engine and cache it
 async fn generate_and_cache_audio(
     text: &str,
@@ -108,17 +150,17 @@ async fn generate_and_cache_audio(
     info!("Synthesizing speech with NORA voice engine: '{}'", truncated_text);
 
     // Apply timeout to TTS generation
-    let tts_future = nora.voice_engine.synthesize_speech(text);
-    let audio_base64 = match timeout(TTS_TIMEOUT, tts_future).await {
-        Ok(Ok(audio)) => audio,
+    let tts_future = nora.voice_engine.synthesize_speech_with_format(text);
+    let (audio_base64, audio_format) = match timeout(TTS_TIMEOUT, tts_future).await {
+        Ok(Ok(result)) => result,
         Ok(Err(e)) => return Err(format!("TTS synthesis failed: {}", e)),
         Err(_) => return Err(format!("TTS timeout after {:?}", TTS_TIMEOUT)),
     };
 
-    // Cache the audio
+    // Cache the audio using the actual format returned by the TTS provider
     let cache = get_audio_cache().await;
     let audio_id = cache
-        .store(&audio_base64, AudioFormat::Mp3, text, call_sid)
+        .store(&audio_base64, audio_format, text, call_sid)
         .await?;
 
     Ok(audio_id)
@@ -169,14 +211,241 @@ pub async fn serve_audio(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Onboarding helpers
+// ---------------------------------------------------------------------------
+
+/// Create a bare-bones PCG user account for a new phone caller.
+/// Returns (user_id, project_id).
+async fn create_caller_account(
+    pool: &sqlx::SqlitePool,
+    phone: &str,
+    full_name: &str,
+) -> anyhow::Result<(Uuid, Uuid)> {
+    // Sanitise phone into a valid username slug
+    let slug = phone
+        .replace('+', "")
+        .replace(['-', ' ', '(', ')'], "_");
+    let username = format!("caller_{}", slug);
+    let email = format!("{}@pcg.phone.noreply", slug);
+
+    // Check if user already exists
+    let existing: Option<(Vec<u8>,)> =
+        sqlx::query_as("SELECT id FROM users WHERE username = ? LIMIT 1")
+            .bind(&username)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
+
+    if let Some((id_bytes,)) = existing {
+        let user_id = Uuid::from_slice(&id_bytes)?;
+        // Find their most recent project via project_members
+        let project_row: Option<(Vec<u8>,)> = sqlx::query_as(
+            "SELECT project_id FROM project_members WHERE user_id = ? ORDER BY granted_at DESC LIMIT 1"
+        )
+        .bind(user_id.as_bytes().as_slice())
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None);
+
+        if let Some((pid_bytes,)) = project_row {
+            let project_id = Uuid::from_slice(&pid_bytes)?;
+            return Ok((user_id, project_id));
+        }
+        // No project yet — create one
+        let project_id = create_caller_project(pool, user_id, full_name).await?;
+        return Ok((user_id, project_id));
+    }
+
+    // New user — hash a random password (caller won't use password login)
+    let random_pw = Uuid::new_v4().to_string();
+    let password_hash = db::services::AuthService::hash_password(&random_pw)
+        .unwrap_or_else(|_| format!("!invalid_{}", Uuid::new_v4()));
+
+    let user_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO users (id, username, email, full_name, password_hash, is_admin, is_active)
+           VALUES (?, ?, ?, ?, ?, 0, 1)"#,
+    )
+    .bind(user_id.as_bytes().as_slice())
+    .bind(&username)
+    .bind(&email)
+    .bind(full_name)
+    .bind(&password_hash)
+    .execute(pool)
+    .await?;
+
+    let project_id = create_caller_project(pool, user_id, full_name).await?;
+
+    info!("Created PCG account for caller {}: user={}, project={}", phone, user_id, project_id);
+    Ok((user_id, project_id))
+}
+
+/// Create a project for a phone caller and add them as owner.
+async fn create_caller_project(
+    pool: &sqlx::SqlitePool,
+    user_id: Uuid,
+    full_name: &str,
+) -> anyhow::Result<Uuid> {
+    let project_id = Uuid::new_v4();
+    let project_name = format!("{}'s Projects", full_name);
+    let git_repo_path = format!("/pcg/callers/{}", project_id);
+
+    sqlx::query(
+        r#"INSERT INTO projects (id, name, git_repo_path, created_at, updated_at)
+           VALUES (?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))"#,
+    )
+    .bind(project_id.as_bytes().as_slice())
+    .bind(&project_name)
+    .bind(&git_repo_path)
+    .execute(pool)
+    .await?;
+
+    // Add as owner in project_members
+    let member_id = Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO project_members (id, project_id, user_id, role)
+           VALUES (?, ?, ?, 'owner')"#,
+    )
+    .bind(member_id.as_bytes().as_slice())
+    .bind(project_id.as_bytes().as_slice())
+    .bind(user_id.as_bytes().as_slice())
+    .execute(pool)
+    .await?;
+
+    Ok(project_id)
+}
+
+// ---------------------------------------------------------------------------
+// PCG team phone recognition
+// ---------------------------------------------------------------------------
+
+/// Check if this phone number belongs to a PCG team member.
+///
+/// Reads `PCG_TEAM_PHONES` env var — comma-separated `phone:username` pairs, e.g.
+/// `PCG_TEAM_PHONES="+13059847801:admin,+15551112222:Sirak"`
+///
+/// Returns `(user_id, full_name, is_admin)` when found.
+async fn lookup_pcg_team_member(
+    pool: &sqlx::SqlitePool,
+    phone: &str,
+) -> Option<(Uuid, String, bool)> {
+    let mapping = std::env::var("PCG_TEAM_PHONES").unwrap_or_default();
+    if mapping.is_empty() {
+        return None;
+    }
+
+    // Find the username for this phone
+    let username = mapping
+        .split(',')
+        .filter_map(|entry| {
+            let mut parts = entry.trim().splitn(2, ':');
+            let p = parts.next()?.trim();
+            let u = parts.next()?.trim();
+            if p == phone.trim() { Some(u.to_string()) } else { None }
+        })
+        .next()?;
+
+    // Look up user in DB
+    let row: Option<(Vec<u8>, String, i64)> = sqlx::query_as(
+        "SELECT id, full_name, is_admin FROM users WHERE username = ? LIMIT 1",
+    )
+    .bind(&username)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    row.and_then(|(id_bytes, full_name, is_admin)| {
+        Uuid::from_slice(&id_bytes)
+            .ok()
+            .map(|uid| (uid, full_name, is_admin != 0))
+    })
+}
+
+/// Load a compact project + task summary for a PCG team member.
+/// Returns a JSON string suitable for inclusion in the LLM context.
+async fn build_pcg_team_context(pool: &sqlx::SqlitePool, user_id: Uuid) -> String {
+    // Load their projects (most recently updated first)
+    #[derive(sqlx::FromRow)]
+    struct ProjRow {
+        name: String,
+        description: Option<String>,
+    }
+
+    let projects: Vec<ProjRow> = sqlx::query_as(
+        r#"SELECT p.name, p.description
+           FROM projects p
+           JOIN project_members pm ON pm.project_id = p.id
+           WHERE pm.user_id = ?
+           ORDER BY p.updated_at DESC
+           LIMIT 8"#,
+    )
+    .bind(user_id.as_bytes().as_slice())
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    // Load their recent active tasks
+    #[derive(sqlx::FromRow)]
+    struct TaskRow {
+        title: String,
+        status: String,
+        project_name: String,
+    }
+
+    let tasks: Vec<TaskRow> = sqlx::query_as(
+        r#"SELECT t.title, t.status, p.name as project_name
+           FROM tasks t
+           JOIN projects p ON p.id = t.project_id
+           JOIN project_members pm ON pm.project_id = p.id
+           WHERE pm.user_id = ?
+             AND t.status NOT IN ('completed', 'cancelled', 'archived')
+           ORDER BY t.updated_at DESC
+           LIMIT 12"#,
+    )
+    .bind(user_id.as_bytes().as_slice())
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let projects_json: Vec<serde_json::Value> = projects
+        .iter()
+        .map(|p| json!({ "name": p.name, "description": p.description }))
+        .collect();
+
+    let tasks_json: Vec<serde_json::Value> = tasks
+        .iter()
+        .map(|t| json!({ "title": t.title, "status": t.status, "project": t.project_name }))
+        .collect();
+
+    json!({
+        "projects": projects_json,
+        "active_tasks": tasks_json,
+    })
+    .to_string()
+}
+
+/// Get a fallback project id (first project in DB).
+async fn get_fallback_project_id(pool: &sqlx::SqlitePool) -> Option<Uuid> {
+    let row: Option<(Vec<u8>,)> =
+        sqlx::query_as("SELECT id FROM projects ORDER BY created_at ASC LIMIT 1")
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+    row.and_then(|(bytes,)| Uuid::from_slice(&bytes).ok())
+}
+
+// ---------------------------------------------------------------------------
+// handle_incoming_call
+// ---------------------------------------------------------------------------
+
 /// Handle incoming call webhook from Twilio
 ///
 /// POST /api/twilio/voice
-///
-/// Twilio calls this endpoint when someone calls the configured phone number.
-/// Returns TwiML that greets the caller using NORA's voice and starts listening for speech.
 pub async fn handle_incoming_call(
-    State(_state): State<DeploymentImpl>,
+    State(deployment): State<DeploymentImpl>,
     Form(request): Form<TwilioCallRequest>,
 ) -> impl IntoResponse {
     info!(
@@ -196,14 +465,334 @@ pub async fn handle_incoming_call(
         }
     };
 
-    // Register the call with the handler
+    // Register the call with the in-memory handler
     if let Err(e) = handler.handle_incoming_call(request.clone()).await {
         error!("Error registering incoming call: {}", e);
     }
 
-    // Generate greeting audio using NORA's voice engine
-    let greeting = &handler.config().greeting_message;
-    let audio_result = generate_and_cache_audio(greeting, Some(request.call_sid.clone())).await;
+    let pool = &deployment.db().pool;
+
+    // ------------------------------------------------------------------
+    // 1. Check if this is a PCG team member (highest priority)
+    // ------------------------------------------------------------------
+    let twilio_caller_name = request.caller_name
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Unknown Caller")
+        .to_string();
+
+    let pcg_member = lookup_pcg_team_member(pool, &request.from).await;
+
+    // ------------------------------------------------------------------
+    // 2. Branch: PCG team vs external caller
+    // ------------------------------------------------------------------
+    enum CallerBranch {
+        PcgTeam {
+            user_id: Uuid,
+            full_name: String,
+            is_admin: bool,
+            project_id: Uuid,
+            team_context_json: String,
+            crm_contact_id: Uuid,
+        },
+        External {
+            contact: CrmContact,
+            project_id: Uuid,
+            caller_role: CallerRole,
+            previous_calls: usize,
+            previous_summaries: Vec<String>,
+        },
+    }
+
+    let branch = if let Some((user_id, full_name, is_admin)) = pcg_member {
+        // PCG team member calling
+        let project_id = {
+            let row: Option<(Vec<u8>,)> = sqlx::query_as(
+                "SELECT project_id FROM project_members WHERE user_id = ? ORDER BY granted_at DESC LIMIT 1"
+            )
+            .bind(user_id.as_bytes().as_slice())
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+            match row.and_then(|(b,)| Uuid::from_slice(&b).ok()) {
+                Some(pid) => pid,
+                None => get_fallback_project_id(pool).await.unwrap_or_else(Uuid::new_v4),
+            }
+        };
+
+        let team_context = build_pcg_team_context(pool, user_id).await;
+
+        // Ensure CRM contact exists for PCG team member (for call_log FK)
+        let crm_contact_id = {
+            match CrmContact::find_by_phone_global(pool, &request.from).await {
+                Ok(Some(c)) => c.id,
+                _ => {
+                    // Create internal CRM entry for the team member
+                    let first = full_name.split_whitespace().next().unwrap_or(&full_name).to_string();
+                    let last = full_name.split_whitespace().nth(1).map(|s| s.to_string());
+                    match CrmContact::create(pool, CreateCrmContact {
+                        project_id,
+                        first_name: Some(first),
+                        last_name: last,
+                        email: None,
+                        phone: Some(request.from.clone()),
+                        mobile: None,
+                        avatar_url: None,
+                        company_name: Some("Power Club Global".to_string()),
+                        job_title: if is_admin { Some("Administrator".to_string()) } else { Some("Team Member".to_string()) },
+                        department: None,
+                        linkedin_url: None,
+                        twitter_handle: None,
+                        website: None,
+                        source: Some(ContactSource::Manual),
+                        lifecycle_stage: Some(LifecycleStage::Customer),
+                        tags: Some(vec!["pcg-team".to_string()]),
+                        custom_fields: None,
+                        zoho_contact_id: None,
+                        gmail_contact_id: None,
+                    }).await {
+                        Ok(c) => c.id,
+                        Err(_) => Uuid::new_v4(),
+                    }
+                }
+            }
+        };
+
+        info!("PCG team member calling: {} (admin={}), project={}", full_name, is_admin, project_id);
+        CallerBranch::PcgTeam { user_id, full_name, is_admin, project_id, team_context_json: team_context, crm_contact_id }
+    } else {
+        // External caller — CRM lookup
+        let existing_contact = CrmContact::find_by_phone_global(pool, &request.from)
+            .await
+            .unwrap_or(None);
+
+        if let Some(contact) = existing_contact {
+            // Returning external client
+            let prev_logs = CallLog::find_by_crm_contact(pool, contact.id, 3)
+                .await
+                .unwrap_or_default();
+            let project_id = match prev_logs.first().map(|l| l.project_id) {
+                Some(pid) => pid,
+                None => get_fallback_project_id(pool).await.unwrap_or_else(Uuid::new_v4),
+            };
+            let call_count = prev_logs.len();
+            let summaries: Vec<String> = prev_logs.iter().filter_map(|l| l.summary.clone()).collect();
+            info!("Returning client {} ({} previous calls)", request.from, call_count);
+            CallerBranch::External {
+                contact,
+                project_id,
+                caller_role: CallerRole::ReturningClient,
+                previous_calls: call_count,
+                previous_summaries: summaries,
+            }
+        } else {
+            // New caller — create account + CRM
+            let (_user_id, project_id) = create_caller_account(pool, &request.from, &twilio_caller_name)
+                .await
+                .unwrap_or_else(|e| {
+                    error!("Failed to create caller account: {}", e);
+                    (Uuid::new_v4(), Uuid::new_v4())
+                });
+
+            let contact = match CrmContact::create(pool, CreateCrmContact {
+                project_id,
+                first_name: Some(twilio_caller_name.split_whitespace().next().unwrap_or(&twilio_caller_name).to_string()),
+                last_name: twilio_caller_name.split_whitespace().nth(1).map(|s| s.to_string()),
+                email: None,
+                phone: Some(request.from.clone()),
+                mobile: None,
+                avatar_url: None,
+                company_name: None,
+                job_title: None,
+                department: None,
+                linkedin_url: None,
+                twitter_handle: None,
+                website: None,
+                source: Some(ContactSource::Manual),
+                lifecycle_stage: Some(LifecycleStage::Lead),
+                tags: None,
+                custom_fields: None,
+                zoho_contact_id: None,
+                gmail_contact_id: None,
+            }).await {
+                Ok(c) => c,
+                Err(e) => {
+                    error!("Failed to create CRM contact: {}", e);
+                    let twiml = TwimlBuilder::new()
+                        .say_british("I apologise, we're experiencing a technical issue. Please call back in a moment.")
+                        .hangup()
+                        .build();
+                    return (StatusCode::OK, [("Content-Type", "application/xml")], twiml);
+                }
+            };
+
+            info!("New caller {} onboarded: contact={}, project={}", request.from, contact.id, project_id);
+            CallerBranch::External {
+                contact,
+                project_id,
+                caller_role: CallerRole::NewCaller,
+                previous_calls: 0,
+                previous_summaries: vec![],
+            }
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 3. Unpack branch into unified variables
+    // ------------------------------------------------------------------
+    let (caller_name, caller_role, pcg_user_id, project_id, crm_contact_id, pcg_team_context_json, caller_profile_json) = match branch {
+        CallerBranch::PcgTeam { user_id, full_name, is_admin, project_id, team_context_json, crm_contact_id } => {
+            let role = if is_admin { CallerRole::PcgAdmin } else { CallerRole::PcgTeam };
+            let profile = json!({
+                "caller_phone": request.from,
+                "caller_name": full_name,
+                "caller_role": if is_admin { "pcg_admin" } else { "pcg_team" },
+                "is_pcg_team": true,
+                "company": "Power Club Global",
+            }).to_string();
+            (full_name, role, Some(user_id), project_id, crm_contact_id, Some(team_context_json), profile)
+        }
+        CallerBranch::External { contact, project_id, caller_role, previous_calls, previous_summaries } => {
+            let name = contact.first_name.as_deref()
+                .map(|f| if let Some(l) = &contact.last_name {
+                    format!("{} {}", f, l)
+                } else {
+                    f.to_string()
+                })
+                .unwrap_or_else(|| twilio_caller_name.clone());
+            let is_new = caller_role == CallerRole::NewCaller;
+            let profile = json!({
+                "caller_phone": request.from,
+                "caller_name": name,
+                "caller_role": if is_new { "new_caller" } else { "returning_client" },
+                "is_pcg_team": false,
+                "company": contact.company_name,
+                "job_title": contact.job_title,
+                "lifecycle_stage": contact.lifecycle_stage,
+                "previous_calls": previous_calls,
+                "sponsored_call": is_new,
+                "previous_summaries": previous_summaries,
+            }).to_string();
+            (name, caller_role, None, project_id, contact.id, None, profile)
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 4. Create CallLog
+    // ------------------------------------------------------------------
+    let call_log = match CallLog::create(
+        pool,
+        CreateCallLog {
+            project_id,
+            call_sid: request.call_sid.clone(),
+            parent_call_sid: None,
+            account_sid: None,
+            from_number: request.from.clone(),
+            to_number: request.to.clone(),
+            from_formatted: None,
+            to_formatted: None,
+            caller_name: Some(caller_name.clone()),
+            direction: CallDirection::Inbound,
+            status: CallStatus::InProgress,
+            answered_by: None,
+            start_time: Some(Utc::now()),
+        },
+    )
+    .await
+    {
+        Ok(log) => {
+            let _ = CallLog::update(
+                pool,
+                log.id,
+                UpdateCallLog {
+                    crm_contact_id: Some(crm_contact_id),
+                    ..Default::default()
+                },
+            )
+            .await;
+            log
+        }
+        Err(e) => {
+            error!("Failed to create call log: {}", e);
+            let twiml = TwimlBuilder::new()
+                .say_british("I apologise, we're experiencing a technical issue logging this call. Please try again.")
+                .hangup()
+                .build();
+            return (StatusCode::OK, [("Content-Type", "application/xml")], twiml);
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 5. Get or create AgentConversation
+    // ------------------------------------------------------------------
+    let session_id = format!("twilio-{}", request.call_sid);
+
+    let nora_agent_id: Uuid = {
+        let row: Option<(Vec<u8>,)> =
+            sqlx::query_as("SELECT id FROM agents WHERE short_name = 'Nora' LIMIT 1")
+                .fetch_optional(pool)
+                .await
+                .unwrap_or(None);
+        row.and_then(|(bytes,)| Uuid::from_slice(&bytes).ok())
+            .unwrap_or_else(Uuid::new_v4)
+    };
+
+    let conversation = match AgentConversation::get_or_create(
+        pool,
+        nora_agent_id,
+        &session_id,
+        Some(project_id),
+    )
+    .await
+    {
+        Ok(conv) => conv,
+        Err(e) => {
+            error!("Failed to get/create AgentConversation: {}", e);
+            let twiml = TwimlBuilder::new()
+                .say_british("I apologise, I cannot start a conversation right now. Please try again.")
+                .hangup()
+                .build();
+            return (StatusCode::OK, [("Content-Type", "application/xml")], twiml);
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 6. Store in CALL_DB_CONTEXTS
+    // ------------------------------------------------------------------
+    {
+        let mut map = CALL_DB_CONTEXTS.lock().await;
+        map.insert(
+            request.call_sid.clone(),
+            CallDbContext {
+                call_log_id: call_log.id,
+                conversation_id: conversation.id,
+                crm_contact_id,
+                project_id,
+                caller_role: caller_role.clone(),
+                pcg_user_id,
+                caller_profile_json: caller_profile_json.clone(),
+                pcg_team_context_json: pcg_team_context_json.clone(),
+            },
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 7. Personalised greeting
+    // ------------------------------------------------------------------
+    let greeting = match &caller_role {
+        CallerRole::PcgAdmin | CallerRole::PcgTeam => {
+            let first = caller_name.split_whitespace().next().unwrap_or(&caller_name);
+            format!("Hello {}! How can I help you today?", first)
+        }
+        CallerRole::ReturningClient => {
+            let first = caller_name.split_whitespace().next().unwrap_or("there");
+            format!("Welcome back, {}! Lovely to hear from you again. How can I help you today?", first)
+        }
+        CallerRole::NewCaller => handler.config().greeting_message.clone(),
+    };
+
+    let audio_result = generate_and_cache_audio(&greeting, Some(request.call_sid.clone())).await;
 
     let speech_url = format!(
         "{}/api/twilio/speech?call_sid={}",
@@ -215,7 +804,6 @@ pub async fn handle_incoming_call(
         Ok(audio_id) => {
             let audio_url = build_audio_url(&handler.config().webhook_base_url, &audio_id);
             info!("Generated greeting audio: {} -> {}", audio_id, audio_url);
-
             TwimlBuilder::greeting_with_audio_and_gather(
                 &audio_url,
                 &speech_url,
@@ -223,10 +811,9 @@ pub async fn handle_incoming_call(
             )
         }
         Err(e) => {
-            // Fall back to Polly TTS if NORA voice fails
             warn!("NORA voice synthesis failed, falling back to Polly: {}", e);
             TwimlBuilder::greeting_with_gather(
-                greeting,
+                &greeting,
                 &speech_url,
                 &handler.config().speech_language,
             )
@@ -237,21 +824,23 @@ pub async fn handle_incoming_call(
     (StatusCode::OK, [("Content-Type", "application/xml")], twiml)
 }
 
+// ---------------------------------------------------------------------------
+// handle_speech_input
+// ---------------------------------------------------------------------------
+
 /// Handle speech input webhook from Twilio
 ///
 /// POST /api/twilio/speech
-///
-/// Twilio calls this endpoint after the caller speaks.
-/// Processes the speech through NORA and returns a TwiML response with NORA's voice.
 pub async fn handle_speech_input(
-    State(_state): State<DeploymentImpl>,
+    State(deployment): State<DeploymentImpl>,
     Query(params): Query<SpeechQueryParams>,
     Form(speech_result): Form<TwilioSpeechResult>,
 ) -> impl IntoResponse {
     let call_sid = params
         .call_sid
         .as_deref()
-        .unwrap_or(&speech_result.call_sid);
+        .unwrap_or(&speech_result.call_sid)
+        .to_string();
 
     info!(
         "Speech input for call {}: {:?}",
@@ -273,7 +862,7 @@ pub async fn handle_speech_input(
     let speech_text = match &speech_result.speech_result {
         Some(text) if !text.trim().is_empty() => text.clone(),
         _ => {
-            // No speech detected - generate "I didn't catch that" using NORA voice
+            // No speech detected
             let prompt = "I didn't catch that. Could you please repeat?";
             let speech_url = format!(
                 "{}/api/twilio/speech?call_sid={}",
@@ -281,7 +870,7 @@ pub async fn handle_speech_input(
                 call_sid
             );
 
-            let twiml = match generate_and_cache_audio(prompt, Some(call_sid.to_string())).await {
+            let twiml = match generate_and_cache_audio(prompt, Some(call_sid.clone())).await {
                 Ok(audio_id) => {
                     let audio_url = build_audio_url(&handler.config().webhook_base_url, &audio_id);
                     TwimlBuilder::new()
@@ -296,20 +885,17 @@ pub async fn handle_speech_input(
                         .redirect(&speech_url)
                         .build()
                 }
-                Err(_) => {
-                    // Fall back to Polly
-                    TwimlBuilder::new()
-                        .gather_speech(
-                            &speech_url,
-                            10,
-                            &handler.config().speech_language,
-                            None,
-                            Some(prompt),
-                        )
-                        .say_british("If you'd like to end the call, simply say goodbye.")
-                        .redirect(&speech_url)
-                        .build()
-                }
+                Err(_) => TwimlBuilder::new()
+                    .gather_speech(
+                        &speech_url,
+                        10,
+                        &handler.config().speech_language,
+                        None,
+                        Some(prompt),
+                    )
+                    .say_british("If you'd like to end the call, simply say goodbye.")
+                    .redirect(&speech_url)
+                    .build(),
             };
 
             return (StatusCode::OK, [("Content-Type", "application/xml")], twiml);
@@ -318,25 +904,111 @@ pub async fn handle_speech_input(
 
     // Get NORA session ID for this call
     let session_id = handler
-        .get_session_id(call_sid)
+        .get_session_id(&call_sid)
         .await
         .unwrap_or_else(|| format!("twilio-{}", Uuid::new_v4()));
 
-    // Get conversation context
+    // Get conversation context from the in-memory call handler (turn history)
     let context = handler
-        .get_call_state(call_sid)
+        .get_call_state(&call_sid)
         .await
         .map(|state| state.get_conversation_context());
 
-    // Process through NORA to get the response text
-    let nora_response = match process_with_nora(&speech_text, &session_id, context).await {
-        Ok(response) => response,
-        Err(e) => {
-            error!("Error processing with NORA: {}", e);
-            "I apologise, I'm having trouble processing your request. Could you please try again?"
-                .to_string()
-        }
+    // Retrieve CallDbContext for this call (if available)
+    let db_ctx = {
+        let map = CALL_DB_CONTEXTS.lock().await;
+        map.get(call_sid.as_str()).cloned()
     };
+
+    // Build caller-aware phone context
+    let phone_context = if let Some(ref ctx) = db_ctx {
+        let caller_profile: serde_json::Value =
+            serde_json::from_str(&ctx.caller_profile_json).unwrap_or_default();
+
+        match &ctx.caller_role {
+            CallerRole::PcgAdmin | CallerRole::PcgTeam => {
+                // Full orchestration context for PCG team
+                let team_data: serde_json::Value = ctx.pcg_team_context_json
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or_default();
+                json!({
+                    "source": "phone_call",
+                    "caller_type": "pcg_team",
+                    "caller": caller_profile,
+                    "pcg_work": team_data,
+                    "conversation_history": context.unwrap_or_default(),
+                    "instruction": "Keep responses to 2-3 SHORT sentences. Be direct and action-oriented. British English. When asked to create tasks or update projects, confirm what you will do."
+                })
+            }
+            CallerRole::ReturningClient => {
+                json!({
+                    "source": "phone_call",
+                    "caller_type": "returning_client",
+                    "caller": caller_profile,
+                    "conversation_history": context.unwrap_or_default(),
+                    "instruction": "Keep responses to 2-3 SHORT sentences. Be warm and professional. British English. Reference previous context where relevant."
+                })
+            }
+            CallerRole::NewCaller => {
+                json!({
+                    "source": "phone_call",
+                    "caller_type": "new_caller",
+                    "caller": caller_profile,
+                    "conversation_history": context.unwrap_or_default(),
+                    "instruction": "Keep responses to 2-3 SHORT sentences. Be warm and welcoming. British English. Help them understand what PCG can do for them."
+                })
+            }
+        }
+    } else {
+        json!({
+            "source": "phone_call",
+            "instruction": "This is a phone call. Keep your response to 1-2 SHORT sentences only. Be conversational and natural. Use British English.",
+            "conversation_history": context.unwrap_or_default()
+        })
+    };
+
+    // Process through NORA to get response text
+    let nora_response =
+        match process_with_nora(&speech_text, &session_id, Some(phone_context)).await {
+            Ok(response) => response,
+            Err(e) => {
+                error!("Error processing with NORA: {}", e);
+                "I apologise, I'm having trouble processing your request. Could you please try again?"
+                    .to_string()
+            }
+        };
+
+    // Persist messages to DB (fire-and-forget — don't block the response)
+    if let Some(ref ctx) = db_ctx {
+        let pool = deployment.db().pool.clone();
+        let conversation_id = ctx.conversation_id;
+        let speech_clone = speech_text.clone();
+        let response_clone = nora_response.clone();
+
+        tokio::spawn(async move {
+            if let Err(e) =
+                AgentConversationMessage::add_user_message(&pool, conversation_id, &speech_clone)
+                    .await
+            {
+                warn!("Failed to persist user message: {}", e);
+            }
+            if let Err(e) = AgentConversationMessage::add_assistant_message(
+                &pool,
+                conversation_id,
+                &response_clone,
+                Some("claude-sonnet-4-20250514"),
+                Some("anthropic"),
+                None,
+                None,
+                None,
+            )
+            .await
+            {
+                warn!("Failed to persist assistant message: {}", e);
+            }
+        });
+    }
 
     // Record the conversation in the call handler
     if let Err(e) = handler
@@ -362,7 +1034,7 @@ pub async fn handle_speech_input(
         || caller_text.contains("end call");
 
     // Generate audio using NORA's voice engine
-    let audio_result = generate_and_cache_audio(&nora_response, Some(call_sid.to_string())).await;
+    let audio_result = generate_and_cache_audio(&nora_response, Some(call_sid.clone())).await;
 
     let speech_url = format!(
         "{}/api/twilio/speech?call_sid={}",
@@ -389,7 +1061,6 @@ pub async fn handle_speech_input(
             }
         }
         Err(e) => {
-            // Fall back to Polly TTS
             warn!("NORA voice synthesis failed, falling back to Polly: {}", e);
             if is_goodbye {
                 TwimlBuilder::goodbye(&nora_response)
@@ -406,13 +1077,17 @@ pub async fn handle_speech_input(
     (StatusCode::OK, [("Content-Type", "application/xml")], twiml)
 }
 
+// ---------------------------------------------------------------------------
+// handle_call_status (formerly handle_status_callback)
+// ---------------------------------------------------------------------------
+
 /// Handle call status callback from Twilio
 ///
 /// POST /api/twilio/status
 ///
-/// Twilio calls this endpoint when the call status changes.
-pub async fn handle_status_callback(
-    State(_state): State<DeploymentImpl>,
+/// Finalises the CallLog, archives the AgentConversation, updates CRM.
+pub async fn handle_call_status(
+    State(deployment): State<DeploymentImpl>,
     Form(status): Form<TwilioStatusCallback>,
 ) -> impl IntoResponse {
     info!(
@@ -420,6 +1095,7 @@ pub async fn handle_status_callback(
         status.call_sid, status.call_status
     );
 
+    // Notify the in-memory handler
     if let Some(handler) = get_twilio_handler().await {
         if let Err(e) = handler
             .handle_status_update(&status.call_sid, &status.call_status, status.call_duration)
@@ -429,16 +1105,89 @@ pub async fn handle_status_callback(
         }
     }
 
-    // Clean up cached audio for completed calls
-    if status.call_status == "completed"
-        || status.call_status == "failed"
-        || status.call_status == "busy"
-        || status.call_status == "no-answer"
-    {
+    // Clean up cached audio
+    if matches!(
+        status.call_status.as_str(),
+        "completed" | "failed" | "busy" | "no-answer"
+    ) {
         let cache = get_audio_cache().await;
         cache.cleanup_call(&status.call_sid).await;
         info!("Cleaned up audio cache for call {}", status.call_sid);
     }
+
+    // Only do DB finalisation on completed calls
+    if status.call_status != "completed" {
+        return StatusCode::OK;
+    }
+
+    let pool = &deployment.db().pool;
+
+    // Retrieve and remove CallDbContext
+    let db_ctx = {
+        let mut map = CALL_DB_CONTEXTS.lock().await;
+        map.remove(status.call_sid.as_str())
+    };
+
+    let db_ctx = match db_ctx {
+        Some(ctx) => ctx,
+        None => {
+            warn!("No CallDbContext for completed call {}", status.call_sid);
+            return StatusCode::OK;
+        }
+    };
+
+    // Load all messages to build transcript
+    let messages =
+        AgentConversationMessage::find_recent(pool, db_ctx.conversation_id, 200)
+            .await
+            .unwrap_or_default();
+
+    let transcript = messages
+        .iter()
+        .map(|m| format!("[{}]: {}", m.role.to_uppercase(), m.content))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Finalise CallLog
+    let duration = status.call_duration.unwrap_or(0) as i32;
+    if let Err(e) = CallLog::update(
+        pool,
+        db_ctx.call_log_id,
+        UpdateCallLog {
+            status: Some(CallStatus::Completed),
+            end_time: Some(Utc::now()),
+            duration_seconds: Some(duration),
+            transcription: Some(transcript),
+            transcription_status: Some("completed".to_string()),
+            crm_contact_id: Some(db_ctx.crm_contact_id),
+            ..Default::default()
+        },
+    )
+    .await
+    {
+        warn!("Failed to finalise call log {}: {}", db_ctx.call_log_id, e);
+    }
+
+    // Archive AgentConversation
+    if let Err(e) = AgentConversation::update_status(
+        pool,
+        db_ctx.conversation_id,
+        ConversationStatus::Archived,
+    )
+    .await
+    {
+        warn!("Failed to archive conversation {}: {}", db_ctx.conversation_id, e);
+    }
+
+    // Update CRM last_contacted_at
+    if let Err(e) = CrmContact::record_contact_made(pool, db_ctx.crm_contact_id).await {
+        warn!("Failed to update CRM contact {}: {}", db_ctx.crm_contact_id, e);
+    }
+
+    info!(
+        "Call {} finalised: log={}, conversation={}, crm={}",
+        status.call_sid, db_ctx.call_log_id, db_ctx.conversation_id, db_ctx.crm_contact_id
+    );
 
     StatusCode::OK
 }
@@ -496,7 +1245,6 @@ pub async fn twilio_health(State(_state): State<DeploymentImpl>) -> impl IntoRes
                 None
             };
 
-            // Check if NORA voice is available
             let nora_voice_available = get_nora_instance()
                 .await
                 .map(|_| true)
@@ -518,56 +1266,169 @@ pub async fn twilio_health(State(_state): State<DeploymentImpl>) -> impl IntoRes
 }
 
 /// Maximum time for LLM to respond (leave time for TTS after)
-const LLM_TIMEOUT: Duration = Duration::from_secs(8);
+const LLM_TIMEOUT: Duration = Duration::from_secs(12);
 
-/// Process speech input with NORA
+/// System prompt for PCG team members — Nora as internal orchestrator
+const NORA_PCG_TEAM_SYSTEM: &str = "\
+You are Nora, PCG's Executive AI Assistant speaking with a member of the PCG team on a phone call. \
+You are their intelligent operations assistant — you know their projects, tasks, and boards.\
+
+You can help with: creating tasks, updating project status, checking what's in progress, \
+scheduling work, summarising project activity, capturing meeting notes, and orchestrating \
+agent workflows.\
+
+The caller's active projects and tasks will be provided in the context. Reference them naturally.\
+
+Rules:\
+- Keep every response to 2-3 SHORT sentences maximum\
+- Be direct and efficient — you're talking to a colleague\
+- Use British English\
+- When the caller asks you to do something (create a task, etc.), confirm: \"I'll create that task for you.\"\
+- If asked about your capabilities, explain you can orchestrate their PCG workspace by voice";
+
+/// System prompt for external callers — Nora as PCG representative
+const NORA_CLIENT_SYSTEM: &str = "\
+You are Nora, PCG's Executive AI Assistant. You are speaking on a phone call on behalf of \
+Power Club Global (PCG) — a premium AI-powered business platform that helps entrepreneurs, \
+executives, and growing teams run their operations with intelligent agents.\
+
+PCG's capabilities include: AI project management, autonomous agents that execute tasks, \
+CRM and client management, content creation, social media management, financial tracking \
+with VIBE tokens, team collaboration, and custom AI workflows.\
+
+Your role on this call is to represent PCG warmly and professionally — understand the caller's \
+goals, answer their questions, and help them see how PCG can help them. New callers can get \
+their own PCG environment and their own AI assistant (Topsi) to manage their work.\
+
+Rules for phone calls:\
+- Keep every response to 2-3 SHORT sentences maximum\
+- Be warm, natural, and conversational\
+- Use British English\
+- Never list more than 2-3 items at once — summarise instead\
+- If asked about capabilities, give a brief compelling overview then ask what they need help with";
+
+/// Process speech input by calling Anthropic directly — lean prompt, no context bloat
 async fn process_with_nora(
     speech_text: &str,
-    session_id: &str,
-    context: Option<String>,
+    _session_id: &str,
+    phone_context: Option<serde_json::Value>,
 ) -> Result<String, String> {
-    // Get NORA instance
-    let nora_instance = get_nora_instance()
-        .await
-        .map_err(|e| format!("NORA not available: {}", e))?;
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
+        .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
 
-    let instance = nora_instance.read().await;
-    let nora = instance
+    // Pick system prompt based on caller type
+    let caller_type = phone_context
         .as_ref()
-        .ok_or_else(|| "NORA not initialized".to_string())?;
+        .and_then(|ctx| ctx.get("caller_type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
 
-    // Build the request with context about it being a phone call
-    // Emphasize brevity to keep responses fast
-    let phone_context = json!({
-        "source": "phone_call",
-        "instruction": "IMPORTANT: This is a phone call with strict time limits. Keep your response to 1-2 SHORT sentences only. Be conversational and natural, but extremely concise. Use British English. Do not list items - summarise instead.",
-        "conversation_history": context.unwrap_or_default()
-    });
-
-    let request = NoraRequest {
-        request_id: Uuid::new_v4().to_string(),
-        session_id: session_id.to_string(),
-        request_type: NoraRequestType::VoiceInteraction,
-        content: speech_text.to_string(),
-        context: Some(phone_context),
-        voice_enabled: true, // Now using NORA's voice engine!
-        priority: RequestPriority::Normal,
-        timestamp: Utc::now(),
+    let system_prompt = if caller_type == "pcg_team" {
+        NORA_PCG_TEAM_SYSTEM
+    } else {
+        NORA_CLIENT_SYSTEM
     };
 
-    // Process the request with timeout
-    let process_future = nora.process_request(request);
-    let response = match timeout(LLM_TIMEOUT, process_future).await {
-        Ok(Ok(resp)) => resp,
-        Ok(Err(e)) => return Err(format!("NORA processing error: {}", e)),
+    // Build conversation messages
+    let mut messages = Vec::new();
+
+    // For PCG team: inject their project/task context
+    if caller_type == "pcg_team" {
+        if let Some(ctx) = &phone_context {
+            if let Some(work) = ctx.get("pcg_work") {
+                let work_str = serde_json::to_string_pretty(work).unwrap_or_default();
+                if !work_str.is_empty() && work_str != "null" {
+                    messages.push(json!({
+                        "role": "user",
+                        "content": format!("[Your current PCG workspace:\n{}]", work_str)
+                    }));
+                    messages.push(json!({
+                        "role": "assistant",
+                        "content": "I have your workspace context — projects and active tasks loaded."
+                    }));
+                }
+            }
+        }
+    }
+
+    // Include prior turn history if available
+    if let Some(ctx) = &phone_context {
+        if let Some(history) = ctx.get("conversation_history").and_then(|h| h.as_str()) {
+            if !history.is_empty() {
+                messages.push(json!({
+                    "role": "user",
+                    "content": format!("[Previous conversation context:\n{}]", history)
+                }));
+                messages.push(json!({
+                    "role": "assistant",
+                    "content": "Understood, I have the conversation context."
+                }));
+            }
+        }
+    }
+
+    // Caller info prefix
+    let caller_note = phone_context
+        .as_ref()
+        .and_then(|ctx| ctx.get("caller"))
+        .map(|c| {
+            let name = c.get("caller_name").and_then(|v| v.as_str()).unwrap_or("");
+            let role = c.get("caller_role").and_then(|v| v.as_str()).unwrap_or("");
+            if !name.is_empty() && name != "Unknown Caller" {
+                match role {
+                    "pcg_admin" => format!("[PCG Admin: {}] ", name),
+                    "pcg_team" => format!("[PCG Team: {}] ", name),
+                    "returning_client" => {
+                        let prev = c.get("previous_calls").and_then(|v| v.as_i64()).unwrap_or(0);
+                        format!("[Returning client: {}, {} previous calls] ", name, prev)
+                    }
+                    _ => format!("[New caller: {}] ", name),
+                }
+            } else {
+                String::new()
+            }
+        })
+        .unwrap_or_default();
+
+    messages.push(json!({
+        "role": "user",
+        "content": format!("{}{}", caller_note, speech_text)
+    }));
+
+    let body = json!({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 250,
+        "system": system_prompt,
+        "messages": messages
+    });
+
+    let client = reqwest::Client::new();
+    let fut = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send();
+
+    let resp = match timeout(LLM_TIMEOUT, fut).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return Err(format!("HTTP error: {}", e)),
         Err(_) => {
-            warn!("LLM timeout after {:?}, using fallback response", LLM_TIMEOUT);
-            return Ok("I'm still thinking about that. Could you ask me again in a simpler way?".to_string());
+            warn!("LLM timeout after {:?}", LLM_TIMEOUT);
+            return Ok("I'm just pulling that information up — could you give me one moment?".to_string());
         }
     };
 
-    // Return just the text content (we synthesize speech separately)
-    Ok(response.content)
+    let data: serde_json::Value = resp.json().await.map_err(|e| format!("JSON parse error: {}", e))?;
+
+    let text = data["content"][0]["text"]
+        .as_str()
+        .unwrap_or("I'm sorry, I didn't quite catch that. Could you say that again?")
+        .to_string();
+
+    Ok(text)
 }
 
 /// Safely truncate a string for logging (UTF-8 aware)
