@@ -63,6 +63,7 @@ pub mod social_post;
 pub mod social_mention;
 pub mod email_account;
 pub mod crm_activity;
+pub mod call_log;
 pub mod crm_contact;
 pub mod crm_deal;
 pub mod crm_pipeline;
