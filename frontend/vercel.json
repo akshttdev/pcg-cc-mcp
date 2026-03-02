@@ -1,5 +1,5 @@
 {
-  "buildCommand": "tsc && vite build",
+  "buildCommand": "vite build",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
