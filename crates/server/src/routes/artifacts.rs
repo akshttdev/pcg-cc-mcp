@@ -11,9 +11,22 @@ use deployment::Deployment;
 use serde_json::json;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
+use utils::assets::asset_dir;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
+
+/// Resolve a file_path from the database.
+/// If it's a relative path, resolve it against the asset directory (dev_assets/).
+/// If it's absolute, use it as-is.
+fn resolve_artifact_path(file_path: &str) -> std::path::PathBuf {
+    let p = std::path::Path::new(file_path);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        asset_dir().join(file_path)
+    }
+}
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
@@ -80,7 +93,7 @@ async fn get_artifact_file(
         return Err(ApiError::BadRequest("Invalid artifact file path".into()));
     }
 
-    let dir = std::path::Path::new(file_path);
+    let dir = resolve_artifact_path(file_path);
     let target = if dir.is_dir() {
         dir.join(&filename)
     } else {
@@ -128,15 +141,15 @@ async fn serve_artifact_content(
             return Err(ApiError::BadRequest("Invalid file path".into()));
         }
 
-        let path = std::path::Path::new(file_path);
+        let path = resolve_artifact_path(file_path);
 
         if path.is_file() {
-            let file = File::open(path).await?;
+            let file = File::open(&path).await?;
             let metadata = file.metadata().await?;
             let stream = ReaderStream::new(file);
             let body = Body::from_stream(stream);
 
-            let content_type = mime_guess::from_path(path)
+            let content_type = mime_guess::from_path(&path)
                 .first_or_octet_stream()
                 .to_string();
 
@@ -190,10 +203,10 @@ async fn serve_artifact_content(
 
     // Last resort: if file_path is a directory, list its contents
     if let Some(ref file_path) = artifact.file_path {
-        let path = std::path::Path::new(file_path);
+        let path = resolve_artifact_path(file_path);
         if path.is_dir() {
             let mut entries = Vec::new();
-            let mut read_dir = tokio::fs::read_dir(path).await?;
+            let mut read_dir = tokio::fs::read_dir(&path).await?;
             while let Some(entry) = read_dir.next_entry().await? {
                 let meta = entry.metadata().await?;
                 entries.push(json!({
