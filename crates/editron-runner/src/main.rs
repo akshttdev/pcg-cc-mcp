@@ -14,6 +14,9 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use tracing::{info, warn};
 
+#[cfg(feature = "dashboard")]
+mod dashboard;
+
 use services::services::beat_analysis::BeatAnalysisEngine;
 use services::services::editron::music::MusicLibrary;
 use services::services::recap_assembly::{EditTransition, RecapAssemblyEngine, RecapAssemblyResult};
@@ -78,6 +81,21 @@ struct Cli {
     /// When provided, logs recommended music criteria for the event type.
     #[arg(long)]
     event_type: Option<String>,
+
+    /// SQLite database path for PCG Dashboard registration (requires --features dashboard)
+    #[cfg(feature = "dashboard")]
+    #[arg(long)]
+    db_path: Option<String>,
+
+    /// Project UUID to associate artifacts with (requires --db-path)
+    #[cfg(feature = "dashboard")]
+    #[arg(long)]
+    project_id: Option<String>,
+
+    /// Existing task UUID to link artifacts to (creates new task if omitted)
+    #[cfg(feature = "dashboard")]
+    #[arg(long)]
+    task_id: Option<String>,
 }
 
 #[tokio::main]
@@ -500,6 +518,53 @@ async fn main() -> Result<()> {
         println!("║  MP4:    {:<40}║", mp4_path.display());
     }
     println!("╚══════════════════════════════════════════════════╝");
+
+    // ─── Dashboard Registration (optional) ───────────────────────────────────
+    #[cfg(feature = "dashboard")]
+    if let Some(ref db_path) = cli.db_path {
+        let project_id = cli.project_id.as_deref().unwrap_or_default();
+        if project_id.is_empty() {
+            warn!("--db-path given but --project-id missing; skipping dashboard registration");
+        } else {
+            let source_files = dashboard::collect_source_info(&cli.input).await;
+            let mut edit_infos = dashboard::collect_edit_info(&cli.output).await;
+
+            // Fill in duration from assembly result for the main output
+            for edit in &mut edit_infos {
+                if edit.filename == format!("{safe_name}.mp4") {
+                    edit.duration_seconds = assembly_result.duration;
+                }
+            }
+
+            let pipeline_result = dashboard::PipelineResult {
+                project_name: cli.name.clone(),
+                input_dir: cli.input.to_string_lossy().to_string(),
+                output_dir: cli.output.to_string_lossy().to_string(),
+                source_files,
+                edits: edit_infos,
+                duration_seconds: assembly_result.duration,
+                width: cli.width,
+                height: cli.height,
+                bpm: beat_grid.bpm,
+                clips_used: assembly_result.clips_used,
+                clips_available: assembly_result.clips_available,
+                beat_locked_cuts,
+                processing_time_ms: total_start.elapsed().as_millis() as u64,
+            };
+
+            match dashboard::register(
+                db_path,
+                project_id,
+                cli.task_id.as_deref(),
+                &pipeline_result,
+            )
+            .await
+            {
+                Ok(()) => info!("Dashboard registration complete"),
+                Err(e) => warn!("Dashboard registration failed (non-fatal): {}", e),
+            }
+        }
+    }
 
     Ok(())
 }
