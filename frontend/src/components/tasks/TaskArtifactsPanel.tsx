@@ -15,6 +15,7 @@ import {
   Eye,
   Pin,
   FolderOpen,
+  FileOutput,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
@@ -27,6 +28,7 @@ interface TaskArtifactsPanelProps {
   onUnpin?: (artifactId: string) => void;
   onDownload?: (artifact: ExecutionArtifact) => void;
   onPreview?: (artifact: ExecutionArtifact) => void;
+  onExportXml?: (artifact: ExecutionArtifact) => void;
   onUpload?: (file: File) => Promise<void>;
   onLinkAdd?: (url: string, name: string) => Promise<void>;
   className?: string;
@@ -60,12 +62,14 @@ function ArtifactCard({
   onPin,
   onDownload,
   onPreview,
+  onExportXml,
 }: {
   artifact: ExecutionArtifact;
   isPinned?: boolean;
   onPin?: () => void;
   onDownload?: () => void;
   onPreview?: () => void;
+  onExportXml?: () => void;
 }) {
   const metadata = artifact.metadata ? JSON.parse(artifact.metadata) : {};
   const phase = metadata.phase as ArtifactPhase | undefined;
@@ -79,7 +83,13 @@ function ArtifactCard({
     });
   };
 
-  const isPreviewable = ['screenshot', 'visual_brief', 'walkthrough', 'browser_recording'].includes(
+  const isPreviewable = [
+    'screenshot', 'visual_brief', 'walkthrough', 'browser_recording',
+    'media_ingest_manifest', 'media_analysis_report', 'video_edit_session',
+    'render_deliverable', 'research_report', 'strategy_document',
+  ].includes(artifact.artifact_type);
+
+  const isExportable = ['video_edit_session', 'render_deliverable'].includes(
     artifact.artifact_type
   );
 
@@ -120,13 +130,18 @@ function ArtifactCard({
           {/* Actions */}
           <div className="flex items-center gap-1">
             {isPreviewable && onPreview && (
-              <Button variant="ghost" size="icon" onClick={onPreview} className="h-7 w-7">
+              <Button variant="ghost" size="icon" onClick={onPreview} className="h-7 w-7" title="Preview">
                 <Eye className="h-3.5 w-3.5" />
               </Button>
             )}
-            {onDownload && artifact.file_path && (
-              <Button variant="ghost" size="icon" onClick={onDownload} className="h-7 w-7">
+            {onDownload && (artifact.file_path || artifact.content) && (
+              <Button variant="ghost" size="icon" onClick={onDownload} className="h-7 w-7" title="Download">
                 <Download className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {isExportable && onExportXml && (
+              <Button variant="ghost" size="icon" onClick={onExportXml} className="h-7 w-7" title="Export XML">
+                <FileOutput className="h-3.5 w-3.5" />
               </Button>
             )}
             {onPin && (
@@ -254,6 +269,7 @@ export function TaskArtifactsPanel({
   onUnpin,
   onDownload,
   onPreview,
+  onExportXml,
   onUpload,
   onLinkAdd,
   className,
@@ -314,6 +330,7 @@ export function TaskArtifactsPanel({
                   onPin={onUnpin ? () => onUnpin(artifact.id) : undefined}
                   onDownload={onDownload ? () => onDownload(artifact) : undefined}
                   onPreview={onPreview ? () => onPreview(artifact) : undefined}
+                  onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
                 />
               ))}
             </div>
@@ -352,6 +369,7 @@ export function TaskArtifactsPanel({
                   }
                   onDownload={onDownload ? () => onDownload(artifact) : undefined}
                   onPreview={onPreview ? () => onPreview(artifact) : undefined}
+                  onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
                 />
               ))
             )}
@@ -366,6 +384,7 @@ export function TaskArtifactsPanel({
                 onPin={onPin ? () => onPin(artifact.id) : undefined}
                 onDownload={onDownload ? () => onDownload(artifact) : undefined}
                 onPreview={onPreview ? () => onPreview(artifact) : undefined}
+                onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
               />
             ))}
             {groupedArtifacts.planning.length === 0 && (
@@ -384,6 +403,7 @@ export function TaskArtifactsPanel({
                 onPin={onPin ? () => onPin(artifact.id) : undefined}
                 onDownload={onDownload ? () => onDownload(artifact) : undefined}
                 onPreview={onPreview ? () => onPreview(artifact) : undefined}
+                onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
               />
             ))}
             {groupedArtifacts.execution.length === 0 && (
@@ -402,6 +422,7 @@ export function TaskArtifactsPanel({
                 onPin={onPin ? () => onPin(artifact.id) : undefined}
                 onDownload={onDownload ? () => onDownload(artifact) : undefined}
                 onPreview={onPreview ? () => onPreview(artifact) : undefined}
+                onExportXml={onExportXml ? () => onExportXml(artifact) : undefined}
               />
             ))}
             {groupedArtifacts.user.length === 0 && (

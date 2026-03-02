@@ -26,7 +26,7 @@ import { ArtifactGallery } from './ArtifactGallery';
 import { CollaborationTimeline } from './CollaborationTimeline';
 import { EnhancedWorkflowView } from './EnhancedWorkflowView';
 import { ActivityTimeline } from '../ActivityTimeline';
-import { agentFlowsApi, taskArtifactsApi, agentsApi } from '@/lib/api';
+import { agentFlowsApi, taskArtifactsApi, agentsApi, artifactContentApi } from '@/lib/api';
 import type { ExecutionArtifact as ApiExecutionArtifact } from '@/lib/api';
 import type { AgentChatRequest } from 'shared/types';
 
@@ -488,6 +488,38 @@ export function EnhancedTaskDetailsPanel({
       .finally(() => setWorkflowLoading(false));
   }, [task.id]);
 
+  // Artifact download handler
+  const handleArtifactDownload = useCallback((artifact: ExecutionArtifact) => {
+    // For video/render types, try to download the actual media file
+    if (['render_deliverable', 'video_edit_session'].includes(artifact.artifact_type) && artifact.content) {
+      try {
+        const data = JSON.parse(artifact.content);
+        const files = data.deliverables || data.edits || [];
+        if (files.length > 0) {
+          const file = files[0].file || files[0].path?.split('/').pop();
+          if (file) {
+            const a = document.createElement('a');
+            a.href = artifactContentApi.getFileUrl(artifact.id, file);
+            a.download = file;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            return;
+          }
+        }
+      } catch { /* fall through */ }
+    }
+    // Fallback: download the JSON content
+    const a = document.createElement('a');
+    a.href = artifactContentApi.getDownloadUrl(artifact.id);
+    a.download = '';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, []);
+
   // Tab counts
   const artifactCount = artifacts.length;
   const eventCount = workflowEvents.length;
@@ -612,6 +644,7 @@ export function EnhancedTaskDetailsPanel({
                     artifacts={artifacts.slice(0, 6)}
                     defaultView="grid"
                     showHeader={false}
+                    onDownload={handleArtifactDownload}
                     className="border-0 shadow-none"
                   />
                 )}
@@ -701,6 +734,7 @@ export function EnhancedTaskDetailsPanel({
             <ArtifactGallery
               artifacts={artifacts}
               className="h-full"
+              onDownload={handleArtifactDownload}
               onUpload={async () => {
                 // TODO: Implement file upload
               }}

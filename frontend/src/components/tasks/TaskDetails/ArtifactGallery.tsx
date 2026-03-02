@@ -27,6 +27,7 @@ import {
   Video,
   File,
   Plus,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ArtifactPreviewCard } from '../ArtifactPreviewCard';
@@ -60,6 +61,10 @@ const typeIcons: Partial<Record<ArtifactType, React.ReactNode>> = {
   research_report: <FileText className="h-4 w-4 text-emerald-500" />,
   strategy_document: <FileText className="h-4 w-4 text-amber-500" />,
   content_draft: <FileText className="h-4 w-4 text-cyan-500" />,
+  media_ingest_manifest: <Upload className="h-4 w-4 text-green-500" />,
+  media_analysis_report: <FileText className="h-4 w-4 text-orange-500" />,
+  video_edit_session: <Video className="h-4 w-4 text-blue-500" />,
+  render_deliverable: <Video className="h-4 w-4 text-red-500" />,
 };
 
 // Phase colors
@@ -73,7 +78,7 @@ function ArtifactListItem({
   artifact,
   isPinned,
   onPin,
-  onDownload: _onDownload,
+  onDownload,
 }: {
   artifact: ExecutionArtifact;
   isPinned?: boolean;
@@ -143,6 +148,20 @@ function ArtifactListItem({
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
+        {onDownload && (artifact.file_path || artifact.content) && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            title="Download"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDownload();
+            }}
+          >
+            <Download className="h-3.5 w-3.5" />
+          </Button>
+        )}
         {onPin && (
           <Button
             variant="ghost"
