@@ -35,7 +35,7 @@ const MODEL_PRICING: Record<string, { input: number; output: number; display: st
 };
 
 // VIBE token value
-const VIBE_USD_VALUE = 0.001; // 1 VIBE = $0.001
+const VIBE_USD_VALUE = 0.01; // 1 VIBE = $0.01
 
 function getModelPricing(modelName: string | null) {
   if (!modelName) return null;

@@ -14,6 +14,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use db::models::agent_conversation::{AgentConversation, AgentConversationMessage};
 use db::models::project::Project;
+use sqlx;
 use deployment::Deployment;
 use futures::stream::Stream;
 use cinematics::{CinematicsConfig, CinematicsService};
@@ -36,7 +37,10 @@ use tokio::sync::{broadcast, RwLock};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::rate_limit::TokenBucket};
+use db::models::vibe_transaction::VibeSourceType;
+use services::services::vibe_pricing::VibePricingService;
+
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext, middleware::rate_limit::TokenBucket};
 
 /// Global Nora agent instance
 static NORA_INSTANCE: tokio::sync::OnceCell<Arc<RwLock<Option<NoraAgent>>>> =
@@ -438,6 +442,8 @@ pub struct ChatRequest {
     pub priority: Option<RequestPriority>,
     pub context: Option<serde_json::Value>,
     pub stream: Option<bool>,
+    /// Project to bill VIBE usage against
+    pub project_id: Option<Uuid>,
 }
 
 /// Voice synthesis request
@@ -1054,7 +1060,8 @@ pub async fn clear_cache(
 
 /// Chat with Nora
 pub async fn chat_with_nora(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
     request_id: Option<axum::extract::Extension<crate::middleware::RequestId>>,
     Json(request): Json<ChatRequest>,
 ) -> Result<Json<NoraResponse>, ApiError> {
@@ -1070,6 +1077,46 @@ pub async fn chat_with_nora(
     }
 
     tracing::info!("Received chat request: {:?}", request.message);
+
+    let pool = state.db().pool.clone();
+
+    // Resolve project to bill against
+    let billing_project_id = match request.project_id {
+        Some(pid) => Some(pid),
+        None => {
+            // Fall back to user's home project
+            let home: Option<Vec<u8>> = sqlx::query_scalar(
+                "SELECT home_project_id FROM users WHERE id = ?",
+            )
+            .bind(access_ctx.user_id.as_bytes().as_slice())
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten();
+            home.and_then(|bytes| Uuid::from_slice(&bytes).ok())
+        }
+    };
+
+    // VIBE Balance Check
+    if let Some(project_id) = billing_project_id {
+        let vibe_pricing = VibePricingService::new(pool.clone());
+        if let Ok(Some(project)) = Project::find_by_id(&pool, project_id).await {
+            if let Some(budget_limit) = project.vibe_budget_limit {
+                let estimate = vibe_pricing.estimate_cost(
+                    "claude-sonnet-4-20250514", 2000, 500
+                ).await.ok();
+                if let Some(est) = estimate {
+                    let remaining = budget_limit - project.vibe_spent_amount;
+                    if remaining < est.cost_vibe {
+                        return Err(ApiError::PaymentRequired(format!(
+                            "Insufficient VIBE balance. Remaining: {} VIBE (~${:.2}), Estimated cost: {} VIBE",
+                            remaining, remaining as f64 * 0.01, est.cost_vibe
+                        )));
+                    }
+                }
+            }
+        }
+    }
 
     // Get request ID from middleware or generate new one
     let req_id = request_id
@@ -1120,12 +1167,36 @@ pub async fn chat_with_nora(
 
     crate::nora_metrics::record_request("chat", priority_str);
     tracing::info!("Request processed successfully");
+
+    // Record VIBE cost
+    if let Some(project_id) = billing_project_id {
+        // Use actual tokens if available, otherwise estimate (2000 input, 500 output)
+        let input_tokens = response.input_tokens.unwrap_or(2000);
+        let output_tokens = response.output_tokens.unwrap_or(500);
+        if input_tokens > 0 || output_tokens > 0 {
+            let vibe_pricing = VibePricingService::new(pool.clone());
+            match vibe_pricing.record_llm_usage(
+                VibeSourceType::Project, project_id,
+                "claude-sonnet-4-20250514",
+                input_tokens, output_tokens,
+                None, None, None,
+            ).await {
+                Ok(tx) => {
+                    let _ = Project::adjust_vibe_spent(&pool, project_id, tx.amount_vibe).await;
+                    tracing::info!("[VIBE] Nora recorded {} VIBE for project {}", tx.amount_vibe, project_id);
+                }
+                Err(e) => tracing::error!("[VIBE] Failed to record Nora usage: {}", e),
+            }
+        }
+    }
+
     Ok(Json(response))
 }
 
 /// Chat with Nora using streaming (SSE)
 pub async fn chat_with_nora_stream(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
     request_id: Option<axum::extract::Extension<crate::middleware::RequestId>>,
     Json(request): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError> {
@@ -1143,6 +1214,45 @@ pub async fn chat_with_nora_stream(
     }
 
     tracing::info!("Received streaming chat request: {:?}", request.message);
+
+    let pool = state.db().pool.clone();
+
+    // Resolve project to bill against
+    let billing_project_id = match request.project_id {
+        Some(pid) => Some(pid),
+        None => {
+            let home: Option<Vec<u8>> = sqlx::query_scalar(
+                "SELECT home_project_id FROM users WHERE id = ?",
+            )
+            .bind(access_ctx.user_id.as_bytes().as_slice())
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten();
+            home.and_then(|bytes| Uuid::from_slice(&bytes).ok())
+        }
+    };
+
+    // VIBE Balance Check
+    if let Some(project_id) = billing_project_id {
+        let vibe_pricing = VibePricingService::new(pool.clone());
+        if let Ok(Some(project)) = Project::find_by_id(&pool, project_id).await {
+            if let Some(budget_limit) = project.vibe_budget_limit {
+                let estimate = vibe_pricing.estimate_cost(
+                    "claude-sonnet-4-20250514", 2000, 500
+                ).await.ok();
+                if let Some(est) = estimate {
+                    let remaining = budget_limit - project.vibe_spent_amount;
+                    if remaining < est.cost_vibe {
+                        return Err(ApiError::PaymentRequired(format!(
+                            "Insufficient VIBE balance. Remaining: {} VIBE (~${:.2}), Estimated cost: {} VIBE",
+                            remaining, remaining as f64 * 0.01, est.cost_vibe
+                        )));
+                    }
+                }
+            }
+        }
+    }
 
     // Get request ID from middleware or generate new one
     let _req_id = request_id

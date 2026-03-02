@@ -577,7 +577,7 @@ impl AptosService {
         // VIBE has 8 decimals (same as APT)
         let vibe_balance = vibe_raw / 100_000_000; // Convert from smallest unit to whole VIBE
         let vibe_balance_human = vibe_raw as f64 / 100_000_000.0;
-        let usd_value = vibe_balance_human * 0.001; // 1 VIBE = $0.001
+        let usd_value = vibe_balance_human * 0.01; // 1 VIBE = $0.01
 
         // Calculate equivalent APT (for reference only)
         let equivalent_apt = vibe_balance_human / APT_TO_VIBE_RATE as f64;
@@ -793,7 +793,7 @@ impl AptosService {
 
     /// Get the VIBE to USD conversion rate
     pub fn vibe_usd_rate() -> f64 {
-        0.001 // 1 VIBE = $0.001
+        0.01 // 1 VIBE = $0.01
     }
 
     /// Get current ledger timestamp

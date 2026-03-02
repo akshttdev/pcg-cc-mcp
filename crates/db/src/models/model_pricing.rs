@@ -13,8 +13,8 @@ pub enum ModelPricingError {
     NotFound(String, String),
 }
 
-/// VIBE token value in USD
-pub const VIBE_USD_VALUE: f64 = 0.001;
+/// VIBE token value in USD (1 VIBE = $0.01)
+pub const VIBE_USD_VALUE: f64 = 0.01;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -126,7 +126,7 @@ impl ModelPricing {
         // Convert to USD
         let cost_usd = total_cents as f64 / 100.0;
 
-        // Convert to VIBE (1 VIBE = $0.001)
+        // Convert to VIBE (1 VIBE = $0.01)
         let cost_vibe = (cost_usd / VIBE_USD_VALUE).ceil() as i64;
 
         CostEstimate {

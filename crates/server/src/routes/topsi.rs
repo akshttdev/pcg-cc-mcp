@@ -24,10 +24,14 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use deployment::Deployment;
+use db::models::project::Project;
+use sqlx;
 use db::models::task_attempt::{CreateTaskAttempt, TaskAttempt};
+use db::models::vibe_transaction::VibeSourceType;
 use executors::executors::BaseCodingAgent;
 use executors::profile::ExecutorProfileId;
 use services::services::container::ContainerService;
+use services::services::vibe_pricing::VibePricingService;
 
 // Import voice types from Nora
 use nora::voice::{
@@ -35,7 +39,7 @@ use nora::voice::{
     tts::VoiceProfile,
 };
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 /// Bridge between Topsi and the Deployment layer for task execution
 struct DeploymentBridge {
@@ -561,10 +565,50 @@ pub async fn get_topsi_status(
 /// Chat with Topsi
 pub async fn chat_with_topsi(
     State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
     headers: axum::http::HeaderMap,
     Json(request): Json<TopsiChatRequest>,
 ) -> Result<Json<TopsiResponse>, ApiError> {
     tracing::info!("Received chat request: {:?}", request.message);
+
+    let pool = state.db().pool.clone();
+
+    // Resolve project to bill against
+    let billing_project_id = match request.project_id {
+        Some(pid) => Some(pid),
+        None => {
+            let home: Option<Vec<u8>> = sqlx::query_scalar(
+                "SELECT home_project_id FROM users WHERE id = ?",
+            )
+            .bind(access_ctx.user_id.as_bytes().as_slice())
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten();
+            home.and_then(|bytes| Uuid::from_slice(&bytes).ok())
+        }
+    };
+
+    // VIBE Balance Check
+    if let Some(project_id) = billing_project_id {
+        let vibe_pricing = VibePricingService::new(pool.clone());
+        if let Ok(Some(project)) = Project::find_by_id(&pool, project_id).await {
+            if let Some(budget_limit) = project.vibe_budget_limit {
+                let estimate = vibe_pricing.estimate_cost(
+                    "claude-sonnet-4-20250514", 2000, 500
+                ).await.ok();
+                if let Some(est) = estimate {
+                    let remaining = budget_limit - project.vibe_spent_amount;
+                    if remaining < est.cost_vibe {
+                        return Err(ApiError::PaymentRequired(format!(
+                            "Insufficient VIBE balance. Remaining: {} VIBE (~${:.2}), Estimated cost: {} VIBE",
+                            remaining, remaining as f64 * 0.01, est.cost_vibe
+                        )));
+                    }
+                }
+            }
+        }
+    }
 
     let topsi_instance = get_topsi_instance().await?;
     let instance = topsi_instance.read().await;
@@ -594,6 +638,27 @@ pub async fn chat_with_topsi(
             tracing::error!("Topsi processing error: {}", e);
             ApiError::InternalError(format!("Topsi processing failed: {}", e))
         })?;
+
+    // Record VIBE cost
+    if let Some(project_id) = billing_project_id {
+        let input_tokens = response.input_tokens.unwrap_or(0);
+        let output_tokens = response.output_tokens.unwrap_or(0);
+        if input_tokens > 0 || output_tokens > 0 {
+            let vibe_pricing = VibePricingService::new(pool.clone());
+            match vibe_pricing.record_llm_usage(
+                VibeSourceType::Project, project_id,
+                "claude-sonnet-4-20250514",
+                input_tokens, output_tokens,
+                None, None, None,
+            ).await {
+                Ok(tx) => {
+                    let _ = Project::adjust_vibe_spent(&pool, project_id, tx.amount_vibe).await;
+                    tracing::info!("[VIBE] Topsi recorded {} VIBE for project {}", tx.amount_vibe, project_id);
+                }
+                Err(e) => tracing::error!("[VIBE] Failed to record Topsi usage: {}", e),
+            }
+        }
+    }
 
     Ok(Json(response))
 }

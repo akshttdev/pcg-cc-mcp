@@ -394,7 +394,14 @@ impl TopsiAgent {
             .await
             .map_err(|e| TopsiError::LLMError(format!("LLM request failed: {}", e)))?;
 
-        for iteration in 0..15 {
+        // Token budget guard: stop when cumulative tokens exceed this threshold.
+        // At Claude Sonnet 4 pricing (~$3/M in + $15/M out), 200k tokens ≈ $3.60 worst case.
+        // This replaces the old hard iteration cap — the agent can reason as long as it needs
+        // but won't run away on cost if something goes wrong.
+        const MAX_TOTAL_TOKENS: i64 = 200_000;
+
+        let mut iteration: u32 = 0;
+        loop {
             match response {
                 LLMResponse::Text { content, usage } => {
                     // Final text answer — return to user
@@ -403,9 +410,11 @@ impl TopsiAgent {
                         total_output_tokens += u.output_tokens as i64;
                     }
                     tracing::info!(
-                        "[TOPSI] LLM returned text response after {} iterations ({} chars)",
+                        "[TOPSI] LLM returned text response after {} iterations ({} chars, {}+{} tokens)",
                         iteration,
-                        content.len()
+                        content.len(),
+                        total_input_tokens,
+                        total_output_tokens,
                     );
                     final_message = Some(content);
                     break;
@@ -416,9 +425,11 @@ impl TopsiAgent {
                         total_output_tokens += u.output_tokens as i64;
                     }
                     tracing::info!(
-                        "[TOPSI] Iteration {}: LLM requested {} tool calls",
+                        "[TOPSI] Iteration {}: LLM requested {} tool calls ({}+{} tokens cumulative)",
                         iteration,
-                        calls.len()
+                        calls.len(),
+                        total_input_tokens,
+                        total_output_tokens,
                     );
 
                     // Execute each tool call
@@ -458,6 +469,18 @@ impl TopsiAgent {
                         break;
                     }
 
+                    // Token budget check — stop before the next LLM call would blow budget
+                    if total_input_tokens + total_output_tokens >= MAX_TOTAL_TOKENS {
+                        tracing::warn!(
+                            "[TOPSI] Token budget exhausted after {} iterations ({}+{} = {} tokens)",
+                            iteration,
+                            total_input_tokens,
+                            total_output_tokens,
+                            total_input_tokens + total_output_tokens,
+                        );
+                        break;
+                    }
+
                     // Feed results back to LLM for next reasoning step
                     response = llm
                         .continue_with_tool_results_and_history(
@@ -478,12 +501,13 @@ impl TopsiAgent {
                         })?;
                 }
             }
+            iteration += 1;
         }
 
         // Resolve the final message
         let final_msg = final_message.unwrap_or_else(|| {
-            // Max iterations reached — return what we have
-            tracing::warn!("[TOPSI] Agentic loop hit max iterations (15)");
+            // Token budget exhausted — return best partial result we have
+            tracing::warn!("[TOPSI] Agentic loop ended without final message ({}+{} tokens used)", total_input_tokens, total_output_tokens);
             all_tool_calls
             .iter()
             .find(|r| r.tool_name == "respond_to_user" && r.success)
