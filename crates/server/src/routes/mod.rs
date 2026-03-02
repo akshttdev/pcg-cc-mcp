@@ -138,6 +138,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(sidebar::router(&deployment))
         .merge(knowledge::router(&deployment))
         .merge(workflow_templates::router(&deployment))
+        .merge(nora::nora_routes())
+        .merge(topsi::topsi_routes())
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -157,7 +159,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(filesystem::router())
         .merge(events::router(&deployment))
         .nest("/images", images::routes())
-        .merge(nora::nora_routes())
         .merge(cinematics::router(&deployment))
         .merge(twilio::twilio_routes())
         .merge(activity::router())
@@ -180,7 +181,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))
         .merge(model_pricing::router(&deployment))
-        .merge(topsi::topsi_routes())
         .merge(orcha::orcha_routes())
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))

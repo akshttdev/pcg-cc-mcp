@@ -623,7 +623,7 @@ impl PcgRepl {
                 "  {} {} VIBE (${:.2} USD)",
                 "VIBE Cost:".dimmed(),
                 format_num(metrics.total_vibe_cost),
-                metrics.total_vibe_cost as f64 * 0.001
+                metrics.total_vibe_cost as f64 * 0.01
             );
             println!(
                 "  {} {}",
@@ -696,7 +696,7 @@ impl PcgRepl {
                         0, // commits - would need git integration
                         report.total_tokens,
                         report.total_vibe_cost,
-                        report.total_vibe_cost as f64 * 0.001,
+                        report.total_vibe_cost as f64 * 0.01,
                         &tasks,
                     );
 

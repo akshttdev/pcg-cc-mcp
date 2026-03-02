@@ -95,7 +95,22 @@ impl UserOnboardingService {
             }
         };
 
-        // 4. Create Orcha agent for user
+        // 4. Set initial VIBE budget on home project (500 VIBE = $5.00 welcome credit)
+        const INITIAL_VIBE_BUDGET: i64 = 500;
+        sqlx::query(
+            "UPDATE projects SET vibe_budget_limit = ?, vibe_spent_amount = 0 WHERE id = ?",
+        )
+        .bind(INITIAL_VIBE_BUDGET)
+        .bind(home_project_id.as_bytes().as_slice())
+        .execute(pool)
+        .await?;
+
+        info!(
+            "Granted {} VIBE welcome budget to project {}",
+            INITIAL_VIBE_BUDGET, home_project_id
+        );
+
+        // 5. Create Orcha agent for user
         let orcha = AgentRegistryService::get_or_create_user_orcha(pool, user_id).await?;
 
         info!(

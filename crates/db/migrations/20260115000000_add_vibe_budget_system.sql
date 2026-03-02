@@ -12,7 +12,7 @@ CREATE TABLE vibe_transactions (
     -- Source of deduction (agent wallet or project)
     source_type TEXT NOT NULL CHECK(source_type IN ('agent', 'project')),
     source_id BLOB NOT NULL,
-    -- Amount in VIBE units (1 VIBE = $0.001 USD)
+    -- Amount in VIBE units (1 VIBE = $0.01 USD)
     amount_vibe INTEGER NOT NULL,
     -- Token usage details
     input_tokens INTEGER,

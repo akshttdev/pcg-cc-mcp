@@ -245,7 +245,7 @@ export function AgentSettings() {
   // Format VIBE amount with USD equivalent
   const formatVibeAmount = useCallback(
     (vibe: number) => {
-      const usdValue = vibe * 0.001; // 1 VIBE = $0.001
+      const usdValue = vibe * 0.01; // 1 VIBE = $0.01
       return (
         <span title={`$${usdValue.toFixed(4)} USD`}>
           {numberFormatter.format(vibe)}
@@ -734,19 +734,19 @@ export function AgentSettings() {
                 </div>
                 {/* VIBE Budget Stats */}
                 <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
-                  <div className="text-xs font-medium text-primary mb-2">VIBE Budget (1 VIBE = $0.001)</div>
+                  <div className="text-xs font-medium text-primary mb-2">VIBE Budget (1 VIBE = $0.01)</div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Budget limit</span>
                     <span className="font-medium text-primary">
                       {currentWallet.vibe_budget_limit != null
-                        ? `${formatAmount(currentWallet.vibe_budget_limit)} (~$${(currentWallet.vibe_budget_limit * 0.001).toFixed(2)})`
+                        ? `${formatAmount(currentWallet.vibe_budget_limit)} (~$${(currentWallet.vibe_budget_limit * 0.01).toFixed(2)})`
                         : 'Unlimited'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Spent</span>
                     <span className="font-medium">
-                      {formatAmount(currentWallet.vibe_spent_amount)} (~${(currentWallet.vibe_spent_amount * 0.001).toFixed(2)})
+                      {formatAmount(currentWallet.vibe_spent_amount)} (~${(currentWallet.vibe_spent_amount * 0.01).toFixed(2)})
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -760,7 +760,7 @@ export function AgentSettings() {
                       }
                     >
                       {currentWallet.vibe_budget_limit != null
-                        ? `${formatAmount(currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount)} (~$${((currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount) * 0.001).toFixed(2)})`
+                        ? `${formatAmount(currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount)} (~$${((currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount) * 0.01).toFixed(2)})`
                         : 'Unlimited'}
                     </span>
                   </div>

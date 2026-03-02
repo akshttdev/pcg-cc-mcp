@@ -91,7 +91,7 @@ pub async fn record_editron_vibe(
     operation_type: &str,
     extra_metadata: Value,
 ) -> Result<VibeTransaction, Box<dyn std::error::Error + Send + Sync>> {
-    let cost_cents = (amount as f64 * 0.1) as i64; // 1 VIBE = $0.001 → cents = amount / 10
+    let cost_cents = amount; // 1 VIBE = $0.01 → 1 VIBE = 1 cent
 
     let tx = VibeTransaction::create(
         pool,

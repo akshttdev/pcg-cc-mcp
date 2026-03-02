@@ -483,7 +483,7 @@ export function ProjectsSettings() {
                   min="0"
                 />
                 <p className="text-xs text-muted-foreground">
-                  1 VIBE ≈ $0.001 USD. Set the maximum VIBE this project can spend on AI operations.
+                  1 VIBE = $0.01 USD. Set the maximum VIBE this project can spend on AI operations.
                 </p>
               </div>
             )}

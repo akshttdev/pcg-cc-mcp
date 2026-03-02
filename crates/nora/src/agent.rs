@@ -127,6 +127,10 @@ pub struct NoraResponse {
     pub context_updates: Vec<ContextUpdate>,
     pub timestamp: DateTime<Utc>,
     pub processing_time_ms: u64,
+    /// Token usage for VIBE billing
+    pub input_tokens: Option<i64>,
+    /// Token usage for VIBE billing
+    pub output_tokens: Option<i64>,
 }
 
 /// Types of responses from Nora
@@ -456,6 +460,8 @@ impl NoraAgent {
             context_updates,
             timestamp: Utc::now(),
             processing_time_ms: processing_time,
+            input_tokens: None,
+            output_tokens: None,
         })
     }
 

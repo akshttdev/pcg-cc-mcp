@@ -226,7 +226,7 @@ pub async fn show_cost(api: &ApiClient, _session: Option<&str>) -> Result<()> {
         "  {} {} VIBE (${:.2} USD)",
         "Total VIBE Spent:".bright_white(),
         format_num(total_vibe),
-        total_vibe as f64 * 0.001
+        total_vibe as f64 * 0.01
     );
     println!();
 

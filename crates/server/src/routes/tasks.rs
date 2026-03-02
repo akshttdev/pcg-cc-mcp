@@ -270,7 +270,7 @@ pub async fn create_task_and_start(
                 "Project VIBE budget exceeded. Remaining: {} VIBE, Required: {} VIBE (~${})",
                 remaining,
                 ESTIMATED_VIBE_COST,
-                ESTIMATED_VIBE_COST as f64 * 0.001
+                ESTIMATED_VIBE_COST as f64 * 0.01
             )));
         }
     }
@@ -287,7 +287,7 @@ pub async fn create_task_and_start(
                 "Agent VIBE budget exceeded. Remaining: {} VIBE, Required: {} VIBE (~${})",
                 remaining,
                 ESTIMATED_VIBE_COST,
-                ESTIMATED_VIBE_COST as f64 * 0.001
+                ESTIMATED_VIBE_COST as f64 * 0.01
             )));
         }
 
