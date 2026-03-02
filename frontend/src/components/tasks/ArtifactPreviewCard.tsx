@@ -12,7 +12,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   FileText,
   Image,
-  Video,
   Play,
   X,
   Download,
@@ -23,6 +22,7 @@ import {
   User,
 } from 'lucide-react';
 import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
+import { artifactContentApi } from '@/lib/api';
 
 interface ArtifactPreviewCardProps {
   artifact: ExecutionArtifact;
@@ -34,8 +34,8 @@ interface ArtifactPreviewCardProps {
 
 // Artifact type categories
 const visualTypes: ArtifactType[] = ['screenshot', 'visual_brief', 'platform_screenshot'];
-const documentTypes: ArtifactType[] = ['research_report', 'strategy_document', 'content_draft', 'content_calendar', 'competitor_analysis', 'plan'];
-const mediaTypes: ArtifactType[] = ['walkthrough', 'browser_recording'];
+const documentTypes: ArtifactType[] = ['research_report', 'strategy_document', 'content_draft', 'content_calendar', 'competitor_analysis', 'plan', 'media_ingest_manifest', 'media_analysis_report'];
+const mediaTypes: ArtifactType[] = ['walkthrough', 'browser_recording', 'video_edit_session', 'render_deliverable'];
 
 // Phase colors
 const phaseColors: Record<ArtifactPhase, string> = {
@@ -228,10 +228,22 @@ export function ArtifactPreviewCard({
     setLightboxOpen(true);
   };
 
-  // Get the artifact URL
-  const artifactUrl = artifact.file_path
-    ? `/api/files/${encodeURIComponent(artifact.file_path)}`
-    : undefined;
+  // Get the artifact URL (content endpoint for JSON, file endpoint for media)
+  const artifactUrl = artifactContentApi.getContentUrl(artifact.id);
+
+  // For video types, get the first video file URL from content
+  const videoFileUrl = useMemo(() => {
+    if (!isMedia || !artifact.content) return undefined;
+    try {
+      const data = JSON.parse(artifact.content);
+      const items = data.deliverables || data.edits || [];
+      if (items.length > 0) {
+        const file = items[0].file || items[0].path?.split('/').pop();
+        if (file) return artifactContentApi.getFileUrl(artifact.id, file);
+      }
+    } catch { /* ignore */ }
+    return undefined;
+  }, [artifact, isMedia]);
 
   return (
     <>
@@ -288,14 +300,8 @@ export function ArtifactPreviewCard({
         {/* Media artifact preview */}
         {isMedia && (
           <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
-            {artifactUrl ? (
-              <>
-                <div className="absolute inset-0 bg-black/40" />
-                <Play className="h-10 w-10 text-white/90" />
-              </>
-            ) : (
-              <Video className="h-8 w-8 text-gray-400" />
-            )}
+            <div className="absolute inset-0 bg-black/40" />
+            <Play className="h-10 w-10 text-white/90" />
             {metadata.duration_seconds && (
               <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
                 {Math.floor(metadata.duration_seconds / 60)}:
@@ -336,7 +342,7 @@ export function ArtifactPreviewCard({
         </div>
 
         {/* Download button on hover */}
-        {onDownload && artifactUrl && (
+        {onDownload && (artifact.file_path || artifact.content) && (
           <Button
             variant="secondary"
             size="icon"
@@ -352,7 +358,7 @@ export function ArtifactPreviewCard({
       </div>
 
       {/* Lightbox dialogs */}
-      {isVisual && artifactUrl && (
+      {isVisual && artifact.file_path && (
         <ImageLightbox
           src={artifactUrl}
           alt={artifact.title}
@@ -370,9 +376,9 @@ export function ArtifactPreviewCard({
         />
       )}
 
-      {isMedia && artifactUrl && (
+      {isMedia && videoFileUrl && (
         <VideoPreview
-          src={artifactUrl}
+          src={videoFileUrl}
           title={artifact.title}
           open={lightboxOpen}
           onClose={() => setLightboxOpen(false)}

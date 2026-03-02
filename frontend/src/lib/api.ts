@@ -2479,6 +2479,38 @@ export const taskArtifactsApi = {
 };
 
 // ============================================
+// Artifact Content & Download API
+// ============================================
+
+export const artifactContentApi = {
+  getContentUrl: (artifactId: string): string =>
+    resolveApiUrl(`/api/artifacts/${artifactId}/content`),
+
+  getDownloadUrl: (artifactId: string): string =>
+    resolveApiUrl(`/api/artifacts/${artifactId}/download`),
+
+  getFileUrl: (artifactId: string, filename: string): string =>
+    resolveApiUrl(`/api/artifacts/${artifactId}/files/${encodeURIComponent(filename)}`),
+
+  getContent: async (artifactId: string): Promise<unknown> => {
+    const response = await makeRequest(`/api/artifacts/${artifactId}/content`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch artifact content: ${response.statusText}`);
+    }
+    return response.json();
+  },
+};
+
+// ============================================
+// Editron Export API
+// ============================================
+
+export const editronApi = {
+  getExportXmlUrl: (artifactId: string): string =>
+    resolveApiUrl(`/api/editron/export/${artifactId}?format=xml`),
+};
+
+// ============================================
 // Social Command APIs
 // ============================================
 

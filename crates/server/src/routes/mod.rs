@@ -11,6 +11,8 @@ use crate::{DeploymentImpl, middleware as app_middleware};
 
 pub mod activity;
 pub mod agent_flow_events;
+pub mod artifacts;
+pub mod editron_export;
 pub mod agent_flows;
 pub mod airtable;
 pub mod aptos;
@@ -173,6 +175,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(wide_research::router(&deployment))
         .merge(artifact_reviews::router(&deployment))
         .merge(task_artifacts::router(&deployment))
+        .merge(artifacts::router(&deployment))
+        .merge(editron_export::router(&deployment))
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))
         .merge(event_stream::router(&deployment))

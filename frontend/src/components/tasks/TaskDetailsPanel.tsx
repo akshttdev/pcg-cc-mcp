@@ -5,7 +5,6 @@ import { TaskTitleDescription } from './TaskDetails/TaskTitleDescription';
 import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget';
 import { TimeEntriesList } from '@/components/time-tracking/TimeEntriesList';
 import { DependencyManager } from '@/components/dependencies/DependencyManager';
-import { ActivityFeed } from '@/components/activity/ActivityFeed';
 import { CustomPropertiesPanel } from '@/components/custom-properties/CustomPropertiesPanel';
 import { TaskCommentThread } from './TaskCommentThread';
 import { ActivityTimeline } from './ActivityTimeline';
@@ -45,7 +44,11 @@ import { TaskArtifactsPanel } from './TaskArtifactsPanel';
 import { WorkflowTerminal } from './WorkflowTerminal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { agentFlowsApi, taskArtifactsApi, agentsApi, resolveApiUrl } from '@/lib/api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Download, X } from 'lucide-react';
+import { agentFlowsApi, taskArtifactsApi, agentsApi, resolveApiUrl, artifactContentApi, editronApi } from '@/lib/api';
 import type {
   ExecutionArtifact as ApiExecutionArtifact,
 } from '@/lib/api';
@@ -248,6 +251,9 @@ export function TaskDetailsPanel({
       <TaskArtifactsPanel
         taskId={task.id}
         artifacts={artifacts}
+        onDownload={handleArtifactDownload}
+        onPreview={handleArtifactPreview}
+        onExportXml={handleExportXml}
         className="shadow-none border"
       />
     );
@@ -356,6 +362,48 @@ export function TaskDetailsPanel({
     );
   };
 
+  const triggerDownload = (url: string, filename?: string) => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || '';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleArtifactDownload = (artifact: ExecutionArtifact) => {
+    // For artifacts with file_path directories containing media files,
+    // try to download the first video file from the content metadata
+    if (artifact.content && ['render_deliverable', 'video_edit_session'].includes(artifact.artifact_type)) {
+      try {
+        const data = JSON.parse(artifact.content);
+        const files = data.deliverables || data.edits || [];
+        if (files.length > 0) {
+          const file = files[0].file || files[0].path?.split('/').pop();
+          if (file) {
+            triggerDownload(
+              artifactContentApi.getFileUrl(artifact.id, file),
+              file,
+            );
+            return;
+          }
+        }
+      } catch { /* fall through */ }
+    }
+    triggerDownload(artifactContentApi.getDownloadUrl(artifact.id));
+  };
+
+  const [previewArtifact, setPreviewArtifact] = useState<ExecutionArtifact | null>(null);
+
+  const handleArtifactPreview = (artifact: ExecutionArtifact) => {
+    setPreviewArtifact(artifact);
+  };
+
+  const handleExportXml = (artifact: ExecutionArtifact) => {
+    triggerDownload(editronApi.getExportXmlUrl(artifact.id));
+  };
+
   return (
     <>
       {!task ? null : (
@@ -462,11 +510,6 @@ export function TaskDetailsPanel({
                           {/* Comment Thread (new collaboration feature) */}
                           <div className="p-3">
                             <TaskCommentThread taskId={task.id} />
-                          </div>
-
-                          {/* Activity Feed (legacy) */}
-                          <div className="p-3">
-                            <ActivityFeed taskId={task.id} />
                           </div>
 
                           {/* Agent artifacts */}
@@ -589,7 +632,137 @@ export function TaskDetailsPanel({
           </ProcessSelectionProvider>
         </TabNavContext.Provider>
       )}
+
+      {/* Artifact Preview Modal */}
+      {previewArtifact && (
+        <ArtifactPreviewModal
+          artifact={previewArtifact}
+          onClose={() => setPreviewArtifact(null)}
+          onDownload={handleArtifactDownload}
+        />
+      )}
     </>
+  );
+}
+
+function ArtifactPreviewModal({
+  artifact,
+  onClose,
+  onDownload,
+}: {
+  artifact: ExecutionArtifact;
+  onClose: () => void;
+  onDownload: (artifact: ExecutionArtifact) => void;
+}) {
+  const isVideoType = ['video_edit_session', 'render_deliverable'].includes(artifact.artifact_type);
+
+  // Parse video file list from content
+  const videoFiles = useMemo(() => {
+    if (!artifact.content || !isVideoType) return [];
+    try {
+      const data = JSON.parse(artifact.content);
+      const items = data.deliverables || data.edits || [];
+      return items
+        .map((item: Record<string, unknown>) => {
+          const file = (item.file as string) || (item.path as string)?.split('/').pop();
+          return file ? {
+            name: file,
+            url: artifactContentApi.getFileUrl(artifact.id, file),
+            duration: item.duration_seconds as number,
+            size: item.size_bytes as number,
+          } : null;
+        })
+        .filter(Boolean) as Array<{ name: string; url: string; duration?: number; size?: number }>;
+    } catch {
+      return [];
+    }
+  }, [artifact, isVideoType]);
+
+  const [selectedVideo, setSelectedVideo] = useState(0);
+
+  // JSON content for non-video types
+  const jsonContent = useMemo(() => {
+    if (!artifact.content || isVideoType) return null;
+    try {
+      return JSON.stringify(JSON.parse(artifact.content), null, 2);
+    } catch {
+      return artifact.content;
+    }
+  }, [artifact, isVideoType]);
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-lg">{artifact.title}</DialogTitle>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{artifact.artifact_type}</Badge>
+              <Button variant="ghost" size="icon" onClick={() => onDownload(artifact)} title="Download">
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-auto">
+          {isVideoType && videoFiles.length > 0 ? (
+            <div className="space-y-4">
+              {/* Video player */}
+              <div className="bg-black rounded-lg overflow-hidden">
+                <video
+                  key={videoFiles[selectedVideo]?.url}
+                  controls
+                  className="w-full max-h-[60vh]"
+                  src={videoFiles[selectedVideo]?.url}
+                >
+                  Your browser does not support video playback.
+                </video>
+              </div>
+
+              {/* Video file selector */}
+              {videoFiles.length > 1 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {videoFiles.length} deliverables
+                  </p>
+                  <div className="grid gap-2">
+                    {videoFiles.map((vf, i) => (
+                      <button
+                        key={vf.name}
+                        onClick={() => setSelectedVideo(i)}
+                        className={`flex items-center justify-between p-2 rounded-lg border text-left text-sm transition-colors ${
+                          i === selectedVideo
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:bg-muted/50'
+                        }`}
+                      >
+                        <span className="font-medium truncate">{vf.name}</span>
+                        <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                          {vf.duration ? `${vf.duration}s` : ''}
+                          {vf.size ? ` · ${(vf.size / 1024 / 1024).toFixed(1)} MB` : ''}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : jsonContent ? (
+            <pre className="bg-muted rounded-lg p-4 text-xs overflow-auto max-h-[60vh] whitespace-pre-wrap">
+              {jsonContent}
+            </pre>
+          ) : (
+            <p className="text-muted-foreground text-center py-8">
+              No previewable content
+            </p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
