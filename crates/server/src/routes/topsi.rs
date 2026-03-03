@@ -206,6 +206,15 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         .route("/topsi/voice/transcribe", post(transcribe_speech))
         .route("/topsi/voice/interaction", post(voice_interaction))
         .route("/topsi/voice/config", get(get_voice_config).put(update_voice_config))
+        // Meeting mode routes
+        .route("/topsi/meeting/list", get(list_meetings))
+        .route("/topsi/meeting/start", post(start_meeting))
+        .route("/topsi/meeting/audio", post(meeting_audio_chunk))
+        .route("/topsi/meeting/end", post(end_meeting))
+        .route("/topsi/meeting/status/{session_id}", get(meeting_status))
+        .route("/topsi/meeting/notes/{session_id}", get(get_meeting_notes))
+        .route("/topsi/meeting/transcript/{session_id}", get(get_meeting_transcript))
+        .route("/topsi/meeting/share/{session_id}", post(share_meeting))
         .layer(axum::middleware::from_fn(
             crate::middleware::request_id_middleware,
         ))
@@ -357,6 +366,12 @@ pub struct TopsiVoiceInteraction {
     pub audio_response: Option<String>,   // Base64 encoded audio response
     pub processing_time_ms: Option<u64>,
     pub timestamp: Option<DateTime<Utc>>,
+    /// Action signal for frontend (e.g. "start_meeting", "end_meeting")
+    pub action: Option<String>,
+    /// Meeting session ID if a meeting was started/is active
+    pub meeting_session_id: Option<String>,
+    /// Project ID associated with the action
+    pub action_project_id: Option<String>,
 }
 
 /// Voice config response
@@ -376,6 +391,137 @@ pub struct UpdateTopsiVoiceConfigRequest {
     pub tts_provider: Option<String>,
     pub stt_provider: Option<String>,
     pub voice_profile: Option<String>,
+}
+
+// ============================================================================
+// Meeting Request/Response Types
+// ============================================================================
+
+/// Request to start a meeting
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct StartMeetingRequest {
+    pub project_id: String,
+    pub title: Option<String>,
+    pub session_id: Option<String>,
+}
+
+/// Response from starting a meeting
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct StartMeetingResponse {
+    pub session_id: String,
+    pub title: String,
+    pub status: String,
+    pub started_at: String,
+    pub message: String,
+}
+
+/// Request with an audio chunk from a meeting
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingAudioChunkRequest {
+    pub session_id: String,
+    pub audio_data: String, // Base64 encoded audio
+    pub chunk_index: u32,
+    pub duration_ms: u32,
+}
+
+/// Response from processing a meeting audio chunk
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingAudioChunkResponse {
+    pub session_id: String,
+    pub chunk_index: u32,
+    pub text: String,
+    pub speaker_label: Option<String>,
+    pub is_topsi_addressed: bool,
+    pub topsi_response: Option<String>,
+    pub topsi_audio_response: Option<String>,
+    pub segment_index: i32,
+}
+
+/// Request to end a meeting
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct EndMeetingRequest {
+    pub session_id: String,
+    pub generate_notes: Option<bool>,
+}
+
+/// Response from ending a meeting
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct EndMeetingResponse {
+    pub session_id: String,
+    pub status: String,
+    pub duration_seconds: i32,
+    pub participant_count: i32,
+    pub segment_count: usize,
+    pub notes: Option<topsi::MeetingNotes>,
+}
+
+/// Request to share a meeting
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareMeetingRequest {
+    pub user_ids: Vec<String>,
+}
+
+/// Meeting status response
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingStatusResponse {
+    pub session_id: String,
+    pub title: String,
+    pub status: String,
+    pub started_at: String,
+    pub duration_seconds: Option<i32>,
+    pub participant_count: i32,
+    pub segment_count: i64,
+    pub is_active: bool,
+}
+
+/// Meeting transcript response
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingTranscriptResponse {
+    pub session_id: String,
+    pub segments: Vec<db::models::meeting_session::MeetingSegment>,
+    pub total_count: i64,
+}
+
+/// Query params for listing meetings
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListMeetingsQuery {
+    pub project_id: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// Response for listing meetings
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListMeetingsResponse {
+    pub meetings: Vec<MeetingSessionSummary>,
+    pub total: usize,
+}
+
+/// Summary of a meeting session for list views
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingSessionSummary {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    pub status: String,
+    pub started_by: String,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub duration_seconds: Option<i32>,
+    pub participant_count: Option<i32>,
+    pub notes: Option<serde_json::Value>,
 }
 
 // ============================================================================
@@ -1238,6 +1384,106 @@ pub async fn transcribe_speech(
     }))
 }
 
+/// Detect meeting intent in user's transcribed text
+fn detect_meeting_intent(text: &str) -> Option<&'static str> {
+    let lower = text.to_lowercase();
+
+    // Start meeting patterns
+    let start_patterns = [
+        "start a meeting",
+        "starting a meeting",
+        "start the meeting",
+        "begin a meeting",
+        "begin the meeting",
+        "we're starting a meeting",
+        "were starting a meeting",
+        "let's start a meeting",
+        "lets start a meeting",
+        "start meeting mode",
+        "enter meeting mode",
+        "meeting mode",
+        "transcribe the meeting",
+        "transcribe this meeting",
+        "take meeting notes",
+        "record this meeting",
+        "record the meeting",
+        "only speak when spoken to",
+    ];
+
+    for pattern in &start_patterns {
+        if lower.contains(pattern) {
+            return Some("start_meeting");
+        }
+    }
+
+    // End meeting patterns
+    let end_patterns = [
+        "end the meeting",
+        "stop the meeting",
+        "meeting is over",
+        "meeting's over",
+        "end meeting mode",
+        "exit meeting mode",
+        "stop recording the meeting",
+    ];
+
+    for pattern in &end_patterns {
+        if lower.contains(pattern) {
+            return Some("end_meeting");
+        }
+    }
+
+    None
+}
+
+/// Resolve user's home project (first project they have access to)
+async fn resolve_user_project(pool: &sqlx::SqlitePool, user_id: &str) -> Option<String> {
+    // Try to find user's home project first, then fall back to first project membership
+    #[derive(sqlx::FromRow)]
+    struct ProjectRow {
+        id: Vec<u8>,
+    }
+
+    // Try projects the user owns/is a member of
+    let result = sqlx::query_as::<_, ProjectRow>(
+        r#"
+        SELECT p.id FROM projects p
+        JOIN project_members pm ON pm.project_id = p.id
+        WHERE pm.user_id = ?1
+        ORDER BY p.created_at ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(user_id.as_bytes())
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some(row) = result {
+        if let Ok(uuid) = Uuid::from_slice(&row.id) {
+            return Some(uuid.to_string());
+        }
+    }
+
+    // Fall back to first project in DB
+    let result = sqlx::query_as::<_, ProjectRow>(
+        r#"SELECT id FROM projects ORDER BY created_at ASC LIMIT 1"#,
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some(row) = result {
+        if let Ok(uuid) = Uuid::from_slice(&row.id) {
+            return Some(uuid.to_string());
+        }
+    }
+
+    None
+}
+
 /// Handle full voice interaction: transcribe -> process with Topsi -> synthesize response
 pub async fn voice_interaction(
     State(state): State<DeploymentImpl>,
@@ -1268,7 +1514,115 @@ pub async fn voice_interaction(
         return Err(ApiError::BadRequest("No audio or text input provided".to_string()));
     };
 
-    // Step 2: Process with Topsi
+    // Step 1.5: Check for meeting intent BEFORE sending to Topsi chat
+    let meeting_intent = detect_meeting_intent(&input_text);
+
+    // SECURITY: Extract real user from auth headers
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+    let pool = state.db().pool.clone();
+
+    if let Some(intent) = meeting_intent {
+        let topsi_instance = get_topsi_instance().await?;
+        let instance = topsi_instance.read().await;
+        let topsi = instance
+            .as_ref()
+            .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
+
+        if !topsi.is_active().await {
+            return Err(ApiError::BadRequest("Topsi is not active".to_string()));
+        }
+
+        match intent {
+            "start_meeting" => {
+                // Resolve a project for this user
+                let project_id = resolve_user_project(&pool, &user_context.user_id)
+                    .await
+                    .unwrap_or_else(|| "default".to_string());
+
+                // Start meeting via Topsi
+                let topsi_request = TopsiRequest::new(TopsiRequestType::StartMeeting {
+                    project_id: project_id.clone(),
+                    title: Some("Voice-initiated meeting".to_string()),
+                });
+
+                let response = topsi
+                    .process_request(topsi_request, &user_context, None)
+                    .await
+                    .map_err(|e| ApiError::InternalError(format!("Failed to start meeting: {}", e)))?;
+
+                // Extract session_id from response
+                let response_json: serde_json::Value = serde_json::from_str(&response.message)
+                    .unwrap_or_else(|_| serde_json::json!({}));
+                let session_id = response_json["session_id"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+
+                let spoken_response = "Meeting mode activated. I'll be listening silently and taking notes. Just say my name if you need me.";
+                result.response_text = Some(spoken_response.to_string());
+                result.action = Some("start_meeting".to_string());
+                result.meeting_session_id = Some(session_id);
+                result.action_project_id = Some(project_id);
+
+                // Synthesize the spoken response
+                let audio_response = engine
+                    .synthesize_speech(spoken_response)
+                    .await
+                    .map_err(|e| ApiError::InternalError(format!("Speech synthesis failed: {}", e)))?;
+                result.audio_response = Some(audio_response);
+            }
+            "end_meeting" => {
+                // Check if there's an active meeting for this user
+                let active_meetings = db::models::meeting_session::MeetingSession::find_active_by_project(
+                    &pool,
+                    &resolve_user_project(&pool, &user_context.user_id).await.unwrap_or_default(),
+                )
+                .await
+                .unwrap_or_default();
+
+                if let Some(active) = active_meetings.first() {
+                    let topsi_request = TopsiRequest::new(TopsiRequestType::EndMeeting {
+                        session_id: active.id.clone(),
+                        generate_notes: true,
+                    });
+
+                    let _response = topsi
+                        .process_request(topsi_request, &user_context, None)
+                        .await
+                        .map_err(|e| ApiError::InternalError(format!("Failed to end meeting: {}", e)))?;
+
+                    let spoken_response = "Meeting ended. I've generated notes from the transcript.";
+                    result.response_text = Some(spoken_response.to_string());
+                    result.action = Some("end_meeting".to_string());
+                    result.meeting_session_id = Some(active.id.clone());
+
+                    let audio_response = engine
+                        .synthesize_speech(spoken_response)
+                        .await
+                        .map_err(|e| ApiError::InternalError(format!("Speech synthesis failed: {}", e)))?;
+                    result.audio_response = Some(audio_response);
+                } else {
+                    let spoken_response = "There's no active meeting to end.";
+                    result.response_text = Some(spoken_response.to_string());
+
+                    let audio_response = engine
+                        .synthesize_speech(spoken_response)
+                        .await
+                        .map_err(|e| ApiError::InternalError(format!("Speech synthesis failed: {}", e)))?;
+                    result.audio_response = Some(audio_response);
+                }
+            }
+            _ => {}
+        }
+
+        result.processing_time_ms = Some(start.elapsed().as_millis() as u64);
+        result.timestamp = Some(Utc::now());
+        return Ok(Json(result));
+    }
+
+    // Step 2: Normal Topsi chat processing (no meeting intent detected)
     let topsi_instance = get_topsi_instance().await?;
     let instance = topsi_instance.read().await;
     let topsi = instance
@@ -1279,10 +1633,6 @@ pub async fn voice_interaction(
         return Err(ApiError::BadRequest("Topsi is not active".to_string()));
     }
 
-    // SECURITY: Extract real user from auth headers
-    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
-    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
-    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
     let topsi_request = TopsiRequest::new(TopsiRequestType::Chat {
         message: input_text,
     });
@@ -1351,4 +1701,433 @@ pub async fn update_voice_config(
         voice_profile: request.voice_profile.unwrap_or_else(|| "british_executive_female".to_string()),
         is_ready: true,
     }))
+}
+
+// ============================================================================
+// Meeting Mode Handlers
+// ============================================================================
+
+/// List meeting sessions
+pub async fn list_meetings(
+    State(state): State<DeploymentImpl>,
+    Query(params): Query<ListMeetingsQuery>,
+) -> Result<Json<ListMeetingsResponse>, ApiError> {
+    let pool = &state.db().pool;
+    let limit = params.limit.unwrap_or(50);
+    let offset = params.offset.unwrap_or(0);
+
+    let sessions = db::models::meeting_session::MeetingSession::list(
+        pool,
+        params.project_id.as_deref(),
+        limit,
+        offset,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to list meetings: {}", e)))?;
+
+    let meetings: Vec<MeetingSessionSummary> = sessions
+        .into_iter()
+        .map(|s| {
+            let notes_value = s
+                .notes
+                .as_ref()
+                .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok());
+
+            MeetingSessionSummary {
+                id: s.id,
+                project_id: s.project_id,
+                title: s.title,
+                status: s.status,
+                started_by: s.started_by,
+                started_at: s.started_at,
+                ended_at: s.ended_at,
+                duration_seconds: s.duration_seconds,
+                participant_count: s.participant_count,
+                notes: notes_value,
+            }
+        })
+        .collect();
+
+    let total = meetings.len();
+    Ok(Json(ListMeetingsResponse { meetings, total }))
+}
+
+/// Start a new meeting session
+pub async fn start_meeting(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<StartMeetingRequest>,
+) -> Result<Json<StartMeetingResponse>, ApiError> {
+    tracing::info!("Starting meeting for project: {}", request.project_id);
+
+    let topsi_instance = get_topsi_instance().await?;
+    let instance = topsi_instance.read().await;
+    let topsi = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
+
+    if !topsi.is_active().await {
+        return Err(ApiError::BadRequest("Topsi is not active".to_string()));
+    }
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let topsi_request = TopsiRequest::new(TopsiRequestType::StartMeeting {
+        project_id: request.project_id,
+        title: request.title,
+    });
+
+    let response = topsi
+        .process_request(topsi_request, &user_context, None)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to start meeting: {}", e)))?;
+
+    // Parse the response message as JSON to extract fields
+    let response_json: serde_json::Value = serde_json::from_str(&response.message)
+        .unwrap_or_else(|_| serde_json::json!({"message": response.message}));
+
+    Ok(Json(StartMeetingResponse {
+        session_id: response_json["session_id"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        title: response_json["title"]
+            .as_str()
+            .unwrap_or("Untitled Meeting")
+            .to_string(),
+        status: "active".to_string(),
+        started_at: response_json["started_at"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        message: response_json["message"]
+            .as_str()
+            .unwrap_or("Meeting started")
+            .to_string(),
+    }))
+}
+
+/// Process an audio chunk from a meeting
+pub async fn meeting_audio_chunk(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<MeetingAudioChunkRequest>,
+) -> Result<Json<MeetingAudioChunkResponse>, ApiError> {
+    let topsi_instance = get_topsi_instance().await?;
+    let instance = topsi_instance.read().await;
+    let topsi = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
+
+    if !topsi.is_active().await {
+        return Err(ApiError::BadRequest("Topsi is not active".to_string()));
+    }
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    // Step 1: Transcribe the audio using voice engine
+    let transcribed_text = {
+        let engine_result = get_or_init_voice_engine().await;
+        if let Ok(engine_lock) = engine_result {
+            let engine_guard = engine_lock.read().await;
+            if let Some(engine) = engine_guard.as_ref() {
+                match engine.transcribe_speech(&request.audio_data).await {
+                    Ok(text) => text,
+                    Err(e) => {
+                        tracing::warn!("Meeting transcription failed, using empty: {}", e);
+                        String::new()
+                    }
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    };
+
+    if transcribed_text.is_empty() {
+        // Return acknowledgement for empty/silent chunks
+        return Ok(Json(MeetingAudioChunkResponse {
+            session_id: request.session_id,
+            chunk_index: request.chunk_index,
+            text: String::new(),
+            speaker_label: None,
+            is_topsi_addressed: false,
+            topsi_response: None,
+            topsi_audio_response: None,
+            segment_index: request.chunk_index as i32,
+        }));
+    }
+
+    // Step 2: Process through Topsi agent (stores segment, detects wake word)
+    let topsi_request = TopsiRequest::new(TopsiRequestType::MeetingAudioChunk {
+        session_id: request.session_id.clone(),
+        audio_data: transcribed_text.clone(),
+        chunk_index: request.chunk_index,
+        duration_ms: request.duration_ms,
+    });
+
+    let response = topsi
+        .process_request(topsi_request, &user_context, None)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Meeting audio processing failed: {}", e)))?;
+
+    // Parse response
+    let response_json: serde_json::Value = serde_json::from_str(&response.message)
+        .unwrap_or_else(|_| serde_json::json!({}));
+
+    let is_addressed = response_json["is_topsi_addressed"].as_bool().unwrap_or(false);
+    let topsi_response_text = response_json["topsi_response"].as_str().map(|s| s.to_string());
+
+    // Step 3: If Topsi responded, synthesize audio response
+    let topsi_audio = if let Some(ref response_text) = topsi_response_text {
+        let engine_result = get_or_init_voice_engine().await;
+        if let Ok(engine_lock) = engine_result {
+            let engine_guard = engine_lock.read().await;
+            if let Some(engine) = engine_guard.as_ref() {
+                let tts_text = sanitize_text_for_tts(response_text);
+                if !tts_text.is_empty() {
+                    match engine.synthesize_speech(&tts_text).await {
+                        Ok(audio) => Some(audio),
+                        Err(e) => {
+                            tracing::warn!("Failed to synthesize meeting response: {}", e);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    Ok(Json(MeetingAudioChunkResponse {
+        session_id: request.session_id,
+        chunk_index: request.chunk_index,
+        text: transcribed_text,
+        speaker_label: response_json["speaker_label"]
+            .as_str()
+            .map(|s| s.to_string()),
+        is_topsi_addressed: is_addressed,
+        topsi_response: topsi_response_text,
+        topsi_audio_response: topsi_audio,
+        segment_index: response_json["segment_index"].as_i64().unwrap_or(0) as i32,
+    }))
+}
+
+/// End a meeting session
+pub async fn end_meeting(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<EndMeetingRequest>,
+) -> Result<Json<EndMeetingResponse>, ApiError> {
+    tracing::info!("Ending meeting: {}", request.session_id);
+
+    let topsi_instance = get_topsi_instance().await?;
+    let instance = topsi_instance.read().await;
+    let topsi = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let topsi_request = TopsiRequest::new(TopsiRequestType::EndMeeting {
+        session_id: request.session_id.clone(),
+        generate_notes: request.generate_notes.unwrap_or(true),
+    });
+
+    let response = topsi
+        .process_request(topsi_request, &user_context, None)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to end meeting: {}", e)))?;
+
+    let response_json: serde_json::Value = serde_json::from_str(&response.message)
+        .unwrap_or_else(|_| serde_json::json!({}));
+
+    let notes: Option<topsi::MeetingNotes> = response_json
+        .get("notes")
+        .and_then(|n| serde_json::from_value(n.clone()).ok());
+
+    Ok(Json(EndMeetingResponse {
+        session_id: request.session_id,
+        status: "ended".to_string(),
+        duration_seconds: response_json["duration_seconds"].as_i64().unwrap_or(0) as i32,
+        participant_count: response_json["participant_count"].as_i64().unwrap_or(0) as i32,
+        segment_count: response_json["segment_count"].as_u64().unwrap_or(0) as usize,
+        notes,
+    }))
+}
+
+/// Get meeting status
+pub async fn meeting_status(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<MeetingStatusResponse>, ApiError> {
+    let pool = state.db().pool.clone();
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(&pool, &session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
+
+    // Access control
+    if !session.has_access(&user_context.user_id, user_context.is_admin) {
+        return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
+    }
+
+    let segment_count =
+        db::models::meeting_session::MeetingSegment::count_by_session(&pool, &session_id)
+            .await
+            .unwrap_or(0);
+
+    let is_active = session.status == "active";
+
+    Ok(Json(MeetingStatusResponse {
+        session_id: session.id,
+        title: session.title,
+        status: session.status,
+        started_at: session.started_at,
+        duration_seconds: session.duration_seconds,
+        participant_count: session.participant_count.unwrap_or(0),
+        segment_count,
+        is_active,
+    }))
+}
+
+/// Get meeting notes
+pub async fn get_meeting_notes(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(&pool, &session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
+
+    if !session.has_access(&user_context.user_id, user_context.is_admin) {
+        return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
+    }
+
+    let notes = session.notes.and_then(|n| serde_json::from_str::<serde_json::Value>(&n).ok());
+
+    Ok(Json(serde_json::json!({
+        "session_id": session_id,
+        "notes": notes,
+    })))
+}
+
+/// Get meeting transcript
+pub async fn get_meeting_transcript(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<MeetingTranscriptResponse>, ApiError> {
+    let pool = state.db().pool.clone();
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(&pool, &session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
+
+    if !session.has_access(&user_context.user_id, user_context.is_admin) {
+        return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
+    }
+
+    let segments =
+        db::models::meeting_session::MeetingSegment::find_by_session(&pool, &session_id)
+            .await
+            .map_err(|e| {
+                ApiError::InternalError(format!("Failed to fetch transcript: {}", e))
+            })?;
+
+    let total_count = segments.len() as i64;
+
+    Ok(Json(MeetingTranscriptResponse {
+        session_id,
+        segments,
+        total_count,
+    }))
+}
+
+/// Share a meeting with other users
+pub async fn share_meeting(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(session_id): Path<String>,
+    Json(request): Json<ShareMeetingRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(&pool, &session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
+
+    // Only admin or meeting starter can share
+    if !user_context.is_admin && session.started_by != user_context.user_id {
+        return Err(ApiError::Forbidden(
+            "Only the meeting creator or admin can share meetings".to_string(),
+        ));
+    }
+
+    // Merge new user_ids with existing shared_with
+    let mut shared_users: Vec<String> = session
+        .shared_with
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
+    for user_id in &request.user_ids {
+        if !shared_users.contains(user_id) {
+            shared_users.push(user_id.clone());
+        }
+    }
+
+    let shared_json = serde_json::to_string(&shared_users).unwrap_or_else(|_| "[]".to_string());
+
+    db::models::meeting_session::MeetingSession::update(
+        &pool,
+        &session_id,
+        db::models::meeting_session::UpdateMeetingSession {
+            shared_with: Some(shared_json),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to update sharing: {}", e)))?;
+
+    Ok(Json(serde_json::json!({
+        "session_id": session_id,
+        "shared_with": shared_users,
+        "message": format!("Meeting shared with {} users", request.user_ids.len()),
+    })))
 }

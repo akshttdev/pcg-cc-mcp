@@ -78,6 +78,8 @@ pub mod pulse_content_item;
 pub mod pulse_source;
 pub mod pulse_tracking_config;
 pub mod project_knowledge_source;
+// pub mod workflow_template; // TODO: file not yet created
+pub mod meeting_session;
 
 #[cfg(test)]
 pub(crate) mod test_utils;
