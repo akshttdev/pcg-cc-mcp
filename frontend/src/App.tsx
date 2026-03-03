@@ -62,6 +62,8 @@ const CrmDeliveryPage       = lazy(() => import('@/pages/crm-delivery').then(m =
 const CrmConferencesPage    = lazy(() => import('@/pages/crm-conferences').then(m => ({ default: m.CrmConferencesPage })));
 const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').then(m => ({ default: m.CrmContactDetailPage })));
 const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
+const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
+const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -301,6 +303,14 @@ function AppContent() {
                       <Route
                         path="/crm"
                         element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/people"
+                        element={<ProtectedRoute><PeoplePage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/people/:personId"
+                        element={<ProtectedRoute><PersonDetailPage /></ProtectedRoute>}
                       />
                       <Route
                         path="/virtual-environment"
