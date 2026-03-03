@@ -890,6 +890,34 @@ pub struct VibeBudgetResponse {
     pub vibe_remaining: Option<i64>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct RegisterWalletRequest {
+    pub aptos_address: String,
+}
+
+/// Register an Aptos wallet address for on-chain VIBE deposits
+pub async fn register_project_wallet(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<RegisterWalletRequest>,
+) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
+    // Basic Aptos address validation: starts with 0x, 66 chars total
+    let addr = payload.aptos_address.trim();
+    if !addr.starts_with("0x") || addr.len() != 66 {
+        return Err(ApiError::BadRequest(
+            "Invalid Aptos address. Must start with 0x and be 66 characters total.".into(),
+        ));
+    }
+
+    Project::set_aptos_wallet(&deployment.db().pool, project.id, addr).await?;
+
+    let updated = Project::find_by_id(&deployment.db().pool, project.id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Project not found after update".into()))?;
+
+    Ok(ResponseJson(ApiResponse::success(updated)))
+}
+
 /// Get the VIBE budget status for a project
 pub async fn get_vibe_budget(
     Extension(project): Extension<Project>,
@@ -964,6 +992,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/budget",
             get(get_vibe_budget).put(set_vibe_budget),
         )
+        .route("/wallet", patch(register_project_wallet))
         .merge(crate::routes::project_boards::router(deployment))
         .merge(crate::routes::project_controllers::router(deployment))
         .layer(from_fn_with_state(

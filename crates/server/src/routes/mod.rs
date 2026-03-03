@@ -198,6 +198,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))
         .merge(model_pricing::router(&deployment))
+        .merge(vibe_treasury::public_router(&deployment))
         .merge(orcha::orcha_routes())
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
