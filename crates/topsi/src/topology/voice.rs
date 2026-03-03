@@ -24,6 +24,12 @@ pub mod node_types {
     pub const TTS_PROCESSOR: &str = "tts_processor";
     /// A voice command node (parsed intent)
     pub const VOICE_COMMAND: &str = "voice_command";
+    /// A meeting session node
+    pub const MEETING_SESSION: &str = "meeting_session";
+    /// Meeting transcript node
+    pub const MEETING_TRANSCRIPT: &str = "meeting_transcript";
+    /// Meeting notes node
+    pub const MEETING_NOTES: &str = "meeting_notes";
 }
 
 /// Edge types for voice topology
@@ -40,6 +46,14 @@ pub mod edge_types {
     pub const RESPONSE_FLOW: &str = "response_flow";
     /// Gateway manages channel
     pub const MANAGES: &str = "manages";
+    /// Meeting belongs to a project
+    pub const MEETING_OF: &str = "meeting_of";
+    /// Transcript belongs to a meeting
+    pub const TRANSCRIPT_OF: &str = "transcript_of";
+    /// Notes belong to a meeting
+    pub const NOTES_OF: &str = "notes_of";
+    /// User participated in a meeting
+    pub const PARTICIPATED_IN: &str = "participated_in";
 }
 
 /// Capabilities for voice nodes
@@ -56,6 +70,12 @@ pub mod capabilities {
     pub const LOCAL: &str = "local";
     /// Streaming support
     pub const STREAMING: &str = "streaming";
+    /// Continuous audio capture
+    pub const CONTINUOUS_CAPTURE: &str = "continuous_capture";
+    /// Speaker diarization
+    pub const DIARIZATION: &str = "diarization";
+    /// Meeting note generation
+    pub const NOTE_GENERATION: &str = "note_generation";
 }
 
 /// Voice topology manager for adding/removing voice-related nodes
@@ -346,6 +366,84 @@ impl VoiceTopology {
                 .with_purpose(format!("Voice sessions from {} channel", channel_type)),
             )
         }
+    }
+
+    /// Create a meeting session node
+    pub fn create_meeting_node(
+        meeting_id: &str,
+        title: &str,
+        project_id: &str,
+    ) -> GraphNode {
+        let metadata = serde_json::json!({
+            "title": title,
+            "project_id": project_id,
+            "started_at": Utc::now().to_rfc3339(),
+        });
+
+        let mut node = GraphNode::new(
+            Uuid::new_v4(),
+            node_types::MEETING_SESSION,
+            meeting_id,
+        )
+        .with_capabilities(vec![
+            capabilities::CONTINUOUS_CAPTURE.to_string(),
+            capabilities::WAKE_WORD.to_string(),
+            capabilities::NOTE_GENERATION.to_string(),
+        ])
+        .with_status("active");
+
+        node.metadata = Some(metadata);
+        node
+    }
+
+    /// Add a meeting node to the topology and connect it to a project node
+    pub fn add_meeting_to_project(
+        graph: &mut TopologyGraph,
+        meeting_id: &str,
+        title: &str,
+        project_id: &str,
+        project_node_id: Option<Uuid>,
+    ) -> Uuid {
+        let meeting_node = Self::create_meeting_node(meeting_id, title, project_id);
+        let meeting_uuid = meeting_node.id;
+        graph.add_node(meeting_node);
+
+        // Connect to project node if available
+        if let Some(proj_id) = project_node_id {
+            let edge = GraphEdge::new(
+                Uuid::new_v4(),
+                meeting_uuid,
+                proj_id,
+                edge_types::MEETING_OF,
+            );
+            graph.add_edge(edge);
+        }
+
+        meeting_uuid
+    }
+
+    /// End a meeting node (keeps in graph for history)
+    pub fn end_meeting_node(graph: &mut TopologyGraph, meeting_node_id: Uuid) {
+        if let Some(node) = graph.get_node_mut(meeting_node_id) {
+            node.status = "ended".to_string();
+            if let Some(ref mut metadata) = node.metadata {
+                if let Some(obj) = metadata.as_object_mut() {
+                    obj.insert(
+                        "ended_at".to_string(),
+                        serde_json::Value::String(Utc::now().to_rfc3339()),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Get all active meeting sessions from the topology
+    pub fn active_meetings(graph: &TopologyGraph) -> Vec<&GraphNode> {
+        graph
+            .nodes_of_type(node_types::MEETING_SESSION)
+            .into_iter()
+            .filter(|n| n.status == "active")
+            .collect()
     }
 
     /// Find the path from a voice session to an agent node

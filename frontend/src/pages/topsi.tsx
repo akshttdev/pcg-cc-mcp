@@ -24,9 +24,12 @@ import {
   Mic,
   MicOff,
   Volume2,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { MeetingMode } from '@/components/topsi/MeetingMode';
+import { MeetingHistory } from '@/components/topsi/MeetingHistory';
 
 // Types for Topsi responses
 interface TopsiStatusResponse {
@@ -534,10 +537,14 @@ export function TopsiPage() {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-4 mb-6">
+            <TabsList className="grid w-full grid-cols-5 mb-6">
               <TabsTrigger value="chat" className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" />
                 Chat
+              </TabsTrigger>
+              <TabsTrigger value="meetings" className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Meetings
               </TabsTrigger>
               <TabsTrigger value="topology" className="flex items-center gap-2">
                 <Network className="w-4 h-4" />
@@ -715,6 +722,48 @@ export function TopsiPage() {
                         <FolderOpen className="w-4 h-4 mr-2" />
                         Refresh Projects
                       </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Meetings Tab */}
+            <TabsContent value="meetings" className="flex-1 overflow-auto">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[600px]">
+                {/* Left: New Meeting + History */}
+                <div className="lg:col-span-2 space-y-6">
+                  <Card>
+                    <CardContent className="p-0">
+                      <MeetingMode className="min-h-[400px]" />
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Past Meetings</CardTitle>
+                      <CardDescription>
+                        Browse transcripts, notes, and share meeting artifacts
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <MeetingHistory className="min-h-[200px]" />
+                    </CardContent>
+                  </Card>
+                </div>
+                {/* Right: Info sidebar */}
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm">Meeting Mode</CardTitle>
+                      <CardDescription className="text-xs">
+                        Topsi acts as a silent AI observer during meetings,
+                        documenting conversations and only engaging when addressed.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="text-xs text-muted-foreground space-y-2">
+                      <p>Say "Topsi" during a meeting to ask questions or get summaries.</p>
+                      <p>Meeting notes are auto-generated when the session ends.</p>
+                      <p>Transcripts are stored with admin-only access by default.</p>
                     </CardContent>
                   </Card>
                 </div>
