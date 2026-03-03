@@ -44,6 +44,7 @@ import {
   FileText,
   LayoutDashboard,
   Receipt,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -1038,12 +1039,20 @@ function OrgSection({
       <CollapsibleTrigger asChild>
         <Button
           variant="ghost"
-          className="w-full justify-between px-2 py-1.5 h-auto font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground"
+          className="group w-full justify-between px-2 py-1.5 h-auto font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground"
         >
           <div className="flex items-center gap-1.5 min-w-0">
             <HealthDot status={org.health_status} />
             <Building2 className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{org.name}</span>
+            <Link
+              to={`/organizations/${org.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="opacity-0 group-hover:opacity-100 ml-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+              title={`${org.name} overview`}
+            >
+              <ExternalLink className="h-3 w-3" />
+            </Link>
           </div>
           {expanded ? (
             <ChevronDown className="h-3 w-3" />

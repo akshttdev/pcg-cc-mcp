@@ -847,16 +847,44 @@ impl PcgRepl {
             }
         }
 
-        // Try to chat with an agent
-        let agent_name = &self.config.agents.default;
+        // Route to the appropriate agent
+        let agent_name = self.config.agents.default.clone();
+        let session_id = self
+            .session
+            .as_ref()
+            .map(|s| s.id.to_string())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        if let Ok(Some(agent)) = self.api.get_agent_by_name(agent_name).await {
-            let session_id = self
-                .session
-                .as_ref()
-                .map(|s| s.id.to_string())
-                .unwrap_or_else(|| Uuid::new_v4().to_string());
+        if agent_name == "topsi" {
+            // Topsi has a dedicated high-level endpoint
+            match self.api.chat_with_topsi(input, &session_id, self.project_id).await {
+                Ok(response) => {
+                    if let Some(session) = &self.session {
+                        let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
+                        let vibe = (tokens as f64 * 0.05) as i64;
+                        session.update_cost(tokens, vibe);
+                    }
 
+                    self.output.print_response(&response.content);
+
+                    if let Some(session) = &self.session {
+                        let metrics = session.get_metrics();
+                        self.output.print_status_bar(
+                            metrics.total_tokens,
+                            metrics.total_vibe_cost,
+                            metrics.tasks_created,
+                            metrics.tasks_completed,
+                        );
+                    }
+                }
+                Err(e) => {
+                    self.output.print_error(&format!("Topsi error: {}", e));
+                    self.output.print_info(
+                        "Note: Make sure the ORCHA backend is running and Topsi is initialized.",
+                    );
+                }
+            }
+        } else if let Ok(Some(agent)) = self.api.get_agent_by_name(&agent_name).await {
             match self
                 .api
                 .chat_with_agent(
@@ -870,17 +898,14 @@ impl PcgRepl {
                 .await
             {
                 Ok(response) => {
-                    // Update session metrics
                     if let Some(session) = &self.session {
                         let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
-                        let vibe = (tokens as f64 * 0.05) as i64; // Rough VIBE estimate
+                        let vibe = (tokens as f64 * 0.05) as i64;
                         session.update_cost(tokens, vibe);
                     }
 
-                    // Display response
                     self.output.print_response(&response.content);
 
-                    // Show status bar
                     if let Some(session) = &self.session {
                         let metrics = session.get_metrics();
                         self.output.print_status_bar(
@@ -899,7 +924,6 @@ impl PcgRepl {
                 }
             }
         } else {
-            // Fallback: just echo the input for now
             self.output.print_warning(&format!(
                 "Agent '{}' not available. Running in offline mode.",
                 agent_name

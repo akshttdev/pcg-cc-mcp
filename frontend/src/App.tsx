@@ -49,8 +49,9 @@ const WorkflowsPage         = lazy(() => import('@/pages/workflows').then(m => (
 const SocialPage            = lazy(() => import('@/pages/social').then(m => ({ default: m.SocialPage })));
 const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ default: m.CrmPage })));
 const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
-const CrmAcquisitionPage    = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmAcquisitionPage })));
-const CrmLifecyclePage      = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmLifecyclePage })));
+const CrmAcquisitionPage       = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmAcquisitionPage })));
+const CrmLifecyclePage         = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmLifecyclePage })));
+const OrganizationDetailPage   = lazy(() => import('@/pages/organization-detail').then(m => ({ default: m.OrganizationDetailPage })));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
 const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-environment').then(m => ({ default: m.EmbedVirtualEnvironmentPage })));
 const MeshPage              = lazy(() => import('@/pages/mesh'));
@@ -277,6 +278,10 @@ function AppContent() {
                       <Route
                         path="/projects/:projectId/crm/overview"
                         element={<ProtectedRoute><CrmOverviewPage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/organizations/:orgId"
+                        element={<ProtectedRoute><OrganizationDetailPage /></ProtectedRoute>}
                       />
                       <Route
                         path="/organizations/:orgId/crm/acquisition"
