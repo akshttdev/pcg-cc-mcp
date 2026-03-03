@@ -196,6 +196,62 @@ impl OutputHandler {
         );
     }
 
+    /// Print a single tool call Topsi made (shown before the response)
+    pub fn print_tool_call(&self, tool_name: &str) {
+        let readable = tool_name.replace('_', " ");
+        println!("  {} {}", "→".bright_cyan(), readable.dimmed());
+    }
+
+    /// Print a kanban-style task board for a project
+    /// columns: &[("TODO", tasks), ("IN PROGRESS", tasks), ("DONE", tasks)]
+    /// Each task is (id_short, title)
+    pub fn print_task_board(&self, project_name: &str, columns: &[(&str, Vec<(String, String)>)]) {
+        println!();
+        println!(
+            "{}",
+            format!("▶ Task Board — {}", project_name).bright_yellow().bold()
+        );
+        println!("{}", "─".repeat(70).dimmed());
+        println!();
+
+        for (status, tasks) in columns {
+            let count = tasks.len();
+            let header = format!("{} ({})", status, count);
+
+            println!("{}", header.bright_white().bold());
+            println!("{}", "─".repeat(header.len()).dimmed());
+
+            if tasks.is_empty() {
+                println!("{}", "  (empty)".dimmed());
+            } else {
+                let icon = match *status {
+                    "TODO"        => "○".bright_yellow(),
+                    "IN PROGRESS" => "→".bright_blue(),
+                    "DONE"        => "✓".bright_green(),
+                    _             => "•".normal(),
+                };
+                // Show max 12 per column to keep it readable
+                for (id, title) in tasks.iter().take(12) {
+                    let title_display = if title.len() > 60 {
+                        format!("{}…", &title[..59])
+                    } else {
+                        title.clone()
+                    };
+                    println!(
+                        "  {} {}  {}",
+                        icon,
+                        title_display.bright_white(),
+                        format!("#{}", id).dimmed()
+                    );
+                }
+                if tasks.len() > 12 {
+                    println!("  {} {} more…", "  ".dimmed(), tasks.len() - 12);
+                }
+            }
+            println!();
+        }
+    }
+
     /// Print assistant response (with optional markdown rendering)
     pub fn print_response(&self, content: &str) {
         println!();
