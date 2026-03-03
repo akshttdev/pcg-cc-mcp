@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::deliverable::{CreateDeliverable, Deliverable, UpdateDeliverable};
+use db::models::project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,10 +71,30 @@ async fn move_deliverable_status(
     Path(id): Path<Uuid>,
     Json(body): Json<MoveStatusBody>,
 ) -> Result<Json<ApiResponse<Deliverable>>, ApiError> {
-    Deliverable::move_status(&d.db().pool, id, &body.status)
+    let pool = &d.db().pool;
+    let deliverable = Deliverable::move_status(pool, id, &body.status)
         .await?
-        .map(|x| Json(ApiResponse::success(x)))
-        .ok_or_else(|| ApiError::NotFound("Deliverable not found".into()))
+        .ok_or_else(|| ApiError::NotFound("Deliverable not found".into()))?;
+
+    // Auto-register in knowledge graph when marked done
+    if body.status == "done" {
+        let source_id = id.to_string();
+        let source_title = format!("{} ({})", deliverable.title, deliverable.deliverable_type);
+        let summary = deliverable.description.as_str();
+        let _ = ProjectKnowledgeSource::upsert_source(
+            pool,
+            deliverable.project_id,
+            &KnowledgeSourceType::Artifact,
+            &source_id,
+            &source_title,
+            Some(summary),
+            1.0,
+        )
+        .await;
+        tracing::info!("Deliverable {} registered in knowledge graph as artifact", id);
+    }
+
+    Ok(Json(ApiResponse::success(deliverable)))
 }
 
 /// DELETE /api/deliverables/:id

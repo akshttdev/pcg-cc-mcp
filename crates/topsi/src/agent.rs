@@ -91,6 +91,8 @@ For complex requests like "build a website", break into phases:
 
 ### Project & Task tools
 - `create_project` - Create a new project
+- `update_project` - Update project name or organization assignment
+- `list_organizations` - List all organizations (to get IDs for update_project)
 - `create_task` - Create a task in a project
 - `list_tasks` - List tasks with filtering
 - `update_task` - Update task properties
@@ -687,6 +689,8 @@ impl TopsiAgent {
             let result = match call.name.as_str() {
                 "list_projects" => self.tool_list_projects(&call.arguments, scope).await,
                 "create_project" => self.tool_create_project(&call.arguments, user_context).await,
+                "update_project" => self.tool_update_project(&call.arguments, user_context).await,
+                "list_organizations" => self.tool_list_organizations().await,
                 "list_nodes" => self.tool_list_nodes(&call.arguments, scope).await,
                 "list_edges" => self.tool_list_edges(&call.arguments, scope).await,
                 "find_path" => self.tool_find_path(&call.arguments, scope).await,
@@ -1174,7 +1178,7 @@ impl TopsiAgent {
                VALUES (?, ?, ?, ?, ?)"#
         )
         .bind(member_id.as_bytes().to_vec())
-        .bind(project.id.to_string()) // project_id is TEXT
+        .bind(project.id.as_bytes().to_vec())
         .bind(user_uuid.as_bytes().to_vec())
         .bind("owner")
         .bind(user_uuid.as_bytes().to_vec()) // granted_by is the user themselves
@@ -1194,6 +1198,106 @@ impl TopsiAgent {
                 project.name,
                 project.git_repo_path.display()
             )
+        }))
+    }
+
+    /// List all organizations
+    async fn tool_list_organizations(&self) -> std::result::Result<serde_json::Value, TopsiError> {
+        let pool = self.db.as_ref().ok_or_else(|| TopsiError::ToolError("DB not available".into()))?;
+        let rows = sqlx::query!(
+            r#"SELECT hex(id) as id, name, slug, description FROM organizations WHERE deleted_at IS NULL ORDER BY name"#
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| TopsiError::ToolError(format!("Failed to list organizations: {}", e)))?;
+
+        let orgs: Vec<serde_json::Value> = rows.iter().map(|r| serde_json::json!({
+            "id": r.id,
+            "name": r.name,
+            "slug": r.slug,
+            "description": r.description
+        })).collect();
+
+        Ok(serde_json::json!({ "organizations": orgs, "count": orgs.len() }))
+    }
+
+    /// Update project metadata (name, organization assignment)
+    async fn tool_update_project(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+    ) -> std::result::Result<serde_json::Value, TopsiError> {
+        let pool = self.db.as_ref().ok_or_else(|| TopsiError::ToolError("DB not available".into()))?;
+
+        let project_id_str = args["project_id"].as_str()
+            .ok_or_else(|| TopsiError::ToolError("project_id required".into()))?;
+        let project_uuid = uuid::Uuid::parse_str(project_id_str)
+            .map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
+
+        // Verify user has access to this project
+        let member_check = sqlx::query!(
+            r#"SELECT role FROM project_members WHERE project_id = ? AND user_id = ?"#,
+            project_uuid,
+            user_context.user_id
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| TopsiError::ToolError(format!("Access check failed: {}", e)))?;
+
+        if member_check.is_none() && !user_context.is_admin {
+            return Err(TopsiError::ToolError("Access denied: not a member of this project".into()));
+        }
+
+        // Build update dynamically based on provided fields
+        let new_name = args["name"].as_str();
+        let new_org_id = args["organization_id"].as_str();
+
+        if new_name.is_none() && new_org_id.is_none() {
+            return Err(TopsiError::ToolError("Provide at least one field to update: name or organization_id".into()));
+        }
+
+        // Parse org_id from hex string (Topsi returns hex from list_organizations)
+        let org_uuid: Option<uuid::Uuid> = if let Some(org_str) = new_org_id {
+            // Accept UUID format (with dashes) or raw hex string (32 chars, no dashes)
+            if let Ok(u) = uuid::Uuid::parse_str(org_str) {
+                Some(u)
+            } else if org_str.len() == 32 {
+                // Raw hex without dashes — insert dashes and parse
+                let with_dashes = format!("{}-{}-{}-{}-{}",
+                    &org_str[0..8], &org_str[8..12], &org_str[12..16],
+                    &org_str[16..20], &org_str[20..32]);
+                Some(uuid::Uuid::parse_str(&with_dashes)
+                    .map_err(|_| TopsiError::ToolError(format!("Invalid organization_id: {}", org_str)))?)
+            } else {
+                return Err(TopsiError::ToolError(format!("organization_id must be a UUID or 32-char hex string, got: {}", org_str)));
+            }
+        } else {
+            None
+        };
+
+        sqlx::query(r#"
+            UPDATE projects
+            SET name = COALESCE(?, name),
+                organization_id = CASE WHEN ? = 1 THEN ? ELSE organization_id END,
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?
+        "#)
+        .bind(new_name)
+        .bind(org_uuid.is_some() as i32)
+        .bind(org_uuid.map(|u| u.as_bytes().to_vec()))
+        .bind(project_uuid.as_bytes().to_vec())
+        .execute(pool)
+        .await
+        .map_err(|e| TopsiError::ToolError(format!("Failed to update project: {}", e)))?;
+
+        tracing::info!("Updated project {} — name={:?}, org={:?}", project_id_str, new_name, new_org_id);
+
+        Ok(serde_json::json!({
+            "success": true,
+            "project_id": project_id_str,
+            "updated_name": new_name,
+            "updated_organization_id": new_org_id,
+            "message": "Project updated successfully"
         }))
     }
 
@@ -1308,7 +1412,7 @@ impl TopsiAgent {
                                VALUES (?, ?, ?, ?, ?)"#
                         )
                         .bind(member_id.as_bytes().to_vec())
-                        .bind(project.id.to_string()) // project_id is TEXT
+                        .bind(project.id.as_bytes().to_vec())
                         .bind(auto_user_uuid.as_bytes().to_vec())
                         .bind("owner")
                         .bind(auto_user_uuid.as_bytes().to_vec())
