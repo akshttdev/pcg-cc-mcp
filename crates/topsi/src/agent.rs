@@ -452,12 +452,15 @@ impl TopsiAgent {
             .map_err(|e| TopsiError::LLMError(format!("LLM request failed: {}", e)))?;
 
         // Token budget guard: stop when cumulative tokens exceed this threshold.
-        // At Claude Sonnet 4 pricing (~$3/M in + $15/M out), 200k tokens ≈ $3.60 worst case.
-        // This replaces the old hard iteration cap — the agent can reason as long as it needs
-        // but won't run away on cost if something goes wrong.
         const MAX_TOTAL_TOKENS: i64 = 200_000;
+        // Hard iteration cap — prevents infinite loops on conversational queries
+        const MAX_ITERATIONS: u32 = 10;
+        // Repetition guard — consecutive identical tool-call batches before forcing a stop
+        const MAX_REPEAT_ROUNDS: usize = 3;
 
         let mut iteration: u32 = 0;
+        let mut last_tool_batch: Option<Vec<String>> = None;
+        let mut repeat_count: usize = 0;
         loop {
             match response {
                 LLMResponse::Text { content, usage } => {
@@ -526,6 +529,31 @@ impl TopsiAgent {
                         break;
                     }
 
+                    // Hard iteration cap
+                    if iteration >= MAX_ITERATIONS {
+                        tracing::warn!(
+                            "[TOPSI] Hit max iterations ({}) — forcing stop",
+                            MAX_ITERATIONS
+                        );
+                        break;
+                    }
+
+                    // Repetition guard — same tool batch called too many times in a row
+                    let this_batch: Vec<String> = calls.iter().map(|c| c.name.clone()).collect();
+                    if last_tool_batch.as_deref() == Some(this_batch.as_slice()) {
+                        repeat_count += 1;
+                        if repeat_count >= MAX_REPEAT_ROUNDS {
+                            tracing::warn!(
+                                "[TOPSI] Repetition guard triggered after {} identical rounds of {:?}",
+                                repeat_count, this_batch
+                            );
+                            break;
+                        }
+                    } else {
+                        repeat_count = 0;
+                        last_tool_batch = Some(this_batch);
+                    }
+
                     // Token budget check — stop before the next LLM call would blow budget
                     if total_input_tokens + total_output_tokens >= MAX_TOTAL_TOKENS {
                         tracing::warn!(
@@ -561,20 +589,29 @@ impl TopsiAgent {
             iteration += 1;
         }
 
-        // Resolve the final message
-        let final_msg = final_message.unwrap_or_else(|| {
-            // Token budget exhausted — return best partial result we have
-            tracing::warn!("[TOPSI] Agentic loop ended without final message ({}+{} tokens used)", total_input_tokens, total_output_tokens);
-            all_tool_calls
-            .iter()
-            .find(|r| r.tool_name == "respond_to_user" && r.success)
-            .and_then(|r| r.result.get("response"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                "I've been working on your request but reached my reasoning limit. Here's what I've done so far — please let me know if you'd like me to continue.".to_string()
-            })
-        });
+        // Resolve the final message — make one last LLM call to synthesise if loop broke early
+        let final_msg = if let Some(msg) = final_message {
+            msg
+        } else {
+            tracing::warn!("[TOPSI] Loop ended early (iter={}, tokens={}+{}), synthesising answer",
+                iteration, total_input_tokens, total_output_tokens);
+
+            // Try one direct synthesis call (no tools) with what we've gathered
+            let gathered: String = all_tool_calls.iter()
+                .filter(|r| r.success)
+                .take(4)
+                .map(|r| format!("Tool '{}' returned: {}", r.tool_name, r.result))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let synthesis_context = format!(
+                "You gathered this information:\n{}\n\nNow give a direct, conversational answer.",
+                gathered
+            );
+            match llm.generate(TOPSI_SYSTEM_PROMPT, message, &synthesis_context).await {
+                Ok(content) => content,
+                Err(_) => "Something went sideways — try asking again with a bit more context.".to_string(),
+            }
+        };
 
         // Save assistant response to session history
         if let Some(sid) = session_id {
