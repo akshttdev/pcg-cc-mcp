@@ -4336,3 +4336,199 @@ export const emailMessagesApi = {
     return handleApiResponse<void>(response);
   },
 };
+
+// ============================================================
+// Universal Persons API
+// ============================================================
+
+export interface PersonRecord {
+  id: string;
+  full_name: string;
+  email?: string;
+  phone?: string;
+  avatar_url?: string;
+  person_type: string;
+  financial_role: string;
+  client_profile?: string;
+  business_stage?: string;
+  lifecycle_stage: string;
+  lead_score: number;
+  company_name?: string;
+  job_title?: string;
+  website?: string;
+  user_id?: string;
+  crm_contact_id?: string;
+  organization_id?: string;
+  intelligence_summary?: string;
+  intelligence_raw?: string;
+  intelligence_last_run_at?: string;
+  intelligence_confidence: number;
+  notes?: string;
+  tags: string;
+  custom_fields: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PersonSocialProfile {
+  id: string;
+  person_id: string;
+  platform: string;
+  handle?: string;
+  profile_url?: string;
+  follower_count?: number;
+  following_count?: number;
+  bio?: string;
+  verified: number;
+  last_synced_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PersonWithSocials extends PersonRecord {
+  social_profiles: PersonSocialProfile[];
+}
+
+export interface InvoiceRecord {
+  id: string;
+  invoice_number: string;
+  person_id?: string;
+  organization_id?: string;
+  project_id?: string;
+  invoice_type: string;
+  status: string;
+  amount_usd: number;
+  amount_vibe: number;
+  currency: string;
+  title?: string;
+  description?: string;
+  line_items: string;
+  issue_date?: string;
+  due_date?: string;
+  paid_at?: string;
+  payment_method?: string;
+  payment_reference?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePersonInput {
+  full_name: string;
+  email?: string;
+  phone?: string;
+  person_type?: string;
+  financial_role?: string;
+  client_profile?: string;
+  business_stage?: string;
+  lifecycle_stage?: string;
+  company_name?: string;
+  job_title?: string;
+  website?: string;
+  notes?: string;
+  tags?: string[];
+}
+
+export interface UpdatePersonInput {
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  person_type?: string;
+  financial_role?: string;
+  client_profile?: string;
+  business_stage?: string;
+  lifecycle_stage?: string;
+  lead_score?: number;
+  company_name?: string;
+  job_title?: string;
+  website?: string;
+  notes?: string;
+  tags?: string[];
+}
+
+export const personsApi = {
+  list: async (params?: {
+    person_type?: string;
+    financial_role?: string;
+    lifecycle_stage?: string;
+    organization_id?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<PersonRecord[]> => {
+    const qs = new URLSearchParams();
+    if (params?.person_type) qs.set('person_type', params.person_type);
+    if (params?.financial_role) qs.set('financial_role', params.financial_role);
+    if (params?.lifecycle_stage) qs.set('lifecycle_stage', params.lifecycle_stage);
+    if (params?.organization_id) qs.set('organization_id', params.organization_id);
+    if (params?.q) qs.set('q', params.q);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.offset) qs.set('offset', String(params.offset));
+    const response = await makeRequest(`/api/persons?${qs}`);
+    return handleApiResponse<PersonRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<PersonWithSocials> => {
+    const response = await makeRequest(`/api/persons/${id}`);
+    return handleApiResponse<PersonWithSocials>(response);
+  },
+
+  create: async (data: CreatePersonInput): Promise<PersonRecord> => {
+    const response = await makeRequest('/api/persons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonRecord>(response);
+  },
+
+  update: async (id: string, data: UpdatePersonInput): Promise<PersonRecord> => {
+    const response = await makeRequest(`/api/persons/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  listSocialProfiles: async (id: string): Promise<PersonSocialProfile[]> => {
+    const response = await makeRequest(`/api/persons/${id}/social-profiles`);
+    return handleApiResponse<PersonSocialProfile[]>(response);
+  },
+
+  upsertSocialProfile: async (
+    id: string,
+    data: {
+      platform: string;
+      handle?: string;
+      profile_url?: string;
+      follower_count?: number;
+      bio?: string;
+      verified?: boolean;
+    }
+  ): Promise<PersonSocialProfile> => {
+    const response = await makeRequest(`/api/persons/${id}/social-profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonSocialProfile>(response);
+  },
+
+  deleteSocialProfile: async (id: string, platform: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}/social-profiles/${platform}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  listInvoices: async (id: string): Promise<InvoiceRecord[]> => {
+    const response = await makeRequest(`/api/persons/${id}/invoices`);
+    return handleApiResponse<InvoiceRecord[]>(response);
+  },
+};

@@ -81,6 +81,8 @@ pub mod pulse_source;
 pub mod pulse_tracking_config;
 pub mod project_knowledge_source;
 pub mod workflow_template;
+pub mod person;
+pub mod invoice;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

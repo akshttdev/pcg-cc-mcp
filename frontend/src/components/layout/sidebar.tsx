@@ -104,6 +104,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
 // Global views - admin only, collapsible
 const GLOBAL_VIEW_ITEMS: NavItem[] = [
   { label: 'All Tasks', icon: ListTodo, to: '/global-tasks', id: 'global-tasks', adminOnly: true },
+  { label: 'People', icon: Users, to: '/people', id: 'people', adminOnly: true },
   { label: 'All CRM', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
   { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
 ];
