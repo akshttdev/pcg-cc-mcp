@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,7 +24,7 @@ import {
   RefreshCw,
   ExternalLink,
 } from 'lucide-react';
-import { personsApi, type PersonWithSocials, type PersonSocialProfile, type InvoiceRecord } from '@/lib/api';
+import { personsApi, intelligenceApi, type PersonWithSocials, type PersonSocialProfile, type InvoiceRecord, type IntelligenceStatus } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -157,6 +157,7 @@ export function PersonDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [researchLoading, setResearchLoading] = useState(false);
+  const [researchStatus, setResearchStatus] = useState<IntelligenceStatus | null>(null);
 
   const { data: person, isLoading } = useQuery<PersonWithSocials>({
     queryKey: ['persons', personId],
@@ -170,23 +171,33 @@ export function PersonDetailPage() {
     enabled: !!personId,
   });
 
-  const updatePerson = useMutation({
-    mutationFn: (data: Parameters<typeof personsApi.update>[1]) =>
-      personsApi.update(personId!, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['persons', personId] });
-    },
-  });
-
   const handleResearch = async () => {
+    if (!personId) return;
     setResearchLoading(true);
+    setResearchStatus(null);
     try {
-      // Trigger Nora intelligence research on this person
-      // For now: clear flag + show placeholder — full Nora tool integration in next sprint
-      await updatePerson.mutateAsync({
-        intelligence_summary: `Research requested on ${new Date().toLocaleDateString()}. Nora will gather online presence data.`,
-      });
-    } finally {
+      await intelligenceApi.triggerResearch(personId);
+      // Poll for completion every 3s for up to 90s
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await intelligenceApi.getStatus(personId);
+          setResearchStatus(status);
+          if (status.status === 'done' || status.status === 'failed') {
+            clearInterval(pollInterval);
+            setResearchLoading(false);
+            queryClient.invalidateQueries({ queryKey: ['persons', personId] });
+          }
+        } catch {
+          clearInterval(pollInterval);
+          setResearchLoading(false);
+        }
+      }, 3000);
+      // Auto-cancel after 90s
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setResearchLoading(false);
+      }, 90000);
+    } catch {
       setResearchLoading(false);
     }
   };
@@ -364,11 +375,23 @@ export function PersonDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
+              {researchLoading && researchStatus && (
+                <div className="mb-3 px-3 py-2 rounded-md bg-purple-50 text-purple-700 text-xs flex items-center gap-2">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  <span>
+                    {researchStatus.status === 'queued' && 'Research queued — Scout will start shortly…'}
+                    {researchStatus.status === 'running' && 'Scout is researching — gathering online presence data…'}
+                  </span>
+                </div>
+              )}
               {person.intelligence_summary ? (
                 <div className="space-y-3">
                   <p className="text-sm leading-relaxed">{person.intelligence_summary}</p>
+                  {person.intelligence_agent && (
+                    <p className="text-xs text-muted-foreground">Via {person.intelligence_agent} agent</p>
+                  )}
                   <Button variant="outline" size="sm" onClick={handleResearch} disabled={researchLoading}>
-                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${researchLoading ? 'animate-spin' : ''}`} />
                     Refresh Research
                   </Button>
                 </div>
@@ -377,7 +400,7 @@ export function PersonDetailPage() {
                   <Sparkles className="h-8 w-8 mb-3 opacity-30" />
                   <p className="text-sm font-medium">No intelligence gathered yet</p>
                   <p className="text-xs mt-1 max-w-xs">
-                    Click Research to have Nora gather this person's online presence, social media activity, and professional background.
+                    Nora delegates to Scout (social intelligence) or Astra (market research) to gather this contact's online presence, company background, and professional profile.
                   </p>
                   <Button variant="outline" size="sm" className="mt-4" onClick={handleResearch} disabled={researchLoading}>
                     {researchLoading ? (
@@ -385,7 +408,7 @@ export function PersonDetailPage() {
                     ) : (
                       <Sparkles className="h-3.5 w-3.5 mr-1.5" />
                     )}
-                    Run One-Shot Research
+                    {researchLoading ? 'Researching…' : 'Research via Scout/Astra'}
                   </Button>
                 </div>
               )}

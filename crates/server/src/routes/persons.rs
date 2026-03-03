@@ -22,9 +22,25 @@ use db::models::person::{
 };
 use db::models::invoice::{CreateInvoice, Invoice, UpdateInvoice};
 
+const VIBE_PER_USD: f64 = 100.0; // 1 USD = 100 VIBE (1 VIBE = $0.01)
+
 // ---------------------------------------------------------------------------
 // Query extractors
 // ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct ListInvoicesParams {
+    pub invoice_type: Option<String>,
+    pub status: Option<String>,
+    pub person_id: Option<Uuid>,
+    pub project_id: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MoveInvoiceStatusBody {
+    pub status: String,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ListPersonsQueryParams {
@@ -179,12 +195,36 @@ async fn list_person_invoices(
     Ok(Json(ApiResponse::success(invoices)))
 }
 
+/// GET /api/invoices?invoice_type=ar&status=pending&person_id=...&project_id=...&limit=200
+async fn list_invoices(
+    State(deployment): State<DeploymentImpl>,
+    Query(p): Query<ListInvoicesParams>,
+) -> Result<Json<ApiResponse<Vec<Invoice>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let mut qb = sqlx::QueryBuilder::new("SELECT * FROM invoices WHERE 1=1");
+    if let Some(t) = &p.invoice_type { qb.push(" AND invoice_type = ").push_bind(t.clone()); }
+    if let Some(s) = &p.status { qb.push(" AND status = ").push_bind(s.clone()); }
+    if let Some(pid) = p.person_id { qb.push(" AND person_id = ").push_bind(pid); }
+    if let Some(proj) = p.project_id { qb.push(" AND project_id = ").push_bind(proj); }
+    qb.push(" ORDER BY created_at DESC LIMIT ").push_bind(p.limit.unwrap_or(200));
+    let invoices = qb.build_query_as::<Invoice>().fetch_all(pool).await?;
+    Ok(Json(ApiResponse::success(invoices)))
+}
+
 /// POST /api/invoices
 async fn create_invoice(
     State(deployment): State<DeploymentImpl>,
-    Json(data): Json<CreateInvoice>,
+    Json(mut data): Json<CreateInvoice>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
     let pool = &deployment.db().pool;
+    // Auto-compute VIBE from USD
+    if data.amount_vibe.is_none() {
+        if let Some(usd) = data.amount_usd {
+            if usd > 0.0 {
+                data.amount_vibe = Some((usd * VIBE_PER_USD).ceil() as i64);
+            }
+        }
+    }
     let invoice = Invoice::create(pool, data).await?;
     Ok(Json(ApiResponse::success(invoice)))
 }
@@ -205,13 +245,53 @@ async fn get_invoice(
 async fn update_invoice(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
-    Json(data): Json<UpdateInvoice>,
+    Json(mut data): Json<UpdateInvoice>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
     let pool = &deployment.db().pool;
+    // Auto-recompute VIBE if USD changed
+    if data.amount_vibe.is_none() {
+        if let Some(usd) = data.amount_usd {
+            data.amount_vibe = Some((usd * VIBE_PER_USD).ceil() as i64);
+        }
+    }
     let invoice = Invoice::update(pool, id, data)
         .await?
         .ok_or_else(|| ApiError::NotFound(format!("Invoice {} not found", id)))?;
     Ok(Json(ApiResponse::success(invoice)))
+}
+
+/// PATCH /api/invoices/:id/status
+async fn move_invoice_status(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<MoveInvoiceStatusBody>,
+) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let sql = match body.status.as_str() {
+        "paid" | "partial" =>
+            "UPDATE invoices SET status = ?, paid_at = datetime('now','subsec'), updated_at = datetime('now','subsec') WHERE id = ?",
+        _ =>
+            "UPDATE invoices SET status = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+    };
+    sqlx::query(sql).bind(&body.status).bind(id).execute(pool).await?;
+    Invoice::find_by_id(pool, id)
+        .await?
+        .map(|i| Json(ApiResponse::success(i)))
+        .ok_or_else(|| ApiError::NotFound(format!("Invoice {} not found", id)))
+}
+
+/// DELETE /api/invoices/:id
+async fn delete_invoice(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deleted = Invoice::delete(pool, id).await?;
+    if deleted {
+        Ok(Json(ApiResponse::success(())))
+    } else {
+        Err(ApiError::NotFound(format!("Invoice {} not found", id)))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -238,10 +318,11 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         // Person invoices
         .route("/persons/{id}/invoices", get(list_person_invoices))
         // Invoice CRUD
-        .route("/invoices", post(create_invoice))
+        .route("/invoices", get(list_invoices).post(create_invoice))
         .route(
             "/invoices/{id}",
-            get(get_invoice).patch(update_invoice),
+            get(get_invoice).patch(update_invoice).delete(delete_invoice),
         )
+        .route("/invoices/{id}/status", patch(move_invoice_status))
         .with_state(deployment.clone())
 }

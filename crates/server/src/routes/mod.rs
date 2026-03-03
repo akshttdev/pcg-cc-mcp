@@ -89,7 +89,6 @@ pub mod deliverables;
 pub mod operator_rates;
 pub mod command_center;
 pub mod automations;
-pub mod invoices;
 pub mod intelligence;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
@@ -153,7 +152,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(proposals::router(&deployment))
         .merge(deliverables::router(&deployment))
         .merge(command_center::router(&deployment))
-        .merge(invoices::router(&deployment))
         .merge(intelligence::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
