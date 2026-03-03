@@ -258,6 +258,9 @@ async fn main() -> Result<(), VibeKanbanError> {
         }
     });
 
+    // Spawn CRM workflow automations (runs hourly)
+    routes::automations::spawn_automation_loop(deployment.db().pool.clone());
+
     let app_router = routes::router(deployment);
 
     let port = std::env::var("BACKEND_PORT")
