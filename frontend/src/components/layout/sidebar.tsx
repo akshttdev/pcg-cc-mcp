@@ -96,7 +96,7 @@ interface NavItem {
 // Primary navigation - always visible (role-filtered)
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Nora Command', icon: Crown, to: '/nora', id: 'nora', adminOnly: true },
-  { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi', adminOnly: true },
+  { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi' },
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse' },

@@ -214,6 +214,8 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         // Meeting mode routes
         .route("/topsi/meeting/list", get(list_meetings))
         .route("/topsi/meeting/start", post(start_meeting))
+        .route("/topsi/meeting/join", post(join_meeting))
+        .route("/topsi/meeting/message", post(meeting_text_message))
         .route("/topsi/meeting/audio", post(meeting_audio_chunk))
         .route("/topsi/meeting/end", post(end_meeting))
         .route("/topsi/meeting/status/{session_id}", get(meeting_status))
@@ -496,11 +498,48 @@ pub struct MeetingTranscriptResponse {
     pub total_count: i64,
 }
 
+/// Request to join an existing meeting session
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinMeetingRequest {
+    pub session_id: String,
+}
+
+/// Response from joining a meeting
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinMeetingResponse {
+    pub session_id: String,
+    pub title: String,
+    pub project_id: String,
+    pub participant_count: i32,
+}
+
+/// Request to add a typed text message/link to an active meeting (no audio)
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingMessageRequest {
+    pub session_id: String,
+    pub text: String,
+    pub speaker_label: Option<String>,
+    pub is_link: Option<bool>,
+}
+
+/// Response from posting a meeting message
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingMessageResponse {
+    pub session_id: String,
+    pub segment_index: i32,
+    pub text: String,
+}
+
 /// Query params for listing meetings
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListMeetingsQuery {
     pub project_id: Option<String>,
+    pub status: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -1791,8 +1830,10 @@ pub async fn list_meetings(
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to list meetings: {}", e)))?;
 
+    let status_filter = params.status.as_deref();
     let meetings: Vec<MeetingSessionSummary> = sessions
         .into_iter()
+        .filter(|s| status_filter.map_or(true, |f| s.status == f))
         .map(|s| {
             let notes_value = s
                 .notes
@@ -1816,6 +1857,95 @@ pub async fn list_meetings(
 
     let total = meetings.len();
     Ok(Json(ListMeetingsResponse { meetings, total }))
+}
+
+/// Join an existing active meeting session (increments participant count)
+pub async fn join_meeting(
+    State(state): State<DeploymentImpl>,
+    Json(request): Json<JoinMeetingRequest>,
+) -> Result<Json<JoinMeetingResponse>, ApiError> {
+    let pool = &state.db().pool;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", request.session_id)))?;
+
+    if session.status != "active" {
+        return Err(ApiError::BadRequest("Meeting is not active".to_string()));
+    }
+
+    let new_count = session.participant_count.unwrap_or(0) + 1;
+    let updated = db::models::meeting_session::MeetingSession::update(
+        pool,
+        &session.id,
+        db::models::meeting_session::UpdateMeetingSession {
+            participant_count: Some(new_count),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    tracing::info!("[MEETING] User joined session {} — participants: {}", session.id, new_count);
+
+    Ok(Json(JoinMeetingResponse {
+        session_id: updated.id,
+        title: updated.title,
+        project_id: updated.project_id,
+        participant_count: updated.participant_count.unwrap_or(new_count),
+    }))
+}
+
+/// Add a typed text message or link to an active meeting without audio
+pub async fn meeting_text_message(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<MeetingMessageRequest>,
+) -> Result<Json<MeetingMessageResponse>, ApiError> {
+    let pool = &state.db().pool;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", request.session_id)))?;
+
+    if session.status != "active" {
+        return Err(ApiError::BadRequest("Meeting is not active".to_string()));
+    }
+
+    let count = db::models::meeting_session::MeetingSegment::count_by_session(pool, &request.session_id)
+        .await
+        .unwrap_or(0);
+
+    let text = if request.is_link.unwrap_or(false) {
+        format!("[SHARED LINK] {}", request.text)
+    } else {
+        request.text.clone()
+    };
+
+    let segment = db::models::meeting_session::MeetingSegment::create(
+        pool,
+        db::models::meeting_session::CreateMeetingSegment {
+            meeting_session_id: request.session_id.clone(),
+            segment_index: count as i32,
+            speaker_label: request.speaker_label.clone(),
+            text: text.clone(),
+            confidence: Some(1.0),
+            start_time_ms: 0,
+            end_time_ms: 0,
+            is_topsi_addressed: false,
+        },
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    let speaker = request.speaker_label.as_deref().unwrap_or("participant");
+    tracing::info!("[MEETING] Text message from {} in session {}: {}", speaker, request.session_id, &text[..text.len().min(80)]);
+
+    Ok(Json(MeetingMessageResponse {
+        session_id: request.session_id,
+        segment_index: segment.segment_index,
+        text,
+    }))
 }
 
 /// Start a new meeting session
