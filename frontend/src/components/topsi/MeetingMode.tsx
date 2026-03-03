@@ -113,6 +113,8 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   // Always holds the latest processAudioChunk to avoid stale closure in MediaRecorder callbacks
   const processAudioChunkRef = useRef<(blob: Blob, idx: number) => void>(() => {});
+  // First WebM chunk contains the EBML container header — must be prepended to all later chunks
+  const firstChunkRef = useRef<Blob | null>(null);
 
   // Fetch all projects for the selector
   const { data: projects = [] } = useQuery({
@@ -223,6 +225,7 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
   };
 
   const startMediaRecorder = (stream: MediaStream) => {
+    firstChunkRef.current = null; // reset header on new recorder
     const recorder = new MediaRecorder(stream, {
       mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -234,7 +237,18 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
       if (e.data.size > 0) {
         const idx = localChunkIndex++;
         setChunkIndex(idx);
-        processAudioChunkRef.current(e.data, idx);
+        if (idx === 0) {
+          // First chunk contains the WebM EBML header — save it so we can
+          // prepend it to every subsequent fragment, making each a valid file.
+          firstChunkRef.current = e.data;
+          processAudioChunkRef.current(e.data, idx);
+        } else {
+          // Prepend the header chunk so Whisper/ffmpeg can open the fragment.
+          const blob = firstChunkRef.current
+            ? new Blob([firstChunkRef.current, e.data], { type: e.data.type })
+            : e.data;
+          processAudioChunkRef.current(blob, idx);
+        }
       }
     };
     recorder.start(5000); // 5-second chunks
