@@ -118,8 +118,10 @@ async def transcribe_audio(request: TranscribeRequest):
         # Decode base64 audio
         audio_data = base64.b64decode(request.audio_b64)
 
-        # Write to temporary file (Whisper needs a file path)
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+        # Write to temporary file (Whisper needs a file path).
+        # Use .webm extension — browsers send audio/webm;codecs=opus via MediaRecorder.
+        # ffmpeg auto-detects format from content; the extension just needs to not mislead it.
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_file:
             tmp_file.write(audio_data)
             tmp_path = tmp_file.name
 
