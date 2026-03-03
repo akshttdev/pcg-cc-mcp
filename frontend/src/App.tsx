@@ -66,6 +66,8 @@ const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ d
 const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
 const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
+const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
+const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -321,6 +323,14 @@ function AppContent() {
                       <Route
                         path="/command-center"
                         element={<ProtectedRoute><CommandCenterPage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/invoices"
+                        element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/projects/:projectId/deliverables"
+                        element={<ProtectedRoute><ProjectDeliverablesPage /></ProtectedRoute>}
                       />
                       <Route
                         path="/virtual-environment"

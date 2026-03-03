@@ -4363,6 +4363,8 @@ export interface PersonRecord {
   intelligence_raw?: string;
   intelligence_last_run_at?: string;
   intelligence_confidence: number;
+  intelligence_status?: 'idle' | 'queued' | 'running' | 'done' | 'failed';
+  intelligence_agent?: string;
   notes?: string;
   tags: string;
   custom_fields: string;
@@ -4756,5 +4758,94 @@ export const commandCenterApi = {
     const qs = orgId ? `?org_id=${orgId}` : '';
     const response = await makeRequest(`/api/command-center${qs}`);
     return handleApiResponse<CommandCenterSnapshot>(response);
+  },
+};
+
+// ── Invoices ──────────────────────────────────────────────────────────────────
+
+export interface CreateInvoiceInput {
+  person_id?: string;
+  organization_id?: string;
+  project_id?: string;
+  invoice_type?: 'ar' | 'ap';
+  title?: string;
+  description?: string;
+  amount_usd?: number;
+  amount_vibe?: number;
+  currency?: string;
+  issue_date?: string;
+  due_date?: string;
+  notes?: string;
+}
+
+export const invoicesApi = {
+  list: async (params?: { invoice_type?: string; status?: string; person_id?: string; project_id?: string; limit?: number }): Promise<InvoiceRecord[]> => {
+    const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))).toString() : '';
+    const response = await makeRequest(`/api/invoices${qs}`);
+    return handleApiResponse<InvoiceRecord[]>(response);
+  },
+
+  create: async (data: CreateInvoiceInput): Promise<InvoiceRecord> => {
+    const response = await makeRequest('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<InvoiceRecord>(response);
+  },
+
+  get: async (id: string): Promise<InvoiceRecord> => {
+    const response = await makeRequest(`/api/invoices/${id}`);
+    return handleApiResponse<InvoiceRecord>(response);
+  },
+
+  update: async (id: string, data: Partial<CreateInvoiceInput>): Promise<InvoiceRecord> => {
+    const response = await makeRequest(`/api/invoices/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<InvoiceRecord>(response);
+  },
+
+  moveStatus: async (id: string, status: string): Promise<InvoiceRecord> => {
+    const response = await makeRequest(`/api/invoices/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return handleApiResponse<InvoiceRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/invoices/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ── Intelligence ──────────────────────────────────────────────────────────────
+
+export interface IntelligenceStatus {
+  person_id: string;
+  status: 'idle' | 'queued' | 'running' | 'done' | 'failed';
+  summary?: string;
+  confidence: number;
+  agent?: string;
+  last_run_at?: string;
+}
+
+export const intelligenceApi = {
+  triggerResearch: async (personId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ person_id: string; status: string; message: string }> => {
+    const response = await makeRequest(`/api/persons/${personId}/research`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts ?? {}),
+    });
+    return handleApiResponse(response);
+  },
+
+  getStatus: async (personId: string): Promise<IntelligenceStatus> => {
+    const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
+    return handleApiResponse<IntelligenceStatus>(response);
   },
 };
