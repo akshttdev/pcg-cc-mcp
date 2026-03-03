@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use colored::Colorize;
+use futures;
 use rustyline::{error::ReadlineError, history::DefaultHistory, Editor};
 use uuid::Uuid;
 
@@ -834,39 +835,118 @@ impl PcgRepl {
         Ok(())
     }
 
-    /// Show kanban board for current project
+    /// Show kanban board — scoped to current project if set, otherwise full platform overview
     async fn handle_boards_command(&mut self) -> Result<()> {
-        let Some(project_id) = self.project_id else {
-            self.output.print_error("No project selected. Use /project <name> first.");
-            return Ok(());
-        };
+        if let Some(project_id) = self.project_id {
+            // ── Single-project kanban ──
+            let project_name = self.project_name.clone().unwrap_or_default();
+            self.output.print_info("Fetching tasks…");
 
-        let project_name = self.project_name.clone().unwrap_or_default();
-        self.output.print_info("Fetching tasks…");
+            let tasks = self.api.list_tasks(project_id, None).await?;
 
-        let tasks = self.api.list_tasks(project_id, None).await?;
+            let mut todo: Vec<(String, String)> = vec![];
+            let mut inprogress: Vec<(String, String)> = vec![];
+            let mut done: Vec<(String, String)> = vec![];
 
-        let mut todo: Vec<(String, String)> = vec![];
-        let mut inprogress: Vec<(String, String)> = vec![];
-        let mut done: Vec<(String, String)> = vec![];
-
-        for t in &tasks {
-            let entry = (t.id.to_string()[..8].to_string(), t.title.clone());
-            match t.status.as_str() {
-                "inprogress" | "in-progress" | "in_progress" => inprogress.push(entry),
-                "done" | "completed"                         => done.push(entry),
-                _                                            => todo.push(entry),
+            for t in &tasks {
+                let entry = (t.id.to_string()[..8].to_string(), t.title.clone());
+                match t.status.as_str() {
+                    "inprogress" | "in-progress" | "in_progress" => inprogress.push(entry),
+                    "done" | "completed"                         => done.push(entry),
+                    _                                            => todo.push(entry),
+                }
             }
-        }
 
-        self.output.print_task_board(
-            &project_name,
-            &[
-                ("TODO",        todo),
-                ("IN PROGRESS", inprogress),
-                ("DONE",        done),
-            ],
-        );
+            self.output.print_task_board(
+                &project_name,
+                &[
+                    ("TODO",        todo),
+                    ("IN PROGRESS", inprogress),
+                    ("DONE",        done),
+                ],
+            );
+        } else {
+            // ── Platform-wide overview ──
+            self.output.print_info("Fetching all projects…");
+            let projects = self.api.list_projects().await?;
+
+            if projects.is_empty() {
+                self.output.print_info("No projects found.");
+                return Ok(());
+            }
+
+            // Fetch tasks for all projects in parallel (cap at 20 to keep it fast)
+            let active_projects: Vec<_> = projects.iter().take(20).collect();
+            self.output.print_info(&format!("Loading tasks for {} projects…", active_projects.len()));
+
+            let task_futures: Vec<_> = active_projects
+                .iter()
+                .map(|p| self.api.list_tasks(p.id, None))
+                .collect();
+
+            let task_results = futures::future::join_all(task_futures).await;
+
+            println!();
+            println!("{}", "▶ Platform Board — All Projects".bright_yellow().bold());
+            println!("{}", "─".repeat(80).dimmed());
+            println!();
+            println!(
+                "{}",
+                format!("{:<32} {:>6} {:>12} {:>6}", "Project", "TODO", "IN PROGRESS", "DONE")
+                    .bright_white()
+                    .bold()
+            );
+            println!("{}", "─".repeat(60).dimmed());
+
+            let mut total_todo = 0usize;
+            let mut total_ip   = 0usize;
+            let mut total_done = 0usize;
+
+            for (project, tasks_result) in active_projects.iter().zip(task_results.iter()) {
+                let tasks = match tasks_result {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+
+                let todo  = tasks.iter().filter(|t| !matches!(t.status.as_str(), "inprogress"|"in-progress"|"in_progress"|"done"|"completed")).count();
+                let ip    = tasks.iter().filter(|t|  matches!(t.status.as_str(), "inprogress"|"in-progress"|"in_progress")).count();
+                let done  = tasks.iter().filter(|t|  matches!(t.status.as_str(), "done"|"completed")).count();
+
+                if tasks.is_empty() { continue; }
+
+                total_todo += todo;
+                total_ip   += ip;
+                total_done += done;
+
+                let name = if project.name.len() > 30 {
+                    format!("{}…", &project.name[..29])
+                } else {
+                    project.name.clone()
+                };
+
+                let ip_display = if ip > 0 { ip.to_string().bright_blue().to_string() } else { ip.to_string() };
+
+                println!(
+                    "{:<32} {:>6} {:>12} {:>6}",
+                    name.bright_white(),
+                    if todo > 0 { todo.to_string().bright_yellow().to_string() } else { todo.to_string() },
+                    ip_display,
+                    if done > 0 { done.to_string().bright_green().to_string() } else { done.to_string() },
+                );
+            }
+
+            println!("{}", "─".repeat(60).dimmed());
+            println!(
+                "{:<32} {:>6} {:>12} {:>6}",
+                "TOTAL".bright_white().bold(),
+                total_todo.to_string().bright_yellow().bold(),
+                total_ip.to_string().bright_blue().bold(),
+                total_done.to_string().bright_green().bold(),
+            );
+            println!();
+            println!("{}", "Tip: /project <name> then /boards for a full kanban view".dimmed());
+            println!();
+        }
 
         Ok(())
     }
