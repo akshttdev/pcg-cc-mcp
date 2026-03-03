@@ -119,3 +119,4 @@ piper_voices/
 voices/
 voice_samples/
 .env.backup
+.vercel
