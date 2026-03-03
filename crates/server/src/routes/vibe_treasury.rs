@@ -94,6 +94,15 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .with_state(deployment.clone())
 }
 
+/// VIBE network configuration returned to the frontend
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct VibeConfig {
+    pub revenue_address: String,
+    pub network: String,
+    pub vibe_token_address: String,
+}
+
 /// Public routes (no session required — faucet checks admin key, verify checks on-chain)
 pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
@@ -101,6 +110,8 @@ pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/vibe/deposit/verify", post(verify_deposit))
         // Admin faucet for seeding project balances (admin key required)
         .route("/vibe/faucet", post(admin_faucet))
+        // Network config (revenue wallet address, chain info)
+        .route("/vibe/config", get(get_vibe_config))
         .with_state(deployment.clone())
 }
 
@@ -164,6 +175,7 @@ async fn record_deposit(
             sender_address: payload.sender_address,
             amount_vibe: payload.amount_vibe,
             block_height: payload.block_height,
+            payment_method: None,
         },
     )
     .await?;
@@ -302,6 +314,7 @@ async fn verify_deposit(
             sender_address: tx.sender,
             amount_vibe: req.amount_vibe,
             block_height: None,
+            payment_method: None,
         },
     )
     .await?;
@@ -316,6 +329,16 @@ async fn verify_deposit(
     );
 
     Ok(Json(ApiResponse::success(deposit)))
+}
+
+/// GET /api/vibe/config — public endpoint returning network config (revenue wallet, chain info)
+async fn get_vibe_config() -> Json<ApiResponse<VibeConfig>> {
+    Json(ApiResponse::success(VibeConfig {
+        revenue_address: std::env::var("PLATFORM_REVENUE_ADDRESS").unwrap_or_default(),
+        network: "aptos_testnet".to_string(),
+        vibe_token_address: "0x24cb561c64c32942eb8600d5135f0185c23bcd06cd8cf33422ce2f9b77d65388"
+            .to_string(),
+    }))
 }
 
 /// POST /api/vibe/faucet — admin-only endpoint to seed project balances for testing
@@ -354,6 +377,7 @@ async fn admin_faucet(
             ),
             amount_vibe: req.amount_vibe,
             block_height: None,
+            payment_method: None,
         },
     )
     .await?;

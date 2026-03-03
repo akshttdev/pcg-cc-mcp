@@ -111,6 +111,8 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Always holds the latest processAudioChunk to avoid stale closure in MediaRecorder callbacks
+  const processAudioChunkRef = useRef<(blob: Blob, idx: number) => void>(() => {});
 
   // Fetch all projects for the selector
   const { data: projects = [] } = useQuery({
@@ -232,7 +234,7 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
       if (e.data.size > 0) {
         const idx = localChunkIndex++;
         setChunkIndex(idx);
-        processAudioChunk(e.data, idx);
+        processAudioChunkRef.current(e.data, idx);
       }
     };
     recorder.start(5000); // 5-second chunks
@@ -306,6 +308,8 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
     },
     [sessionId, meetingState]
   );
+  // Keep the ref pointing at the latest version so MediaRecorder callbacks never go stale
+  processAudioChunkRef.current = processAudioChunk;
 
   const startMeeting = async () => {
     if (!activeProjectId) {
@@ -326,14 +330,31 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to start meeting');
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.message || `Server error ${res.status}`);
+      }
 
       const data = await res.json();
       setSessionId(data.sessionId);
       setMeetingTitle(data.title);
 
-      // Start mic
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Start mic — request permission explicitly
+      let micStream: MediaStream;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (micErr) {
+        const name = (micErr as DOMException)?.name;
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          toast.error('Microphone permission denied — please allow mic access in your browser and try again');
+        } else if (name === 'NotFoundError') {
+          toast.error('No microphone found — please connect a mic and try again');
+        } else {
+          toast.error(`Microphone error: ${(micErr as Error).message}`);
+        }
+        setIsProcessing(false);
+        return;
+      }
       micStreamRef.current = micStream;
 
       // Build initial mixed stream (mic only at first)
@@ -351,7 +372,7 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
       toast.success('Meeting started — Topsi is listening');
     } catch (err) {
       console.error('Failed to start meeting:', err);
-      toast.error('Failed to start meeting');
+      toast.error(`Failed to start meeting: ${(err as Error).message}`);
     } finally {
       setIsProcessing(false);
     }

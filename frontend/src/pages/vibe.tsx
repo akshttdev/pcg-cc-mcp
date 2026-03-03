@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
 import {
   Coins,
   TrendingUp,
@@ -16,12 +17,15 @@ import {
   Bot,
   FileText,
   CheckCircle,
+  Copy,
+  PlusCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { MobileLayout } from '@/components/mobile';
 import { useMobile } from '@/hooks/useMobile';
 import { useProjectList } from '@/hooks/api/useProjectList';
 import { format } from 'date-fns';
-import { resolveApiUrl } from '@/lib/api';
+import { resolveApiUrl, vibeApi } from '@/lib/api';
 
 interface VibeStats {
   balance: number;
@@ -65,8 +69,34 @@ export default function VibePage() {
   const [transactions, setTransactions] = useState<VibeTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Deposit UI state
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [depositTab, setDepositTab] = useState<'aptos' | 'stablecoin'>('aptos');
+  const [vibeConfig, setVibeConfig] = useState<{ revenue_address: string } | null>(null);
+  const [depositTxHash, setDepositTxHash] = useState('');
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositStatus, setDepositStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
   useEffect(() => {
-    const fetchData = async () => {
+    vibeApi.getConfig().then(setVibeConfig).catch(() => {});
+  }, []);
+
+  const handleVerifyDeposit = async () => {
+    if (!projectId || !depositTxHash.trim() || !depositAmount) return;
+    setDepositStatus('loading');
+    try {
+      await vibeApi.verifyDeposit(projectId, depositTxHash.trim(), Number(depositAmount));
+      setDepositStatus('success');
+      setDepositTxHash('');
+      setDepositAmount('');
+      fetchData();
+      setTimeout(() => setDepositStatus('idle'), 4000);
+    } catch {
+      setDepositStatus('error');
+    }
+  };
+
+  const fetchData = async () => {
       try {
         // Fetch mesh stats for network earnings
         const meshResp = await fetch(resolveApiUrl('/api/mesh/stats'));
@@ -120,11 +150,13 @@ export default function VibePage() {
       } finally {
         setLoading(false);
       }
-    };
+  };
 
+  useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const content = (
@@ -159,6 +191,135 @@ export default function VibePage() {
             </div>
           </div>
         </CardContent>
+      </Card>
+
+      {/* Add VIBE Deposit Card */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <PlusCircle className="h-4 w-4 text-yellow-500" />
+              Add VIBE
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowDeposit(!showDeposit)}
+              className="text-xs"
+            >
+              {showDeposit ? 'Hide' : 'Show'}
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        {showDeposit && (
+          <CardContent className="space-y-3">
+            {/* Tabs */}
+            <div className="flex gap-2 border-b pb-2">
+              <button
+                className={`text-sm px-3 py-1 rounded-t ${depositTab === 'aptos' ? 'bg-yellow-500/20 text-yellow-500 font-medium' : 'text-muted-foreground'}`}
+                onClick={() => setDepositTab('aptos')}
+              >
+                Aptos VIBE
+              </button>
+              <button
+                className={`text-sm px-3 py-1 rounded-t ${depositTab === 'stablecoin' ? 'bg-yellow-500/20 text-yellow-500 font-medium' : 'text-muted-foreground'}`}
+                onClick={() => setDepositTab('stablecoin')}
+              >
+                Stablecoins
+              </button>
+            </div>
+
+            {depositTab === 'aptos' ? (
+              <div className="space-y-4">
+                {/* Step 1 */}
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Step 1 — Copy Revenue Wallet</p>
+                  <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+                    <code className="text-xs flex-1 truncate">
+                      {vibeConfig?.revenue_address || 'Loading...'}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => {
+                        if (vibeConfig?.revenue_address) {
+                          navigator.clipboard.writeText(vibeConfig.revenue_address);
+                        }
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Aptos Testnet · VIBE token</p>
+                </div>
+
+                {/* Step 2 */}
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Step 2 — Send VIBE</p>
+                  <p className="text-xs text-muted-foreground">
+                    Transfer VIBE tokens to the address above using your Aptos wallet (Petra, Martian, etc.)
+                  </p>
+                  <a
+                    href="https://explorer.aptoslabs.com/?network=testnet"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-yellow-500 hover:underline"
+                  >
+                    View on Aptos Explorer <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+
+                {/* Step 3 */}
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Step 3 — Verify &amp; Credit</p>
+                  <Input
+                    placeholder="Transaction hash (0x...)"
+                    value={depositTxHash}
+                    onChange={(e) => setDepositTxHash(e.target.value)}
+                    className="text-xs h-8"
+                  />
+                  <Input
+                    placeholder="Amount sent (VIBE)"
+                    type="number"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    className="text-xs h-8"
+                  />
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={handleVerifyDeposit}
+                    disabled={depositStatus === 'loading' || !depositTxHash.trim() || !depositAmount || !projectId}
+                  >
+                    {depositStatus === 'loading' ? (
+                      <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                    )}
+                    Verify &amp; Credit
+                  </Button>
+                  {depositStatus === 'success' && (
+                    <p className="text-xs text-green-500 text-center">Deposit verified and credited!</p>
+                  )}
+                  {depositStatus === 'error' && (
+                    <p className="text-xs text-red-500 text-center">Verification failed. Check the tx hash and try again.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 text-center py-4">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-muted rounded-full text-xs text-muted-foreground">
+                  Coming Soon
+                </div>
+                <p className="text-sm font-medium">Veritwin Bridge</p>
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                  Deposit USDC, USDT, and other stablecoins via the Veritwin Bridge — they'll be converted to VIBE automatically.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {/* Budget Usage */}
