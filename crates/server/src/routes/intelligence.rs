@@ -28,7 +28,7 @@ use uuid::Uuid;
 use crate::{
     DeploymentImpl,
     error::ApiError,
-    routes::nora::{get_nora_instance, NoraAgentWrapper},
+    routes::nora::get_nora_instance,
 };
 
 // Re-export the types we need from nora
@@ -210,44 +210,39 @@ async fn run_research_via_nora(
         }
     };
 
-    let nora = nora_instance
-        .read()
-        .await;
-    let nora_guard = nora.as_ref();
+    // Use Nora agent directly from the locked instance
+    let response = {
+        let nora_guard = nora_instance.read().await;
+        let Some(nora) = nora_guard.as_ref() else {
+            drop(nora_guard);
+            return run_research_direct(pool, person_id, full_name, project_id).await;
+        };
 
-    if nora_guard.is_none() {
-        return run_research_direct(pool, person_id, full_name, project_id).await;
-    }
+        let nora_request = NoraRequest {
+            request_id: Uuid::new_v4().to_string(),
+            session_id: format!("research-{}", person_id),
+            request_type: NoraRequestType::TextInteraction,
+            content: prompt,
+            context: None,
+            voice_enabled: false,
+            priority: RequestPriority::High,
+            timestamp: chrono::Utc::now(),
+        };
 
-    let nora_wrapper = NoraAgentWrapper {
-        agent: nora_instance.clone(),
+        tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            nora.process_request(nora_request),
+        )
+        .await
+        .map_err(|_| "Research timed out after 60s")?
+        .map_err(|e| format!("Nora error: {}", e))?
     };
-
-    let req_id = Uuid::new_v4().to_string();
-    let nora_request = NoraRequest {
-        request_id: req_id,
-        session_id: None,
-        request_type: NoraRequestType::TextInteraction,
-        content: prompt,
-        context: None,
-        voice_enabled: false,
-        priority: RequestPriority::High,
-        timestamp: chrono::Utc::now(),
-    };
-
-    let response = tokio::time::timeout(
-        std::time::Duration::from_secs(60),
-        nora_wrapper.process_request(nora_request),
-    )
-    .await
-    .map_err(|_| "Research timed out after 60s")?
-    .map_err(|e| format!("Nora error: {}", e))?;
 
     // Parse Nora's response and write to person record
-    let summary = extract_summary_from_response(&response.response_text);
-    let confidence = extract_confidence_from_response(&response.response_text);
+    let summary = extract_summary_from_response(&response.content);
+    let confidence = extract_confidence_from_response(&response.content);
 
-    write_intelligence_results(pool, person_id, &summary, confidence, &response.response_text, project_id, full_name).await?;
+    write_intelligence_results(pool, person_id, &summary, confidence, &response.content, project_id, full_name).await?;
     Ok(())
 }
 

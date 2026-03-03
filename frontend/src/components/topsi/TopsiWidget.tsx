@@ -15,9 +15,11 @@ import {
   Volume2,
   VolumeX,
   Loader2,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { MeetingMode } from './MeetingMode';
 
 interface ChatMessage {
   id: string;
@@ -31,7 +33,7 @@ interface TopsiWidgetProps {
   className?: string;
 }
 
-type WidgetState = 'collapsed' | 'chat' | 'call';
+type WidgetState = 'collapsed' | 'chat' | 'call' | 'meeting';
 
 export function TopsiWidget({ className }: TopsiWidgetProps) {
   // Widget state
@@ -52,6 +54,9 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
+
+  // Meeting state (set when voice-activated)
+  const [meetingProjectId, setMeetingProjectId] = useState<string | undefined>();
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -297,6 +302,20 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
           await playAudio(responseData.audioResponse);
         }
 
+        // Check for action signals from backend (voice-activated meeting mode)
+        if (responseData.action === 'start_meeting') {
+          // End the current call before switching to meeting mode
+          if (isInCall) {
+            setIsInCall(false);
+            stopRecording();
+          }
+          if (responseData.actionProjectId) {
+            setMeetingProjectId(responseData.actionProjectId);
+          }
+          setWidgetState('meeting');
+          return; // Don't continue listening in call mode
+        }
+
         // Emit event to notify other components to refresh
         window.dispatchEvent(new CustomEvent('topsi-action-complete', {
           detail: { responseText, timestamp: new Date() }
@@ -446,15 +465,26 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         </div>
         <div className="flex items-center gap-1">
           {widgetState === 'chat' && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-white hover:bg-cyan-700"
-              onClick={startCall}
-              title="Start voice call"
-            >
-              <Phone className="h-4 w-4" />
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-white hover:bg-cyan-700"
+                onClick={() => setWidgetState('meeting')}
+                title="Meeting mode"
+              >
+                <Users className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-white hover:bg-cyan-700"
+                onClick={startCall}
+                title="Start voice call"
+              >
+                <Phone className="h-4 w-4" />
+              </Button>
+            </>
           )}
           <Button
             variant="ghost"
@@ -659,6 +689,18 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
             </div>
           </div>
         </>
+      )}
+
+      {/* Meeting Mode UI */}
+      {widgetState === 'meeting' && (
+        <MeetingMode
+          projectId={meetingProjectId}
+          onClose={() => {
+            setMeetingProjectId(undefined);
+            setWidgetState('chat');
+          }}
+          className="flex-1"
+        />
       )}
     </div>
   );

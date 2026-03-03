@@ -16,6 +16,7 @@
 pub mod agent;
 pub mod config;
 pub mod context;
+pub mod meeting;
 pub mod prioritization;
 pub mod topology;
 pub mod tools;
@@ -34,6 +35,10 @@ pub use topology::{
     clusters::ClusterManager,
     invariants::{InvariantChecker, InvariantViolation},
     voice::VoiceTopology,
+};
+pub use meeting::{
+    MeetingManager, MeetingState, MeetingTranscriptEntry, MeetingNotes,
+    ActionItem, SpeakerInfo, WakeWordResult,
 };
 pub use prioritization::{
     Goal as PrioritizationGoal, GoalState, GoalType,

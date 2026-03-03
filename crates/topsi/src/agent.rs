@@ -14,7 +14,9 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::config::TopsiConfig;
+use crate::meeting::{MeetingManager, MeetingTranscriptEntry, MeetingNotes, ActionItem, WakeWordResult};
 use crate::topology::graph::TopologyGraph;
+use crate::topology::voice::VoiceTopology;
 use crate::tools::get_tool_schemas;
 use crate::{DetectedIssue, Result, TopsiError, TopsiResponse, TopologySummary, ToolCallResult};
 
@@ -125,6 +127,44 @@ User: "How are my tasks going?"
 User: "What projects do I have?"
 → list_projects → respond_to_user: short list with names"#;
 
+/// Meeting mode system prompt - instructs Topsi to act as a passive observer
+pub const MEETING_SYSTEM_PROMPT: &str = r#"You are Topsi, participating in a team meeting as a silent AI observer.
+
+## Your Role in Meetings
+- You are a PASSIVE OBSERVER. Never interject or speak unprompted.
+- Only respond when directly addressed (someone says "Topsi" followed by a question or command).
+- When addressed: answer concisely and helpfully, then immediately return to silent observation.
+
+## What You Track
+While silently observing, you maintain awareness of:
+- **Topics discussed**: Main subjects and how they evolve
+- **Decisions made**: Any agreed-upon conclusions or choices
+- **Action items**: Tasks assigned with who is responsible and any deadlines
+- **Open questions**: Unresolved issues or questions raised but not answered
+- **Participants**: Who is speaking and their contributions
+
+## When Addressed
+- Answer the question or execute the command concisely
+- Do not provide unnecessary context or over-explain
+- If asked for a summary, provide a structured overview of the meeting so far
+- If asked for your opinion, give a brief, considered response
+- After responding, return to silent mode
+
+## Meeting Notes Format
+When asked to generate notes (at meeting end), use this structure:
+- **Summary**: 2-3 sentence overview of the meeting
+- **Topics Discussed**: Bullet list of main topics
+- **Decisions Made**: Bullet list of decisions with context
+- **Action Items**: Each with description, assignee (if mentioned), and deadline (if mentioned)
+- **Open Questions**: Unresolved items that need follow-up
+- **Participants**: List of identified speakers
+
+## Important
+- Keep responses SHORT when addressed mid-meeting (1-3 sentences)
+- Be more thorough only when generating end-of-meeting notes
+- Never fabricate information — only report what was actually said
+- If you're unsure about something, say so rather than guessing"#;
+
 pub mod access_control;
 pub use access_control::{AccessControl, AccessScope, UserContext, ProjectAccess};
 
@@ -171,6 +211,8 @@ pub struct TopsiAgent {
     execution_bridge: Option<Arc<dyn TaskExecutionBridge>>,
     /// Session-based conversation history for multi-turn context
     session_history: Arc<RwLock<HashMap<String, Vec<ConversationMessage>>>>,
+    /// Meeting manager for active meeting sessions
+    pub meeting_manager: Arc<MeetingManager>,
 }
 
 impl TopsiAgent {
@@ -232,6 +274,7 @@ impl TopsiAgent {
             llm,
             execution_bridge: None,
             session_history: Arc::new(RwLock::new(HashMap::new())),
+            meeting_manager: Arc::new(MeetingManager::new()),
         })
     }
 
@@ -309,6 +352,18 @@ impl TopsiAgent {
             }
             TopsiRequestType::GetRecommendations { project_id, max_count } => {
                 self.handle_get_recommendations(project_id, max_count, user_context, &scope).await
+            }
+            TopsiRequestType::StartMeeting { project_id, title } => {
+                self.handle_start_meeting(&project_id, title.as_deref(), user_context).await
+            }
+            TopsiRequestType::EndMeeting { session_id, generate_notes } => {
+                self.handle_end_meeting(&session_id, generate_notes, user_context).await
+            }
+            TopsiRequestType::MeetingAudioChunk { session_id, audio_data, chunk_index, duration_ms } => {
+                self.handle_meeting_audio_chunk(&session_id, &audio_data, chunk_index, duration_ms, user_context).await
+            }
+            TopsiRequestType::MeetingDirectAddress { session_id, message, transcript_context } => {
+                self.handle_meeting_direct_address(&session_id, &message, transcript_context.as_deref(), user_context).await
             }
         }
     }
@@ -2421,6 +2476,455 @@ impl TopsiAgent {
             output_tokens: None,
         })
     }
+
+    // ========================================================================
+    // Meeting Mode Handlers
+    // ========================================================================
+
+    /// Handle starting a new meeting session
+    async fn handle_start_meeting(
+        &self,
+        project_id: &str,
+        title: Option<&str>,
+        user_context: &UserContext,
+    ) -> Result<TopsiResponse> {
+        let pool = self.db.as_ref().ok_or_else(|| {
+            TopsiError::NotInitialized("Database not connected".to_string())
+        })?;
+
+        // Create DB record
+        let session = db::models::meeting_session::MeetingSession::create(
+            pool,
+            db::models::meeting_session::CreateMeetingSession {
+                project_id: project_id.to_string(),
+                title: title.map(|t| t.to_string()),
+                started_by: user_context.user_id.clone(),
+            },
+        )
+        .await
+        .map_err(|e| TopsiError::TopologyError(format!("Failed to create meeting session: {}", e)))?;
+
+        // Track in-memory state
+        self.meeting_manager
+            .start_meeting(
+                session.id.clone(),
+                project_id.to_string(),
+                user_context.user_id.clone(),
+            )
+            .await;
+
+        // Create topology node for this meeting
+        let topology_node_id = if let Ok(project_uuid) = Uuid::parse_str(project_id) {
+            let mut topologies = self.topologies.write().await;
+            let graph = topologies
+                .entry(project_uuid)
+                .or_insert_with(TopologyGraph::new);
+
+            let meeting_uuid = VoiceTopology::add_meeting_to_project(
+                graph,
+                &session.id,
+                &session.title,
+                project_id,
+                Some(project_uuid),
+            );
+
+            // Store topology_node_id on the DB record
+            let node_id_str = meeting_uuid.to_string();
+            let _ = db::models::meeting_session::MeetingSession::update(
+                pool,
+                &session.id,
+                db::models::meeting_session::UpdateMeetingSession {
+                    topology_node_id: Some(node_id_str.clone()),
+                    ..Default::default()
+                },
+            )
+            .await;
+
+            Some(node_id_str)
+        } else {
+            None
+        };
+
+        tracing::info!(
+            "[TOPSI] Meeting started: session={}, project={}, by={}, topology_node={:?}",
+            session.id,
+            project_id,
+            user_context.user_id,
+            topology_node_id
+        );
+
+        let response = serde_json::json!({
+            "session_id": session.id,
+            "title": session.title,
+            "status": "active",
+            "started_at": session.started_at,
+            "topology_node_id": topology_node_id,
+            "message": "Meeting started. Topsi is now listening as a silent observer."
+        });
+
+        Ok(TopsiResponse {
+            message: response.to_string(),
+            tool_calls: vec![],
+            topology_changes: vec![],
+            topology_summary: None,
+            issues: vec![],
+            input_tokens: None,
+            output_tokens: None,
+        })
+    }
+
+    /// Handle an audio chunk from a meeting — transcribe, detect wake word, store segment
+    async fn handle_meeting_audio_chunk(
+        &self,
+        session_id: &str,
+        audio_data: &str,
+        chunk_index: u32,
+        duration_ms: u32,
+        user_context: &UserContext,
+    ) -> Result<TopsiResponse> {
+        let pool = self.db.as_ref().ok_or_else(|| {
+            TopsiError::NotInitialized("Database not connected".to_string())
+        })?;
+
+        // Verify meeting exists and is active
+        let meeting_state = self.meeting_manager.get_meeting(session_id).await;
+        if meeting_state.is_none() {
+            return Err(TopsiError::TopologyError(
+                format!("No active meeting with session_id: {}", session_id),
+            ));
+        }
+        let meeting_state = meeting_state.unwrap();
+
+        // Calculate timestamps based on chunk index and duration
+        let start_time_ms = chunk_index as i64 * duration_ms as i64;
+        let end_time_ms = start_time_ms + duration_ms as i64;
+
+        // The audio_data at this point is already transcribed text (the server layer
+        // transcribes via VoiceEngine before calling the agent). This field is reused
+        // to pass the transcription result through.
+        let transcribed_text = audio_data.to_string();
+
+        // Detect wake word
+        let wake_result = MeetingManager::detect_wake_word(&transcribed_text);
+
+        // Determine segment index
+        let segment_index = chunk_index as i32;
+
+        // Create transcript entry
+        let entry = MeetingTranscriptEntry {
+            speaker_label: None, // Set by diarization in Phase 2
+            text: transcribed_text.to_string(),
+            confidence: 0.0,
+            start_time_ms,
+            end_time_ms,
+            is_topsi_addressed: wake_result.detected,
+            segment_index,
+        };
+
+        // Store in memory
+        self.meeting_manager
+            .add_transcript_entry(session_id, entry)
+            .await;
+
+        // Store segment in DB
+        let _ = db::models::meeting_session::MeetingSegment::create(
+            pool,
+            db::models::meeting_session::CreateMeetingSegment {
+                meeting_session_id: session_id.to_string(),
+                segment_index,
+                speaker_label: None,
+                text: transcribed_text.to_string(),
+                confidence: None,
+                start_time_ms,
+                end_time_ms,
+                is_topsi_addressed: wake_result.detected,
+            },
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to store meeting segment: {}", e);
+        });
+
+        // Build response
+        let mut response = serde_json::json!({
+            "session_id": session_id,
+            "chunk_index": chunk_index,
+            "text": transcribed_text,
+            "is_topsi_addressed": wake_result.detected,
+            "segment_index": segment_index,
+        });
+
+        // If Topsi was addressed, generate a response
+        if wake_result.detected {
+            if let Some(addressed_text) = &wake_result.addressed_text {
+                let context = meeting_state.recent_context(20);
+                let meeting_response = self
+                    .handle_meeting_direct_address(
+                        session_id,
+                        addressed_text,
+                        Some(&context),
+                        user_context,
+                    )
+                    .await?;
+
+                response["topsi_response"] = serde_json::Value::String(meeting_response.message.clone());
+            }
+        }
+
+        Ok(TopsiResponse {
+            message: response.to_string(),
+            tool_calls: vec![],
+            topology_changes: vec![],
+            topology_summary: None,
+            issues: vec![],
+            input_tokens: None,
+            output_tokens: None,
+        })
+    }
+
+    /// Handle a direct address to Topsi during a meeting
+    async fn handle_meeting_direct_address(
+        &self,
+        session_id: &str,
+        message: &str,
+        transcript_context: Option<&str>,
+        _user_context: &UserContext,
+    ) -> Result<TopsiResponse> {
+        // Build context from recent transcript
+        let context = if let Some(ctx) = transcript_context {
+            ctx.to_string()
+        } else if let Some(state) = self.meeting_manager.get_meeting(session_id).await {
+            state.recent_context(20)
+        } else {
+            String::new()
+        };
+
+        // Use LLM to generate response if available
+        let response_text = if let Some(llm) = &self.llm {
+            let user_query = format!(
+                "You were just addressed with: \"{}\"\n\nRespond concisely.",
+                message
+            );
+
+            match llm
+                .generate(MEETING_SYSTEM_PROMPT, &user_query, &context)
+                .await
+            {
+                Ok(response) => response,
+                Err(e) => {
+                    tracing::error!("Meeting LLM response failed: {}", e);
+                    format!(
+                        "I heard your question: \"{}\". Let me know if you need me to elaborate.",
+                        message
+                    )
+                }
+            }
+        } else {
+            format!(
+                "I heard: \"{}\". I'm tracking the meeting but my LLM isn't configured for responses.",
+                message
+            )
+        };
+
+        Ok(TopsiResponse {
+            message: response_text,
+            tool_calls: vec![],
+            topology_changes: vec![],
+            topology_summary: None,
+            issues: vec![],
+            input_tokens: None,
+            output_tokens: None,
+        })
+    }
+
+    /// Handle ending a meeting session
+    async fn handle_end_meeting(
+        &self,
+        session_id: &str,
+        generate_notes: bool,
+        _user_context: &UserContext,
+    ) -> Result<TopsiResponse> {
+        let pool = self.db.as_ref().ok_or_else(|| {
+            TopsiError::NotInitialized("Database not connected".to_string())
+        })?;
+
+        // Get final state from memory
+        let final_state = self.meeting_manager.end_meeting(session_id).await;
+
+        let elapsed_seconds = if let Some(ref state) = final_state {
+            (Utc::now() - state.started_at).num_seconds() as i32
+        } else {
+            0
+        };
+
+        // Generate notes if requested
+        let notes = if generate_notes {
+            if let Some(ref state) = final_state {
+                Some(self.generate_meeting_notes(state).await?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let notes_json = notes
+            .as_ref()
+            .map(|n| serde_json::to_string(n).unwrap_or_default());
+
+        // Build transcript JSON for storage
+        let transcript_json = final_state
+            .as_ref()
+            .map(|s| serde_json::to_string(&s.transcript).unwrap_or_else(|_| "[]".to_string()));
+
+        // Build participants JSON
+        let participants_json = final_state.as_ref().map(|s| {
+            let participants: Vec<String> = s.speakers.keys().cloned().collect();
+            serde_json::to_string(&participants).unwrap_or_else(|_| "[]".to_string())
+        });
+
+        let participant_count = final_state
+            .as_ref()
+            .map(|s| s.speakers.len() as i32)
+            .unwrap_or(0);
+
+        // Fetch the DB record to get topology_node_id and project_id
+        let db_session = db::models::meeting_session::MeetingSession::find_by_id(pool, session_id)
+            .await
+            .ok();
+
+        // Update DB record
+        let _ = db::models::meeting_session::MeetingSession::update(
+            pool,
+            session_id,
+            db::models::meeting_session::UpdateMeetingSession {
+                status: Some(db::models::meeting_session::MeetingStatus::Ended),
+                ended_at: Some(Utc::now().to_rfc3339()),
+                duration_seconds: Some(elapsed_seconds),
+                participant_count: Some(participant_count),
+                participants: participants_json,
+                transcript: transcript_json,
+                notes: notes_json.clone(),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to update meeting session: {}", e);
+        });
+
+        // Finalize topology node
+        if let Some(ref session) = db_session {
+            if let Some(ref topo_node_id) = session.topology_node_id {
+                if let Ok(node_uuid) = Uuid::parse_str(topo_node_id) {
+                    if let Ok(project_uuid) = Uuid::parse_str(&session.project_id) {
+                        let mut topologies = self.topologies.write().await;
+                        if let Some(graph) = topologies.get_mut(&project_uuid) {
+                            VoiceTopology::end_meeting_node(graph, node_uuid);
+                            tracing::info!(
+                                "[TOPSI] Topology node finalized for meeting: {}",
+                                session_id
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        tracing::info!(
+            "[TOPSI] Meeting ended: session={}, duration={}s, segments={}",
+            session_id,
+            elapsed_seconds,
+            final_state.as_ref().map(|s| s.transcript.len()).unwrap_or(0)
+        );
+
+        let mut response = serde_json::json!({
+            "session_id": session_id,
+            "status": "ended",
+            "duration_seconds": elapsed_seconds,
+            "participant_count": participant_count,
+            "segment_count": final_state.as_ref().map(|s| s.transcript.len()).unwrap_or(0),
+        });
+
+        if let Some(notes) = notes {
+            response["notes"] = serde_json::to_value(&notes).unwrap_or_default();
+        }
+
+        Ok(TopsiResponse {
+            message: response.to_string(),
+            tool_calls: vec![],
+            topology_changes: vec![],
+            topology_summary: None,
+            issues: vec![],
+            input_tokens: None,
+            output_tokens: None,
+        })
+    }
+
+    /// Generate structured meeting notes from transcript using LLM
+    async fn generate_meeting_notes(
+        &self,
+        state: &crate::meeting::MeetingState,
+    ) -> Result<MeetingNotes> {
+        let transcript_text = state
+            .transcript
+            .iter()
+            .map(|entry| {
+                let speaker = entry.speaker_label.as_deref().unwrap_or("Unknown");
+                format!("[{}]: {}", speaker, entry.text)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if let Some(llm) = &self.llm {
+            let user_query = r#"Generate structured meeting notes from the provided transcript. Respond ONLY with valid JSON in this exact format:
+{
+  "summary": "2-3 sentence overview",
+  "topics": ["topic1", "topic2"],
+  "decisions": ["decision1", "decision2"],
+  "action_items": [{"description": "...", "assignee": "..." or null, "deadline": "..." or null, "priority": "high/medium/low" or null}],
+  "open_questions": ["question1"],
+  "participants": ["Speaker 1", "Speaker 2"]
+}"#;
+
+            match llm.generate(MEETING_SYSTEM_PROMPT, user_query, &transcript_text).await {
+                Ok(response) => {
+                    // Try to parse LLM output as MeetingNotes
+                    if let Ok(notes) = serde_json::from_str::<MeetingNotes>(&response) {
+                        return Ok(notes);
+                    }
+                    // Try to extract JSON from the response
+                    if let Some(json_start) = response.find('{') {
+                        if let Some(json_end) = response.rfind('}') {
+                            let json_str = &response[json_start..=json_end];
+                            if let Ok(notes) = serde_json::from_str::<MeetingNotes>(json_str) {
+                                return Ok(notes);
+                            }
+                        }
+                    }
+                    tracing::warn!("Failed to parse LLM meeting notes response, using fallback");
+                }
+                Err(e) => {
+                    tracing::error!("LLM meeting notes generation failed: {}", e);
+                }
+            }
+        }
+
+        // Fallback: generate basic notes from transcript
+        let participants: Vec<String> = state.speakers.keys().cloned().collect();
+        Ok(MeetingNotes {
+            summary: format!(
+                "Meeting lasted {} seconds with {} participants.",
+                (Utc::now() - state.started_at).num_seconds(),
+                participants.len()
+            ),
+            topics: vec!["See full transcript for details".to_string()],
+            decisions: vec![],
+            action_items: vec![],
+            open_questions: vec![],
+            participants,
+        })
+    }
 }
 
 /// Request types for Topsi
@@ -2442,6 +2946,29 @@ pub enum TopsiRequestType {
     GetRecommendations {
         project_id: Option<Uuid>,
         max_count: Option<usize>,
+    },
+    /// Start a new meeting session
+    StartMeeting {
+        project_id: String,
+        title: Option<String>,
+    },
+    /// End an active meeting session
+    EndMeeting {
+        session_id: String,
+        generate_notes: bool,
+    },
+    /// Process an audio chunk from a meeting
+    MeetingAudioChunk {
+        session_id: String,
+        audio_data: String,
+        chunk_index: u32,
+        duration_ms: u32,
+    },
+    /// Respond to a direct address during a meeting
+    MeetingDirectAddress {
+        session_id: String,
+        message: String,
+        transcript_context: Option<String>,
     },
 }
 

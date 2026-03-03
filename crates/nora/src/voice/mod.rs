@@ -42,6 +42,7 @@
 
 // pub mod channels;  // Not yet implemented
 pub mod config;
+pub mod diarization;
 pub mod engine;
 // pub mod gateway;  // Not yet implemented
 // pub mod router;  // Not yet implemented
@@ -54,6 +55,7 @@ use chrono::{DateTime, Utc};
 //     MeshVoiceMessage, MeshVoicePayload, VoiceChannel, VoiceChannelEvent, VoiceChannelSession,
 // };
 pub use config::{AudioConfig, STTConfig, STTProvider, TTSConfig, TTSProvider, VoiceConfig};
+pub use diarization::{DiarizationEngine, DiarizationConfig, DiarizedSegment, AlignedWord};
 pub use engine::VoiceEngine;
 // pub use gateway::{
 //     CommandContext, CommandHandler, CommandResponse, ConversationTurn, GatewaySession,

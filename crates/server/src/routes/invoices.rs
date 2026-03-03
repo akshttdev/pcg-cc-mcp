@@ -72,8 +72,12 @@ async fn create_invoice(
     Json(mut body): Json<CreateInvoice>,
 ) -> Result<Json<ApiResponse<Invoice>>, ApiError> {
     // Auto-compute VIBE from USD if not provided
-    if body.amount_vibe.is_none() && body.amount_usd > 0.0 {
-        body.amount_vibe = Some((body.amount_usd * VIBE_PER_USD).ceil() as i64);
+    if body.amount_vibe.is_none() {
+        if let Some(usd) = body.amount_usd {
+            if usd > 0.0 {
+                body.amount_vibe = Some((usd * VIBE_PER_USD).ceil() as i64);
+            }
+        }
     }
     let invoice = Invoice::create(&d.db().pool, body).await?;
     Ok(Json(ApiResponse::success(invoice)))
