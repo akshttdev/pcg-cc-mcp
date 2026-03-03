@@ -333,11 +333,13 @@ impl ApiClient {
         message: &str,
         session_id: &str,
         project_id: Option<Uuid>,
+        context: Option<serde_json::Value>,
     ) -> Result<TopsiChatResponse> {
         let request = serde_json::json!({
             "message": message,
             "sessionId": session_id,
             "projectId": project_id,
+            "context": context,
         });
 
         let resp = self
@@ -349,10 +351,22 @@ impl ApiClient {
 
         if resp.status().is_success() {
             let body: serde_json::Value = resp.json().await?;
+
+            // Extract tool names from toolCalls array
+            let tool_calls = body["toolCalls"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|tc| tc["toolName"].as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+
             Ok(TopsiChatResponse {
                 content: body["message"].as_str().unwrap_or("").to_string(),
                 input_tokens: body["inputTokens"].as_i64(),
                 output_tokens: body["outputTokens"].as_i64(),
+                tool_calls,
             })
         } else {
             let err_text = resp.text().await?;
@@ -574,6 +588,9 @@ pub struct TopsiChatResponse {
     pub input_tokens: Option<i64>,
     #[serde(default)]
     pub output_tokens: Option<i64>,
+    /// Names of tools Topsi invoked while processing the request
+    #[serde(default)]
+    pub tool_calls: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -13,7 +13,7 @@ use crate::{
     api::{ApiClient, CreateTaskRequest, UpdateTaskRequest},
     config::Config,
     output::OutputHandler,
-    session::DevSession,
+    session::{ConversationLog, DevSession},
 };
 
 /// Format a number with thousand separators
@@ -44,6 +44,8 @@ pub struct PcgRepl {
     current_model: Option<String>,
     /// Current provider override (None = use agent default)
     current_provider: Option<String>,
+    /// Persistent conversation log saved on exit
+    conversation_log: ConversationLog,
 }
 
 impl PcgRepl {
@@ -69,6 +71,7 @@ impl PcgRepl {
             project_name: project,
             current_model: None,
             current_provider: None,
+            conversation_log: ConversationLog::new(None),
         };
 
         // If resuming, parse session ID
@@ -94,6 +97,9 @@ impl PcgRepl {
 
         // Start or resume session
         self.init_session().await?;
+
+        // Now that project name is known, update the conversation log
+        self.conversation_log = ConversationLog::new(self.project_name.clone());
 
         // Display welcome banner
         self.output.print_banner(
@@ -151,9 +157,15 @@ impl PcgRepl {
             }
         }
 
-        // Prompt to save session
-        if self.session.is_some() {
-            self.output.print_info("Session ended. Use 'orcha status' to view history.");
+        // Save conversation log
+        if !self.conversation_log.is_empty() {
+            match self.conversation_log.save() {
+                Ok(()) => self.output.print_info(&format!(
+                    "Session saved ({} messages). View with: orcha history",
+                    self.conversation_log.len()
+                )),
+                Err(e) => self.output.print_warning(&format!("Could not save session log: {}", e)),
+            }
         }
 
         Ok(())
@@ -289,6 +301,14 @@ impl PcgRepl {
                 self.handle_project_command(&parts[1..]).await?;
             }
 
+            "/boards" | "/board" => {
+                self.handle_boards_command().await?;
+            }
+
+            "/history" => {
+                self.handle_history_command(&parts[1..]).await?;
+            }
+
             "/clear" => {
                 print!("\x1B[2J\x1B[1;1H"); // Clear screen
             }
@@ -360,6 +380,11 @@ impl PcgRepl {
             "  {}    Switch to a project",
             "/project <name>".bright_yellow()
         );
+        println!();
+
+        println!("{}", "Board Commands:".bright_cyan());
+        println!("  {}           Task board for current project", "/boards".bright_yellow());
+        println!("  {}          Show recent session history", "/history".bright_yellow());
         println!();
 
         println!("{}", "Other Commands:".bright_cyan());
@@ -809,6 +834,85 @@ impl PcgRepl {
         Ok(())
     }
 
+    /// Show kanban board for current project
+    async fn handle_boards_command(&mut self) -> Result<()> {
+        let Some(project_id) = self.project_id else {
+            self.output.print_error("No project selected. Use /project <name> first.");
+            return Ok(());
+        };
+
+        let project_name = self.project_name.clone().unwrap_or_default();
+        self.output.print_info("Fetching tasks…");
+
+        let tasks = self.api.list_tasks(project_id, None).await?;
+
+        let mut todo: Vec<(String, String)> = vec![];
+        let mut inprogress: Vec<(String, String)> = vec![];
+        let mut done: Vec<(String, String)> = vec![];
+
+        for t in &tasks {
+            let entry = (t.id.to_string()[..8].to_string(), t.title.clone());
+            match t.status.as_str() {
+                "inprogress" | "in-progress" | "in_progress" => inprogress.push(entry),
+                "done" | "completed"                         => done.push(entry),
+                _                                            => todo.push(entry),
+            }
+        }
+
+        self.output.print_task_board(
+            &project_name,
+            &[
+                ("TODO",        todo),
+                ("IN PROGRESS", inprogress),
+                ("DONE",        done),
+            ],
+        );
+
+        Ok(())
+    }
+
+    /// Show recent session history
+    async fn handle_history_command(&mut self, _args: &[&str]) -> Result<()> {
+        use crate::session::ConversationLog;
+
+        let sessions = ConversationLog::list_saved(20);
+
+        if sessions.is_empty() {
+            self.output.print_info("No sessions saved yet. Sessions are saved when you exit orcha.");
+            return Ok(());
+        }
+
+        self.output.print_header("Recent Sessions");
+        println!();
+        println!(
+            "{}",
+            format!("{:<20} {:<24} {:>8} {:>7}", "Date", "Project", "Messages", "Tokens")
+                .bright_white()
+                .bold()
+        );
+        println!("{}", "─".repeat(65).dimmed());
+
+        for s in &sessions {
+            let date = &s.started_at[..16].replace('T', " ");
+            let project = s.project.as_deref().unwrap_or("(no project)");
+            let project_display = if project.len() > 22 {
+                format!("{}…", &project[..21])
+            } else {
+                project.to_string()
+            };
+            println!(
+                "{:<20} {:<24} {:>8} {:>7}",
+                date.dimmed(),
+                project_display.bright_cyan(),
+                s.message_count.to_string().bright_white(),
+                s.total_tokens.to_string().bright_yellow(),
+            );
+        }
+        println!();
+
+        Ok(())
+    }
+
     /// Process natural language input
     async fn process_input(&mut self, input: &str) -> Result<()> {
         // For now, route to the default agent
@@ -855,15 +959,46 @@ impl PcgRepl {
             .map(|s| s.id.to_string())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
+        // Build working-directory context so Topsi knows where we are
+        let dir_context = {
+            let dir_str = self.work_dir.to_string_lossy().to_string();
+            let git_branch = get_git_branch(&self.work_dir);
+            serde_json::json!({
+                "working_dir": dir_str,
+                "git_branch": git_branch,
+                "project": self.project_name,
+            })
+        };
+
+        // Log user message
+        self.conversation_log.add("user", input, 0, vec![]);
+
         if agent_name == "topsi" {
             // Topsi has a dedicated high-level endpoint
-            match self.api.chat_with_topsi(input, &session_id, self.project_id).await {
+            match self.api.chat_with_topsi(input, &session_id, self.project_id, Some(dir_context)).await {
                 Ok(response) => {
+                    let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
+
+                    // Show tool calls inline (Claude Code-style)
+                    if !response.tool_calls.is_empty() {
+                        println!();
+                        for tool in &response.tool_calls {
+                            self.output.print_tool_call(tool);
+                        }
+                    }
+
                     if let Some(session) = &self.session {
-                        let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
                         let vibe = (tokens as f64 * 0.05) as i64;
                         session.update_cost(tokens, vibe);
                     }
+
+                    // Log assistant response
+                    self.conversation_log.add(
+                        "assistant",
+                        &response.content,
+                        tokens,
+                        response.tool_calls.clone(),
+                    );
 
                     self.output.print_response(&response.content);
 
@@ -898,12 +1033,14 @@ impl PcgRepl {
                 .await
             {
                 Ok(response) => {
+                    let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
+
                     if let Some(session) = &self.session {
-                        let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
                         let vibe = (tokens as f64 * 0.05) as i64;
                         session.update_cost(tokens, vibe);
                     }
 
+                    self.conversation_log.add("assistant", &response.content, tokens, vec![]);
                     self.output.print_response(&response.content);
 
                     if let Some(session) = &self.session {
@@ -936,4 +1073,11 @@ impl PcgRepl {
 
         Ok(())
     }
+}
+
+/// Get the current git branch name for a directory (best-effort)
+fn get_git_branch(dir: &PathBuf) -> Option<String> {
+    let repo = git2::Repository::discover(dir).ok()?;
+    let head = repo.head().ok()?;
+    head.shorthand().map(|s| s.to_string())
 }
