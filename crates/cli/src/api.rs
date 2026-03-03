@@ -327,6 +327,39 @@ impl ApiClient {
         }
     }
 
+    /// Chat directly with Topsi platform agent via dedicated endpoint
+    pub async fn chat_with_topsi(
+        &self,
+        message: &str,
+        session_id: &str,
+        project_id: Option<Uuid>,
+    ) -> Result<TopsiChatResponse> {
+        let request = serde_json::json!({
+            "message": message,
+            "sessionId": session_id,
+            "projectId": project_id,
+        });
+
+        let resp = self
+            .client
+            .post(format!("{}/api/topsi/chat", self.base_url))
+            .json(&request)
+            .send()
+            .await?;
+
+        if resp.status().is_success() {
+            let body: serde_json::Value = resp.json().await?;
+            Ok(TopsiChatResponse {
+                content: body["message"].as_str().unwrap_or("").to_string(),
+                input_tokens: body["inputTokens"].as_i64(),
+                output_tokens: body["outputTokens"].as_i64(),
+            })
+        } else {
+            let err_text = resp.text().await?;
+            anyhow::bail!("Topsi chat failed: {}", err_text)
+        }
+    }
+
     // ============ Agents ============
 
     pub async fn list_agents(&self) -> Result<Vec<Agent>> {
@@ -532,6 +565,15 @@ pub struct Agent {
     pub description: Option<String>,
     #[serde(default)]
     pub default_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopsiChatResponse {
+    pub content: String,
+    #[serde(default)]
+    pub input_tokens: Option<i64>,
+    #[serde(default)]
+    pub output_tokens: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
