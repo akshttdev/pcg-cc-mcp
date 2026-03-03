@@ -220,13 +220,18 @@ export function CrmPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <CardTitle className="text-2xl">CRM & Email</CardTitle>
-          <CardDescription>
-            Manage contacts, track leads, and connect your email accounts for unified communication.
-          </CardDescription>
+        <div className="flex items-center gap-3">
+          <div className="section-header-icon">
+            <Users className="h-5 w-5" />
+          </div>
+          <div>
+            <CardTitle className="text-xl sm:text-2xl">CRM & Email</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              Manage contacts, track leads, and connect email accounts.
+            </CardDescription>
+          </div>
         </div>
         <div className="w-full max-w-xs space-y-1">
           <Label htmlFor="project-select">Project</Label>
@@ -281,21 +286,21 @@ export function CrmPage() {
           <TabsContent value="contacts" className="space-y-6">
             {/* Stats Cards */}
             {statsQuery.data && (
-              <div className="grid gap-4 md:grid-cols-4">
-                <Card>
+              <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+                <Card className="card-elevated">
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-100 rounded-lg">
-                        <Users className="h-5 w-5 text-blue-600" />
+                      <div className="p-2 bg-blue-500/10 rounded-lg">
+                        <Users className="h-5 w-5 text-blue-500" />
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">Total Contacts</p>
-                        <p className="text-2xl font-bold">{statsQuery.data.total}</p>
+                        <p className="text-xs sm:text-sm text-muted-foreground">Total Contacts</p>
+                        <p className="text-xl sm:text-2xl font-bold">{statsQuery.data.total}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
-                <Card>
+                <Card className="card-elevated">
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-green-100 rounded-lg">

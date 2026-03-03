@@ -54,21 +54,27 @@ export function WorkflowsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Agent Workflows</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Monitor agent execution pipelines in real-time
-            </p>
+      <div className="border-b glass-strong px-4 sm:px-6 py-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="section-header-icon">
+              <GitBranch className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold">Agent Workflows</h1>
+              <p className="text-muted-foreground text-xs sm:text-sm mt-0.5">
+                Monitor agent execution pipelines in real-time
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
             {/* Connection status */}
             <div className="flex items-center gap-2">
               {connected ? (
                 <Badge variant="outline" className="gap-1 text-green-600 border-green-300">
                   <Wifi className="h-3 w-3" />
-                  Live ({connectionMode})
+                  <span className="hidden sm:inline">Live ({connectionMode})</span>
+                  <span className="sm:hidden">Live</span>
                 </Badge>
               ) : (
                 <Badge variant="outline" className="gap-1 text-red-600 border-red-300">
@@ -81,16 +87,16 @@ export function WorkflowsPage() {
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="gap-1 text-yellow-600 border-yellow-300">
                 <Play className="h-3 w-3" />
-                {stats.active} Active
+                {stats.active}
               </Badge>
               <Badge variant="outline" className="gap-1 text-green-600 border-green-300">
                 <CheckCircle2 className="h-3 w-3" />
-                {stats.completed} Completed
+                {stats.completed}
               </Badge>
               {stats.failed > 0 && (
                 <Badge variant="destructive" className="gap-1">
                   <AlertCircle className="h-3 w-3" />
-                  {stats.failed} Failed
+                  {stats.failed}
                 </Badge>
               )}
             </div>

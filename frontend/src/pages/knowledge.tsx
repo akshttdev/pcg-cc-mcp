@@ -69,7 +69,7 @@ function SourceCard({
   });
 
   return (
-    <Card className="mb-2">
+    <Card className="mb-2 card-elevated">
       <CardContent className="p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">

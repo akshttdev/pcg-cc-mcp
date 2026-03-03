@@ -174,7 +174,14 @@
   }
 
   body {
-    @apply bg-background text-foreground font-chivo-mono;
+    @apply bg-background text-foreground font-chivo-mono antialiased;
+  }
+
+  /* Smooth transitions for theme switching */
+  *, *::before, *::after {
+    transition-property: background-color, border-color;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
   }
 
   *:focus {
@@ -262,6 +269,68 @@
 
   .ansi-underline {
     @apply underline;
+  }
+}
+
+/* Modern UI utilities */
+@layer components {
+  /* Glass morphism panels */
+  .glass {
+    @apply bg-background/80 backdrop-blur-md border border-border/50;
+  }
+
+  .glass-strong {
+    @apply bg-background/90 backdrop-blur-xl border border-border/40;
+  }
+
+  .glass-subtle {
+    @apply bg-background/60 backdrop-blur-sm border border-border/30;
+  }
+
+  /* Modern card styles */
+  .card-elevated {
+    @apply bg-card border border-border/50 rounded-lg shadow-sm
+           hover:shadow-md hover:border-border/80
+           transition-all duration-200 ease-out;
+  }
+
+  .card-interactive {
+    @apply bg-card border border-border/50 rounded-lg shadow-sm
+           hover:shadow-md hover:border-border/80 hover:-translate-y-0.5
+           active:translate-y-0 active:shadow-sm
+           transition-all duration-200 ease-out cursor-pointer;
+  }
+
+  /* Gradient accent borders */
+  .gradient-border {
+    @apply relative overflow-hidden rounded-lg;
+  }
+
+  .gradient-border::before {
+    content: '';
+    @apply absolute inset-0 rounded-lg;
+    padding: 1px;
+    background: linear-gradient(135deg, hsl(var(--info) / 0.5), hsl(var(--success) / 0.5));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Modern section headers */
+  .section-header {
+    @apply flex items-center gap-3 pb-4 mb-4 border-b border-border/50;
+  }
+
+  .section-header-icon {
+    @apply flex items-center justify-center w-10 h-10 rounded-xl
+           bg-gradient-to-br from-info/10 to-info/5
+           text-info shadow-sm;
+  }
+
+  /* Sidebar mobile overlay backdrop */
+  .sidebar-backdrop {
+    @apply fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden;
   }
 }
 

@@ -154,15 +154,15 @@ export function GlobalTasksPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-background">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-6 py-4 border-b glass-strong gap-3">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-950">
-            <FolderKanban className="h-5 w-5 text-blue-600" />
+          <div className="section-header-icon">
+            <FolderKanban className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold">Global Tasks</h1>
-            <p className="text-sm text-muted-foreground">
-              {stats.total} total tasks across {projects.length} projects
+            <h1 className="text-lg sm:text-xl font-semibold">Global Tasks</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              {stats.total} tasks across {projects.length} projects
             </p>
           </div>
         </div>
@@ -186,35 +186,35 @@ export function GlobalTasksPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 px-6 py-4 border-b">
-        <Card>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 px-4 sm:px-6 py-4 border-b">
+        <Card className="card-elevated">
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="text-xl sm:text-2xl font-bold">{stats.total}</div>
             <p className="text-xs text-muted-foreground">Total Tasks</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="card-elevated">
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-gray-600">{stats.todo}</div>
+            <div className="text-xl sm:text-2xl font-bold text-muted-foreground">{stats.todo}</div>
             <p className="text-xs text-muted-foreground">To Do</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="card-elevated">
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-blue-600">{stats.inProgress}</div>
+            <div className="text-xl sm:text-2xl font-bold text-blue-500">{stats.inProgress}</div>
             <p className="text-xs text-muted-foreground">In Progress</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="card-elevated">
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+            <div className="text-xl sm:text-2xl font-bold text-green-500">{stats.completed}</div>
             <p className="text-xs text-muted-foreground">Completed</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 px-6 py-4 border-b">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 px-4 sm:px-6 py-4 border-b">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input

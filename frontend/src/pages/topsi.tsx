@@ -478,49 +478,49 @@ export function TopsiPage() {
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="border-b bg-white shadow-sm dark:bg-gray-900">
-        <div className="flex items-center justify-between p-6">
+      <div className="border-b glass-strong">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-6 gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-cyan-100 dark:bg-cyan-950 rounded-lg">
-              <Crown className="w-6 h-6 text-cyan-600" />
+            <div className="section-header-icon !from-cyan-500/10 !to-cyan-500/5 !text-cyan-500">
+              <Crown className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <h1 className="text-xl sm:text-2xl font-bold">
                 Topsi Platform Agent
               </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Topological Super Intelligence - Your platform orchestrator with secure, containerized access
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Topological Super Intelligence — secure, containerized orchestration
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-green-600" />
-              <span className="text-sm text-gray-600 dark:text-gray-400">Data Isolation Active</span>
+              <Shield className="w-4 h-4 text-green-500" />
+              <span className="text-xs sm:text-sm text-muted-foreground hidden md:inline">Data Isolation Active</span>
             </div>
-            <Separator orientation="vertical" className="h-8" />
+            <Separator orientation="vertical" className="h-8 hidden sm:block" />
             <div className="text-right">
               <div className={cn(
                 "text-sm font-medium",
-                status?.isActive ? "text-green-600" : "text-gray-400"
+                status?.isActive ? "text-green-500" : "text-muted-foreground"
               )}>
                 {status?.isActive ? 'Online' : 'Offline'}
               </div>
-              <div className="text-xs text-gray-500">
-                Uptime: {formatUptime(status?.uptimeMs)}
+              <div className="text-xs text-muted-foreground">
+                {formatUptime(status?.uptimeMs)}
               </div>
             </div>
             <div className={cn(
-              "w-3 h-3 rounded-full",
-              status?.isActive ? "bg-green-500 animate-pulse" : "bg-gray-400"
+              "w-3 h-3 rounded-full shrink-0",
+              status?.isActive ? "bg-green-500 animate-pulse" : "bg-muted-foreground"
             )} />
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-6 overflow-hidden">
+      <div className="flex-1 p-4 sm:p-6 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-8 h-8 animate-spin text-cyan-600" />
@@ -537,7 +537,7 @@ export function TopsiPage() {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-5 mb-6">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 mb-4 sm:mb-6">
               <TabsTrigger value="chat" className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" />
                 Chat

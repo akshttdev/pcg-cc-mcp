@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
 import i18n from '@/i18n';
@@ -194,6 +194,15 @@ function AppContent() {
     );
   }
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const toggleSidebar = useCallback(() => setSidebarOpen(prev => !prev), []);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
   return (
     <I18nextProvider i18n={i18n}>
       <ThemeProvider initialTheme={config?.theme || ThemeMode.SYSTEM}>
@@ -202,13 +211,29 @@ function AppContent() {
             <div className="h-screen flex flex-col bg-background">
               <WebviewContextMenu />
               {showNavbar && <DevBanner />}
-              {showNavbar && <Navbar />}
+              {showNavbar && <Navbar onToggleSidebar={toggleSidebar} />}
               {showNavbar && <BreadcrumbNav />}
 
-              <div className="flex-1 flex min-h-0">
-                <Sidebar className="w-64 shrink-0" />
+              <div className="flex-1 flex min-h-0 relative">
+                {/* Mobile sidebar backdrop */}
+                {sidebarOpen && (
+                  <div
+                    className="sidebar-backdrop animate-fade-in"
+                    onClick={closeSidebar}
+                    aria-hidden="true"
+                  />
+                )}
 
-                <div className="flex-1 overflow-y-auto">
+                {/* Sidebar: drawer on mobile, static on desktop */}
+                <div className={`
+                  fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-250 ease-out
+                  lg:relative lg:translate-x-0 lg:z-auto
+                  ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                `}>
+                  <Sidebar className="h-full w-64 shrink-0" />
+                </div>
+
+                <div className="flex-1 overflow-y-auto min-w-0">
                   <Suspense fallback={<PageLoader />}>
                     <SentryRoutes>
                       <Route path="/login" element={<LoginPage />} />

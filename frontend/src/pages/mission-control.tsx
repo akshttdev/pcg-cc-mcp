@@ -60,40 +60,40 @@ export default function MissionControlPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-background">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-6 py-4 border-b glass-strong gap-3">
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-primary p-2">
-            <Activity className="h-5 w-5 text-primary-foreground" />
+          <div className="section-header-icon">
+            <Activity className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold">Mission Control</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-lg sm:text-xl font-semibold">Mission Control</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
               Monitor and coordinate active agent executions
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
           {/* Pending approvals indicator */}
           <PendingApprovalsIndicator />
 
           {/* Summary stats */}
-          <div className="flex items-center gap-6 text-sm">
+          <div className="flex items-center gap-3 sm:gap-6 text-sm">
             <div className="flex items-center gap-2">
               <Bot className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium">{totalActiveCount}</span>
-              <span className="text-muted-foreground">Active</span>
+              <span className="text-muted-foreground hidden sm:inline">Active</span>
             </div>
-            <Separator orientation="vertical" className="h-5" />
-            <div className="flex items-center gap-2">
+            <Separator orientation="vertical" className="h-5 hidden sm:block" />
+            <div className="flex items-center gap-2 hidden md:flex">
               <Cpu className="h-4 w-4 text-muted-foreground" />
               <span className="text-muted-foreground">
                 {dashboard?.by_project.length ?? 0} Projects
               </span>
             </div>
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation="vertical" className="h-5 hidden md:block" />
             <div className="flex items-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${eventsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+              <div className={`h-2 w-2 rounded-full ${eventsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
               <span className="text-muted-foreground text-xs">
                 {eventsConnected ? 'Live' : 'Disconnected'}
               </span>
@@ -108,10 +108,10 @@ export default function MissionControlPage() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-hidden p-6">
-        <div className="h-full grid grid-cols-12 gap-6">
+      <div className="flex-1 overflow-hidden p-4 sm:p-6">
+        <div className="h-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 sm:gap-6">
           {/* Left panel - Active agents */}
-          <div className="col-span-3 flex flex-col overflow-hidden">
+          <div className="xl:col-span-3 md:col-span-1 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-medium flex items-center gap-2">
                 <Bot className="h-4 w-4" />
@@ -155,7 +155,7 @@ export default function MissionControlPage() {
           </div>
 
           {/* Center panel - Timeline and details */}
-          <div className="col-span-6 flex flex-col overflow-hidden">
+          <div className="xl:col-span-6 md:col-span-1 flex flex-col overflow-hidden">
             <Tabs defaultValue="timeline" className="h-full flex flex-col">
               <TabsList className="w-fit">
                 <TabsTrigger value="timeline" className="gap-2">
@@ -316,7 +316,7 @@ export default function MissionControlPage() {
               </TabsContent>
 
               <TabsContent value="grid" className="flex-1 mt-4 overflow-hidden">
-                <div className="grid grid-cols-2 gap-4 h-full overflow-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 h-full overflow-auto">
                   {dashboard?.by_project.map((project) => (
                     <Card key={project.project_id}>
                       <CardHeader className="pb-2">
@@ -364,7 +364,7 @@ export default function MissionControlPage() {
           </div>
 
           {/* Right panel - Control, Artifacts and Collaboration */}
-          <div className="col-span-3 flex flex-col gap-4 overflow-hidden">
+          <div className="xl:col-span-3 md:col-span-2 xl:md:col-span-3 flex flex-col gap-4 overflow-hidden">
             {selectedExecution ? (
               <>
                 {/* Execution Control Panel */}
