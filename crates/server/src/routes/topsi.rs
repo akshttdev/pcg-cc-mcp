@@ -27,7 +27,8 @@ use deployment::Deployment;
 use db::models::project::Project;
 use sqlx;
 use db::models::task_attempt::{CreateTaskAttempt, TaskAttempt};
-use db::models::vibe_transaction::VibeSourceType;
+use db::models::vibe_deposit::{VibeDeposit, VibeWithdrawal};
+use db::models::vibe_transaction::{VibeSourceType, VibeTransaction};
 use executors::executors::BaseCodingAgent;
 use executors::profile::ExecutorProfileId;
 use services::services::container::ContainerService;
@@ -735,24 +736,19 @@ pub async fn chat_with_topsi(
         }
     };
 
-    // VIBE Balance Check
+    // VIBE Balance Check — uses real deposit ledger
     if let Some(project_id) = billing_project_id {
-        let vibe_pricing = VibePricingService::new(pool.clone());
-        if let Ok(Some(project)) = Project::find_by_id(&pool, project_id).await {
-            if let Some(budget_limit) = project.vibe_budget_limit {
-                let estimate = vibe_pricing.estimate_cost(
-                    "claude-sonnet-4-20250514", 2000, 500
-                ).await.ok();
-                if let Some(est) = estimate {
-                    let remaining = budget_limit - project.vibe_spent_amount;
-                    if remaining < est.cost_vibe {
-                        return Err(ApiError::PaymentRequired(format!(
-                            "Insufficient VIBE balance. Remaining: {} VIBE (~${:.2}), Estimated cost: {} VIBE",
-                            remaining, remaining as f64 * 0.01, est.cost_vibe
-                        )));
-                    }
-                }
-            }
+        let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
+        let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
+        let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
+            .await
+            .map(|s| s.total_vibe)
+            .unwrap_or(0);
+        let balance = total_deposited - total_withdrawn - total_spent;
+        if balance <= 0 {
+            return Err(ApiError::PaymentRequired(
+                "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
+            ));
         }
     }
 

@@ -422,6 +422,36 @@ impl AptosService {
         Ok(transactions)
     }
 
+    /// Get a single transaction by its hash
+    pub async fn get_transaction_by_hash(&self, tx_hash: &str) -> Result<Option<AptosTransaction>> {
+        let url = format!("{}/v1/transactions/by_hash/{}", self.node_url, tx_hash);
+        let response = self.client.get(&url).send().await?;
+
+        if response.status() == 404 {
+            return Ok(None);
+        }
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Failed to get transaction by hash: {}", error_text));
+        }
+
+        let tx: TransactionResponse = response.json().await?;
+
+        Ok(Some(AptosTransaction {
+            version: tx.version,
+            hash: tx.hash,
+            sender: tx.sender.unwrap_or_default(),
+            sequence_number: tx.sequence_number.unwrap_or_default(),
+            timestamp: tx.timestamp.unwrap_or_default(),
+            tx_type: tx.tx_type,
+            success: tx.success.unwrap_or(false),
+            gas_used: tx.gas_used.unwrap_or_default(),
+            gas_unit_price: tx.gas_unit_price.unwrap_or_default(),
+            payload_function: tx.payload.and_then(|p| p.function),
+        }))
+    }
+
     /// Check if account exists on chain
     pub async fn account_exists(&self, address: &str) -> Result<bool> {
         let address = Self::normalize_address(address);

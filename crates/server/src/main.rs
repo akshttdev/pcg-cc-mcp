@@ -261,6 +261,50 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
 
+    // Spawn VIBE deposit watcher (polls platform revenue wallet every 30s)
+    {
+        let pool_for_watcher = deployment.db().pool.clone();
+        tokio::spawn(async move {
+            let revenue_addr = match std::env::var("PLATFORM_REVENUE_ADDRESS") {
+                Ok(a) if !a.is_empty() => a,
+                _ => {
+                    tracing::warn!("[VIBE] PLATFORM_REVENUE_ADDRESS not set; deposit watcher disabled");
+                    return;
+                }
+            };
+
+            let aptos = services::services::aptos::AptosService::testnet();
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            tracing::info!("[VIBE] Deposit watcher started for revenue address {}", &revenue_addr[..10.min(revenue_addr.len())]);
+
+            loop {
+                interval.tick().await;
+                match aptos.get_transactions(&revenue_addr, Some(25)).await {
+                    Ok(txns) => {
+                        for tx in txns.iter().filter(|t| t.success) {
+                            match db::models::vibe_deposit::VibeDeposit::find_by_tx_hash(
+                                &pool_for_watcher,
+                                &tx.hash,
+                            )
+                            .await
+                            {
+                                Ok(Some(_)) => {} // already recorded
+                                _ => {
+                                    tracing::info!(
+                                        "[VIBE] Detected transfer to revenue wallet: hash={}, sender={}",
+                                        tx.hash,
+                                        tx.sender
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => tracing::error!("[VIBE] Deposit watcher error: {e}"),
+                }
+            }
+        });
+    }
+
     let app_router = routes::router(deployment);
 
     let port = std::env::var("BACKEND_PORT")

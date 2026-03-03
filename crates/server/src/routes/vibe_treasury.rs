@@ -1,6 +1,7 @@
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
+    http::HeaderMap,
     routing::{get, post},
 };
 use db::models::vibe_deposit::{
@@ -9,6 +10,7 @@ use db::models::vibe_deposit::{
 use db::models::vibe_transaction::{VibeSourceType, VibeTransaction};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
+use services::services::aptos::AptosService;
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
@@ -43,6 +45,22 @@ pub struct RecordDepositRequest {
     pub block_height: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct VerifyDepositRequest {
+    pub project_id: Uuid,
+    pub tx_hash: String,
+    /// User-provided amount to credit. We verify tx exists and succeeded on-chain.
+    pub amount_vibe: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FaucetRequest {
+    pub project_id: Uuid,
+    pub amount_vibe: i64,
+    pub note: Option<String>,
+}
+
+/// Protected routes (require session auth)
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         // Project VIBE balance
@@ -73,6 +91,16 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/projects/{project_id}/vibe/transactions",
             get(list_transactions),
         )
+        .with_state(deployment.clone())
+}
+
+/// Public routes (no session required — faucet checks admin key, verify checks on-chain)
+pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+    Router::new()
+        // On-chain deposit verification (user proves they sent VIBE)
+        .route("/vibe/deposit/verify", post(verify_deposit))
+        // Admin faucet for seeding project balances (admin key required)
+        .route("/vibe/faucet", post(admin_faucet))
         .with_state(deployment.clone())
 }
 
@@ -237,4 +265,107 @@ async fn list_transactions(
     .map_err(|e| ApiError::InternalError(format!("Failed to get transactions: {}", e)))?;
 
     Ok(Json(ApiResponse::success(transactions)))
+}
+
+/// POST /api/vibe/deposit/verify — user proves they sent VIBE on-chain; gets project credited
+async fn verify_deposit(
+    State(deployment): State<DeploymentImpl>,
+    Json(req): Json<VerifyDepositRequest>,
+) -> Result<Json<ApiResponse<VibeDeposit>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // Idempotency: if already recorded, return it
+    if let Some(existing) = VibeDeposit::find_by_tx_hash(pool, &req.tx_hash).await? {
+        return Ok(Json(ApiResponse::success(existing)));
+    }
+
+    // Verify on Aptos testnet
+    let aptos = AptosService::testnet();
+    let tx = aptos
+        .get_transaction_by_hash(&req.tx_hash)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to query Aptos: {}", e)))?
+        .ok_or_else(|| ApiError::NotFound("Transaction not found on Aptos testnet".into()))?;
+
+    if !tx.success {
+        return Err(ApiError::BadRequest(
+            "Transaction failed on-chain. Only successful transactions can be credited.".into(),
+        ));
+    }
+
+    // Create deposit record and immediately confirm + credit
+    let deposit = VibeDeposit::create(
+        pool,
+        CreateVibeDeposit {
+            project_id: req.project_id,
+            tx_hash: req.tx_hash,
+            sender_address: tx.sender,
+            amount_vibe: req.amount_vibe,
+            block_height: None,
+        },
+    )
+    .await?;
+
+    let deposit = VibeDeposit::mark_confirmed(pool, deposit.id).await?;
+    let deposit = VibeDeposit::mark_credited(pool, deposit.id).await?;
+
+    tracing::info!(
+        "[VIBE] Deposit verified and credited: {} VIBE to project {}",
+        deposit.amount_vibe,
+        deposit.project_id
+    );
+
+    Ok(Json(ApiResponse::success(deposit)))
+}
+
+/// POST /api/vibe/faucet — admin-only endpoint to seed project balances for testing
+async fn admin_faucet(
+    headers: HeaderMap,
+    State(deployment): State<DeploymentImpl>,
+    Json(req): Json<FaucetRequest>,
+) -> Result<Json<ApiResponse<VibeDeposit>>, ApiError> {
+    // Check admin key
+    let expected_key = std::env::var("ADMIN_API_KEY").unwrap_or_default();
+    let provided_key = headers
+        .get("x-admin-key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if expected_key.is_empty() || provided_key != expected_key {
+        return Err(ApiError::Unauthorized(
+            "Admin key required for faucet".into(),
+        ));
+    }
+
+    let pool = &deployment.db().pool;
+    let faucet_tx_hash = format!("faucet-{}-{}", req.project_id, Uuid::new_v4());
+
+    let deposit = VibeDeposit::create(
+        pool,
+        CreateVibeDeposit {
+            project_id: req.project_id,
+            tx_hash: faucet_tx_hash,
+            sender_address: format!(
+                "platform-faucet{}",
+                req.note
+                    .as_deref()
+                    .map(|n| format!(": {}", n))
+                    .unwrap_or_default()
+            ),
+            amount_vibe: req.amount_vibe,
+            block_height: None,
+        },
+    )
+    .await?;
+
+    let deposit = VibeDeposit::mark_confirmed(pool, deposit.id).await?;
+    let deposit = VibeDeposit::mark_credited(pool, deposit.id).await?;
+
+    tracing::info!(
+        "[VIBE] Faucet: credited {} VIBE to project {}",
+        deposit.amount_vibe,
+        deposit.project_id
+    );
+
+    Ok(Json(ApiResponse::success(deposit)))
 }

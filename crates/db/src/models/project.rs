@@ -43,6 +43,10 @@ pub struct Project {
     pub client_id: Option<Uuid>,
     /// Folder this project is grouped under
     pub folder_id: Option<Uuid>,
+    /// Aptos wallet address registered for on-chain deposits
+    pub aptos_address: Option<String>,
+    /// Whether this project has been funded with on-chain VIBE
+    pub aptos_funded: bool,
 
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
@@ -100,6 +104,7 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at
                FROM projects ORDER BY created_at DESC"#,
         )
@@ -113,6 +118,7 @@ impl Project {
             r#"SELECT p.id, p.name, p.git_repo_path, p.setup_script, p.dev_script, p.cleanup_script, p.copy_files,
                    p.vibe_budget_limit, COALESCE(p.vibe_spent_amount, 0) as vibe_spent_amount,
                    p.organization_id, p.client_id, p.folder_id,
+                   p.aptos_address, COALESCE(p.aptos_funded, 0) as aptos_funded,
                    p.created_at, p.updated_at
             FROM projects p
             WHERE p.id IN (
@@ -133,6 +139,7 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at
                FROM projects WHERE id = ?"#,
         )
@@ -149,6 +156,7 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at
                FROM projects WHERE git_repo_path = ?"#,
         )
@@ -166,6 +174,7 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at
                FROM projects WHERE git_repo_path = ? AND id != ?"#,
         )
@@ -207,6 +216,7 @@ impl Project {
                RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                          vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                          organization_id, client_id, folder_id,
+                         aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                          created_at, updated_at"#,
         )
         .bind(project_id)
@@ -240,6 +250,7 @@ impl Project {
                RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                          vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                          organization_id, client_id, folder_id,
+                         aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                          created_at, updated_at"#,
         )
         .bind(&name)
@@ -328,6 +339,7 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at
                FROM projects WHERE organization_id = ? ORDER BY name ASC"#,
         )
@@ -344,12 +356,29 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at
                FROM projects WHERE client_id = ? ORDER BY name ASC"#,
         )
         .bind(client_id)
         .fetch_all(pool)
         .await
+    }
+
+    /// Register an Aptos wallet address for on-chain deposits
+    pub async fn set_aptos_wallet(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        aptos_address: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE projects SET aptos_address = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(aptos_address)
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 
     /// Set or clear the folder assignment for a project
