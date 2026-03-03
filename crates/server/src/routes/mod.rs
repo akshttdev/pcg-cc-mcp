@@ -84,6 +84,11 @@ pub mod sidebar;
 pub mod knowledge;
 pub mod workflow_templates;
 pub mod persons;
+pub mod proposals;
+pub mod deliverables;
+pub mod operator_rates;
+pub mod command_center;
+pub mod automations;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -101,6 +106,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     let admin_routes =
         Router::new()
             .merge(users::router(&deployment))
+            .merge(operator_rates::router(&deployment))
             .layer(middleware::from_fn_with_state(
                 deployment.clone(),
                 app_middleware::require_admin,
@@ -142,6 +148,9 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(knowledge::router(&deployment))
         .merge(workflow_templates::router(&deployment))
         .merge(persons::router(&deployment))
+        .merge(proposals::router(&deployment))
+        .merge(deliverables::router(&deployment))
+        .merge(command_center::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
         .layer(middleware::from_fn_with_state(

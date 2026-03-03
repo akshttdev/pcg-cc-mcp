@@ -64,6 +64,8 @@ const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').th
 const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
 const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
 const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
+const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
+const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -311,6 +313,14 @@ function AppContent() {
                       <Route
                         path="/people/:personId"
                         element={<ProtectedRoute><PersonDetailPage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/proposals"
+                        element={<ProtectedRoute><ProposalsPage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/command-center"
+                        element={<ProtectedRoute><CommandCenterPage /></ProtectedRoute>}
                       />
                       <Route
                         path="/virtual-environment"

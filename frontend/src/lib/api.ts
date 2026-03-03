@@ -4444,6 +4444,7 @@ export interface UpdatePersonInput {
   website?: string;
   notes?: string;
   tags?: string[];
+  intelligence_summary?: string;
 }
 
 export const personsApi = {
@@ -4530,5 +4531,230 @@ export const personsApi = {
   listInvoices: async (id: string): Promise<InvoiceRecord[]> => {
     const response = await makeRequest(`/api/persons/${id}/invoices`);
     return handleApiResponse<InvoiceRecord[]>(response);
+  },
+};
+
+// ── Proposals ─────────────────────────────────────────────────────────────────
+
+export type ProposalStatus =
+  | 'drafted'
+  | 'pending_approval'
+  | 'approved'
+  | 'meeting_scheduled'
+  | 'sent'
+  | 'seen'
+  | 'verbal'
+  | 'contract_signed'
+  | 'declined'
+  | 'deferred';
+
+export type DealType = 'one-off' | 'retainer' | 'hybrid';
+
+export interface ProposalRecord {
+  id: string;
+  lead_id?: string;
+  organization_id?: string;
+  owner_id?: string;
+  project_id?: string;
+  status: ProposalStatus;
+  title: string;
+  description: string;
+  quote_amount_vibe: number;
+  deal_type: DealType;
+  sent_at?: string;
+  seen_at?: string;
+  verbal_at?: string;
+  signed_at?: string;
+  declined_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateProposalInput {
+  title: string;
+  lead_id?: string;
+  organization_id?: string;
+  owner_id?: string;
+  project_id?: string;
+  description?: string;
+  quote_amount_vibe?: number;
+  deal_type?: DealType;
+}
+
+export interface UpdateProposalInput {
+  title?: string;
+  description?: string;
+  quote_amount_vibe?: number;
+  deal_type?: DealType;
+  lead_id?: string;
+  project_id?: string;
+  owner_id?: string;
+}
+
+export const proposalsApi = {
+  list: async (params?: {
+    status?: string;
+    lead_id?: string;
+    project_id?: string;
+    owner_id?: string;
+    limit?: number;
+  }): Promise<ProposalRecord[]> => {
+    const qs = params ? '?' + new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v != null)
+        .map(([k, v]) => [k, String(v)])
+    ) : '';
+    const response = await makeRequest(`/api/proposals${qs}`);
+    return handleApiResponse<ProposalRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<ProposalRecord> => {
+    const response = await makeRequest(`/api/proposals/${id}`);
+    return handleApiResponse<ProposalRecord>(response);
+  },
+
+  create: async (data: CreateProposalInput): Promise<ProposalRecord> => {
+    const response = await makeRequest('/api/proposals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProposalRecord>(response);
+  },
+
+  update: async (id: string, data: UpdateProposalInput): Promise<ProposalRecord> => {
+    const response = await makeRequest(`/api/proposals/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProposalRecord>(response);
+  },
+
+  moveStatus: async (id: string, status: ProposalStatus): Promise<ProposalRecord> => {
+    const response = await makeRequest(`/api/proposals/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return handleApiResponse<ProposalRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/proposals/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ── Deliverables ──────────────────────────────────────────────────────────────
+
+export type DeliverableType = 'video' | 'audio' | 'graphic' | 'copy' | 'code' | 'document' | 'other';
+export type DeliverableStatus =
+  | 'working'
+  | 'internal_review'
+  | 'client_review'
+  | 'revision'
+  | 'client_revision'
+  | 'done';
+
+export interface DeliverableRecord {
+  id: string;
+  project_id: string;
+  proposal_id?: string;
+  deliverable_type: DeliverableType;
+  title: string;
+  description: string;
+  status: DeliverableStatus;
+  revision_rounds_allowed: number;
+  revision_rounds_used: number;
+  working_file_url?: string;
+  final_link?: string;
+  due_date?: string;
+  delivered_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateDeliverableInput {
+  project_id: string;
+  proposal_id?: string;
+  deliverable_type?: DeliverableType;
+  title: string;
+  description?: string;
+  revision_rounds_allowed?: number;
+  working_file_url?: string;
+  due_date?: string;
+}
+
+export const deliverablesApi = {
+  listForProject: async (projectId: string): Promise<DeliverableRecord[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/deliverables`);
+    return handleApiResponse<DeliverableRecord[]>(response);
+  },
+
+  create: async (data: CreateDeliverableInput): Promise<DeliverableRecord> => {
+    const response = await makeRequest(`/api/projects/${data.project_id}/deliverables`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DeliverableRecord>(response);
+  },
+
+  update: async (id: string, data: Partial<CreateDeliverableInput> & { final_link?: string }): Promise<DeliverableRecord> => {
+    const response = await makeRequest(`/api/deliverables/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DeliverableRecord>(response);
+  },
+
+  moveStatus: async (id: string, status: DeliverableStatus): Promise<DeliverableRecord> => {
+    const response = await makeRequest(`/api/deliverables/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return handleApiResponse<DeliverableRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/deliverables/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ── Command Center ────────────────────────────────────────────────────────────
+
+export interface CommandCenterSnapshot {
+  overdue_tasks: Array<{
+    id: string; title: string; project_name: string; due_date: string; assignee_name?: string;
+  }>;
+  deliverables_due_this_week: Array<{
+    id: string; title: string; deliverable_type: string; project_name: string;
+    status: string; due_date: string;
+  }>;
+  waiting_on_client_projects: Array<{
+    id: string; name: string; client_name?: string; updated_at: string;
+  }>;
+  follow_up_required: Array<{
+    id: string; full_name: string; email?: string;
+    follow_up_attempts: number; lifecycle_stage: string;
+  }>;
+  proposals_awaiting_approval: Array<{
+    id: string; title: string; lead_name?: string;
+    quote_amount_vibe: number; created_at: string;
+  }>;
+  closed_unpaid_projects: Array<{
+    id: string; name: string; client_name?: string; updated_at: string;
+  }>;
+}
+
+export const commandCenterApi = {
+  get: async (orgId?: string): Promise<CommandCenterSnapshot> => {
+    const qs = orgId ? `?org_id=${orgId}` : '';
+    const response = await makeRequest(`/api/command-center${qs}`);
+    return handleApiResponse<CommandCenterSnapshot>(response);
   },
 };

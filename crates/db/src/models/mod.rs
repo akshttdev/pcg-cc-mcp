@@ -83,6 +83,9 @@ pub mod project_knowledge_source;
 pub mod workflow_template;
 pub mod person;
 pub mod invoice;
+pub mod proposal;
+pub mod deliverable;
+pub mod operator_rate;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

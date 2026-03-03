@@ -41,6 +41,8 @@ import {
   TrendingUp,
   Package,
   Calendar,
+  FileText,
+  LayoutDashboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -105,6 +107,8 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
 const GLOBAL_VIEW_ITEMS: NavItem[] = [
   { label: 'All Tasks', icon: ListTodo, to: '/global-tasks', id: 'global-tasks', adminOnly: true },
   { label: 'People', icon: Users, to: '/people', id: 'people', adminOnly: true },
+  { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
+  { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
   { label: 'All CRM', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
   { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
 ];
