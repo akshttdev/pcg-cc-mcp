@@ -86,6 +86,7 @@ pub mod invoice;
 pub mod proposal;
 pub mod deliverable;
 pub mod operator_rate;
+pub mod meeting_session;
 
 #[cfg(test)]
 pub(crate) mod test_utils;
