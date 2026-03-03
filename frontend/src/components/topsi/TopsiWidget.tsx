@@ -67,6 +67,10 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const animationRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Silence detection refs (call mode only)
+  const isInCallRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasSpokenRef = useRef(false);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -248,11 +252,34 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     const dataArray = new Uint8Array(bufferLength);
 
     const updateLevel = () => {
-      if (!analyserRef.current || !isRecording) return;
+      if (!analyserRef.current || !mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') return;
 
       analyserRef.current.getByteFrequencyData(dataArray);
       const average = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
       setAudioLevel(average / 255);
+
+      // Silence detection — only active in call mode (open line)
+      if (isInCallRef.current) {
+        if (average > 15) {
+          // User is speaking — mark as spoken and clear any silence timer
+          hasSpokenRef.current = true;
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = null;
+          }
+        } else if (hasSpokenRef.current && !silenceTimerRef.current) {
+          // Silence after speech — start 1.5s timer to send the utterance
+          silenceTimerRef.current = setTimeout(() => {
+            silenceTimerRef.current = null;
+            hasSpokenRef.current = false;
+            if (mediaRecorderRef.current?.state === 'recording') {
+              mediaRecorderRef.current.stop();
+              setIsRecording(false);
+              setAudioLevel(0);
+            }
+          }, 1500);
+        }
+      }
 
       animationRef.current = requestAnimationFrame(updateLevel);
     };
@@ -323,6 +350,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
         // If in call mode, continue listening after response
         if (isInCall && !isMuted) {
+          hasSpokenRef.current = false;
           setTimeout(() => startRecording(), 500);
         }
       }
@@ -377,6 +405,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
   // Call mode
   const startCall = async () => {
+    isInCallRef.current = true;
+    hasSpokenRef.current = false;
     setIsInCall(true);
     setWidgetState('call');
     addMessage('assistant', "I'm listening. Speak when you're ready.");
@@ -384,6 +414,12 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   };
 
   const endCall = () => {
+    isInCallRef.current = false;
+    hasSpokenRef.current = false;
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
     setIsInCall(false);
     stopRecording();
     if (currentAudioRef.current) {
