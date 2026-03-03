@@ -305,6 +305,48 @@ async fn main() -> Result<(), VibeKanbanError> {
         });
     }
 
+    // Spawn VIBE withdrawal executor (processes pending withdrawals every 60s)
+    {
+        let pool_for_withdrawals = deployment.db().pool.clone();
+        tokio::spawn(async move {
+            let private_key = match std::env::var("PLATFORM_REVENUE_PRIVATE_KEY") {
+                Ok(k) if !k.is_empty() => k,
+                _ => { tracing::warn!("[VIBE] PLATFORM_REVENUE_PRIVATE_KEY not set; withdrawal executor disabled"); return; }
+            };
+            let revenue_addr = match std::env::var("PLATFORM_REVENUE_ADDRESS") {
+                Ok(a) if !a.is_empty() => a,
+                _ => { tracing::warn!("[VIBE] PLATFORM_REVENUE_ADDRESS not set; withdrawal executor disabled"); return; }
+            };
+
+            let aptos = services::services::aptos::AptosService::testnet();
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            tracing::info!("[VIBE] Withdrawal executor started");
+
+            loop {
+                interval.tick().await;
+                let pending = match db::models::vibe_deposit::VibeWithdrawal::list_pending(&pool_for_withdrawals, 5).await {
+                    Ok(p) => p,
+                    Err(e) => { tracing::error!("[VIBE] Failed to list pending withdrawals: {e}"); continue; }
+                };
+                for withdrawal in pending {
+                    let _ = db::models::vibe_deposit::VibeWithdrawal::mark_processing(&pool_for_withdrawals, withdrawal.id).await;
+                    match aptos.transfer_vibe(&private_key, &revenue_addr, &withdrawal.destination_address, withdrawal.amount_vibe as u64).await {
+                        Ok(resp) if resp.success => {
+                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_completed(&pool_for_withdrawals, withdrawal.id, &resp.tx_hash).await;
+                            tracing::info!("[VIBE] Withdrawal {} completed: tx={}", withdrawal.id, resp.tx_hash);
+                        }
+                        Ok(resp) => {
+                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_failed(&pool_for_withdrawals, withdrawal.id, &resp.message).await;
+                        }
+                        Err(e) => {
+                            let _ = db::models::vibe_deposit::VibeWithdrawal::mark_failed(&pool_for_withdrawals, withdrawal.id, &e.to_string()).await;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     let app_router = routes::router(deployment);
 
     let port = std::env::var("BACKEND_PORT")

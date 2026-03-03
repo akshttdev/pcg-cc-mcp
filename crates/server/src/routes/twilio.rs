@@ -26,6 +26,8 @@ use db::models::call_log::{CallDirection, CallLog, CallStatus, CreateCallLog, Up
 use db::models::crm_contact::{
     ContactSource, CreateCrmContact, CrmContact, LifecycleStage,
 };
+use db::models::vibe_transaction::VibeSourceType;
+use services::services::vibe_pricing::VibePricingService;
 use nora::twilio::{
     TwilioCallHandler, TwilioCallRequest, TwilioConfig, TwilioSpeechResult,
     TwilioStatusCallback, TwimlBuilder, get_audio_cache,
@@ -969,15 +971,41 @@ pub async fn handle_speech_input(
     };
 
     // Process through NORA to get response text
-    let nora_response =
+    let (nora_response, input_tokens, output_tokens) =
         match process_with_nora(&speech_text, &session_id, Some(phone_context)).await {
-            Ok(response) => response,
+            Ok(result) => result,
             Err(e) => {
                 error!("Error processing with NORA: {}", e);
-                "I apologise, I'm having trouble processing your request. Could you please try again?"
-                    .to_string()
+                ("I apologise, I'm having trouble processing your request. Could you please try again?".to_string(), 0i64, 0i64)
             }
         };
+
+    // Record VIBE usage for this phone turn (fire-and-forget)
+    if let Some(ref ctx) = db_ctx {
+        if input_tokens > 0 || output_tokens > 0 {
+            let pool = deployment.db().pool.clone();
+            let project_id = ctx.project_id;
+            let (in_tok, out_tok) = (input_tokens, output_tokens);
+            tokio::spawn(async move {
+                let pricing = VibePricingService::new(pool.clone());
+                if let Ok(tx) = pricing.record_llm_usage(
+                    VibeSourceType::Project,
+                    project_id,
+                    "claude-haiku-4-5-20251001",
+                    in_tok,
+                    out_tok,
+                    None,
+                    None,
+                    None,
+                ).await {
+                    if let Err(e) = db::models::project::Project::adjust_vibe_spent(&pool, project_id, tx.amount_vibe).await {
+                        tracing::warn!("[VIBE] Failed to adjust project vibe_spent: {e}");
+                    }
+                    tracing::info!("[VIBE] Phone turn: {} VIBE charged to project={}", tx.amount_vibe, project_id);
+                }
+            });
+        }
+    }
 
     // Persist messages to DB (fire-and-forget — don't block the response)
     if let Some(ref ctx) = db_ctx {
@@ -1308,11 +1336,12 @@ Rules for phone calls:\
 - If asked about capabilities, give a brief compelling overview then ask what they need help with";
 
 /// Process speech input by calling Anthropic directly — lean prompt, no context bloat
+/// Returns (response_text, input_tokens, output_tokens)
 async fn process_with_nora(
     speech_text: &str,
     _session_id: &str,
     phone_context: Option<serde_json::Value>,
-) -> Result<String, String> {
+) -> Result<(String, i64, i64), String> {
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
         .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
@@ -1417,18 +1446,20 @@ async fn process_with_nora(
         Ok(Err(e)) => return Err(format!("HTTP error: {}", e)),
         Err(_) => {
             warn!("LLM timeout after {:?}", LLM_TIMEOUT);
-            return Ok("I'm just pulling that information up — could you give me one moment?".to_string());
+            return Ok(("I'm just pulling that information up — could you give me one moment?".to_string(), 0, 0));
         }
     };
 
     let data: serde_json::Value = resp.json().await.map_err(|e| format!("JSON parse error: {}", e))?;
 
+    let input_tokens = data["usage"]["input_tokens"].as_i64().unwrap_or(0);
+    let output_tokens = data["usage"]["output_tokens"].as_i64().unwrap_or(0);
     let text = data["content"][0]["text"]
         .as_str()
         .unwrap_or("I'm sorry, I didn't quite catch that. Could you say that again?")
         .to_string();
 
-    Ok(text)
+    Ok((text, input_tokens, output_tokens))
 }
 
 /// Safely truncate a string for logging (UTF-8 aware)

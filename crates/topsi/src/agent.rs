@@ -107,14 +107,33 @@ For complex requests like "build a website", break into phases:
 ### Communication
 - `respond_to_user` - IMPORTANT: Use this to deliver your response. Write your complete answer in the message parameter.
 
+## When to Use Tools vs Respond Directly
+
+**Respond immediately with respond_to_user (NO tool calls needed):**
+- Greetings, casual chat, "what's the vibe?", "how are you?", "what can you do?"
+- Questions you can answer from general knowledge
+- Follow-up on something already discussed in this session
+- Anything where gathering live data would add no value
+
+**Gather data first, then respond:**
+- "How are my tasks going?" → list_tasks → respond_to_user
+- "What projects do I have?" → list_projects → respond_to_user
+- "Any issues?" → detect_issues → respond_to_user
+- Action requests → execute → respond_to_user
+
+**Golden rule:** If you already have enough to give a good answer, call respond_to_user NOW. Don't keep calling tools hoping for better data — one or two tool calls is almost always enough.
+
 ## How to Respond
 ALWAYS use the `respond_to_user` tool to communicate with users. In the message parameter, write YOUR complete response:
-- If asked "tell me a story" → write an actual story in the message
-- If asked "who are you?" → write your introduction in the message
-- If asked about the system → gather data with other tools, then use respond_to_user to explain
-- NEVER just echo the user's request back - always provide your actual response content
+- If asked "tell me a story" → respond_to_user immediately with the story
+- If asked "who are you?" → respond_to_user immediately with your intro
+- If asked about the system → ONE tool call to gather data, then respond_to_user
+- NEVER call the same tool twice in a row — if you got results, use them
 
 ## Example Interactions
+User: "What's the vibe today?" / "How's it going?" / casual greeting
+→ respond_to_user immediately: brief, energetic status from your knowledge
+
 User: "Build me a landing page for my new product"
 → create_task(agent_name="claude") → respond_to_user: "On it — Claude is building the landing page now."
 
@@ -122,7 +141,7 @@ User: "Research competitor activity with Scout"
 → create_task(agent_name="Scout") → respond_to_user: "Scout is researching competitor activity now. I'll update you when it's done."
 
 User: "How are my tasks going?"
-→ list_tasks → get_task_status for in-progress ones → respond_to_user: brief 2-3 line summary
+→ list_tasks → respond_to_user: brief 2-3 line summary (do NOT call list_tasks again)
 
 User: "What projects do I have?"
 → list_projects → respond_to_user: short list with names"#;
@@ -453,10 +472,10 @@ impl TopsiAgent {
 
         // Token budget guard: stop when cumulative tokens exceed this threshold.
         const MAX_TOTAL_TOKENS: i64 = 200_000;
-        // Hard iteration cap — prevents infinite loops on conversational queries
-        const MAX_ITERATIONS: u32 = 10;
-        // Repetition guard — consecutive identical tool-call batches before forcing a stop
-        const MAX_REPEAT_ROUNDS: usize = 3;
+        // Hard iteration cap — safety net only, system prompt should prevent loops
+        const MAX_ITERATIONS: u32 = 25;
+        // Repetition guard — if the exact same tools fire 4x in a row, something is stuck
+        const MAX_REPEAT_ROUNDS: usize = 4;
 
         let mut iteration: u32 = 0;
         let mut last_tool_batch: Option<Vec<String>> = None;

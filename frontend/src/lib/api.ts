@@ -3481,6 +3481,40 @@ export const aptosApi = {
 };
 
 // ============================================
+// VIBE Token Economy API
+// ============================================
+
+export interface VibeDepositRecord {
+  id: string;
+  project_id: string;
+  tx_hash: string;
+  sender_address: string;
+  amount_vibe: number;
+  status: string;
+  payment_method: string;
+  credited_at: string | null;
+}
+
+export const vibeApi = {
+  getConfig: async (): Promise<{ revenue_address: string; network: string; vibe_token_address: string }> => {
+    const res = await fetch('/api/vibe/config');
+    const data = await res.json();
+    return data.data as { revenue_address: string; network: string; vibe_token_address: string };
+  },
+
+  verifyDeposit: async (projectId: string, txHash: string, amountVibe: number): Promise<VibeDepositRecord> => {
+    const res = await fetch('/api/vibe/deposit/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, tx_hash: txHash, amount_vibe: amountVibe }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error_data || 'Deposit verification failed');
+    return data.data as VibeDepositRecord;
+  },
+};
+
+// ============================================
 // Model Pricing / Billing Rates API
 // ============================================
 
