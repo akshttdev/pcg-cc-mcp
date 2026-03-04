@@ -62,7 +62,7 @@ export function useAgentFlowEvents(
  */
 export function useTaskAgentFlowMap(taskIds: string[]) {
   const { data: flows = [], ...rest } = useQuery({
-    queryKey: ['agentFlows', 'byTasks', taskIds.sort().join(',')],
+    queryKey: ['agentFlows', 'byTasks', [...taskIds].sort().join(',')],
     queryFn: async () => {
       // Fetch all flows (we could optimize this with a batch endpoint)
       const allFlows = await agentFlowsApi.list();
