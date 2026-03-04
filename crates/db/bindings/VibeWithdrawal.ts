@@ -3,4 +3,8 @@
 /**
  * VIBE withdrawal request from project balance
  */
-export type VibeWithdrawal = { id: string, project_id: string, destination_address: string, amount_vibe: number, status: string, tx_hash: string | null, requested_at: Date, processed_at: Date | null, error_message: string | null, created_at: Date, updated_at: Date, };
+export type VibeWithdrawal = { id: string, project_id: string, destination_address: string, amount_vibe: number, status: string, tx_hash: string | null, requested_at: Date, processed_at: Date | null, error_message: string | null, 
+/**
+ * Payment rail: 'aptos_vibe' | 'usdc' | 'usdt' | 'veritwin_bridge'
+ */
+payment_method: string, created_at: Date, updated_at: Date, };
