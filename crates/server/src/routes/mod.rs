@@ -89,6 +89,7 @@ pub mod deliverables;
 pub mod operator_rates;
 pub mod command_center;
 pub mod automations;
+pub mod feedback;
 pub mod intelligence;
 pub mod media_library;
 pub mod review;
@@ -201,6 +202,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))
         .merge(model_pricing::router(&deployment))
+        .merge(feedback::router(&deployment))
         .merge(vibe_treasury::public_router(&deployment))
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))

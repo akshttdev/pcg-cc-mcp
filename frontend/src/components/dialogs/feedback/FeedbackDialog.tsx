@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { MessageCircleQuestion, Bug, Lightbulb, AlertCircle, Send } from 'lucide-react';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { resolveApiUrl } from '@/lib/api';
 
 type FeedbackType = 'bug' | 'feature' | 'improvement' | 'question' | 'other';
 
@@ -73,10 +74,22 @@ export const FeedbackDialog = NiceModal.create(() => {
     setIsSubmitting(true);
 
     try {
-      // TODO: send feedbackData to backend/analytics
+      const response = await fetch(resolveApiUrl('/api/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          feedback_type: type,
+          title: title.trim(),
+          description: description.trim(),
+          email: email.trim() || undefined,
+          severity: type === 'bug' ? severity : undefined,
+        }),
+      });
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (!response.ok) {
+        throw new Error('Failed to submit feedback');
+      }
 
       setSubmitted(true);
 
