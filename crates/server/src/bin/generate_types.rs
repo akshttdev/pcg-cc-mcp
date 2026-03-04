@@ -267,6 +267,9 @@ fn generate_types_content() -> String {
         server::routes::sidebar::SidebarProjectFolder::decl(),
         server::routes::sidebar::SidebarSharedBoardGroup::decl(),
         server::routes::sidebar::SidebarSharedBoard::decl(),
+        // Feedback types
+        server::routes::feedback::SubmitFeedbackRequest::decl(),
+        server::routes::feedback::SubmitFeedbackResponse::decl(),
     ];
 
     let body = decls

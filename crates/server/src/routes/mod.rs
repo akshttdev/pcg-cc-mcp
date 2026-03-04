@@ -89,6 +89,7 @@ pub mod deliverables;
 pub mod operator_rates;
 pub mod command_center;
 pub mod automations;
+pub mod feedback;
 pub mod intelligence;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
@@ -198,6 +199,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))
         .merge(model_pricing::router(&deployment))
+        .merge(feedback::router(&deployment))
         .merge(vibe_treasury::public_router(&deployment))
         .merge(orcha::orcha_routes())
         .merge(mesh::router(&deployment))
