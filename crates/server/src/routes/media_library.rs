@@ -375,6 +375,130 @@ async fn backfill_from_artifacts(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct RemotePullBody {
+    pub url: String,
+    pub project_id: Uuid,
+    pub filename: Option<String>,
+}
+
+/// POST /media/remote-pull
+/// Downloads a file from a remote URL, saves it to MEDIA_ROOT, and indexes it.
+/// Use this to pull files from another node's HTTP server or any accessible URL.
+async fn remote_pull(
+    State(d): State<DeploymentImpl>,
+    Json(body): Json<RemotePullBody>,
+) -> Result<Json<ApiResponse<MediaAsset>>, ApiError> {
+    let pool = &d.db().pool;
+
+    let media_root = std::env::var("MEDIA_ROOT")
+        .unwrap_or_else(|_| "/home/pythia/pcg-cc-mcp/dev_assets/media".into());
+
+    let project_dir = PathBuf::from(&media_root).join(body.project_id.to_string());
+    tokio::fs::create_dir_all(&project_dir)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Cannot create media dir: {}", e)))?;
+
+    // Derive filename from URL if not provided
+    let filename = body.filename.unwrap_or_else(|| {
+        body.url
+            .split('/')
+            .last()
+            .unwrap_or("download")
+            .to_string()
+    });
+
+    // Idempotency: check by filename in this project
+    let dest = project_dir.join(&filename);
+    let file_path_str = dest.to_string_lossy().into_owned();
+
+    let already: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM media_assets WHERE file_path = ? AND project_id = ?)",
+    )
+    .bind(&file_path_str)
+    .bind(body.project_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+
+    if already {
+        let asset: MediaAsset = sqlx::query_as(
+            "SELECT * FROM media_assets WHERE file_path = ? AND project_id = ?",
+        )
+        .bind(&file_path_str)
+        .bind(body.project_id)
+        .fetch_one(pool)
+        .await?;
+        return Ok(Json(ApiResponse::success(asset)));
+    }
+
+    // Download
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    let resp = client
+        .get(&body.url)
+        .send()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Download failed: {}", e)))?;
+
+    if !resp.status().is_success() {
+        return Err(ApiError::BadRequest(format!(
+            "Remote returned {}",
+            resp.status()
+        )));
+    }
+
+    let mime_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("video/mp4")
+        .split(';')
+        .next()
+        .unwrap_or("video/mp4")
+        .to_string();
+
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Read failed: {}", e)))?;
+
+    let file_size = bytes.len() as i64;
+
+    tokio::fs::write(&dest, &bytes)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Write failed: {}", e)))?;
+
+    let asset = MediaAsset::create(
+        pool,
+        CreateMediaAsset {
+            project_id: body.project_id,
+            batch_id: None,
+            filename: filename.clone(),
+            file_path: file_path_str.clone(),
+            file_size_bytes: Some(file_size),
+            mime_type: Some(mime_type),
+            duration_seconds: None,
+            width: None,
+            height: None,
+        },
+    )
+    .await?;
+
+    asset_intelligence::analyze_async(
+        pool.clone(),
+        asset.id,
+        file_path_str,
+        body.project_id,
+        filename,
+    );
+
+    Ok(Json(ApiResponse::success(asset)))
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ImportDirBody {
     pub path: String,
 }
@@ -524,6 +648,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             post(import_directory),
         )
         .route("/media/backfill", post(backfill_from_artifacts))
+        .route("/media/remote-pull", post(remote_pull))
         .route("/media/{id}", get(get_asset).delete(delete_asset))
         .route("/media/{id}/analyze", post(retrigger_analysis))
         .with_state(deployment.clone())
