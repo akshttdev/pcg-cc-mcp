@@ -3,4 +3,8 @@
 /**
  * VIBE deposit from user wallet to treasury
  */
-export type VibeDeposit = { id: string, project_id: string, tx_hash: string, sender_address: string, amount_vibe: number, status: string, block_height: bigint | null, detected_at: Date, credited_at: Date | null, error_message: string | null, created_at: Date, updated_at: Date, };
+export type VibeDeposit = { id: string, project_id: string, tx_hash: string, sender_address: string, amount_vibe: number, status: string, block_height: bigint | null, detected_at: Date, credited_at: Date | null, error_message: string | null, 
+/**
+ * Payment rail: 'aptos_vibe' | 'usdc' | 'usdt' | 'veritwin_bridge'
+ */
+payment_method: string, created_at: Date, updated_at: Date, };

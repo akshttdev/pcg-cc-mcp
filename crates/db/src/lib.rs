@@ -7,6 +7,7 @@ use sqlx::{
 };
 use utils::assets::asset_dir;
 
+pub mod constants;
 pub mod models;
 pub mod repositories;
 pub mod services;
