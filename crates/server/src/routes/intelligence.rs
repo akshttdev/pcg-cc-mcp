@@ -310,7 +310,7 @@ async fn run_research_direct(
     Ok(())
 }
 
-async fn write_intelligence_results(
+pub async fn write_intelligence_results(
     pool: &sqlx::SqlitePool,
     person_id: Uuid,
     summary: &str,

@@ -69,6 +69,8 @@ const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => (
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
+const MediaLibraryPage        = lazy(() => import('@/pages/media-library').then(m => ({ default: m.MediaLibraryPage })));
+const ReviewPage              = lazy(() => import('@/pages/review').then(m => ({ default: m.ReviewPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -337,6 +339,11 @@ function AppContent() {
                         path="/projects/:projectId/deliverables"
                         element={<ProtectedRoute><ProjectDeliverablesPage /></ProtectedRoute>}
                       />
+                      <Route
+                        path="/projects/:projectId/media"
+                        element={<ProtectedRoute><MediaLibraryPage /></ProtectedRoute>}
+                      />
+                      <Route path="/review/:token" element={<ReviewPage />} />
                       <Route
                         path="/virtual-environment"
                         element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}

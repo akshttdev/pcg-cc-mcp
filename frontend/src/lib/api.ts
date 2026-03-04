@@ -4883,3 +4883,152 @@ export const intelligenceApi = {
     return handleApiResponse<IntelligenceStatus>(response);
   },
 };
+
+// ── Media Library (DAM) ───────────────────────────────────────────────────────
+
+export interface MediaAsset {
+  id: string;
+  project_id: string;
+  batch_id?: string;
+  filename: string;
+  file_path: string;
+  file_size_bytes: number;
+  mime_type: string;
+  duration_seconds?: number;
+  width?: number;
+  height?: number;
+  ai_description?: string;
+  shot_type?: string;
+  energy_level: number;
+  motion_intensity: number;
+  dominant_colors: string;
+  scene_tags: string;
+  ai_confidence: number;
+  analysis_status: 'pending' | 'running' | 'done' | 'failed';
+  created_at: string;
+  updated_at: string;
+}
+
+export const mediaApi = {
+  list: async (projectId: string, limit = 100): Promise<MediaAsset[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/media?limit=${limit}`);
+    return handleApiResponse<MediaAsset[]>(response);
+  },
+
+  search: async (projectId: string, q: string, limit = 50): Promise<MediaAsset[]> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/media/search?q=${encodeURIComponent(q)}&limit=${limit}`
+    );
+    return handleApiResponse<MediaAsset[]>(response);
+  },
+
+  upload: async (projectId: string, formData: FormData): Promise<MediaAsset> => {
+    const response = await makeRequest(`/api/projects/${projectId}/media`, {
+      method: 'POST',
+      body: formData,
+    });
+    return handleApiResponse<MediaAsset>(response);
+  },
+
+  get: async (id: string): Promise<MediaAsset> => {
+    const response = await makeRequest(`/api/media/${id}`);
+    return handleApiResponse<MediaAsset>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/media/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  triggerAnalysis: async (id: string): Promise<MediaAsset> => {
+    const response = await makeRequest(`/api/media/${id}/analyze`, { method: 'POST' });
+    return handleApiResponse<MediaAsset>(response);
+  },
+};
+
+// ── Client Review ─────────────────────────────────────────────────────────────
+
+export interface ReviewToken {
+  id: string;
+  token: string;
+  deliverable_id: string;
+  created_by?: string;
+  expires_at?: string;
+  view_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ReviewComment {
+  id: string;
+  deliverable_id: string;
+  token_id?: string;
+  timecode_seconds?: number;
+  author_name: string;
+  author_email?: string;
+  content: string;
+  is_resolved: boolean;
+  resolved_by?: string;
+  resolved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewData {
+  token: ReviewToken;
+  deliverable: {
+    id: string;
+    project_id: string;
+    title: string;
+    description: string;
+    deliverable_type: string;
+    status: string;
+    working_file_url?: string;
+    final_link?: string;
+    due_date?: string;
+    delivered_at?: string;
+    created_at: string;
+    updated_at: string;
+    revision_rounds_allowed: number;
+    revision_rounds_used: number;
+  };
+  comments: ReviewComment[];
+}
+
+export const reviewApi = {
+  getData: async (token: string): Promise<ReviewData> => {
+    const response = await makeRequest(`/api/review/${token}/data`);
+    return handleApiResponse<ReviewData>(response);
+  },
+
+  addComment: async (
+    token: string,
+    data: {
+      author_name?: string;
+      author_email?: string;
+      content: string;
+      timecode_seconds?: number;
+    }
+  ): Promise<ReviewComment> => {
+    const response = await makeRequest(`/api/review/${token}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ReviewComment>(response);
+  },
+
+  resolve: async (token: string, commentId: string): Promise<ReviewComment> => {
+    const response = await makeRequest(`/api/review/${token}/comments/${commentId}/resolve`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    return handleApiResponse<ReviewComment>(response);
+  },
+
+  getReviewLink: async (deliverableId: string): Promise<{ token: string; url: string; view_count: number }> => {
+    const response = await makeRequest(`/api/deliverables/${deliverableId}/review-link`);
+    return handleApiResponse(response);
+  },
+};

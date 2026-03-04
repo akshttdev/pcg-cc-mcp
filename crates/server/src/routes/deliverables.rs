@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::deliverable::{CreateDeliverable, Deliverable, UpdateDeliverable};
 use db::models::project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource};
+use db::models::review_token::ReviewToken;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,14 @@ async fn move_deliverable_status(
         .await?
         .ok_or_else(|| ApiError::NotFound("Deliverable not found".into()))?;
 
+    // Auto-generate review link when moved to client_review
+    if body.status == "client_review" {
+        match ReviewToken::get_or_create(pool, id, None).await {
+            Ok(tok) => tracing::info!("Review link: /review/{}", tok.token),
+            Err(e) => tracing::warn!("Could not generate review token: {}", e),
+        }
+    }
+
     // Auto-register in knowledge graph when marked done
     if body.status == "done" {
         let source_id = id.to_string();
@@ -95,6 +104,25 @@ async fn move_deliverable_status(
     }
 
     Ok(Json(ApiResponse::success(deliverable)))
+}
+
+/// GET /api/deliverables/:id/review-link — return active token URL
+async fn get_review_link(
+    State(d): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &d.db().pool;
+    let token = ReviewToken::get_or_create(pool, id, None)
+        .await?;
+    let app_base = std::env::var("APP_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:3001".into());
+    let url = format!("{}/review/{}", app_base, token.token);
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "token": token.token,
+        "url": url,
+        "view_count": token.view_count,
+        "is_active": token.is_active,
+    }))))
 }
 
 /// DELETE /api/deliverables/:id
@@ -127,5 +155,6 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
                 .delete(delete_deliverable),
         )
         .route("/deliverables/{id}/status", patch(move_deliverable_status))
+        .route("/deliverables/{id}/review-link", get(get_review_link))
         .with_state(deployment.clone())
 }

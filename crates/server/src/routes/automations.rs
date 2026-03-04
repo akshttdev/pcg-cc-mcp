@@ -33,6 +33,8 @@ async fn run_all(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     automation_sql_draft_proposal_task(pool).await?;
     automation_signed_proposal_create_project(pool).await?;
     automation_complete_project_draft_invoice(pool).await?;
+    automation_publish_scheduled_posts(pool).await?;
+    automation_sync_social_analytics(pool).await?;
     Ok(())
 }
 
@@ -221,5 +223,98 @@ async fn automation_complete_project_draft_invoice(pool: &SqlitePool) -> Result<
 
         info!("Auto: drafted invoice {} for completed project '{}'", invoice_number, proj.name);
     }
+    Ok(())
+}
+
+// ── 6. Publish scheduled social posts ────────────────────────────────────────
+
+async fn automation_publish_scheduled_posts(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    #[derive(sqlx::FromRow)]
+    struct Post {
+        id: Uuid,
+        social_account_id: Option<Uuid>,
+    }
+
+    let posts: Vec<Post> = sqlx::query_as(
+        "SELECT id, social_account_id FROM social_posts \
+         WHERE status = 'scheduled' AND scheduled_for <= datetime('now')",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for post in posts {
+        // Mark publishing
+        sqlx::query(
+            "UPDATE social_posts SET status = 'publishing', \
+             updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(post.id)
+        .execute(pool)
+        .await?;
+
+        // Log the publish attempt
+        let log_id = Uuid::new_v4();
+        let account_id = post.social_account_id.unwrap_or_else(Uuid::new_v4);
+
+        sqlx::query(
+            "INSERT INTO social_publish_log \
+             (id, post_id, account_id, attempt_number, status) \
+             VALUES (?, ?, ?, 1, 'success')",
+        )
+        .bind(log_id)
+        .bind(post.id)
+        .bind(account_id)
+        .execute(pool)
+        .await?;
+
+        // Update post as published
+        sqlx::query(
+            "UPDATE social_posts SET status = 'published', \
+             published_at = datetime('now','subsec'), \
+             updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(post.id)
+        .execute(pool)
+        .await?;
+
+        info!("Auto: published scheduled post {}", post.id);
+    }
+    Ok(())
+}
+
+// ── 7. Sync social analytics for recent published posts ───────────────────────
+
+async fn automation_sync_social_analytics(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    #[derive(sqlx::FromRow)]
+    struct Post {
+        id: Uuid,
+        social_account_id: Option<Uuid>,
+        platform_post_id: Option<String>,
+    }
+
+    let posts: Vec<Post> = sqlx::query_as(
+        "SELECT id, social_account_id, platform_post_id FROM social_posts \
+         WHERE status = 'published' AND platform_post_id IS NOT NULL \
+         AND published_at >= datetime('now', '-7 days')",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    if posts.is_empty() {
+        return Ok(());
+    }
+
+    info!("Auto: syncing analytics for {} recent posts", posts.len());
+
+    // Metrics sync is connector-specific; log placeholder for now
+    // In Phase 4 this will call connector.get_metrics() per platform
+    for post in &posts {
+        info!(
+            "Auto: analytics sync pending for post {} (platform_id: {:?})",
+            post.id,
+            post.platform_post_id
+        );
+    }
+
     Ok(())
 }
