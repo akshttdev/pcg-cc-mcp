@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { resolveApiUrl } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -72,6 +73,9 @@ interface ProjectAccess {
 }
 
 export function TopsiPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.is_admin ?? false;
+
   const [activeTab, setActiveTab] = useState('chat');
   const [status, setStatus] = useState<TopsiStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -521,7 +525,44 @@ export function TopsiPage() {
 
       {/* Main Content */}
       <div className="flex-1 p-6 overflow-hidden">
-        {isLoading ? (
+        {/* Non-admin members: skip Topsi init check — show meetings directly */}
+        {!isAdmin ? (
+          <div className="h-full flex flex-col gap-6 overflow-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[600px]">
+              <div className="lg:col-span-2 space-y-6">
+                <Card>
+                  <CardContent className="p-0">
+                    <MeetingMode className="min-h-[420px]" />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Past Meetings</CardTitle>
+                    <CardDescription>Transcripts and notes from previous sessions</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <MeetingHistory className="min-h-[200px]" />
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Topsi Meeting Assistant</CardTitle>
+                    <CardDescription className="text-xs">
+                      Start or join a meeting — Topsi listens silently, takes notes, and responds when you say its name.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-xs text-muted-foreground space-y-2">
+                    <p>Say <strong>"Topsi"</strong> during a meeting to ask questions.</p>
+                    <p>Notes are auto-generated when the session ends.</p>
+                    <p>Meetings are scoped to your project membership.</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        ) : isLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-8 h-8 animate-spin text-cyan-600" />
           </div>

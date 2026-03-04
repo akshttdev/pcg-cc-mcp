@@ -5,7 +5,9 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { NoraAssistant, NoraCoordinationPanel, NoraVoiceControls, NoraPlansPanel } from '@/components/nora';
-import { Crown, Users, Mic, Settings, MessageSquare, Activity, RefreshCw, Zap, Shuffle, Bot, Cpu, Clock, LayoutGrid } from 'lucide-react';
+import MeetingMode from '@/components/topsi/MeetingMode';
+import MeetingHistory from '@/components/topsi/MeetingHistory';
+import { Crown, Users, Mic, Settings, MessageSquare, Activity, RefreshCw, Zap, Shuffle, Bot, Cpu, Clock, LayoutGrid, Video } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   applyNoraMode,
@@ -140,7 +142,7 @@ export function NoraPage() {
       {/* Main Content */}
       <div className="flex-1 p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-          <TabsList className="grid w-full grid-cols-5 mb-6">
+          <TabsList className="grid w-full grid-cols-6 mb-6">
             <TabsTrigger value="assistant" className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" />
               Chat Assistant
@@ -160,6 +162,10 @@ export function NoraPage() {
             <TabsTrigger value="plans" className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
               Orchestration
+            </TabsTrigger>
+            <TabsTrigger value="meetings" className="flex items-center gap-2">
+              <Video className="w-4 h-4" />
+              Meetings
             </TabsTrigger>
           </TabsList>
 
@@ -525,6 +531,38 @@ export function NoraPage() {
 
           <TabsContent value="plans" className="h-full">
             <NoraPlansPanel />
+          </TabsContent>
+
+          <TabsContent value="meetings" className="h-full">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+              <div className="lg:col-span-2 space-y-6">
+                <Card>
+                  <CardContent className="p-0">
+                    <MeetingMode className="min-h-[420px]" />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Meeting History</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <MeetingHistory />
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">About Meetings</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm text-muted-foreground">
+                    <p>Start or join collaborative meetings with live transcription powered by Topsi AI.</p>
+                    <p>All participants can contribute audio and text — transcripts are linked to their project.</p>
+                    <p>Nora can join any active meeting to provide executive context and action items.</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

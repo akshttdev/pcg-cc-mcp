@@ -219,6 +219,9 @@ pub fn get_connector(platform: SocialPlatform) -> Result<Box<dyn PlatformConnect
     match platform {
         SocialPlatform::LinkedIn => Ok(Box::new(connectors::linkedin::LinkedInConnector::new())),
         SocialPlatform::Instagram => Ok(Box::new(connectors::instagram::InstagramConnector::new())),
+        SocialPlatform::Twitter => Ok(Box::new(connectors::twitter::TwitterConnector::new())),
+        SocialPlatform::TikTok => Ok(Box::new(connectors::tiktok::TikTokConnector::new())),
+        SocialPlatform::Threads => Ok(Box::new(connectors::threads::ThreadsConnector::new())),
         _ => Err(SocialError::UnsupportedPlatform(platform.to_string())),
     }
 }

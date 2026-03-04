@@ -347,6 +347,55 @@ async fn main() -> Result<(), VibeKanbanError> {
         });
     }
 
+    // Spawn meeting stale-session cleanup (runs every 2 minutes)
+    // Any meeting with no heartbeat for 5+ minutes is auto-ended.
+    {
+        let pool_for_meetings = deployment.db().pool.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(120));
+            tracing::info!("[MEETING] Stale-session cleanup started (5-min timeout)");
+            loop {
+                interval.tick().await;
+                let stale = match db::models::meeting_session::MeetingSession::find_stale_active(
+                    &pool_for_meetings,
+                    300, // 5 minutes
+                )
+                .await
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!("[MEETING] Failed to query stale sessions: {e}");
+                        continue;
+                    }
+                };
+                for session in stale {
+                    match sqlx::query(
+                        r#"UPDATE meeting_sessions
+                           SET status = 'ended',
+                               ended_at = datetime('now','subsec'),
+                               duration_seconds = CAST(unixepoch('now') - unixepoch(started_at) AS INTEGER),
+                               updated_at = datetime('now','subsec')
+                           WHERE id = ?"#,
+                    )
+                    .bind(&session.id)
+                    .execute(&pool_for_meetings)
+                    .await
+                    {
+                        Ok(_) => tracing::info!(
+                            "[MEETING] Auto-ended stale session {} (project={})",
+                            session.id,
+                            session.project_id
+                        ),
+                        Err(e) => tracing::error!(
+                            "[MEETING] Failed to auto-end session {}: {e}",
+                            session.id
+                        ),
+                    }
+                }
+            }
+        });
+    }
+
     let app_router = routes::router(deployment);
 
     let port = std::env::var("BACKEND_PORT")

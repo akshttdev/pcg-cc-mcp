@@ -45,6 +45,7 @@ import {
   LayoutDashboard,
   Receipt,
   ExternalLink,
+  Image,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -594,6 +595,19 @@ function SortableSidebarProjectFolder({
             >
               <Share2 className="h-3 w-3 text-muted-foreground" />
               <span>Social</span>
+            </Link>
+
+            {/* Media Library */}
+            <Link
+              to={`/projects/${project.id}/media`}
+              className={cn(
+                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                location.pathname === `/projects/${project.id}/media` &&
+                  'bg-accent text-accent-foreground'
+              )}
+            >
+              <Image className="h-3 w-3 text-muted-foreground" />
+              <span>Media Library</span>
             </Link>
 
             {/* Knowledge */}
