@@ -143,7 +143,7 @@ pub async fn bio_page(
 
     // Find social account by username or project slug
     let account: Option<SocialAccount> = sqlx::query_as(
-        "SELECT * FROM social_accounts WHERE username = ? AND is_active = 1 LIMIT 1",
+        "SELECT * FROM social_accounts WHERE username = ? AND status = 'active' LIMIT 1",
     )
     .bind(&username)
     .fetch_optional(pool)
