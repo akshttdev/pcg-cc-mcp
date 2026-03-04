@@ -436,6 +436,8 @@ export function ProjectTasks() {
               isWorkflowFollowUp: true,
             },
             stream: false,
+            model: null,
+            provider: null,
           };
 
           const response = await agentsApi.chat(agent.id, request);
