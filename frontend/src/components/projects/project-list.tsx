@@ -21,12 +21,16 @@ const createEmptySummary = (
   corePresence: {
     default: false,
     custom: false,
+    brand_assets: false,
+    executive_assets: false,
   },
   customCount: 0,
   totalTasks: 0,
   tasksByType: {
     default: 0,
     custom: 0,
+    brand_assets: 0,
+    executive_assets: 0,
   },
   unassignedTasks: 0,
   latestActivity: undefined,
