@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
   ReactNode,
 } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
@@ -45,26 +46,26 @@ export function SearchProvider({ children }: SearchProviderProps) {
     setQuery('');
   }, [projectId]);
 
-  const clear = () => setQuery('');
+  const clear = useCallback(() => setQuery(''), []);
 
-  const focusInput = () => {
+  const focusInput = useCallback(() => {
     if (inputRef.current && isTasksRoute) {
       inputRef.current.focus();
     }
-  };
+  }, [isTasksRoute]);
 
   const registerInputRef = useCallback((ref: HTMLInputElement | null) => {
     inputRef.current = ref;
   }, []);
 
-  const value: SearchState = {
+  const value = useMemo<SearchState>(() => ({
     query,
     setQuery,
     active: isTasksRoute,
     clear,
     focusInput,
     registerInputRef,
-  };
+  }), [query, setQuery, isTasksRoute, clear, focusInput, registerInputRef]);
 
   return (
     <SearchContext.Provider value={value}>{children}</SearchContext.Provider>
