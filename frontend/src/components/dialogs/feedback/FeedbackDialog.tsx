@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { MessageCircleQuestion, Bug, Lightbulb, AlertCircle, Send } from 'lucide-react';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { resolveApiUrl } from '@/lib/api';
 
 type FeedbackType = 'bug' | 'feature' | 'improvement' | 'question' | 'other';
 
@@ -60,6 +61,19 @@ export const FeedbackDialog = NiceModal.create(() => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  // Reset form state when modal opens
+  useEffect(() => {
+    if (modal.visible) {
+      setType('bug');
+      setTitle('');
+      setDescription('');
+      setEmail('');
+      setSeverity('medium');
+      setIsSubmitting(false);
+      setSubmitted(false);
+    }
+  }, [modal.visible]);
+
   const selectedType = FEEDBACK_TYPES.find((t) => t.value === type);
   const Icon = selectedType?.icon || MessageCircleQuestion;
 
@@ -73,10 +87,22 @@ export const FeedbackDialog = NiceModal.create(() => {
     setIsSubmitting(true);
 
     try {
-      // TODO: send feedbackData to backend/analytics
+      const response = await fetch(resolveApiUrl('/api/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          feedback_type: type,
+          title: title.trim(),
+          description: description.trim(),
+          email: email.trim() || undefined,
+          severity: type === 'bug' ? severity : undefined,
+        }),
+      });
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (!response.ok) {
+        throw new Error('Failed to submit feedback');
+      }
 
       setSubmitted(true);
 

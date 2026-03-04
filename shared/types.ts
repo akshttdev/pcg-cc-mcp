@@ -16,9 +16,29 @@ vibe_budget_limit: number | null,
 /**
  * VIBE spent amount
  */
-vibe_spent_amount: number, created_at: Date, updated_at: Date, };
+vibe_spent_amount: number, 
+/**
+ * Organization this project belongs to
+ */
+organization_id: string | null, 
+/**
+ * Client this project is for (within the organization)
+ */
+client_id: string | null, 
+/**
+ * Folder this project is grouped under
+ */
+folder_id: string | null, 
+/**
+ * Aptos wallet address registered for on-chain deposits
+ */
+aptos_address: string | null, 
+/**
+ * Whether this project has been funded with on-chain VIBE
+ */
+aptos_funded: boolean, created_at: Date, updated_at: Date, };
 
-export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, };
+export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, organization_id: string | null, client_id: string | null, folder_id: string | null, };
 
 export type UpdateProject = { name: string | null, git_repo_path: string | null, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, };
 
@@ -28,7 +48,7 @@ export type CreateProjectPod = { project_id: string, title: string, description?
 
 export type UpdateProjectPod = { title?: string, description?: string, status?: string, lead?: string, };
 
-export type ProjectBoardType = "default" | "custom";
+export type ProjectBoardType = "default" | "custom" | "brand_assets" | "executive_assets";
 
 export type ProjectBoard = { id: string, project_id: string, name: string, slug: string, board_type: ProjectBoardType, description?: string | null, metadata?: string | null, created_at: string, updated_at: string, };
 
@@ -380,7 +400,7 @@ export type ExecutionSummaryBrief = { files_modified: number, files_created: num
 
 export type TaskCollaborator = { actor_id: string, actor_type: string, last_action: string, last_action_at: string, };
 
-export type Agent = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: string | null, voice_style: string | null, avatar_url: string | null, capabilities: string | null, tools: string | null, functions: string | null, default_model: string | null, fallback_models: string | null, model_config: string | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, total_execution_time_ms: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, created_by: string | null, parent_agent_id: string | null, team_id: string | null, };
+export type Agent = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: string | null, voice_style: string | null, avatar_url: string | null, capabilities: string | null, tools: string | null, functions: string | null, default_model: string | null, fallback_models: string | null, model_config: string | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, total_execution_time_ms: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, created_by: string | null, parent_agent_id: string | null, team_id: string | null, owner_id: string | null, agent_tier: string | null, };
 
 export type AgentStatus = "active" | "inactive" | "maintenance" | "training";
 
@@ -420,9 +440,9 @@ emotional_baseline: string, };
 
 export type AgentFunction = { name: string, description: string, parameters: JsonValue, required_tools: Array<string>, example_usage: string | null, };
 
-export type AgentWithParsedFields = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, };
+export type AgentWithParsedFields = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, owner_id: string | null, agent_tier: string | null, };
 
-export type CreateAgent = { wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus | null, autonomy_level: AutonomyLevel | null, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, parent_agent_id: string | null, team_id: string | null, created_by: string | null, };
+export type CreateAgent = { wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus | null, autonomy_level: AutonomyLevel | null, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, parent_agent_id: string | null, team_id: string | null, created_by: string | null, owner_id: string | null, agent_tier: string | null, };
 
 export type UpdateAgent = { wallet_address: string | null, short_name: string | null, designation: string | null, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus | null, autonomy_level: AutonomyLevel | null, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, };
 
@@ -704,7 +724,15 @@ context: JsonValue | null,
 /**
  * Enable streaming response
  */
-stream: boolean, };
+stream: boolean, 
+/**
+ * Optional model override (e.g. "llama3.2:3b", "gpt-4o", "claude-sonnet-4")
+ */
+model: string | null, 
+/**
+ * Optional provider override ("ollama", "openai", "anthropic")
+ */
+provider: string | null, };
 
 export type AgentChatResponse = { 
 /**
@@ -733,3 +761,29 @@ model: string | null, provider: string | null,
 latencyMs: bigint, };
 
 export type ConversationSummary = { id: string, title: string | null, status: string, messageCount: bigint, lastMessageAt: string | null, createdAt: string, };
+
+export type KnowledgeSourceType = "conversation" | "artifact" | "pulse_content" | "context_injection" | "entity" | "topology_snapshot";
+
+export type ProjectKnowledgeSource = { id: string, project_id: string, source_type: string, source_id: string, source_title: string, source_summary: string | null, coverage_score: number, is_active: boolean, is_stale: boolean, auto_registered: boolean, last_refreshed_at: string, created_at: string, updated_at: string, };
+
+export type ProjectKnowledgeCompleteness = { project_id: string, total_sources: bigint, fresh_sources: bigint, avg_coverage: number, type_count: bigint, knowledge_completeness: number, };
+
+export type HealthStatus = "healthy" | "warning" | "critical" | "unknown";
+
+export type ProjectHealthSummary = { project_id: string, health_status: string, active_issues_count: bigint, critical_issues: bigint, warning_issues: bigint, knowledge_completeness: number, last_activity_at: string | null, };
+
+export type ProjectKnowledgeResponse = { project_id: string, completeness: ProjectKnowledgeCompleteness | null, total_sources: number, stale_count: number, sources_by_type: { [key in string]?: Array<ProjectKnowledgeSource> }, };
+
+export type SidebarTree = { owned_orgs: Array<SidebarOrg>, member_orgs: Array<SidebarOrg>, };
+
+export type SidebarOrg = { id: string, name: string, slug: string, role: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, internal_projects: Array<SidebarProject>, internal_folders: Array<SidebarProjectFolder>, clients: Array<SidebarClient>, shared_boards: Array<SidebarSharedBoardGroup>, };
+
+export type SidebarClient = { id: string, name: string, slug: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, projects: Array<SidebarProject>, folders: Array<SidebarProjectFolder>, };
+
+export type SidebarProject = { id: string, name: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, };
+
+export type SidebarProjectFolder = { id: string, name: string, projects: Array<SidebarProject>, };
+
+export type SidebarSharedBoardGroup = { source_org_id: string, source_org_name: string, share_type: string, boards: Array<SidebarSharedBoard>, };
+
+export type SidebarSharedBoard = { board_id: string, board_name: string, project_id: string, project_name: string, permission: string, share_type: string, };
