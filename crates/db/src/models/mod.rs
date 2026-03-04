@@ -80,6 +80,14 @@ pub mod pulse_content_item;
 pub mod pulse_source;
 pub mod pulse_tracking_config;
 pub mod project_knowledge_source;
+// Topology modules: exist on disk but use sqlx::query! macros that require
+// DATABASE_URL or cached queries. The MCP TaskServer uses raw SQL for topology
+// queries. Re-enable these exports after running `cargo sqlx prepare`:
+// pub mod topology_node;
+// pub mod topology_edge;
+// pub mod topology_cluster;
+// pub mod topology_issue;
+// pub mod topology_route;
 pub mod workflow_template;
 pub mod person;
 pub mod invoice;
