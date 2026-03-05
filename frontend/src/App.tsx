@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
 import i18n from '@/i18n';
@@ -49,12 +49,10 @@ const WorkflowsPage         = lazy(() => import('@/pages/workflows').then(m => (
 const SocialPage            = lazy(() => import('@/pages/social').then(m => ({ default: m.SocialPage })));
 const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ default: m.CrmPage })));
 const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
-const CrmAcquisitionPage       = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmAcquisitionPage })));
-const CrmLifecyclePage         = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmLifecyclePage })));
-const OrganizationDetailPage   = lazy(() => import('@/pages/organization-detail').then(m => ({ default: m.OrganizationDetailPage })));
+const OrganizationProfilePage  = lazy(() => import('@/pages/organization-profile').then(m => ({ default: m.OrganizationProfilePage })));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
 const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-environment').then(m => ({ default: m.EmbedVirtualEnvironmentPage })));
-const MeshPage              = lazy(() => import('@/pages/mesh'));
+// MeshPage merged into Settings > Network & Mesh
 const VibePage              = lazy(() => import('@/pages/vibe'));
 const PulsePage             = lazy(() => import('@/pages/pulse'));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
@@ -193,6 +191,15 @@ function AppContent() {
     };
   }, [config]);
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const toggleSidebar = useCallback(() => setSidebarOpen(prev => !prev), []);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -209,13 +216,29 @@ function AppContent() {
             <div className="h-screen flex flex-col bg-background">
               <WebviewContextMenu />
               {showNavbar && <DevBanner />}
-              {showNavbar && <Navbar />}
+              {showNavbar && <Navbar onToggleSidebar={toggleSidebar} />}
               {showNavbar && <BreadcrumbNav />}
 
-              <div className="flex-1 flex min-h-0">
-                <Sidebar className="w-64 shrink-0" />
+              <div className="flex-1 flex min-h-0 relative">
+                {/* Mobile sidebar backdrop */}
+                {sidebarOpen && (
+                  <div
+                    className="sidebar-backdrop animate-fade-in"
+                    onClick={closeSidebar}
+                    aria-hidden="true"
+                  />
+                )}
 
-                <div className="flex-1 overflow-y-auto">
+                {/* Sidebar: drawer on mobile, static on desktop */}
+                <div className={`
+                  fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-250 ease-out
+                  lg:relative lg:translate-x-0 lg:z-auto
+                  ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                `}>
+                  <Sidebar className="h-full w-64 shrink-0" />
+                </div>
+
+                <div className="flex-1 overflow-y-auto min-w-0 bg-background">
                   <Suspense fallback={<PageLoader />}>
                     <SentryRoutes>
                       <Route path="/login" element={<LoginPage />} />
@@ -281,15 +304,15 @@ function AppContent() {
                       />
                       <Route
                         path="/organizations/:orgId"
-                        element={<ProtectedRoute><OrganizationDetailPage /></ProtectedRoute>}
+                        element={<ProtectedRoute><OrganizationProfilePage /></ProtectedRoute>}
                       />
                       <Route
                         path="/organizations/:orgId/crm/acquisition"
-                        element={<ProtectedRoute><CrmAcquisitionPage /></ProtectedRoute>}
+                        element={<ProtectedRoute><OrganizationProfilePage defaultTab="pipelines" defaultPipeline="acquisition" /></ProtectedRoute>}
                       />
                       <Route
                         path="/organizations/:orgId/crm/lifecycle"
-                        element={<ProtectedRoute><CrmLifecyclePage /></ProtectedRoute>}
+                        element={<ProtectedRoute><OrganizationProfilePage defaultTab="pipelines" defaultPipeline="lifecycle" /></ProtectedRoute>}
                       />
                       <Route
                         path="/projects/:projectId/knowledge"
@@ -341,7 +364,7 @@ function AppContent() {
                         path="/virtual-environment"
                         element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}
                       />
-                      <Route path="/mesh" element={<ProtectedRoute><MeshPage /></ProtectedRoute>} />
+                      <Route path="/mesh" element={<Navigate to="/settings/network" replace />} />
                       <Route path="/pulse" element={<ProtectedRoute><PulsePage /></ProtectedRoute>} />
                       <Route
                         path="/projects/:projectId/pulse"

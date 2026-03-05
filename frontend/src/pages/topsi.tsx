@@ -478,66 +478,67 @@ export function TopsiPage() {
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="border-b bg-white shadow-sm dark:bg-gray-900">
-        <div className="flex items-center justify-between p-6">
+      <div className="border-b glass-strong relative overflow-hidden">
+        <div className="ambient-glow -top-48 -right-32" />
+        <div className="page-header p-4 sm:p-6 relative">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-cyan-100 dark:bg-cyan-950 rounded-lg">
-              <Crown className="w-6 h-6 text-cyan-600" />
+            <div className="section-header-icon !bg-gradient-to-br !from-cyan-500/10 !to-cyan-500/5 !text-cyan-600">
+              <Crown className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <h1 className="page-title">
                 Topsi Platform Agent
               </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Topological Super Intelligence - Your platform orchestrator with secure, containerized access
+              <p className="page-description">
+                Topological Super Intelligence — your platform orchestrator
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="hidden md:flex items-center gap-2">
               <Shield className="w-4 h-4 text-green-600" />
-              <span className="text-sm text-gray-600 dark:text-gray-400">Data Isolation Active</span>
+              <span className="text-sm text-muted-foreground">Data Isolation Active</span>
             </div>
-            <Separator orientation="vertical" className="h-8" />
+            <Separator orientation="vertical" className="h-8 hidden sm:block" />
             <div className="text-right">
               <div className={cn(
                 "text-sm font-medium",
-                status?.isActive ? "text-green-600" : "text-gray-400"
+                status?.isActive ? "text-green-600" : "text-muted-foreground"
               )}>
                 {status?.isActive ? 'Online' : 'Offline'}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-muted-foreground">
                 Uptime: {formatUptime(status?.uptimeMs)}
               </div>
             </div>
             <div className={cn(
-              "w-3 h-3 rounded-full",
-              status?.isActive ? "bg-green-500 animate-pulse" : "bg-gray-400"
+              "status-dot",
+              status?.isActive ? "status-dot-online" : "status-dot-offline"
             )} />
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-6 overflow-hidden">
+      <div className="flex-1 p-4 sm:p-6 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-8 h-8 animate-spin text-cyan-600" />
           </div>
         ) : !status?.isActive ? (
-          <div className="flex flex-col items-center justify-center h-full gap-4">
-            <Network className="w-16 h-16 text-gray-400" />
-            <h2 className="text-xl font-semibold text-gray-600">Topsi is not initialized</h2>
-            <p className="text-gray-500">Initialize Topsi to start managing your platform</p>
-            <Button onClick={initializeTopsi} className="bg-cyan-600 hover:bg-cyan-700">
+          <div className="empty-state h-full gap-4">
+            <Network className="w-16 h-16 text-muted-foreground/30" />
+            <h2 className="empty-state-title">Topsi is not initialized</h2>
+            <p className="empty-state-description">Initialize Topsi to start managing your platform</p>
+            <Button onClick={initializeTopsi} className="bg-cyan-600 hover:bg-cyan-700 mt-2">
               <Bot className="w-4 h-4 mr-2" />
               Initialize Topsi
             </Button>
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-5 mb-6">
+            <TabsList className="tab-grid-5 mb-4 sm:mb-6">
               <TabsTrigger value="chat" className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" />
                 Chat
@@ -772,7 +773,7 @@ export function TopsiPage() {
 
             {/* Topology Tab */}
             <TabsContent value="topology" className="flex-1 overflow-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-stagger">
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
