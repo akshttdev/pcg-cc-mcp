@@ -17,7 +17,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { icon: Home, label: 'Home', path: '/' },
   { icon: ListTodo, label: 'Tasks', path: '/tasks' },
-  { icon: Globe, label: 'Mesh', path: '/mesh' },
+  { icon: Globe, label: 'Mesh', path: '/settings/network' },
   { icon: Bot, label: 'Agents', path: '/agents' },
   { icon: Coins, label: 'Vibe', path: '/vibe' },
 ];
