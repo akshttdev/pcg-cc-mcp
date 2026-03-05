@@ -1,0 +1,144 @@
+---
+title: "Database Architecture"
+description: "SQLite database layer — models, migrations, patterns, and how to work with the schema"
+---
+
+# Database Architecture
+
+PCG CC uses **SQLite** with **SQLx** for compile-time checked queries. The database is embedded — no external database server required.
+
+## Overview
+
+| Metric | Count |
+|--------|-------|
+| Models | 111 |
+| Migrations | 136 |
+| Schema span | June 2025 – March 2026 |
+| Database file | Auto-copied from `dev_assets_seed/` on dev server start |
+
+## Model patterns
+
+All models live in `crates/db/src/models/`, one file per table. Two patterns are used:
+
+### Compile-time checked queries (most models)
+
+```rust
+// Uses sqlx::query_as! macro — checked at compile time against cached schema
+sqlx::query_as!(
+    Task,
+    r#"SELECT id as "id!: Uuid", title as "title!", ...
+       FROM tasks WHERE project_id = $1"#,
+    project_id
+)
+.fetch_all(pool)
+.await
+```
+
+<Note>
+These macros require either `DATABASE_URL` at compile time or cached query data in `crates/db/.sqlx/`. If you add a new query macro, run `cargo sqlx prepare` to update the cache.
+</Note>
+
+### Runtime queries (topology, orchestration)
+
+```rust
+// Uses sqlx::query_as::<_, Row>() — no compile-time DB dependency
+sqlx::query_as::<_, NodeRow>(
+    "SELECT id, node_type, status FROM topology_nodes WHERE project_id = ?"
+)
+.bind(&pid_hex)
+.fetch_all(pool)
+.await
+```
+
+This pattern is used by the MCP servers and newer models to avoid the `DATABASE_URL` requirement during builds.
+
+## Key tables
+
+### Core entities
+
+| Table | Purpose | Key columns |
+|-------|---------|------------|
+| `projects` | Software projects | `id`, `name`, `git_repo_path`, `vibe_budget_limit` |
+| `tasks` | Work items | `id`, `project_id`, `status`, `priority`, `assigned_agent` |
+| `task_attempts` | Execution runs | `id`, `task_id`, worktree info, execution status |
+| `task_dependencies` | Task relationships | `source_task_id`, `target_task_id`, `dependency_type` |
+| `agents` | AI agent registry | `id`, `short_name`, `capabilities`, `status`, `agent_tier` |
+| `users` | Platform users | `id`, `username`, GitHub OAuth data |
+
+### Topology
+
+| Table | Purpose |
+|-------|---------|
+| `topology_nodes` | Agents, tasks, resources as graph nodes |
+| `topology_edges` | Relationships between nodes (can_execute, depends_on, etc.) |
+| `topology_clusters` | Dynamic agent teams |
+| `topology_issues` | Detected problems (bottlenecks, orphans, failures) |
+
+### Knowledge & orchestration
+
+| Table | Purpose |
+|-------|---------|
+| `project_knowledge_sources` | Tracked knowledge with coverage scoring and staleness |
+| `orchestration_contexts` | Shared blackboard for multi-agent task trees |
+| `tasks_fts` | FTS5 full-text search index for tasks |
+
+### CRM & business
+
+| Table | Purpose |
+|-------|---------|
+| `crm_contacts` | Contact records with lead scoring |
+| `crm_deals` | Pipeline deals |
+| `crm_pipelines` | Acquisition and lifecycle pipelines |
+| `invoices`, `proposals`, `deliverables` | Business operations |
+
+## Migrations
+
+Migrations live in `crates/db/migrations/` and follow the naming pattern:
+
+```
+YYYYMMDDHHMMSS_description.sql
+```
+
+### Creating a new migration
+
+<Steps>
+  <Step title="Create the migration file">
+    ```bash
+    touch crates/db/migrations/$(date +%Y%m%d%H%M%S)_your_description.sql
+    ```
+  </Step>
+  <Step title="Write idempotent SQL">
+    Use `CREATE TABLE IF NOT EXISTS` and `INSERT ... WHERE NOT EXISTS` patterns so migrations can be re-run safely.
+  </Step>
+  <Step title="Run migrations">
+    ```bash
+    sqlx migrate run
+    ```
+    Or simply restart the dev server — migrations run automatically on startup.
+  </Step>
+  <Step title="Update the query cache (if using macros)">
+    If your model uses `sqlx::query_as!` macros:
+    ```bash
+    DATABASE_URL="sqlite:path/to/dev.db" cargo sqlx prepare --workspace
+    ```
+  </Step>
+</Steps>
+
+## UUID handling
+
+SQLite stores UUIDs as 16-byte BLOBs. The codebase uses two patterns:
+
+- **SQLx macros**: UUIDs bind and return natively via the `Uuid` type
+- **Raw queries**: UUIDs are converted to/from byte vectors (`uuid.as_bytes().to_vec()`) or uppercase hex strings (`hex::encode(uuid.as_bytes()).to_uppercase()`)
+
+## Well-known entities
+
+Some entities have fixed UUIDs defined in `crates/db/src/constants.rs`:
+
+```rust
+BUGREPORTS_PROJECT_ID: 00000000-0000-0000-0000-000000000001
+BUGREPORTS_BOARD_ID:   00000000-0000-0000-0000-000000000002
+DEV_ADMIN_USER_ID:     00000000-0000-0000-0000-000000000099
+```
+
+These are seeded by migrations and used for the feedback pipeline and development environment.

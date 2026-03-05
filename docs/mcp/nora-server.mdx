@@ -1,0 +1,173 @@
+---
+title: "NoraMCP Reference"
+description: "Reference for the Nora MCP server — executive assistant tools for chat, coordination, strategic planning, and voice synthesis"
+---
+
+# NoraMCP Reference
+
+NoraMCP provides executive assistant capabilities through 7 MCP tools. Nora serves as a COO-level coordinator with voice interaction, strategic planning, and multi-agent coordination.
+
+**Binary**: `mcp_nora_server`
+**Transport**: stdio
+
+<Note>
+Nora is a private admin-only assistant. Access is restricted to authorised administrators.
+</Note>
+
+## Tools
+
+### `nora_chat`
+
+Send a message to Nora and receive an executive-level response.
+
+<ParamField body="message" type="string" required>
+The message or question to send to Nora.
+</ParamField>
+
+<ParamField body="request_type" type="string">
+Type of request (e.g., `question`, `instruction`, `analysis`).
+</ParamField>
+
+<ParamField body="priority" type="string">
+Priority level: `low`, `normal`, `high`, `urgent`.
+</ParamField>
+
+<ParamField body="voice_enabled" type="boolean" default="false">
+Whether to generate a voice audio response alongside text.
+</ParamField>
+
+<ParamField body="session_id" type="string">
+Session identifier for conversation continuity.
+</ParamField>
+
+### `nora_coordinate_tasks`
+
+Coordinate multi-task execution across agents.
+
+<ParamField body="tasks" type="array" required>
+Array of task objects to coordinate.
+</ParamField>
+
+<ParamField body="coordination_type" type="string">
+Type of coordination: `parallel`, `sequential`, `dependent`.
+</ParamField>
+
+<ParamField body="context" type="string">
+Additional context for the coordination strategy.
+</ParamField>
+
+### `nora_strategic_planning`
+
+Generate strategic plans for objectives with constraints and success metrics.
+
+<ParamField body="planning_scope" type="string" required>
+Scope of the planning exercise (e.g., `sprint`, `quarter`, `project`).
+</ParamField>
+
+<ParamField body="objectives" type="array" required>
+List of objective strings to plan towards.
+</ParamField>
+
+<ParamField body="constraints" type="array">
+Constraints to factor into the plan (budget, timeline, resources).
+</ParamField>
+
+<ParamField body="current_situation" type="string">
+Description of the current state for context.
+</ParamField>
+
+<ParamField body="success_metrics" type="array">
+How success will be measured.
+</ParamField>
+
+### `nora_performance_analysis`
+
+Analyse performance data across agents, projects, or the platform.
+
+<ParamField body="analysis_type" type="string" required>
+Type of analysis (e.g., `agent_performance`, `project_health`, `throughput`).
+</ParamField>
+
+<ParamField body="metrics" type="array">
+Specific metrics to analyse.
+</ParamField>
+
+<ParamField body="time_period" type="string">
+Time range for analysis (e.g., `7d`, `30d`, `quarter`).
+</ParamField>
+
+<ParamField body="baseline" type="string">
+Baseline period for comparison.
+</ParamField>
+
+<ParamField body="focus_areas" type="array">
+Areas to focus the analysis on.
+</ParamField>
+
+### `nora_voice_synthesis`
+
+Generate speech audio from text using Nora's British executive voice.
+
+<ParamField body="text" type="string" required>
+Text to synthesise into speech.
+</ParamField>
+
+<ParamField body="voice_settings" type="object">
+Voice configuration:
+
+<Expandable title="Voice settings">
+  <ParamField body="speed" type="number" default="1.0">
+  Speech speed (0.5 to 2.0).
+  </ParamField>
+
+  <ParamField body="volume" type="number" default="1.0">
+  Volume level (0.0 to 1.0).
+  </ParamField>
+
+  <ParamField body="pitch" type="number" default="1.0">
+  Pitch adjustment (0.5 to 2.0).
+  </ParamField>
+
+  <ParamField body="accent_strength" type="number" default="0.7">
+  British accent strength (0.0 to 1.0).
+  </ParamField>
+</Expandable>
+</ParamField>
+
+<ParamField body="output_format" type="string" default="mp3">
+Audio format: `mp3`, `wav`, `ogg`.
+</ParamField>
+
+### `nora_coordination_stats`
+
+Get coordination statistics across agents and events.
+
+<ParamField body="include_agents" type="boolean" default="true">
+Include per-agent statistics.
+</ParamField>
+
+<ParamField body="include_events" type="boolean" default="true">
+Include event history.
+</ParamField>
+
+<ParamField body="time_range" type="string">
+Time range for statistics.
+</ParamField>
+
+### `nora_rapid_playbook`
+
+Generate a fast-track development playbook for a new initiative.
+
+<ParamField body="project_name" type="string" required>
+Name of the project or initiative.
+</ParamField>
+
+<ParamField body="objectives" type="array">
+Key objectives for the playbook.
+</ParamField>
+
+<ParamField body="repo_hint" type="string">
+Repository path or URL for context.
+</ParamField>
+
+Returns a structured playbook with phases, task breakdowns, agent assignments, and timeline estimates.

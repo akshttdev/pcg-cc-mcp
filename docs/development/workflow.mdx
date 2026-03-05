@@ -1,0 +1,140 @@
+---
+title: "Development Workflow"
+description: "Day-to-day development patterns — backend changes, frontend updates, testing, and code quality"
+---
+
+# Development Workflow
+
+This page covers the daily development patterns for working on PCG CC.
+
+## Change order
+
+When modifying both backend and frontend, always start with the backend:
+
+1. **Rust types/models** — Add or modify structs in `crates/db/src/models/`
+2. **Type generation** — Run `npm run generate-types` to update `shared/types.ts`
+3. **API routes** — Add or modify endpoints in `crates/server/src/routes/`
+4. **Frontend** — Build UI against the new types and endpoints
+
+<Warning>
+Never manually edit `shared/types.ts`. It is auto-generated from Rust structs and will be overwritten. See the [type generation guide](/development/type-generation) for details.
+</Warning>
+
+## Backend development
+
+### Adding a new model
+
+<Steps>
+<Step title="Create the migration">
+  ```bash
+  touch crates/db/migrations/$(date +%Y%m%d%H%M%S)_your_description.sql
+  ```
+
+  Write idempotent SQL using `CREATE TABLE IF NOT EXISTS` and `INSERT ... WHERE NOT EXISTS`.
+</Step>
+
+<Step title="Create the model file">
+  Add a new file in `crates/db/src/models/` (one file per table) and register it in `mod.rs`:
+
+  ```rust
+  pub mod your_model;
+  ```
+</Step>
+
+<Step title="Choose a query pattern">
+  Use **runtime queries** for new models to avoid the `DATABASE_URL` build requirement:
+
+  ```rust
+  // Preferred: runtime queries
+  sqlx::query_as::<_, YourRow>("SELECT ... FROM your_table WHERE id = ?")
+      .bind(&id)
+      .fetch_one(pool)
+      .await
+  ```
+
+  Only use `sqlx::query_as!` macros if you need compile-time checking and are willing to maintain the `.sqlx/` cache.
+</Step>
+
+<Step title="Add API routes">
+  Create route handlers in `crates/server/src/routes/` and register them in the router.
+</Step>
+</Steps>
+
+### Adding an MCP tool
+
+MCP tools live in `crates/server/src/mcp/`. Each server file (`task_server.rs`, `topsi_server.rs`, etc.) contains tool definitions using the `rmcp` crate.
+
+1. Add a request struct with `#[serde(Deserialize)]`
+2. Add a `#[tool(description = "...")]` annotated method
+3. Parse the JSON arguments, execute the query, return `CallToolResult`
+
+### Running tests
+
+```bash
+# All workspace tests
+cargo test --workspace
+
+# Specific crate
+cargo test -p pcg-db
+
+# Specific test
+cargo test test_name
+
+# With output
+cargo test -- --nocapture
+```
+
+## Frontend development
+
+### Component patterns
+
+Follow existing patterns in `frontend/src/components/`:
+
+- Use shadcn/ui primitives from `components/ui/`
+- Apply the design system classes: `card-elevated`, `page-container`, `glass-strong`
+- Use React Query hooks for server state
+- Follow the surface elevation model (surface-0 through surface-3)
+
+### Adding a new page
+
+1. Create the page component in `frontend/src/pages/`
+2. Add the route in the router configuration
+3. Use `page-container` and `page-header` utility classes for layout consistency
+
+### Hooks
+
+Custom hooks live in `frontend/src/hooks/`. Key patterns:
+
+- **API hooks** in `hooks/api/` wrap React Query calls
+- **SSE hooks** use `useEventSourceManager` for real-time streaming
+- **Follow-up hooks** in `hooks/follow-up/` manage multi-step workflows
+
+## Code quality
+
+### Linting and formatting
+
+```bash
+# Frontend
+cd frontend && npm run lint
+cd frontend && npm run format:check
+
+# Backend
+cargo fmt --all -- --check
+cargo clippy --all --all-targets --all-features -- -D warnings
+```
+
+### Full check suite
+
+```bash
+npm run check
+```
+
+This runs all frontend and backend checks in sequence.
+
+## Git workflow
+
+Each task execution creates an isolated git worktree managed by `WorktreeManager`. When developing:
+
+- Work on feature branches
+- The platform handles worktree lifecycle automatically
+- Orphaned worktrees are cleaned up unless `DISABLE_WORKTREE_ORPHAN_CLEANUP` is set

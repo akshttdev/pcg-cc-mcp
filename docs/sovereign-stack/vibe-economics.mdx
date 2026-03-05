@@ -1,0 +1,111 @@
+---
+title: "VIBE Economics"
+description: "VIBE token system — economic governance for task execution, agent budgets, and resource allocation"
+---
+
+# VIBE Economics
+
+VIBE is the native reward token of the Alpha Protocol Network. It provides economic governance for the platform — every task has a cost, agents operate within budgets, and resource allocation is managed through token mechanics.
+
+## Token fundamentals
+
+| Property | Value |
+|----------|-------|
+| **Token** | VIBE |
+| **Value** | 1 VIBE = $0.01 USD |
+| **Total supply** | 1 billion VIBE |
+| **Tracking** | On-chain (Aptos) + off-chain (SQLite) |
+
+## Earning VIBE
+
+Users and agents earn VIBE through four mechanisms:
+
+### 1. Node operation (heartbeat rewards)
+
+Running an Alpha Protocol Network peer node earns baseline rewards:
+
+| Metric | Value |
+|--------|-------|
+| Heartbeat reward | 0.1 VIBE per 30 seconds |
+| Daily baseline | ~288 VIBE ($2.88) |
+| Monthly baseline | ~8,640 VIBE ($86.40) |
+
+### 2. Task execution
+
+Agents earn VIBE for completing tasks. Rewards scale with complexity.
+
+### 3. Resource contribution
+
+Contributing compute, storage, or bandwidth earns multiplied rewards:
+
+| Resource | Multiplier |
+|----------|-----------|
+| CPU > 8 cores | 1.5x |
+| RAM > 16GB | 1.3x |
+| GPU available | 2.0x |
+| SSD storage | 1.2x |
+
+### 4. Bandwidth provision
+
+Data relay and routing services earn VIBE proportional to traffic handled.
+
+## Spending VIBE
+
+VIBE is consumed by:
+
+- **LLM inference** — Token costs tracked per model and provider
+- **Task execution** — CPU, GPU, and memory allocation costs
+- **Storage** — Persistent data storage
+- **Bandwidth** — Network traffic
+
+### Cost tracking
+
+Every transaction records:
+
+```rust
+struct VibeTransaction {
+    amount_vibe: i64,
+    input_tokens: Option<i64>,      // LLM input tokens
+    output_tokens: Option<i64>,     // LLM output tokens
+    model: Option<String>,          // e.g., "claude-3"
+    provider: Option<String>,       // e.g., "anthropic"
+    calculated_cost_cents: i64,     // Cost in cents
+    task_id: Option<Uuid>,          // Associated task
+    on_chain_synced: bool,          // Synced to Aptos?
+}
+```
+
+## Project budgets
+
+Each project has a VIBE budget that governs resource allocation:
+
+- **`vibe_budget_limit`** — Maximum VIBE the project can spend
+- **`vibe_spent_amount`** — Current spend
+- **Remaining** — Limit minus spent
+
+The `get_vibe_budget` MCP tool returns these values. Agents check the budget before executing expensive operations.
+
+## Agent wallets
+
+Each agent has a wallet tracking its VIBE balance:
+
+```rust
+struct AgentWallet {
+    profile_key: String,
+    display_name: String,
+    vibe_budget_limit: Option<i64>,
+    vibe_spent_amount: i64,
+}
+```
+
+Wallet transactions record every VIBE movement with direction (`in` or `out`), amount, description, and optional task/process association.
+
+## On-chain synchronisation
+
+VIBE transactions are tracked locally in SQLite and optionally synchronised to the Aptos blockchain:
+
+- **`aptos_tx_hash`** — On-chain transaction hash
+- **`aptos_tx_status`** — `pending`, `confirmed`, or `failed`
+- **`on_chain_synced`** — Whether the transaction has been synced
+
+This dual-tracking approach allows the platform to operate without blockchain connectivity while maintaining an audit trail for on-chain settlement.

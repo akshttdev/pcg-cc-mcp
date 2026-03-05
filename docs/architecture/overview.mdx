@@ -1,0 +1,104 @@
+---
+title: "Architecture Overview"
+description: "System architecture for PCG Command Centre — crate structure, data flow, and how the pieces fit together"
+---
+
+# Architecture Overview
+
+PCG CC is a Rust monorepo with a React frontend, structured as a Cargo workspace with 17 crates. The system runs as a single Axum HTTP server that serves both the REST API and the frontend, with separate MCP server binaries for AI agent integration.
+
+## High-level architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        React Frontend                           │
+│  36 pages · 51 component dirs · 55 hooks · Tailwind + shadcn/ui│
+├─────────────────────────────────────────────────────────────────┤
+│                     Axum HTTP Server                            │
+│  103 route files · SSE streaming · GitHub OAuth · WebSocket     │
+├──────────┬──────────┬──────────┬──────────┬────────────────────┤
+│  MCP     │  MCP     │  MCP     │  MCP     │                    │
+│  Task    │  Topsi   │  Nora    │  Pulse   │   REST API         │
+│  Server  │  Server  │  Server  │  Server  │   (103 routes)     │
+├──────────┴──────────┴──────────┴──────────┴────────────────────┤
+│                      Services Layer                             │
+│  Agent Registry · Git Ops · Media Pipeline · Social · Auth     │
+│  Worktree Manager · Notifications · Editron · APN Bridge       │
+├─────────────────────────────────────────────────────────────────┤
+│                      Database Layer                             │
+│  SQLite · SQLx · 111 Models · 136 Migrations                   │
+├─────────────────────────────────────────────────────────────────┤
+│                    Sovereign Stack                               │
+│  Alpha Protocol (mesh) · Topsi (topology) · Nora (executive)   │
+│  Pythia (routing) · VIBE (economics) · Spectrum (media)        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Key data flows
+
+### Task execution flow
+
+<Steps>
+  <Step title="Task created">
+    A task is created via the UI, MCP tool, or API. It belongs to a project and optionally to a board.
+  </Step>
+  <Step title="Agent assignment">
+    Topsi's `route_task` analyses the topology graph — agent capabilities, current workload, and health — to select the best agent.
+  </Step>
+  <Step title="Worktree isolation">
+    The `WorktreeManager` creates an isolated git worktree for the task attempt. Each execution gets its own branch.
+  </Step>
+  <Step title="Executor runs">
+    The pluggable executor system (Claude, Gemini, etc.) runs the coding agent within the worktree. Logs stream to the frontend via SSE.
+  </Step>
+  <Step title="Review and merge">
+    The diff is available for review. On approval, changes merge back to the base branch. VIBE costs are recorded.
+  </Step>
+</Steps>
+
+### MCP integration flow
+
+AI agents (Claude Code, Cursor, etc.) connect to PCG CC via the Model Context Protocol:
+
+```
+AI Agent ──stdio──▶ MCP Task Server ──▶ SQLite
+                    (24 tools, 7 resources)
+
+AI Agent ──stdio──▶ MCP Topsi Server ──▶ SQLite
+                    (10 topology tools)
+```
+
+Each MCP server runs as a separate binary (`mcp_task_server`, `mcp_topsi_server`) communicating over stdio. The servers are user-scoped — each connection has a user identity and project access is enforced.
+
+## Directory structure
+
+```
+pcg-cc-mcp/
+├── crates/                    # 17 Rust crates (see Crate Map)
+│   ├── server/                # Axum server, routes, MCP servers
+│   ├── db/                    # Models, migrations, repositories
+│   ├── services/              # Business logic (45+ services)
+│   ├── topsi/                 # Topology orchestrator
+│   ├── nora/                  # Executive AI assistant
+│   ├── alpha-protocol-core/   # Mesh networking (libp2p)
+│   └── ...
+├── frontend/                  # React application
+│   └── src/
+│       ├── pages/             # 36 route pages
+│       ├── components/        # 51 component directories
+│       ├── hooks/             # 55 custom hooks
+│       └── lib/               # API client, utilities
+├── shared/types.ts            # Auto-generated TypeScript types
+├── docs/                      # Mintlify documentation (you are here)
+├── deploy/                    # Production deployment scripts
+├── dev_assets/                # Seed data, test content
+└── scripts/                   # Operational scripts
+```
+
+## Design principles
+
+1. **Single binary deployment** — the server, all routes, and the frontend compile into one binary. No microservice overhead.
+2. **Embedded database** — SQLite means zero database infrastructure. The database file ships with the binary.
+3. **Type-safe boundary** — Rust structs generate TypeScript types via `ts-rs`. The `shared/types.ts` file is the contract between backend and frontend.
+4. **MCP-first agent interface** — AI agents interact through the standardised Model Context Protocol, not custom APIs.
+5. **Topology-aware orchestration** — task routing, team formation, and health monitoring use a live graph model, not static assignment.
