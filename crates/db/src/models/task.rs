@@ -68,6 +68,9 @@ pub struct Task {
     pub custom_properties: Option<Json<Value>>,
     pub scheduled_start: Option<DateTime<Utc>>,
     pub scheduled_end: Option<DateTime<Utc>>,
+    /// Base64 encoded screenshot image for bug reports
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screenshot: Option<String>,
 }
 
 /// Brief execution summary for task card display
@@ -162,6 +165,8 @@ pub struct CreateTask {
     pub custom_properties: Option<Value>,
     pub scheduled_start: Option<DateTime<Utc>>,
     pub scheduled_end: Option<DateTime<Utc>>,
+    /// Base64 encoded screenshot image for bug reports
+    pub screenshot: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -273,6 +278,7 @@ impl Task {
     )                               AS "executor!: String",
 
   t.collaborators                   AS "collaborators: String",
+  t.screenshot                      AS "screenshot: String",
 
   COALESCE(( SELECT SUM(vt.amount_vibe)
       FROM vibe_transactions vt
@@ -322,6 +328,7 @@ ORDER BY t.created_at DESC"#,
                     custom_properties: rec.custom_properties,
                     scheduled_start: rec.scheduled_start,
                     scheduled_end: rec.scheduled_end,
+                    screenshot: rec.screenshot,
                 },
                 has_in_progress_attempt: rec.has_in_progress_attempt != 0,
                 has_merged_attempt: false, // TODO use merges table
@@ -366,7 +373,8 @@ ORDER BY t.created_at DESC"#,
                 due_date as "due_date: DateTime<Utc>",
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>"
+                scheduled_end as "scheduled_end: DateTime<Utc>",
+                screenshot
                FROM tasks
                WHERE id = $1"#,
             id
@@ -402,7 +410,8 @@ ORDER BY t.created_at DESC"#,
                 due_date as "due_date: DateTime<Utc>",
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>"
+                scheduled_end as "scheduled_end: DateTime<Utc>",
+                screenshot
                FROM tasks
                WHERE rowid = $1"#,
             rowid
@@ -442,7 +451,8 @@ ORDER BY t.created_at DESC"#,
                 due_date as "due_date: DateTime<Utc>",
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>"
+                scheduled_end as "scheduled_end: DateTime<Utc>",
+                screenshot
                FROM tasks
                WHERE id = $1 AND project_id = $2"#,
             id,
@@ -469,9 +479,9 @@ ORDER BY t.created_at DESC"#,
                 id, project_id, pod_id, board_id, title, description, status, parent_task_attempt,
                 priority, assignee_id, assigned_agent, agent_id, assigned_mcps, created_by,
                 requires_approval, parent_task_id, tags, due_date,
-                custom_properties, scheduled_start, scheduled_end
+                custom_properties, scheduled_start, scheduled_end, screenshot
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
                RETURNING
                 id as "id!: Uuid",
                 project_id as "project_id!: Uuid",
@@ -496,7 +506,8 @@ ORDER BY t.created_at DESC"#,
                 due_date as "due_date: DateTime<Utc>",
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>""#,
+                scheduled_end as "scheduled_end: DateTime<Utc>",
+                screenshot"#,
             task_id,
             data.project_id,
             data.pod_id,
@@ -517,7 +528,8 @@ ORDER BY t.created_at DESC"#,
             data.due_date,
             custom_properties,
             data.scheduled_start,
-            data.scheduled_end
+            data.scheduled_end,
+            data.screenshot
         )
         .fetch_one(pool)
         .await
@@ -736,7 +748,8 @@ ORDER BY t.created_at DESC"#,
                 due_date as "due_date: DateTime<Utc>",
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>"
+                scheduled_end as "scheduled_end: DateTime<Utc>",
+                screenshot
                FROM tasks
                WHERE parent_task_attempt = $1
                ORDER BY created_at DESC"#,
@@ -810,7 +823,8 @@ ORDER BY t.created_at DESC"#,
                 due_date as "due_date: DateTime<Utc>",
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>"
+                scheduled_end as "scheduled_end: DateTime<Utc>",
+                screenshot
                FROM tasks
                WHERE assignee_id = $1
                AND status != 'completed'
