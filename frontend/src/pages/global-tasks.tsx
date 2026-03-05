@@ -47,13 +47,11 @@ export function GlobalTasksPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [projectFilter, setProjectFilter] = useState<string>('all');
 
-  // Fetch all projects
   const { data: projects = [], isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ['projects'],
     queryFn: () => projectsApi.getAll(),
   });
 
-  // Fetch tasks for each project
   const { data: allTasks = [], isLoading: tasksLoading } = useQuery<GlobalTask[]>({
     queryKey: ['global-tasks', projects.map(p => p.id)],
     queryFn: async () => {
@@ -76,10 +74,8 @@ export function GlobalTasksPage() {
     enabled: projects.length > 0,
   });
 
-  // Filter and search tasks
   const filteredTasks = useMemo(() => {
     return allTasks.filter((task) => {
-      // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         if (
@@ -89,27 +85,13 @@ export function GlobalTasksPage() {
           return false;
         }
       }
-
-      // Status filter
-      if (statusFilter !== 'all' && task.status !== statusFilter) {
-        return false;
-      }
-
-      // Priority filter
-      if (priorityFilter !== 'all' && task.priority !== priorityFilter) {
-        return false;
-      }
-
-      // Project filter
-      if (projectFilter !== 'all' && task.project_id !== projectFilter) {
-        return false;
-      }
-
+      if (statusFilter !== 'all' && task.status !== statusFilter) return false;
+      if (priorityFilter !== 'all' && task.priority !== priorityFilter) return false;
+      if (projectFilter !== 'all' && task.project_id !== projectFilter) return false;
       return true;
     });
   }, [allTasks, searchQuery, statusFilter, priorityFilter, projectFilter]);
 
-  // Group by status for stats
   const stats = useMemo(() => {
     const total = allTasks.length;
     const todo = allTasks.filter(t => t.status === 'todo').length;
@@ -122,11 +104,11 @@ export function GlobalTasksPage() {
     switch (priority) {
       case 'critical':
       case 'high':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800';
       case 'medium':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-300 dark:border-yellow-800';
       default:
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800';
     }
   };
 
@@ -137,7 +119,7 @@ export function GlobalTasksPage() {
       case 'inprogress':
         return <Clock className="h-4 w-4 text-blue-500" />;
       default:
-        return <AlertCircle className="h-4 w-4 text-gray-400" />;
+        return <AlertCircle className="h-4 w-4 text-muted-foreground/50" />;
     }
   };
 
@@ -154,67 +136,71 @@ export function GlobalTasksPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-background">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-blue-100 p-2 dark:bg-blue-950">
-            <FolderKanban className="h-5 w-5 text-blue-600" />
+      <div className="relative border-b border-border/40 bg-card/50 backdrop-blur-sm overflow-hidden">
+        <div className="ambient-glow -top-48 -right-32" />
+        <div className="page-header px-4 sm:px-6 lg:px-8 py-4 max-w-[1600px] mx-auto relative">
+          <div className="flex items-center gap-3">
+            <div className="section-header-icon">
+              <FolderKanban className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="page-title">Global Tasks</h1>
+              <p className="page-description">
+                {stats.total} total across {projects.length} projects
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold">Global Tasks</h1>
-            <p className="text-sm text-muted-foreground">
-              {stats.total} total tasks across {projects.length} projects
-            </p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant={viewMode === 'table' ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={() => setViewMode('table')}
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={viewMode === 'cards' ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={() => setViewMode('cards')}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1 bg-surface-2 rounded-lg p-1">
+            <Button
+              variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('table')}
+              className="h-7 w-7 p-0"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'cards' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('cards')}
+              className="h-7 w-7 p-0"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 px-6 py-4 border-b">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">Total Tasks</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-gray-600">{stats.todo}</div>
-            <p className="text-xs text-muted-foreground">To Do</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-blue-600">{stats.inProgress}</div>
-            <p className="text-xs text-muted-foreground">In Progress</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
-            <p className="text-xs text-muted-foreground">Completed</p>
-          </CardContent>
-        </Card>
+      <div className="border-b border-border/40">
+        <div className="stat-grid animate-stagger px-4 sm:px-6 lg:px-8 py-4 max-w-[1600px] mx-auto">
+          <div className="stat-card">
+            <FolderKanban className="stat-card-icon" />
+            <div className="stat-card-value">{stats.total}</div>
+            <div className="stat-card-label">Total Tasks</div>
+          </div>
+          <div className="stat-card">
+            <AlertCircle className="stat-card-icon" />
+            <div className="stat-card-value text-muted-foreground">{stats.todo}</div>
+            <div className="stat-card-label">To Do</div>
+          </div>
+          <div className="stat-card">
+            <Clock className="stat-card-icon" />
+            <div className="stat-card-value text-info">{stats.inProgress}</div>
+            <div className="stat-card-label">In Progress</div>
+          </div>
+          <div className="stat-card">
+            <CheckCircle2 className="stat-card-icon" />
+            <div className="stat-card-value text-success">{stats.completed}</div>
+            <div className="stat-card-label">Completed</div>
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 px-6 py-4 border-b">
+      <div className="border-b border-border/40">
+        <div className="action-bar px-4 sm:px-6 lg:px-8 py-4 max-w-[1600px] mx-auto">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -225,55 +211,58 @@ export function GlobalTasksPage() {
           />
         </div>
 
-        <Select value={projectFilter} onValueChange={setProjectFilter}>
-          <SelectTrigger className="w-[200px]">
-            <Filter className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="All Projects" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Projects</SelectItem>
-            {projects.map((project) => (
-              <SelectItem key={project.id} value={project.id}>
-                {project.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={projectFilter} onValueChange={setProjectFilter}>
+            <SelectTrigger className="w-[180px]">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="All Projects" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Projects</SelectItem>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="All Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="todo">To Do</SelectItem>
-            <SelectItem value="inprogress">In Progress</SelectItem>
-            <SelectItem value="done">Done</SelectItem>
-          </SelectContent>
-        </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="todo">To Do</SelectItem>
+              <SelectItem value="inprogress">In Progress</SelectItem>
+              <SelectItem value="done">Done</SelectItem>
+            </SelectContent>
+          </Select>
 
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="All Priority" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Priority</SelectItem>
-            <SelectItem value="critical">Critical</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
-          </SelectContent>
-        </Select>
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="All Priority" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Priority</SelectItem>
+              <SelectItem value="critical">Critical</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+            </SelectContent>
+          </Select>
+          </div>
+        </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
         {filteredTasks.length === 0 ? (
           <Card className="border-dashed">
-            <CardContent className="py-12 text-center">
-              <FolderKanban className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-medium mb-2">No tasks found</h3>
-              <p className="text-muted-foreground">
+            <CardContent className="empty-state">
+              <FolderKanban className="empty-state-icon" />
+              <h3 className="empty-state-title">No tasks found</h3>
+              <p className="empty-state-description">
                 {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || projectFilter !== 'all'
                   ? 'Try adjusting your filters'
                   : 'No tasks have been created yet'}
@@ -281,26 +270,29 @@ export function GlobalTasksPage() {
             </CardContent>
           </Card>
         ) : viewMode === 'table' ? (
-          <Card>
+          <Card className="card-elevated overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="w-10">Status</TableHead>
                   <TableHead>Title</TableHead>
-                  <TableHead>Project</TableHead>
+                  <TableHead className="hidden md:table-cell">Project</TableHead>
                   <TableHead>Priority</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="hidden sm:table-cell">Due Date</TableHead>
+                  <TableHead className="text-right w-20">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTasks.map((task) => (
-                  <TableRow key={task.id}>
+                  <TableRow key={task.id} className="group">
                     <TableCell>{getStatusIcon(task.status)}</TableCell>
                     <TableCell>
                       <div className="font-medium">{task.title}</div>
+                      <div className="text-xs text-muted-foreground md:hidden mt-0.5">
+                        {task.project_name}
+                      </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <Badge variant="outline">{task.project_name}</Badge>
                     </TableCell>
                     <TableCell>
@@ -308,7 +300,7 @@ export function GlobalTasksPage() {
                         {task.priority}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       {task.due_date ? (
                         <span className="text-sm text-muted-foreground">
                           {new Date(task.due_date).toLocaleDateString()}
@@ -319,7 +311,7 @@ export function GlobalTasksPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <Link to={`/projects/${task.project_id}/tasks/${task.id}`}>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
                           View
                           <ArrowRight className="h-4 w-4 ml-1" />
                         </Button>
@@ -331,13 +323,13 @@ export function GlobalTasksPage() {
             </Table>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-stagger">
             {filteredTasks.map((task) => (
               <Link
                 key={task.id}
                 to={`/projects/${task.project_id}/tasks/${task.id}`}
               >
-                <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
+                <Card className="card-interactive h-full">
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">

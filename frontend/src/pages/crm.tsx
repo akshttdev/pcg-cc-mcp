@@ -220,16 +220,21 @@ export function CrmPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <CardTitle className="text-2xl">CRM & Email</CardTitle>
-          <CardDescription>
-            Manage contacts, track leads, and connect your email accounts for unified communication.
-          </CardDescription>
+    <div className="page-container">
+      <div className="page-header">
+        <div className="flex items-center gap-3">
+          <div className="section-header-icon">
+            <Users className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="page-title">CRM & Email</h1>
+            <p className="page-description">
+              Manage contacts, track leads, and connect email accounts
+            </p>
+          </div>
         </div>
         <div className="w-full max-w-xs space-y-1">
-          <Label htmlFor="project-select">Project</Label>
+          <Label htmlFor="project-select" className="text-xs text-muted-foreground">Project</Label>
           <Select
             value={selectedProjectId ?? ''}
             onValueChange={setSelectedProjectId}
@@ -278,91 +283,66 @@ export function CrmPage() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="contacts" className="space-y-6">
+          <TabsContent value="contacts" className="space-y-4 sm:space-y-6">
             {/* Stats Cards */}
             {statsQuery.data && (
-              <div className="grid gap-4 md:grid-cols-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-100 rounded-lg">
-                        <Users className="h-5 w-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Total Contacts</p>
-                        <p className="text-2xl font-bold">{statsQuery.data.total}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-green-100 rounded-lg">
-                        <TrendingUp className="h-5 w-5 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Avg Lead Score</p>
-                        <p className="text-2xl font-bold">
-                          {Math.round(statsQuery.data.avg_lead_score)}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-yellow-100 rounded-lg">
-                        <Clock className="h-5 w-5 text-yellow-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Need Follow-up</p>
-                        <p className="text-2xl font-bold">{statsQuery.data.needs_follow_up}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex flex-wrap gap-1">
-                      {statsQuery.data.by_stage.slice(0, 4).map((item) => (
-                        <Badge
-                          key={item.stage}
-                          variant="secondary"
-                          className="text-xs"
-                        >
-                          {item.stage}: {item.count}
-                        </Badge>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+              <div className="stat-grid animate-stagger">
+                <div className="stat-card">
+                  <Users className="stat-card-icon" />
+                  <div className="stat-card-value">{statsQuery.data.total}</div>
+                  <div className="stat-card-label">Total Contacts</div>
+                </div>
+                <div className="stat-card">
+                  <TrendingUp className="stat-card-icon" />
+                  <div className="stat-card-value text-success">
+                    {Math.round(statsQuery.data.avg_lead_score)}
+                  </div>
+                  <div className="stat-card-label">Avg Lead Score</div>
+                </div>
+                <div className="stat-card">
+                  <Clock className="stat-card-icon" />
+                  <div className="stat-card-value text-warning">{statsQuery.data.needs_follow_up}</div>
+                  <div className="stat-card-label">Need Follow-up</div>
+                </div>
+                <div className="stat-card">
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {statsQuery.data.by_stage.slice(0, 4).map((item) => (
+                      <Badge
+                        key={item.stage}
+                        variant="secondary"
+                        className="text-xs"
+                      >
+                        {item.stage}: {item.count}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="stat-card-label mt-2">By Stage</div>
+                </div>
               </div>
             )}
 
             {/* Contacts List */}
-            <Card>
+            <Card className="card-elevated">
               <CardHeader>
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <CardTitle>Contacts</CardTitle>
                     <CardDescription>
                       Manage your leads and customers
                     </CardDescription>
                   </div>
-                  <div className="flex gap-2">
-                    <div className="relative">
+                  <div className="action-bar !flex-row !gap-2">
+                    <div className="relative flex-1 sm:flex-none">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         placeholder="Search contacts..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 w-64"
+                        className="pl-9 w-full sm:w-56"
                       />
                     </div>
                     <Select value={selectedStage} onValueChange={setSelectedStage}>
-                      <SelectTrigger className="w-40">
+                      <SelectTrigger className="w-32 sm:w-40">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -374,9 +354,9 @@ export function CrmPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
+                    <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2 shrink-0">
                       <UserPlus className="h-4 w-4" />
-                      Add Contact
+                      <span className="hidden sm:inline">Add Contact</span>
                     </Button>
                   </div>
                 </div>
@@ -484,9 +464,9 @@ function ContactCard({
   };
 
   return (
-    <div className="flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+    <div className="group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 border border-border/40 rounded-lg hover:bg-muted/30 hover:border-border/70 transition-all duration-200">
       {/* Avatar */}
-      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
+      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold shrink-0 text-sm sm:text-base">
         {contact.avatar_url ? (
           <img
             src={contact.avatar_url}
@@ -500,9 +480,9 @@ function ContactCard({
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-0.5">
           <h4
-            className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline"
+            className="font-medium truncate cursor-pointer hover:text-info transition-colors"
             onClick={() => navigate(`/projects/${projectId}/crm/contacts/${contact.id}`)}
           >
             {contact.full_name || contact.email || 'Unnamed Contact'}
@@ -513,67 +493,67 @@ function ContactCard({
               borderColor: stageInfo.color,
               color: stageInfo.color,
             }}
-            className="text-xs"
+            className="text-xs shrink-0"
           >
             {stageInfo.label}
           </Badge>
           {contact.lead_score > 50 && (
-            <Badge className="text-xs bg-yellow-100 text-yellow-700">
+            <Badge className="text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300 shrink-0">
               <Star className="h-3 w-3 mr-1" />
               {contact.lead_score}
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+        <div className="flex items-center gap-3 sm:gap-4 text-sm text-muted-foreground flex-wrap">
           {contact.email && (
             <span className="flex items-center gap-1 truncate">
-              <Mail className="h-3 w-3" />
-              {contact.email}
+              <Mail className="h-3 w-3 shrink-0" />
+              <span className="truncate">{contact.email}</span>
             </span>
           )}
           {contact.company_name && (
-            <span className="flex items-center gap-1">
-              <Building2 className="h-3 w-3" />
+            <span className="hidden sm:flex items-center gap-1">
+              <Building2 className="h-3 w-3 shrink-0" />
               {contact.company_name}
             </span>
           )}
           {contact.phone && (
-            <span className="flex items-center gap-1">
-              <Phone className="h-3 w-3" />
+            <span className="hidden md:flex items-center gap-1">
+              <Phone className="h-3 w-3 shrink-0" />
               {contact.phone}
             </span>
           )}
         </div>
         <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
           <span>Last activity: {formatRelativeTime(contact.last_activity_at)}</span>
-          <span>{contact.email_count} emails</span>
+          <span className="hidden sm:inline">{contact.email_count} emails</span>
         </div>
       </div>
 
-      {/* Social Links */}
-      <div className="flex items-center gap-1">
+      {/* Social Links — hidden on mobile */}
+      <div className="hidden md:flex items-center gap-1">
         {contact.linkedin_url && (
-          <Button variant="ghost" size="icon" asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
             <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer">
-              <Linkedin className="h-4 w-4" />
+              <Linkedin className="h-3.5 w-3.5" />
             </a>
           </Button>
         )}
         {contact.twitter_handle && (
-          <Button variant="ghost" size="icon" asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
             <a
               href={`https://twitter.com/${contact.twitter_handle}`}
               target="_blank"
               rel="noopener noreferrer"
             >
-              <Twitter className="h-4 w-4" />
+              <Twitter className="h-3.5 w-3.5" />
             </a>
           </Button>
         )}
         {contact.website && (
-          <Button variant="ghost" size="icon" asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
             <a href={contact.website} target="_blank" rel="noopener noreferrer">
-              <Globe className="h-4 w-4" />
+              <Globe className="h-3.5 w-3.5" />
             </a>
           </Button>
         )}
@@ -582,7 +562,7 @@ function ContactCard({
       {/* Actions */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
             <MoreVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>

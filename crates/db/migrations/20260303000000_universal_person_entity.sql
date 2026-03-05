@@ -199,7 +199,7 @@ SELECT
     COALESCE(c.lifecycle_stage, 'lead'),
     COALESCE(c.lead_score, 0),
     c.id,
-    c.organization_id,
+    NULL,  -- organization_id not yet on crm_contacts
     c.created_at,
     c.updated_at
 FROM crm_contacts c

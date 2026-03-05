@@ -2329,12 +2329,12 @@ fn pcg_resource_templates() -> Vec<ResourceTemplate> {
     templates
         .into_iter()
         .map(|(uri, name, desc)| {
-            Annotated::from(RawResourceTemplate {
+            Annotated::new(RawResourceTemplate {
                 uri_template: uri.to_string(),
                 name: name.to_string(),
                 description: Some(desc.to_string()),
                 mime_type: Some("application/json".to_string()),
-            })
+            }, None)
         })
         .collect()
 }
@@ -2369,8 +2369,8 @@ impl ServerHandler for TaskServer {
     fn list_resource_templates(
         &self,
         _request: Option<rmcp::model::PaginatedRequestParam>,
-        _context: rmcp::service::RequestContext<rmcp::model::RoleServer>,
-    ) -> impl Future<Output = Result<ListResourceTemplatesResult, rmcp::handler::server::McpError>> + Send + '_
+        _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
+    ) -> impl Future<Output = Result<ListResourceTemplatesResult, ErrorData>> + Send + '_
     {
         std::future::ready(Ok(ListResourceTemplatesResult {
             resource_templates: pcg_resource_templates(),
@@ -2381,8 +2381,8 @@ impl ServerHandler for TaskServer {
     fn read_resource(
         &self,
         request: ReadResourceRequestParam,
-        _context: rmcp::service::RequestContext<rmcp::model::RoleServer>,
-    ) -> impl Future<Output = Result<ReadResourceResult, rmcp::handler::server::McpError>> + Send + '_
+        _context: rmcp::service::RequestContext<rmcp::service::RoleServer>,
+    ) -> impl Future<Output = Result<ReadResourceResult, ErrorData>> + Send + '_
     {
         let pool = self.pool.clone();
         let uri = request.uri.clone();
