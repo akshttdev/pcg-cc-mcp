@@ -1628,6 +1628,7 @@ impl TopsiAgent {
             custom_properties: None,
             scheduled_start: None,
             scheduled_end: None,
+            screenshot: None,
         };
 
         let task_id = uuid::Uuid::new_v4();
