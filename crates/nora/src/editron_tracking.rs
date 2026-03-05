@@ -228,6 +228,7 @@ pub async fn find_or_create_task(
         custom_properties: Some(custom_props),
         scheduled_start: None,
         scheduled_end: None,
+        screenshot: None,
     };
 
     match Task::create(pool, &create, task_id).await {

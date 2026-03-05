@@ -324,6 +324,7 @@ impl TaskServer {
             custom_properties: None,
             scheduled_start: None,
             scheduled_end: None,
+            screenshot: None,
         };
 
         match Task::create(&self.pool, &create_task_data, task_id).await {
