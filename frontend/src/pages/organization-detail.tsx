@@ -1,24 +1,37 @@
-import { useParams, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Building2,
   Users,
   FolderOpen,
   Briefcase,
-  Target,
   TrendingUp,
   ArrowLeft,
   Globe,
   ExternalLink,
   BookOpen,
   Calendar,
+  ChevronDown,
+  UserCheck,
+  Search,
+  ArrowRight,
+  Mail,
+  UserCircle,
 } from 'lucide-react';
-import { organizationsApi, type OrganizationData, type ClientData } from '@/lib/api';
+import { organizationsApi, personsApi, type OrganizationData, type ClientData, type PersonRecord } from '@/lib/api';
 import { organizationsApi as orgApi } from '@/lib/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -37,9 +50,21 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+const PERSON_TYPE_INFO: Record<string, { label: string; color: string }> = {
+  team:       { label: 'Team',       color: 'bg-violet-100 text-violet-700' },
+  client:     { label: 'Client',     color: 'bg-green-100 text-green-700' },
+  contractor: { label: 'Contractor', color: 'bg-amber-100 text-amber-700' },
+  lead:       { label: 'Lead',       color: 'bg-blue-100 text-blue-700' },
+  partner:    { label: 'Partner',    color: 'bg-pink-100 text-pink-700' },
+  contact:    { label: 'Contact',    color: 'bg-gray-100 text-gray-600' },
+};
+
+const CONFIDENCE_COLOR = (c: number) =>
+  c >= 0.7 ? 'text-green-600' : c >= 0.4 ? 'text-amber-500' : 'text-red-500';
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function OrgHeader({ org }: { org: OrganizationData }) {
+function OrgHeader({ org, orgId }: { org: OrganizationData; orgId: string }) {
   return (
     <div className="border-b bg-white dark:bg-gray-900 shadow-sm">
       <div className="flex items-center gap-4 p-6">
@@ -61,18 +86,43 @@ function OrgHeader({ org }: { org: OrganizationData }) {
           <Badge variant={org.is_active ? 'default' : 'secondary'}>
             {org.is_active ? 'Active' : 'Inactive'}
           </Badge>
-          <Button variant="outline" size="sm" asChild>
-            <Link to={`/organizations/${org.id}/crm/acquisition`}>
-              <Target className="h-4 w-4 mr-1" />
-              Acquisition
-            </Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link to={`/organizations/${org.id}/crm/lifecycle`}>
-              <TrendingUp className="h-4 w-4 mr-1" />
-              Lifecycle
-            </Link>
-          </Button>
+
+          {/* CRM dropdown — replaces the old Acquisition / Lifecycle buttons */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <UserCheck className="h-4 w-4 mr-1.5" />
+                CRM
+                <ChevronDown className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem asChild>
+                <Link to={`/organizations/${orgId}?tab=crm`} className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  People &amp; Leads
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to={`/organizations/${orgId}/crm/acquisition`} className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Acquisition Pipeline
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to={`/organizations/${orgId}/crm/lifecycle`} className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  Client Lifecycle
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/proposals" className="flex items-center gap-2">
+                  <Briefcase className="h-4 w-4" />
+                  Proposals
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>
@@ -104,10 +154,155 @@ function ClientCard({ client }: { client: ClientData }) {
   );
 }
 
+function PersonRow({ person }: { person: PersonRecord }) {
+  const navigate = useNavigate();
+  const typeInfo = PERSON_TYPE_INFO[person.person_type] ?? PERSON_TYPE_INFO.contact;
+  const initials = person.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+
+  return (
+    <div
+      className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/40 cursor-pointer transition-colors group"
+      onClick={() => navigate(`/people/${person.id}`)}
+    >
+      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold shrink-0">
+        {initials}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium truncate">{person.full_name}</span>
+          <Badge className={`text-xs px-1.5 py-0 ${typeInfo.color} border-0`}>{typeInfo.label}</Badge>
+          {person.intelligence_confidence > 0 && (
+            <span className={`text-xs font-medium ${CONFIDENCE_COLOR(person.intelligence_confidence)}`}>
+              {Math.round(person.intelligence_confidence * 100)}%
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+          {person.company_name && (
+            <span className="flex items-center gap-1 truncate">
+              <Building2 className="h-3 w-3" />
+              {person.company_name}
+            </span>
+          )}
+          {person.email && (
+            <span className="flex items-center gap-1 truncate">
+              <Mail className="h-3 w-3" />
+              {person.email}
+            </span>
+          )}
+        </div>
+        {person.intelligence_summary && (
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 italic">
+            {person.intelligence_summary}
+          </p>
+        )}
+      </div>
+      <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+    </div>
+  );
+}
+
+// ── CRM Tab ───────────────────────────────────────────────────────────────────
+
+function OrgCrmTab({ orgId, orgName }: { orgId: string; orgName: string }) {
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+  const [activeType, setActiveType] = useState<string | undefined>(undefined);
+
+  const { data: persons = [], isLoading } = useQuery<PersonRecord[]>({
+    queryKey: ['org-persons', orgId, activeType, search],
+    queryFn: () => personsApi.list({ organization_id: orgId, person_type: activeType, q: search || undefined, limit: 200 }),
+    enabled: !!orgId,
+  });
+
+  const counts = persons.reduce<Record<string, number>>((acc, p) => {
+    acc[p.person_type] = (acc[p.person_type] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const TYPE_FILTERS = [
+    { key: undefined, label: 'All' },
+    { key: 'lead',   label: 'Leads' },
+    { key: 'client', label: 'Clients' },
+    { key: 'partner', label: 'Partners' },
+    { key: 'contractor', label: 'Contractors' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            {persons.length} {activeType ?? 'people'} in {orgName}
+          </p>
+        </div>
+        <Button size="sm" onClick={() => navigate('/people/new')}>
+          + Add Person
+        </Button>
+      </div>
+
+      {/* Filter pills */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {TYPE_FILTERS.map(f => {
+          const count = f.key ? (counts[f.key] ?? 0) : persons.length;
+          const active = activeType === f.key;
+          return (
+            <button
+              key={f.key ?? 'all'}
+              onClick={() => setActiveType(f.key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                active ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted/60'
+              }`}
+            >
+              {f.label}
+              <span className={`text-xs ${active ? 'opacity-80' : 'text-muted-foreground'}`}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by name, company..."
+          className="pl-9"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      {/* List */}
+      {isLoading ? (
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />
+          ))}
+        </div>
+      ) : persons.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+          <UserCircle className="h-12 w-12 mb-3 opacity-30" />
+          <p className="text-sm">No people found for {orgName}</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate('/people/new')}>
+            Add first contact
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {persons.map(p => <PersonRow key={p.id} person={p} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function OrganizationDetailPage() {
   const { orgId } = useParams<{ orgId: string }>();
+
+  // Support ?tab=crm deep-link from the CRM dropdown
+  const defaultTab = new URLSearchParams(window.location.search).get('tab') ?? 'projects';
 
   const { data: org, isLoading: orgLoading } = useQuery<OrganizationData>({
     queryKey: ['organization', orgId],
@@ -127,7 +322,6 @@ export function OrganizationDetailPage() {
     enabled: !!orgId,
   });
 
-  // Fetch sidebar tree to get projects grouped under this org
   const { data: sidebarTree } = useQuery({
     queryKey: ['sidebarTree'],
     queryFn: () => organizationsApi.getSidebarTree(),
@@ -153,7 +347,6 @@ export function OrganizationDetailPage() {
     );
   }
 
-  // Flatten all projects from the sidebar tree entry
   const allProjects = sidebarOrg
     ? [
         ...(sidebarOrg.internal_projects || []),
@@ -167,7 +360,7 @@ export function OrganizationDetailPage() {
 
   return (
     <div className="flex flex-col h-full bg-background">
-      <OrgHeader org={org} />
+      <OrgHeader org={org} orgId={orgId!} />
 
       <div className="flex-1 p-6 overflow-auto">
         {/* Stats row */}
@@ -210,11 +403,15 @@ export function OrganizationDetailPage() {
           </Card>
         </div>
 
-        <Tabs defaultValue="projects" className="space-y-4">
+        <Tabs defaultValue={defaultTab} className="space-y-4">
           <TabsList>
             <TabsTrigger value="projects">
               <FolderOpen className="h-4 w-4 mr-2" />
               Projects
+            </TabsTrigger>
+            <TabsTrigger value="crm">
+              <UserCheck className="h-4 w-4 mr-2" />
+              CRM
             </TabsTrigger>
             <TabsTrigger value="clients">
               <Briefcase className="h-4 w-4 mr-2" />
@@ -222,7 +419,7 @@ export function OrganizationDetailPage() {
             </TabsTrigger>
             <TabsTrigger value="knowledge">
               <BookOpen className="h-4 w-4 mr-2" />
-              Knowledge Graph
+              Knowledge
             </TabsTrigger>
             <TabsTrigger value="members">
               <Users className="h-4 w-4 mr-2" />
@@ -233,7 +430,6 @@ export function OrganizationDetailPage() {
           {/* Projects Tab */}
           <TabsContent value="projects">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Internal projects */}
               {sidebarOrg && (
                 <Card>
                   <CardHeader>
@@ -247,11 +443,8 @@ export function OrganizationDetailPage() {
                     ) : (
                       <div className="space-y-2">
                         {sidebarOrg.internal_projects?.map(p => (
-                          <Link
-                            key={p.id}
-                            to={`/projects/${p.id}`}
-                            className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors"
-                          >
+                          <Link key={p.id} to={`/projects/${p.id}`}
+                            className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors">
                             <div className="flex items-center gap-2">
                               <FolderOpen className="h-4 w-4 text-muted-foreground" />
                               <span className="text-sm font-medium">{p.name}</span>
@@ -261,11 +454,8 @@ export function OrganizationDetailPage() {
                         ))}
                         {(sidebarOrg.internal_folders || []).map(folder =>
                           folder.projects.map(p => (
-                            <Link
-                              key={p.id}
-                              to={`/projects/${p.id}`}
-                              className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors"
-                            >
+                            <Link key={p.id} to={`/projects/${p.id}`}
+                              className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors">
                               <div className="flex items-center gap-2 min-w-0">
                                 <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
                                 <span className="text-sm font-medium truncate">{p.name}</span>
@@ -280,8 +470,6 @@ export function OrganizationDetailPage() {
                   </CardContent>
                 </Card>
               )}
-
-              {/* Client projects */}
               {sidebarOrg?.clients?.map(client => (
                 <Card key={client.id}>
                   <CardHeader>
@@ -297,11 +485,8 @@ export function OrganizationDetailPage() {
                     ) : (
                       <div className="space-y-2">
                         {client.projects?.map(p => (
-                          <Link
-                            key={p.id}
-                            to={`/projects/${p.id}`}
-                            className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors"
-                          >
+                          <Link key={p.id} to={`/projects/${p.id}`}
+                            className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors">
                             <div className="flex items-center gap-2">
                               <FolderOpen className="h-4 w-4 text-muted-foreground" />
                               <span className="text-sm font-medium">{p.name}</span>
@@ -311,11 +496,8 @@ export function OrganizationDetailPage() {
                         ))}
                         {(client.folders || []).map(folder =>
                           folder.projects.map(p => (
-                            <Link
-                              key={p.id}
-                              to={`/projects/${p.id}`}
-                              className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors"
-                            >
+                            <Link key={p.id} to={`/projects/${p.id}`}
+                              className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors">
                               <div className="flex items-center gap-2 min-w-0">
                                 <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
                                 <span className="text-sm font-medium truncate">{p.name}</span>
@@ -330,7 +512,6 @@ export function OrganizationDetailPage() {
                   </CardContent>
                 </Card>
               ))}
-
               {!sidebarOrg && (
                 <div className="col-span-2 text-center text-muted-foreground py-8">
                   <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -338,6 +519,11 @@ export function OrganizationDetailPage() {
                 </div>
               )}
             </div>
+          </TabsContent>
+
+          {/* CRM Tab */}
+          <TabsContent value="crm">
+            <OrgCrmTab orgId={orgId!} orgName={org.name} />
           </TabsContent>
 
           {/* Clients Tab */}
@@ -384,10 +570,8 @@ export function OrganizationDetailPage() {
                               <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
                               <span className="text-sm truncate">{p.name}</span>
                             </div>
-                            <Link
-                              to={`/projects/${p.id}/knowledge`}
-                              className="text-xs text-blue-600 hover:underline shrink-0 ml-2"
-                            >
+                            <Link to={`/projects/${p.id}/knowledge`}
+                              className="text-xs text-blue-600 hover:underline shrink-0 ml-2">
                               View
                             </Link>
                           </div>
@@ -406,13 +590,13 @@ export function OrganizationDetailPage() {
                 <CardContent className="space-y-3">
                   <Button variant="outline" className="w-full justify-start" asChild>
                     <Link to={`/organizations/${orgId}/crm/acquisition`}>
-                      <Target className="h-4 w-4 mr-2 text-blue-600" />
+                      <TrendingUp className="h-4 w-4 mr-2 text-blue-600" />
                       Acquisition Pipeline
                     </Link>
                   </Button>
                   <Button variant="outline" className="w-full justify-start" asChild>
                     <Link to={`/organizations/${orgId}/crm/lifecycle`}>
-                      <TrendingUp className="h-4 w-4 mr-2 text-green-600" />
+                      <BookOpen className="h-4 w-4 mr-2 text-green-600" />
                       Client Lifecycle Pipeline
                     </Link>
                   </Button>

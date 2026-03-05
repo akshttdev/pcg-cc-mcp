@@ -90,6 +90,7 @@ pub mod meeting_session;
 pub mod media_asset;
 pub mod review_token;
 pub mod review_comment;
+pub mod person_note;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

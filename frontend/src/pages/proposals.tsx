@@ -26,6 +26,7 @@ import {
   Plus,
   GripVertical,
   Coins,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -113,6 +114,20 @@ function ProposalCard({
                 {fmtVibe(proposal.quote_amount_vibe)}
               </span>
             )}
+            {(() => {
+              try {
+                const contacts = JSON.parse(proposal.contact_ids || '[]');
+                if (contacts.length > 0) {
+                  return (
+                    <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                      <Users className="h-3 w-3" />
+                      {contacts.length}
+                    </span>
+                  );
+                }
+              } catch { /* ignore */ }
+              return null;
+            })()}
           </div>
           {proposal.description && (
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import {
   ArrowLeft,
   Mail,
@@ -23,8 +24,11 @@ import {
   Users,
   RefreshCw,
   ExternalLink,
+  MessageSquare,
+  Plus,
+  Trash2,
 } from 'lucide-react';
-import { personsApi, intelligenceApi, type PersonWithSocials, type PersonSocialProfile, type InvoiceRecord, type IntelligenceStatus } from '@/lib/api';
+import { personsApi, intelligenceApi, type PersonWithSocials, type PersonSocialProfile, type InvoiceRecord, type IntelligenceStatus, type PersonNote } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -150,6 +154,21 @@ function InvoiceRow({ invoice }: { invoice: InvoiceRecord }) {
   );
 }
 
+const NOTE_STATUS_COLORS: Record<string, string> = {
+  open:       'bg-blue-100 text-blue-700',
+  follow_up:  'bg-amber-100 text-amber-700',
+  resolved:   'bg-green-100 text-green-700',
+  pinned:     'bg-purple-100 text-purple-700',
+};
+
+function NoteStatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${NOTE_STATUS_COLORS[status] ?? 'bg-gray-100 text-gray-600'}`}>
+      {status.replace('_', ' ')}
+    </span>
+  );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export function PersonDetailPage() {
@@ -169,6 +188,30 @@ export function PersonDetailPage() {
     queryKey: ['persons', personId, 'invoices'],
     queryFn: () => personsApi.listInvoices(personId!),
     enabled: !!personId,
+  });
+
+  const { data: notes = [] } = useQuery<PersonNote[]>({
+    queryKey: ['persons', personId, 'notes'],
+    queryFn: () => personsApi.listNotes(personId!),
+    enabled: !!personId,
+  });
+
+  const [noteText, setNoteText] = useState('');
+  const [noteStatus, setNoteStatus] = useState<'open' | 'follow_up' | 'pinned'>('open');
+
+  const createNoteMutation = useMutation({
+    mutationFn: (text: string) =>
+      personsApi.createNote(personId!, { text, status: noteStatus }),
+    onSuccess: () => {
+      setNoteText('');
+      queryClient.invalidateQueries({ queryKey: ['persons', personId, 'notes'] });
+    },
+  });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: (noteId: string) => personsApi.deleteNote(noteId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['persons', personId, 'notes'] }),
   });
 
   const handleResearch = async () => {
@@ -308,20 +351,58 @@ export function PersonDetailPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                {person.email && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <a href={`mailto:${person.email}`} className="text-blue-600 hover:underline truncate">
-                      {person.email}
-                    </a>
-                  </div>
-                )}
-                {person.phone && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <a href={`tel:${person.phone}`} className="hover:underline">{person.phone}</a>
-                  </div>
-                )}
+                {/* Multi-email (new JSON array) or fall back to flat email */}
+                {(() => {
+                  const emailList = (() => { try { return JSON.parse(person.emails || '[]'); } catch { return []; } })();
+                  if (emailList.length > 0) {
+                    return emailList.map((e: { value: string; label?: string }, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <a href={`mailto:${e.value}`} className="text-blue-600 hover:underline truncate">
+                          {e.value}
+                        </a>
+                        {e.label && e.label !== 'primary' && (
+                          <span className="text-xs text-muted-foreground shrink-0">({e.label})</span>
+                        )}
+                      </div>
+                    ));
+                  }
+                  if (person.email) {
+                    return (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Mail className="h-4 w-4 text-muted-foreground" />
+                        <a href={`mailto:${person.email}`} className="text-blue-600 hover:underline truncate">
+                          {person.email}
+                        </a>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                {/* Multi-phone (new JSON array) or fall back to flat phone */}
+                {(() => {
+                  const phoneList = (() => { try { return JSON.parse(person.phones || '[]'); } catch { return []; } })();
+                  if (phoneList.length > 0) {
+                    return phoneList.map((p: { value: string; label?: string }, i: number) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <a href={`tel:${p.value}`} className="hover:underline">{p.value}</a>
+                        {p.label && p.label !== 'primary' && (
+                          <span className="text-xs text-muted-foreground shrink-0">({p.label})</span>
+                        )}
+                      </div>
+                    ));
+                  }
+                  if (person.phone) {
+                    return (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Phone className="h-4 w-4 text-muted-foreground" />
+                        <a href={`tel:${person.phone}`} className="hover:underline">{person.phone}</a>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 {person.job_title && (
                   <div className="flex items-center gap-2 text-sm">
                     <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -412,6 +493,76 @@ export function PersonDetailPage() {
                   </Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Notes */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Notes
+                {notes.length > 0 && (
+                  <span className="text-xs font-normal text-muted-foreground ml-1">({notes.length})</span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Existing notes */}
+              {notes.length > 0 && (
+                <div className="space-y-3">
+                  {notes.map((note) => (
+                    <div key={note.id} className="flex gap-3 group">
+                      <div className="flex-1 text-sm space-y-1">
+                        <div className="flex items-center gap-2">
+                          <NoteStatusBadge status={note.status} />
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(note.created_at), { addSuffix: true })}
+                          </span>
+                        </div>
+                        <p className="leading-relaxed">{note.text}</p>
+                      </div>
+                      <button
+                        onClick={() => deleteNoteMutation.mutate(note.id)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-destructive"
+                        title="Delete note"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add note form */}
+              <div className="space-y-2 pt-2 border-t">
+                <Textarea
+                  placeholder="Add a note…"
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  rows={2}
+                  className="text-sm resize-none"
+                />
+                <div className="flex items-center gap-2">
+                  <select
+                    value={noteStatus}
+                    onChange={(e) => setNoteStatus(e.target.value as typeof noteStatus)}
+                    className="text-xs border rounded px-2 py-1 bg-background"
+                  >
+                    <option value="open">Open</option>
+                    <option value="follow_up">Follow-up</option>
+                    <option value="pinned">Pinned</option>
+                  </select>
+                  <Button
+                    size="sm"
+                    onClick={() => noteText.trim() && createNoteMutation.mutate(noteText.trim())}
+                    disabled={!noteText.trim() || createNoteMutation.isPending}
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Add Note
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
