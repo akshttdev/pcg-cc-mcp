@@ -11,7 +11,7 @@ use axum::{
     Json,
 };
 use deployment::Deployment;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
@@ -360,6 +360,105 @@ async fn delete_person_note(
 // Router
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Org Provisioning
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+struct ProvisionOrgResponse {
+    org_id: String,
+    org_name: String,
+    slug: String,
+}
+
+/// POST /api/persons/:id/provision-org
+/// Create a "shadow" org for a person's company and link it via company_org_id.
+async fn provision_org(
+    State(deployment): State<DeploymentImpl>,
+    Path(person_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<ProvisionOrgResponse>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    let person = Person::find_by_id(pool, person_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Person {} not found", person_id)))?;
+
+    if person.company_org_id.is_some() {
+        return Err(ApiError::BadRequest(
+            "This person already has a company org provisioned".into(),
+        ));
+    }
+
+    let company_name = person
+        .company_name
+        .ok_or_else(|| ApiError::BadRequest("Person has no company_name set".into()))?;
+
+    // Slugify: lowercase, replace non-alphanumeric with hyphens, collapse runs
+    let slug = company_name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    // Ensure slug is unique
+    #[derive(sqlx::FromRow)]
+    struct SlugCount { count: i64 }
+    let existing: SlugCount = sqlx::query_as("SELECT COUNT(*) as count FROM organizations WHERE slug LIKE ?")
+        .bind(format!("{}%", slug))
+        .fetch_one(pool)
+        .await?;
+    let final_slug = if existing.count == 0 {
+        slug.clone()
+    } else {
+        format!("{}-{}", slug, existing.count)
+    };
+
+    // Get admin user to be temporary owner
+    #[derive(sqlx::FromRow)]
+    struct AdminRow {
+        #[sqlx(try_from = "Vec<u8>")]
+        id: Uuid,
+    }
+    let admin = sqlx::query_as::<_, AdminRow>(
+        "SELECT id FROM users WHERE is_admin = 1 ORDER BY created_at ASC LIMIT 1",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|_| ApiError::InternalError("No admin user found".into()))?;
+
+    let org_id = Uuid::new_v4();
+    let created_by_org_id = person.organization_id;
+
+    sqlx::query(
+        r#"INSERT INTO organizations (id, name, slug, owner_id, created_by_org_id)
+           VALUES (?, ?, ?, ?, ?)"#,
+    )
+    .bind(org_id.as_bytes().as_slice())
+    .bind(&company_name)
+    .bind(&final_slug)
+    .bind(admin.id.as_bytes().as_slice())
+    .bind(created_by_org_id.as_ref().map(|u| u.as_bytes().to_vec()))
+    .execute(pool)
+    .await?;
+
+    // Link person → company org
+    sqlx::query("UPDATE persons SET company_org_id = ?, updated_at = datetime('now','subsec') WHERE id = ?")
+        .bind(org_id.as_bytes().as_slice())
+        .bind(person_id.as_bytes().as_slice())
+        .execute(pool)
+        .await?;
+
+    Ok(Json(ApiResponse::success(ProvisionOrgResponse {
+        org_id: org_id.to_string(),
+        org_name: company_name,
+        slug: final_slug,
+    })))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         // Person CRUD
@@ -386,6 +485,8 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/person-notes/{id}",
             patch(update_person_note).delete(delete_person_note),
         )
+        // Org provisioning
+        .route("/persons/{id}/provision-org", post(provision_org))
         // Person invoices
         .route("/persons/{id}/invoices", get(list_person_invoices))
         // Invoice CRUD

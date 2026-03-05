@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -49,6 +50,12 @@ import {
   Wallet,
   Timer,
   CreditCard,
+  UserCircle,
+  Building,
+  Copy,
+  Check,
+  Brain,
+  RefreshCw,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -58,16 +65,18 @@ import {
   socialApi,
   tasksApi,
   quickbooksApi,
+  personsApi,
+  pulseApi,
   type OrganizationData,
   type ClientData,
   type CrmActivityRecord,
+  type PersonRecord,
   type ProjectKnowledgeResponse,
   type SocialAccountRecord,
   type SocialMentionRecord,
 } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
-import { useOrgContacts, type OrgContact } from '@/hooks/useOrgContacts';
 import { LIFECYCLE_STAGE_INFO, type LifecycleStage } from '@/types/crm';
 import type { PipelineType } from '@/types/crm';
 
@@ -214,9 +223,9 @@ function OverviewTab({
           { label: 'Pipelines', icon: Target, tab: 'pipelines', color: 'text-amber-500' },
           { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
           { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
-          { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
-          { label: 'Knowledge', icon: BookOpen, tab: 'knowledge', color: 'text-orange-500' },
+          { label: 'Intelligence', icon: Brain, tab: 'intelligence', color: 'text-violet-500' },
           { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
+          { label: 'Leads', icon: UserCircle, tab: 'leads', color: 'text-orange-500' },
           { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
         ].map(({ label, icon: Icon, tab, color }) => (
           <button
@@ -327,27 +336,31 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
 // ── Contacts Tab ──────────────────────────────────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
-  const { contacts, isLoading, projectCount, loadedCount } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
 
+  const { data: persons = [], isLoading } = useQuery<PersonRecord[]>({
+    queryKey: ['org-persons-full', orgId],
+    queryFn: () => organizationsApi.getPersons(orgId),
+    enabled: !!orgId,
+  });
+
   const filtered = useMemo(() => {
-    let result = contacts;
+    let result = persons;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
-        c =>
-          (c.first_name && c.first_name.toLowerCase().includes(q)) ||
-          (c.last_name && c.last_name.toLowerCase().includes(q)) ||
-          (c.email && c.email.toLowerCase().includes(q)) ||
-          (c.company_name && c.company_name.toLowerCase().includes(q))
+        p =>
+          p.full_name.toLowerCase().includes(q) ||
+          (p.email && p.email.toLowerCase().includes(q)) ||
+          (p.company_name && p.company_name.toLowerCase().includes(q))
       );
     }
     if (stageFilter !== 'all') {
-      result = result.filter(c => c.lifecycle_stage === stageFilter);
+      result = result.filter(p => p.lifecycle_stage === stageFilter);
     }
     return result;
-  }, [contacts, searchQuery, stageFilter]);
+  }, [persons, searchQuery, stageFilter]);
 
   const stageInfo = LIFECYCLE_STAGE_INFO;
 
@@ -373,22 +386,22 @@ function ContactsTab({ orgId }: { orgId: string }) {
             <option key={key} value={key}>{info.label}</option>
           ))}
         </select>
-        {isLoading && (
-          <span className="text-xs text-muted-foreground">
-            Loading {loadedCount}/{projectCount} projects...
-          </span>
-        )}
       </div>
 
-      {filtered.length === 0 ? (
+      {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">
           <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
+          <p>Loading contacts…</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>No contacts found</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} />
+          {filtered.map((person) => (
+            <PersonContactCard key={person.id} person={person} />
           ))}
         </div>
       )}
@@ -396,28 +409,30 @@ function ContactsTab({ orgId }: { orgId: string }) {
   );
 }
 
-function ContactCard({ contact }: { contact: OrgContact }) {
-  const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
-  const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unnamed';
+function PersonContactCard({ person }: { person: PersonRecord }) {
+  const stageInfo = LIFECYCLE_STAGE_INFO[person.lifecycle_stage as LifecycleStage];
 
   return (
     <Link
-      to={`/projects/${contact._sourceProjectId}/crm/contacts/${contact.id}`}
+      to={`/people/${person.id}`}
       className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate group-hover:text-foreground">{name}</p>
-          {contact.email && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.email}</p>
+          <p className="text-sm font-medium truncate group-hover:text-foreground">{person.full_name}</p>
+          {person.email && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{person.email}</p>
           )}
-          {contact.company_name && (
-            <p className="text-xs text-muted-foreground truncate">{contact.company_name}</p>
+          {person.company_name && (
+            <p className="text-xs text-muted-foreground truncate">{person.company_name}</p>
+          )}
+          {person.job_title && (
+            <p className="text-xs text-muted-foreground truncate">{person.job_title}</p>
           )}
         </div>
-        {contact.lead_score > 0 && (
+        {person.lead_score > 0 && (
           <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 shrink-0">
-            {contact.lead_score}
+            {person.lead_score}
           </span>
         )}
       </div>
@@ -431,8 +446,8 @@ function ContactCard({ contact }: { contact: OrgContact }) {
             {stageInfo.label}
           </Badge>
         )}
-        <Badge variant="outline" className="text-[10px]">
-          {contact._sourceProjectName}
+        <Badge variant="outline" className="text-[10px] capitalize">
+          {person.person_type}
         </Badge>
       </div>
     </Link>
@@ -557,7 +572,7 @@ function ProjectRow({ project, folderName }: { project: any; folderName?: string
   );
 }
 
-// ── Knowledge Tab ─────────────────────────────────────────────────────────────
+// ── Intelligence Tab (Social + Knowledge + Pulse) ─────────────────────────────
 
 const SOURCE_TYPE_META: Record<string, { label: string; icon: typeof BookOpen }> = {
   conversation: { label: 'Conversations', icon: MessageSquare },
@@ -568,7 +583,7 @@ const SOURCE_TYPE_META: Record<string, { label: string; icon: typeof BookOpen }>
   topology_snapshot: { label: 'Topology Snapshots', icon: Network },
 };
 
-function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
   const knowledgeQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['projectKnowledge', entry.id],
@@ -711,8 +726,6 @@ function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: 
   );
 }
 
-// ── Social Tab ────────────────────────────────────────────────────────────────
-
 const PLATFORM_ICONS: Record<string, typeof Linkedin> = {
   linkedin: Linkedin,
   instagram: Instagram,
@@ -729,7 +742,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   youtube: 'text-[#FF0000]',
 };
 
-function SocialTab({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+function SocialSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
   const accountQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['social-accounts', entry.id],
@@ -939,6 +952,374 @@ function SocialTab({ projectEntries }: { projectEntries: { id: string; name: str
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+// ── Pulse Section (used inside IntelligenceTab) ───────────────────────────────
+
+function PulseSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const alertQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['pulse-alerts-org', entry.id],
+      queryFn: () => pulseApi.getAlerts(entry.id, 20),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const contentQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['pulse-content-org', entry.id],
+      queryFn: () => pulseApi.getLatestContent(entry.id, 10),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const aggregated = useMemo(() => {
+    const allAlerts: any[] = [];
+    const allContent: any[] = [];
+
+    alertQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      q.data.forEach((a: any) => allAlerts.push({ ...a, _projectName: entry.name }));
+    });
+
+    contentQueries.forEach((q, i) => {
+      if (!q.data?.items) return;
+      const entry = projectEntries[i];
+      q.data.items.forEach((c: any) => allContent.push({ ...c, _projectName: entry.name }));
+    });
+
+    allAlerts.sort((a, b) => new Date(b.triggered_at || b.created_at).getTime() - new Date(a.triggered_at || a.created_at).getTime());
+    allContent.sort((a, b) => new Date(b.collected_at || b.created_at).getTime() - new Date(a.collected_at || a.created_at).getTime());
+
+    const unacknowledged = allAlerts.filter(a => !a.acknowledged_at).length;
+
+    return { alerts: allAlerts.slice(0, 20), content: allContent.slice(0, 20), unacknowledged };
+  }, [alertQueries, contentQueries, projectEntries]);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Unacknowledged Alerts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <span className={`text-2xl font-bold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
+              {aggregated.unacknowledged}
+            </span>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Recent Signals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <span className="text-2xl font-bold">{aggregated.content.length}</span>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Recent Alerts
+              {aggregated.unacknowledged > 0 && (
+                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {aggregated.alerts.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p>No alerts</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2 pr-3">
+                  {aggregated.alerts.map((alert: any) => (
+                    <div
+                      key={alert.id}
+                      className={`p-3 rounded-lg border border-border/50 ${!alert.acknowledged_at ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{alert.rule_name || 'Alert'}</p>
+                          {alert.message && (
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{alert.message}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-[9px]">{alert._projectName}</Badge>
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatDate(alert.triggered_at || alert.created_at)}
+                            </span>
+                          </div>
+                        </div>
+                        {!alert.acknowledged_at && (
+                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Radio className="h-4 w-4 text-blue-500" />
+              Latest Signals
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {aggregated.content.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Radio className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p>No signals collected yet</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2 pr-3">
+                  {aggregated.content.map((item: any) => (
+                    <div key={item.id} className="p-3 rounded-lg border border-border/50">
+                      <p className="text-sm font-medium line-clamp-2">{item.title || item.content_preview || 'Signal'}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-[9px]">{item._projectName}</Badge>
+                        {item.source_name && (
+                          <span className="text-[10px] text-muted-foreground">{item.source_name}</span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {formatDate(item.collected_at || item.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Intelligence Tab (Social + Knowledge + Pulse combined) ────────────────────
+
+function IntelligenceTab({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const [view, setView] = useState<'social' | 'knowledge' | 'pulse'>('social');
+
+  const viewOptions = [
+    { key: 'social' as const, label: 'Social', icon: Share2 },
+    { key: 'knowledge' as const, label: 'Knowledge Graph', icon: BookOpen },
+    { key: 'pulse' as const, label: 'Pulse Signals', icon: Radio },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit">
+        {viewOptions.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setView(key)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+              view === key
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'social' && <SocialSection projectEntries={projectEntries} />}
+      {view === 'knowledge' && <KnowledgeSection projectEntries={projectEntries} />}
+      {view === 'pulse' && <PulseSection projectEntries={projectEntries} />}
+    </div>
+  );
+}
+
+// ── Leads Tab ─────────────────────────────────────────────────────────────────
+
+function LeadsTab({ orgId }: { orgId: string }) {
+  const queryClient = useQueryClient();
+  const [inviteUrls, setInviteUrls] = useState<Record<string, string>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState<Record<string, string>>({});
+
+  const { data: leads = [], isLoading } = useQuery<PersonRecord[]>({
+    queryKey: ['org-leads', orgId],
+    queryFn: () => personsApi.list({ organization_id: orgId, limit: 200 }),
+    enabled: !!orgId,
+  });
+
+  const provisionMutation = useMutation({
+    mutationFn: (personId: string) => personsApi.provisionOrg(personId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-leads', orgId] });
+    },
+  });
+
+  const generateInviteMutation = useMutation({
+    mutationFn: ({ companyOrgId, email }: { companyOrgId: string; email?: string }) =>
+      organizationsApi.generateInvite(companyOrgId, email || undefined),
+    onSuccess: (data, variables) => {
+      setInviteUrls((prev) => ({ ...prev, [variables.companyOrgId]: data.invite_url }));
+    },
+  });
+
+  function copyUrl(orgId: string, url: string) {
+    navigator.clipboard.writeText(url);
+    setCopiedId(orgId);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
+        Loading leads…
+      </div>
+    );
+  }
+
+  if (leads.length === 0) {
+    return (
+      <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+        <CardContent className="py-12 text-center text-muted-foreground">
+          <UserCircle className="h-10 w-10 mx-auto mb-3 opacity-40" />
+          <p>No leads found for this organisation.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {leads.map((person) => (
+        <Card key={person.id} className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardContent className="py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-semibold shrink-0">
+                  {person.full_name[0].toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <Link
+                    to={`/people/${person.id}`}
+                    className="text-sm font-medium hover:underline truncate block"
+                  >
+                    {person.full_name}
+                  </Link>
+                  {person.company_name && (
+                    <p className="text-xs text-muted-foreground">{person.company_name}</p>
+                  )}
+                  {person.job_title && (
+                    <p className="text-xs text-muted-foreground">{person.job_title}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                <Badge variant="outline" className="text-xs capitalize">
+                  {person.lifecycle_stage}
+                </Badge>
+                {person.lead_score > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    Score {person.lead_score}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Provision / Invite actions */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {!person.company_org_id ? (
+                person.company_name ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={provisionMutation.isPending}
+                    onClick={() => provisionMutation.mutate(person.id)}
+                  >
+                    <Building className="h-3 w-3 mr-1" />
+                    Provision Company Profile
+                  </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground italic">
+                    No company name — set one to provision.
+                  </span>
+                )
+              ) : (
+                <>
+                  <Link to={`/organizations/${person.company_org_id}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                    <Building className="h-3 w-3" />
+                    View company org
+                  </Link>
+                  {!inviteUrls[person.company_org_id] ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="email"
+                        placeholder="Email (optional)"
+                        className="h-7 text-xs w-44"
+                        value={inviteEmail[person.company_org_id] ?? ''}
+                        onChange={(e) =>
+                          setInviteEmail((prev) => ({ ...prev, [person.company_org_id!]: e.target.value }))
+                        }
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="text-xs h-7"
+                        disabled={generateInviteMutation.isPending}
+                        onClick={() =>
+                          generateInviteMutation.mutate({
+                            companyOrgId: person.company_org_id!,
+                            email: inviteEmail[person.company_org_id!] || undefined,
+                          })
+                        }
+                      >
+                        Generate Invite
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 max-w-full">
+                      <Input
+                        readOnly
+                        value={inviteUrls[person.company_org_id]}
+                        className="h-7 text-xs flex-1 min-w-0"
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2"
+                        onClick={() => copyUrl(person.company_org_id!, inviteUrls[person.company_org_id!])}
+                      >
+                        {copiedId === person.company_org_id ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -1328,7 +1709,12 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     staleTime: 60_000,
   });
 
-  const { contacts } = useOrgContacts(orgId);
+  const { data: orgPersons = [] } = useQuery<PersonRecord[]>({
+    queryKey: ['org-persons', orgId],
+    queryFn: () => personsApi.list({ organization_id: orgId!, limit: 500 }),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
 
   const sidebarOrg = sidebarTree
     ? [...(sidebarTree.owned_orgs || []), ...(sidebarTree.member_orgs || [])].find(o => o.id === orgId)
@@ -1423,13 +1809,9 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <FolderOpen className="h-4 w-4 mr-2" />
                 Projects
               </TabsTrigger>
-              <TabsTrigger value="social">
-                <Share2 className="h-4 w-4 mr-2" />
-                Social
-              </TabsTrigger>
-              <TabsTrigger value="knowledge">
-                <BookOpen className="h-4 w-4 mr-2" />
-                Knowledge
+              <TabsTrigger value="intelligence">
+                <Brain className="h-4 w-4 mr-2" />
+                Intelligence
               </TabsTrigger>
               <TabsTrigger value="integrations">
                 <Plug className="h-4 w-4 mr-2" />
@@ -1438,6 +1820,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               <TabsTrigger value="members">
                 <Users className="h-4 w-4 mr-2" />
                 Members
+              </TabsTrigger>
+              <TabsTrigger value="leads">
+                <UserCircle className="h-4 w-4 mr-2" />
+                Leads
               </TabsTrigger>
             </TabsList>
 
@@ -1450,7 +1836,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 memberCount={members.length}
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
-                contactCount={contacts.length}
+                contactCount={orgPersons.length}
                 onSwitchTab={setTab}
               />
             </TabsContent>
@@ -1472,12 +1858,8 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               />
             </TabsContent>
 
-            <TabsContent value="social">
-              <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
-            </TabsContent>
-
-            <TabsContent value="knowledge">
-              <KnowledgeTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
+            <TabsContent value="intelligence">
+              <IntelligenceTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
             </TabsContent>
 
             <TabsContent value="integrations">
@@ -1486,6 +1868,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
             <TabsContent value="members">
               <MembersTab orgId={orgId} orgName={org.name} />
+            </TabsContent>
+
+            <TabsContent value="leads">
+              <LeadsTab orgId={orgId} />
             </TabsContent>
           </Tabs>
         </div>

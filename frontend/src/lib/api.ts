@@ -3804,6 +3804,9 @@ export interface OrganizationData {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  invite_token?: string;
+  pending_owner_email?: string;
+  created_by_org_id?: string;
 }
 
 export interface ClientData {
@@ -3876,6 +3879,20 @@ export const organizationsApi = {
       method: 'DELETE',
     });
     return handleApiResponse<void>(response);
+  },
+
+  generateInvite: async (orgId: string, email?: string): Promise<{ invite_url: string }> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/generate-invite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    return handleApiResponse<{ invite_url: string }>(response);
+  },
+
+  getPersons: async (orgId: string): Promise<PersonRecord[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/persons`);
+    return handleApiResponse<PersonRecord[]>(response);
   },
 
   // Clients
@@ -4523,6 +4540,7 @@ export interface PersonRecord {
   /** JSON array of {value, label} */
   phones: string;
   assigned_to?: string;
+  company_org_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -4742,6 +4760,36 @@ export const personsApi = {
   deleteNote: async (noteId: string): Promise<void> => {
     const response = await makeRequest(`/api/person-notes/${noteId}`, { method: 'DELETE' });
     return handleApiResponse<void>(response);
+  },
+
+  provisionOrg: async (personId: string): Promise<{ org_id: string; org_name: string; slug: string }> => {
+    const response = await makeRequest(`/api/persons/${personId}/provision-org`, { method: 'POST' });
+    return handleApiResponse<{ org_id: string; org_name: string; slug: string }>(response);
+  },
+};
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+
+export const authApi = {
+  getInviteInfo: async (token: string): Promise<{ org_name: string; pending_owner_email?: string }> => {
+    const response = await fetch(`/api/auth/invite-info?token=${encodeURIComponent(token)}`);
+    return handleApiResponse<{ org_name: string; pending_owner_email?: string }>(response);
+  },
+
+  register: async (data: {
+    username: string;
+    password: string;
+    full_name: string;
+    email?: string;
+    invite_token: string;
+  }): Promise<{ user: { id: string; username: string; email: string; full_name: string; is_admin: boolean; organizations: any[] }; session_id: string }> => {
+    const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
   },
 };
 

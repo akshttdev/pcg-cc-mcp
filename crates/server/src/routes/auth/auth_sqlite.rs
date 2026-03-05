@@ -313,6 +313,173 @@ pub async fn get_current_user(
     Ok((StatusCode::OK, ResponseJson(ApiResponse { data: profile })).into_response())
 }
 
+/// POST /auth/register
+/// Invite-gated public registration — requires a valid invite_token on an org.
+pub async fn register(
+    State(deployment): State<DeploymentImpl>,
+    ResponseJson(req): ResponseJson<RegisterRequest>,
+) -> Result<Response, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // 1. Look up org by invite token
+    #[derive(FromRow)]
+    struct OrgRow {
+        #[sqlx(try_from = "Vec<u8>")]
+        id: Uuid,
+        name: String,
+        #[allow(dead_code)]
+        pending_owner_email: Option<String>,
+    }
+
+    let org = sqlx::query_as::<_, OrgRow>(
+        "SELECT id, name, pending_owner_email FROM organizations WHERE invite_token = ? AND is_active = 1",
+    )
+    .bind(&req.invite_token)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
+    .ok_or_else(|| ApiError::BadRequest("Invalid or expired invite token".into()))?;
+
+    // 2. Check username / email uniqueness
+    let existing: Option<i64> = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE",
+    )
+    .bind(&req.username)
+    .bind(req.email.as_deref().unwrap_or(""))
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+    if existing.unwrap_or(0) > 0 {
+        return Err(ApiError::BadRequest("Username or email already taken".into()));
+    }
+
+    // 3. Hash password and create user
+    let password_hash = db::services::AuthService::hash_password(&req.password)
+        .map_err(|e| ApiError::InternalError(format!("Password hashing error: {}", e)))?;
+
+    let user_id = Uuid::new_v4();
+    let email = req.email.as_deref().unwrap_or("");
+
+    sqlx::query(
+        "INSERT INTO users (id, username, email, full_name, password_hash, is_admin, is_active)
+         VALUES (?, ?, ?, ?, ?, 0, 1)",
+    )
+    .bind(user_id.as_bytes().as_slice())
+    .bind(&req.username)
+    .bind(email)
+    .bind(&req.full_name)
+    .bind(&password_hash)
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to create user: {}", e)))?;
+
+    // 4. Transfer org ownership to new user
+    sqlx::query(
+        "UPDATE organizations SET owner_id = ?, invite_token = NULL, pending_owner_email = NULL, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(user_id.as_bytes().as_slice())
+    .bind(org.id.as_bytes().as_slice())
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to update org: {}", e)))?;
+
+    // 5. Add new user as org admin member
+    let member_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT OR IGNORE INTO organization_members (id, organization_id, user_id, role) VALUES (?, ?, ?, 'admin')",
+    )
+    .bind(member_id.as_bytes().as_slice())
+    .bind(org.id.as_bytes().as_slice())
+    .bind(user_id.as_bytes().as_slice())
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to add org member: {}", e)))?;
+
+    // 6. Bridge persons.user_id for persons whose company_org_id matches
+    sqlx::query(
+        "UPDATE persons SET user_id = ?, updated_at = datetime('now','subsec') WHERE company_org_id = ? AND user_id IS NULL",
+    )
+    .bind(user_id.as_bytes().as_slice())
+    .bind(org.id.as_bytes().as_slice())
+    .execute(pool)
+    .await
+    .ok(); // non-fatal
+
+    // 7. Run onboarding
+    if let Err(e) = services::services::user_onboarding::UserOnboardingService::onboard_user(
+        pool,
+        user_id,
+        &req.username,
+    )
+    .await
+    {
+        tracing::warn!("Register onboarding failed for {}: {}", user_id, e);
+    }
+
+    // 8. Create session
+    let session_id = db::services::AuthService::generate_session_id();
+    let session_token_hash = db::services::AuthService::hash_session_token(&session_id);
+    let expires_at = chrono::Utc::now() + chrono::Duration::days(7);
+
+    sqlx::query(
+        "INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at, last_used_at)
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
+    )
+    .bind(Uuid::new_v4().as_bytes().as_slice())
+    .bind(user_id.as_bytes().as_slice())
+    .bind(&session_token_hash)
+    .bind(expires_at.to_rfc3339())
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to create session: {}", e)))?;
+
+    // 9. Build response
+    let organizations = vec![UserOrganization {
+        id: org.id.to_string(),
+        name: org.name,
+        slug: String::new(), // slug not needed in response
+        role: "admin".into(),
+    }];
+
+    let profile = UserProfile {
+        id: user_id.to_string(),
+        username: req.username,
+        email: email.to_string(),
+        full_name: req.full_name,
+        avatar_url: None,
+        is_admin: false,
+        organizations,
+    };
+
+    let response = LoginResponse {
+        user: profile,
+        session_id: session_id.clone(),
+    };
+
+    let cookie = format!(
+        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age={}",
+        session_id,
+        7 * 24 * 60 * 60
+    );
+
+    Ok((
+        StatusCode::OK,
+        [(header::SET_COOKIE, cookie)],
+        ResponseJson(ApiResponse::<LoginResponse, LoginResponse>::success(response)),
+    )
+        .into_response())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RegisterRequest {
+    pub username: String,
+    pub password: String,
+    pub full_name: String,
+    pub email: Option<String>,
+    pub invite_token: String,
+}
+
 /// POST /auth/logout
 /// Clear session
 pub async fn logout(
