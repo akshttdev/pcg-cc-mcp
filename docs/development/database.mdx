@@ -1,0 +1,130 @@
+---
+title: "Database Operations"
+description: "Working with the SQLite database — migrations, models, queries, and common patterns"
+---
+
+# Database Operations
+
+PCG CC uses SQLite with SQLx for database access. This guide covers day-to-day database operations.
+
+## Database location
+
+In development, the database is automatically copied from `dev_assets_seed/` on server startup. No manual setup is required.
+
+## Migrations
+
+Migrations live in `crates/db/migrations/` and follow this naming pattern:
+
+```
+YYYYMMDDHHMMSS_description.sql
+```
+
+### Creating a migration
+
+```bash
+touch crates/db/migrations/$(date +%Y%m%d%H%M%S)_your_description.sql
+```
+
+<Note>
+Always write idempotent SQL. Use `CREATE TABLE IF NOT EXISTS`, `INSERT ... WHERE NOT EXISTS`, and `ALTER TABLE ... ADD COLUMN` with existence checks.
+</Note>
+
+### Applying migrations
+
+Migrations run automatically on server startup. To apply manually:
+
+```bash
+sqlx migrate run
+```
+
+## Query patterns
+
+The codebase uses two query patterns. Choose based on your needs.
+
+<Tabs>
+<Tab title="Runtime queries (preferred)">
+  No compile-time database dependency. Used by MCP servers and newer models.
+
+  ```rust
+  #[derive(sqlx::FromRow)]
+  struct YourRow {
+      id: Vec<u8>,
+      name: String,
+      status: String,
+  }
+
+  let rows = sqlx::query_as::<_, YourRow>(
+      "SELECT id, name, status FROM your_table WHERE project_id = ?"
+  )
+  .bind(&project_id_bytes)
+  .fetch_all(pool)
+  .await?;
+  ```
+</Tab>
+
+<Tab title="Compile-time macros (legacy)">
+  Checked at compile time against the cached schema. Requires `DATABASE_URL` or `.sqlx/` cache.
+
+  ```rust
+  let task = sqlx::query_as!(
+      Task,
+      r#"SELECT id as "id!: Uuid", title as "title!", status as "status!"
+         FROM tasks WHERE id = $1"#,
+      task_id
+  )
+  .fetch_one(pool)
+  .await?;
+  ```
+
+  After adding new macro queries, update the cache:
+
+  ```bash
+  DATABASE_URL="sqlite:path/to/dev.db" cargo sqlx prepare --workspace
+  ```
+</Tab>
+</Tabs>
+
+## UUID handling
+
+SQLite stores UUIDs as 16-byte BLOBs. Two conversion patterns are used:
+
+```rust
+// To bytes (for binding)
+let bytes = uuid.as_bytes().to_vec();
+
+// To uppercase hex (for some queries)
+let hex = hex::encode(uuid.as_bytes()).to_uppercase();
+
+// From bytes (in FromRow)
+fn bytes_to_uuid(bytes: &[u8]) -> Option<Uuid> {
+    Uuid::from_slice(bytes).ok()
+}
+```
+
+## Well-known entities
+
+Fixed UUIDs defined in `crates/db/src/constants.rs`:
+
+| Constant | UUID | Purpose |
+|----------|------|---------|
+| `BUGREPORTS_PROJECT_ID` | `00000000-0000-0000-0000-000000000001` | Feedback pipeline project |
+| `BUGREPORTS_BOARD_ID` | `00000000-0000-0000-0000-000000000002` | Feedback board |
+| `DEV_ADMIN_USER_ID` | `00000000-0000-0000-0000-000000000099` | Development admin user |
+
+These are seeded by migrations and used in the development environment.
+
+## Key tables reference
+
+| Table | Purpose |
+|-------|---------|
+| `projects` | Software projects with VIBE budgets |
+| `tasks` | Work items with status, priority, assignment |
+| `task_attempts` | Execution runs with worktree info |
+| `task_dependencies` | Relationships between tasks |
+| `agents` | AI agent registry |
+| `topology_nodes` | Graph nodes (agents, tasks, resources) |
+| `topology_edges` | Relationships between nodes |
+| `topology_clusters` | Dynamic agent teams |
+| `orchestration_contexts` | Shared blackboard entries |
+| `project_knowledge_sources` | Knowledge tracking with coverage scoring |
+| `tasks_fts` | FTS5 full-text search index |

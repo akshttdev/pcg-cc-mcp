@@ -1,0 +1,79 @@
+---
+title: "Type Generation"
+description: "How TypeScript types are generated from Rust structs using ts-rs — workflow, troubleshooting, and best practices"
+---
+
+# Type Generation
+
+PCG CC shares types between Rust and TypeScript using **ts-rs**. Rust structs annotated with `#[derive(TS)]` are compiled into TypeScript definitions in `shared/types.ts`.
+
+## How it works
+
+```
+Rust struct (#[derive(TS)]) → generate_types binary → shared/types.ts → Frontend imports
+```
+
+The generator binary lives at `crates/server/src/bin/generate_types.rs`. It collects all annotated types and writes them to the shared types file.
+
+## Workflow
+
+<Steps>
+<Step title="Annotate your Rust struct">
+  ```rust
+  use ts_rs::TS;
+
+  #[derive(Serialize, Deserialize, TS)]
+  #[ts(export)]
+  pub struct YourNewType {
+      pub id: Uuid,
+      pub name: String,
+      pub status: String,
+  }
+  ```
+</Step>
+
+<Step title="Register in generate_types.rs">
+  Add your type to the generator binary if it is not auto-exported:
+
+  ```rust
+  // In crates/server/src/bin/generate_types.rs
+  YourNewType::export_all()?;
+  ```
+</Step>
+
+<Step title="Generate types">
+  ```bash
+  npm run generate-types
+  ```
+</Step>
+
+<Step title="Verify">
+  ```bash
+  npm run generate-types:check
+  ```
+
+  This confirms the generated types match the current Rust definitions.
+
+  <Check>
+  The command exits with code 0 if types are in sync.
+  </Check>
+</Step>
+</Steps>
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `npm run generate-types` | Regenerate `shared/types.ts` from Rust structs |
+| `npm run generate-types:check` | Verify types are up to date (CI-friendly) |
+
+## Best practices
+
+- Run `npm run generate-types` after every Rust type change
+- Never manually edit `shared/types.ts` — it will be overwritten
+- Use `Option<T>` in Rust for optional fields (maps to `T | null` in TypeScript)
+- Keep type names consistent between Rust and TypeScript (ts-rs preserves names by default)
+
+<Warning>
+Forgetting to regenerate types after a Rust change will cause TypeScript compilation errors in the frontend. Always run the generator before testing frontend changes.
+</Warning>

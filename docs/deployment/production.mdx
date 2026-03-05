@@ -1,0 +1,149 @@
+---
+title: "Production Deployment"
+description: "Production deployment considerations — security, monitoring, scaling, and operational best practices"
+---
+
+# Production Deployment
+
+This guide covers considerations for running PCG CC in a production environment beyond the base [Docker deployment](/deployment/docker).
+
+## Security
+
+### Network
+
+- Run behind a reverse proxy (nginx is included in the Docker Compose setup)
+- Enable HTTPS via Cloudflare Tunnel or your own TLS certificates
+- Restrict direct access to the application port (3001) — route through nginx on 8080
+
+### Authentication
+
+- GitHub OAuth device flow for user authentication
+- API endpoints enforce user scoping — users only see projects they belong to
+- Admin users (`is_admin`) bypass project membership checks
+- MCP servers are user-scoped with `user_id` and `is_admin` context
+
+### Secrets management
+
+<Warning>
+Never commit API keys or tokens to version control. Use environment variables or a secrets manager.
+</Warning>
+
+Required secrets:
+- `OPENAI_API_KEY` — For AI inference
+- `CLOUDFLARE_TUNNEL_TOKEN` — For external access (if using Cloudflare)
+- `ELEVENLABS_API_KEY` — For voice synthesis (optional)
+- `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` — For phone integration (optional)
+
+### Database
+
+- SQLite database runs locally — no network database exposure
+- Automated backups via the `db-backup` service (24-hour cycle, 7-day retention)
+- Consider copying backups to off-site storage for disaster recovery
+
+## Monitoring
+
+### Health endpoint
+
+The backend exposes `/api/health` for monitoring:
+
+```bash
+curl http://localhost:3001/api/health
+```
+
+### Logging
+
+Configure log verbosity via `RUST_LOG`:
+
+```bash
+RUST_LOG=info          # Production default
+RUST_LOG=debug         # Troubleshooting
+RUST_LOG=pcg_server=debug,sqlx=warn  # Targeted debugging
+```
+
+### System pulse
+
+Use the TopsiServer MCP tool `get_system_pulse` for application-level health metrics including:
+- Node counts by status
+- Active task counts
+- Cluster utilisation
+- Overall system health score
+
+## Scaling considerations
+
+### Single-node deployment
+
+PCG CC is designed as a single-node deployment with SQLite. This architecture:
+
+- Simplifies operations — no database cluster management
+- Limits horizontal scaling — one application instance per database
+- Suits teams of up to ~50 agents and ~10,000 active tasks
+
+### For larger deployments
+
+- **Git worktrees** are the main I/O bottleneck — ensure fast storage (SSD/NVMe)
+- **Ollama models** consume significant RAM — allocate based on model size
+- **GPU** dramatically improves LLM inference speed and media pipeline throughput
+- **VIBE economics** naturally rate-limit expensive operations via budget constraints
+
+## Operational tasks
+
+### Applying updates
+
+<Steps>
+<Step title="Pull latest changes">
+  ```bash
+  git pull origin main
+  ```
+</Step>
+
+<Step title="Rebuild and restart">
+  ```bash
+  ./deploy.sh stop
+  docker compose build
+  ./deploy.sh start
+  ```
+
+  Migrations run automatically on startup.
+</Step>
+
+<Step title="Verify health">
+  ```bash
+  ./deploy.sh status
+  curl http://localhost:3001/api/health
+  ```
+</Step>
+</Steps>
+
+### Database maintenance
+
+SQLite databases benefit from periodic maintenance:
+
+```bash
+# Optimise database (run during low-traffic periods)
+sqlite3 dev_assets/pcg.db "VACUUM; ANALYZE;"
+```
+
+### Backup recovery
+
+To restore from a backup:
+
+```bash
+# Stop the application
+./deploy.sh stop
+
+# Replace the database
+cp backups/backup_latest.sqlite dev_assets/pcg.db
+
+# Restart
+./deploy.sh start
+```
+
+## Cloudflare Tunnel
+
+For secure external access without port forwarding:
+
+1. Create a tunnel in the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/)
+2. Set the `CLOUDFLARE_TUNNEL_TOKEN` environment variable
+3. The `cloudflared` service in Docker Compose handles the connection
+
+Traffic flows: `Internet → Cloudflare → cloudflared → nginx → app`

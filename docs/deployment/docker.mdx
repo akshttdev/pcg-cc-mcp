@@ -1,0 +1,145 @@
+---
+title: "Docker Deployment"
+description: "Deploy PCG CC with Docker Compose — multi-service setup with GPU support, database backups, and reverse proxy"
+---
+
+# Docker Deployment
+
+PCG CC ships with a full Docker Compose setup for production deployment. The stack includes the main application, database backups, Alpha Protocol bridge, reverse proxy, and optional Cloudflare tunnel.
+
+## Quick start
+
+```bash
+# One-line deploy
+./quick-deploy.sh
+
+# Or step by step
+./deploy.sh setup
+./deploy.sh deploy
+```
+
+Access the platform at `http://localhost:8080`.
+
+## Services
+
+The `docker-compose.yml` defines 5 services:
+
+| Service | Image | Purpose | Port |
+|---------|-------|---------|------|
+| **app** | Custom (Dockerfile) | Main application (Rust + React) | 3001 |
+| **db-backup** | Alpine | Automated SQLite backups | — |
+| **apn-bridge** | Custom (Dockerfile.apn-bridge) | Alpha Protocol HTTP API bridge | — |
+| **nginx** | Alpine nginx | Reverse proxy and routing | 8080 |
+| **cloudflared** | Cloudflare tunnel | Secure external access (optional) | — |
+
+### Application container
+
+The main container uses a multi-stage build:
+
+**Build stage** (Alpine Node 24):
+- Installs Rust, pnpm, SQLx CLI
+- Builds the React frontend with Vite
+- Compiles the Rust backend in release mode
+- Generates TypeScript types
+
+**Runtime stage** (NVIDIA CUDA 12.1):
+- Base: `nvidia/cuda:12.1.0-runtime-ubuntu22.04`
+- Python 3.11 for Chatterbox TTS
+- Ollama for local LLM inference
+- Pre-pulls configured LLM models on startup
+- Runs as non-root user (`appuser`)
+
+## Environment variables
+
+### Required
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENAI_API_KEY` | OpenAI API access |
+
+### Application
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `HOST` | `0.0.0.0` | Backend bind address |
+| `BACKEND_PORT` | `3001` | Backend port |
+| `FRONTEND_PORT` | `3000` | Frontend port |
+| `RUST_LOG` | `info` | Log level |
+
+### AI / LLM
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
+| `OLLAMA_MODEL` | `deepseek-r1` | Default local model |
+| `NORA_LLM_MODEL` | `deepseek-r1` | Nora's LLM model |
+| `NORA_LLM_TEMPERATURE` | `0.7` | Nora's response temperature |
+
+### Voice (optional)
+
+| Variable | Purpose |
+|----------|---------|
+| `ELEVENLABS_API_KEY` | ElevenLabs TTS |
+| `TWILIO_ACCOUNT_SID` | Twilio phone integration |
+| `TWILIO_AUTH_TOKEN` | Twilio authentication |
+| `CHATTERBOX_URL` | Chatterbox TTS endpoint |
+| `WHISPER_URL` | Whisper STT endpoint |
+
+### Infrastructure (optional)
+
+| Variable | Purpose |
+|----------|---------|
+| `APN_NODE_ID` | Alpha Protocol node identifier |
+| `APN_WALLET_ADDRESS` | Node wallet address |
+| `APN_RELAY_URL` | NATS relay URL |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Cloudflare tunnel token |
+| `BACKUP_INTERVAL` | Backup frequency in seconds (default: 86400) |
+| `BACKUP_RETENTION_DAYS` | Days to retain backups (default: 7) |
+
+## GPU support
+
+The application container includes NVIDIA CUDA runtime. To enable GPU acceleration:
+
+1. Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+2. The `docker-compose.yml` already includes GPU device configuration
+
+GPU enables:
+- Faster local LLM inference via Ollama
+- Video generation via the Spectrum pipeline
+- 2x VIBE reward multiplier for contributing GPU resources
+
+## Database backups
+
+The `db-backup` service runs automated SQLite backups:
+
+- **Frequency**: Every 24 hours (configurable via `BACKUP_INTERVAL`)
+- **Retention**: Last 7 days (configurable via `BACKUP_RETENTION_DAYS`)
+- **Location**: `backups/` volume
+- **Latest**: Symlinked as `backup_latest.sqlite`
+
+## Health checks
+
+The application container includes a health check:
+
+```bash
+wget --quiet --tries=1 --spider "http://127.0.0.1:3001/api/health"
+```
+
+Nginx and Cloudflare services depend on the app being healthy before starting.
+
+## Volumes
+
+| Volume | Purpose |
+|--------|---------|
+| `repos_data` | Git repositories for worktree isolation |
+| `frontend-dist` | React build output (shared with nginx) |
+| `./dev_assets` | Database and seed data |
+| `./backups` | Database backup files |
+
+## Managing the deployment
+
+```bash
+./deploy.sh start    # Start all services
+./deploy.sh stop     # Stop all services
+./deploy.sh status   # Check service health
+```

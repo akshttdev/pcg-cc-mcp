@@ -1,0 +1,100 @@
+---
+title: "Nora Executive Assistant"
+description: "COO-level AI assistant — voice interaction, workflow management, strategic planning, and multi-agent coordination"
+---
+
+# Nora Executive Assistant
+
+Nora is an advanced executive AI assistant that serves as a COO-level coordinator for the platform. It provides voice interaction with a British executive personality, multi-agent coordination, workflow management, and content analysis.
+
+<Note>
+Nora is a private admin-only assistant. Access is restricted to authorised platform administrators.
+</Note>
+
+## Capabilities
+
+| Capability | Description |
+|-----------|-------------|
+| **Voice interaction** | British executive personality with speech synthesis and recognition |
+| **Strategic planning** | Sprint, quarter, and project-level planning with constraints |
+| **Performance analysis** | Agent throughput, project health, and trend analysis |
+| **Workflow orchestration** | Multi-step workflows with branching and dependencies |
+| **Conference workflows** | Research, speaker intel, graphics generation, social content |
+| **Rapid prototyping** | Fast-track development playbooks for new initiatives |
+| **Content editing** | Media asset management with Editron integration |
+| **Phone integration** | Twilio-based inbound and outbound call handling |
+
+## Voice system
+
+Nora's voice stack supports multiple providers with automatic fallback:
+
+| Component | Providers |
+|-----------|----------|
+| **Text-to-Speech** | ElevenLabs, Azure, OpenAI, Twilio (fallback) |
+| **Speech-to-Text** | Twilio, Whisper, Azure |
+| **Diarisation** | Speaker identification for multi-party conversations |
+
+Voice settings are configurable per request:
+- **Speed**: 0.5x to 2.0x
+- **Volume**: 0.0 to 1.0
+- **Pitch**: 0.5x to 2.0x
+- **Accent strength**: 0.0 to 1.0 (British accent intensity)
+
+## Brain — LLM integration
+
+Nora's inference layer supports multiple LLM providers:
+
+- **Anthropic** (Claude models)
+- **OpenAI** (GPT models)
+- **Ollama** (local models like DeepSeek)
+
+The provider is configurable via `NORA_LLM_MODEL` and `NORA_LLM_TEMPERATURE` environment variables.
+
+## Workflow engine
+
+Nora can orchestrate multi-step workflows:
+
+1. **Define steps** — Each workflow has ordered steps with dependencies
+2. **Execute** — Steps run sequentially or in parallel based on the workflow graph
+3. **Branch** — Conditional branching based on step outcomes
+4. **Track** — Full execution history with step-level status
+
+### Conference workflow
+
+A specialised workflow for conference preparation:
+
+- **Brand research** — Company and industry context
+- **Competitive intelligence** — Competitor analysis and positioning
+- **Speaker research** — Speaker profiles and talk history
+- **Production** — Graphics, materials, and logistics
+- **Side events** — Satellite event planning
+- **Social content** — Pre/during/post social media content
+- **Quality assurance** — Final review and consistency checks
+
+## MCP interface
+
+Nora exposes 7 tools through its MCP server. See the [NoraMCP Reference](/mcp/nora-server) for the complete tool API.
+
+## Crate structure
+
+```
+crates/nora/src/
+├── agent.rs              # NoraAgent core
+├── brain/
+│   ├── mod.rs            # LLM config and client
+│   ├── agent_client.rs   # Agent communication
+│   └── providers/        # Anthropic, OpenAI
+├── voice/
+│   ├── engine.rs         # Voice orchestration
+│   ├── tts.rs            # Text-to-speech
+│   ├── stt.rs            # Speech-to-text
+│   └── diarization.rs    # Speaker identification
+├── twilio/               # Phone integration
+├── execution/            # Task and research execution
+├── workflow/             # Workflow state machine
+├── conference_workflow/  # Conference planning
+├── content_editing/      # Media management
+├── memory.rs             # Conversation memory
+├── personality.rs        # British personality config
+└── tools.rs              # Executive tools
+```

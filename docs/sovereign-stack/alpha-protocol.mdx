@@ -1,0 +1,138 @@
+---
+title: "Alpha Protocol"
+description: "Sovereign mesh networking — P2P transport, cryptographic identity, end-to-end encryption, and resource economics"
+---
+
+# Alpha Protocol
+
+Alpha Protocol is the **Layer 0** foundation of the sovereign stack. It provides secure peer-to-peer mesh networking with cryptographic identity, end-to-end encryption, and built-in economic incentives.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────┐
+│            Application Layer             │
+│     Task routing, VIBE economics         │
+├─────────────────────────────────────────┤
+│           Wire Protocol Layer            │
+│  HANDSHAKE, DATA, ACK, PEER_ANNOUNCE     │
+├─────────────────────────────────────────┤
+│           Transport Layer                │
+│    libp2p (gossipsub, kad, mdns)         │
+├─────────────────────────────────────────┤
+│           Encryption Layer               │
+│  X25519 key exchange, ChaCha20-Poly1305  │
+├─────────────────────────────────────────┤
+│           Identity Layer                 │
+│    Ed25519 keypairs, BIP39 mnemonics     │
+└─────────────────────────────────────────┘
+```
+
+## Identity
+
+Each node has a cryptographic identity derived from a BIP39 mnemonic phrase:
+
+- **Signing key**: Ed25519 private key
+- **Verifying key**: Ed25519 public key
+- **Mnemonic**: 12 or 24 word BIP39 phrase for backup and recovery
+- **Address**: Aptos-compatible address (0x + 64 hex characters)
+- **Peer ID**: libp2p-compatible peer identifier
+
+```rust
+// Generate a new identity
+let identity = NodeIdentity::generate()?;
+
+// Recover from mnemonic
+let identity = NodeIdentity::from_mnemonic_phrase("word1 word2 word3 ...")?;
+```
+
+<Warning>
+The mnemonic phrase is the sole backup for a node's identity. Store it securely — anyone with the mnemonic can impersonate the node.
+</Warning>
+
+## Encryption
+
+All peer-to-peer communication is encrypted using:
+
+1. **X25519 ECDH** — Ephemeral key exchange to establish a shared secret
+2. **HKDF-SHA256** — Key derivation from the shared secret
+3. **ChaCha20-Poly1305** — Authenticated encryption with associated data (AEAD)
+
+Each session maintains a nonce counter that increments per message, preventing replay attacks.
+
+## Transport
+
+The mesh network uses **libp2p** with five behaviours:
+
+| Behaviour | Purpose |
+|-----------|---------|
+| **Gossipsub** | Message broadcasting across the network |
+| **Kademlia DHT** | Distributed hash table for wide-area peer discovery |
+| **mDNS** | Local network peer discovery |
+| **Identify** | Peer information exchange |
+| **Ping** | Connection health monitoring |
+
+### Topics
+
+Messages are published to topic channels:
+
+| Topic | Purpose |
+|-------|---------|
+| `apn.peers` | Peer announcements and discovery |
+| `apn.tasks` | Task availability and claims |
+| `apn.heartbeat` | Node liveness signals |
+| `apn.topology` | Topology graph updates |
+| `apn.mining` | Mining share submissions |
+| `apn.pythia` | Pythia layer messages |
+
+## NAT traversal
+
+For nodes behind NAT, Alpha Protocol falls back to **NATS relay**:
+
+1. Node attempts direct libp2p connection
+2. If direct connection fails, routes through NATS relay server
+3. Relay is transparent to the application layer — encryption is maintained end-to-end
+
+## Resource tracking
+
+Each node reports its available resources:
+
+```rust
+struct NodeResources {
+    cpu_cores: u32,
+    ram_mb: i64,
+    disk_mb: i64,
+    gpu_available: bool,
+}
+```
+
+Resources are broadcast via heartbeat messages and used by Pythia (L3) for task routing decisions.
+
+## Wire protocol
+
+Messages follow a structured format:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `message_type` | enum | HANDSHAKE, DATA, ACK, PEER_ANNOUNCE, ERROR |
+| `payload` | bytes | Encrypted message content |
+| `timestamp` | i64 | Unix timestamp |
+| `sender_id` | string | Node address |
+
+## Crate structure
+
+```
+crates/alpha-protocol-core/src/
+├── identity.rs           # Node identity (Ed25519, BIP39)
+├── identity_storage.rs   # Secure identity persistence
+├── crypto.rs             # Encryption (X25519, ChaCha20)
+├── mesh.rs               # libp2p mesh networking
+├── node.rs               # AlphaNode orchestration
+├── relay.rs              # NATS relay fallback
+├── wire.rs               # Wire protocol format
+├── economics.rs          # Resource tracking
+├── mining.rs             # Proof-of-work mining
+├── reward_tracker.rs     # Per-node reward tracking
+├── reward_distributor.rs # Bulk reward distribution
+└── resources.rs          # System resource metrics
+```

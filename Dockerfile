@@ -33,6 +33,11 @@ RUN npm run generate-types
 RUN cd frontend && npm install --ignore-scripts && npx vite build --mode production
 RUN cargo build --release --bin server
 
+# Build Mintlify documentation as static site
+RUN mkdir -p /app/.docs-output && \
+    (cd docs && npx mintlify build --output /app/.docs-output || \
+     echo '<html><head><meta http-equiv="refresh" content="0;url=/"></head><body>Docs not built. Redirecting...</body></html>' > /app/.docs-output/index.html)
+
 # Runtime stage - Use CUDA-enabled base for GPU support
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04 AS runtime
 
@@ -79,6 +84,9 @@ RUN python3.11 -m pip install --no-cache-dir chatterbox-tts
 # Copy binary and frontend assets from builder
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 COPY --from=builder /app/frontend/dist /app/frontend/dist
+
+# Copy built docs (if available)
+COPY --from=builder /app/.docs-output /app/docs-site
 
 # Copy Python scripts for Chatterbox server
 COPY scripts/chatterbox_server.py /app/scripts/chatterbox_server.py
