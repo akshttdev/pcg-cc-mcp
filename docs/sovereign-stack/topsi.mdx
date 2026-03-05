@@ -1,0 +1,114 @@
+---
+title: "Topsi Orchestrator"
+description: "Topological Super Intelligence — the master orchestrator that manages agent topology, task routing, and dynamic team formation"
+---
+
+# Topsi Orchestrator
+
+Topsi (Topological Super Intelligence) is the **master controller** of the PCG CC platform. It maintains a live topology graph of all agents, tasks, and resources, enabling intelligent routing, dynamic team formation, and proactive health monitoring.
+
+## Core capabilities
+
+| Capability | Description |
+|-----------|-------------|
+| **Global awareness** | Maintains live topology graphs of nodes, edges, and clusters |
+| **Pattern detection** | Identifies bottlenecks, disconnections, and emerging patterns |
+| **Dynamic re-routing** | Finds alternate paths when routes degrade or nodes fail |
+| **Collective intelligence** | Forms and dissolves agent teams based on task requirements |
+| **Policy enforcement** | Uses topological invariants to enforce organisational rules |
+| **Graceful scaling** | Seamlessly integrates new agents and resources |
+
+## Topology graph
+
+The topology is a directed graph stored in SQLite:
+
+- **Nodes** — Agents, tasks, and resources with status, capabilities, and weight
+- **Edges** — Relationships between nodes (can_execute, depends_on, monitors)
+- **Clusters** — Dynamic groups of agents formed for coordinated work
+
+```
+     ┌─────────┐     can_execute    ┌──────────┐
+     │ Agent A  │──────────────────►│  Task 1   │
+     └─────────┘                    └──────────┘
+          │                              │
+     member_of                      depends_on
+          │                              │
+          ▼                              ▼
+    ┌───────────┐                  ┌──────────┐
+    │ Cluster 1 │                  │  Task 2   │
+    └───────────┘                  └──────────┘
+          │
+     member_of
+          │
+     ┌─────────┐
+     │ Agent B  │
+     └─────────┘
+```
+
+## Task routing
+
+When a task needs execution, Topsi evaluates:
+
+1. **Agent capabilities** — Does the agent have the required skills?
+2. **Current workload** — How many tasks is the agent already running?
+3. **Topology position** — How close is the agent to related tasks/resources?
+4. **Health score** — Is the agent operating normally?
+
+The `route_task` tool returns the best available agent with a confidence score and reasoning.
+
+## Team formation
+
+For complex objectives requiring multiple agents, Topsi forms **dynamic clusters**:
+
+1. **Identify the objective** — What needs to be accomplished?
+2. **Select agents** — Choose agents with complementary capabilities
+3. **Form cluster** — Group agents into a named team via `form_team`
+4. **Coordinate** — Agents in a cluster share context via the orchestration blackboard
+5. **Dissolve** — Release agents back to the general pool via `dissolve_team`
+
+## Prioritisation engine
+
+Topsi uses an **Expected Free Energy (EFE)** model for goal prioritisation:
+
+- **Entropy minimisation** — Reduce uncertainty about the best course of action
+- **Multi-factor scoring** — Combine urgency, impact, dependencies, and agent availability
+- **Proactive recommendations** — Surface suggestions before problems become critical
+
+## Health monitoring
+
+Topsi continuously monitors the topology for:
+
+- **Isolated nodes** — Agents or tasks with no connections
+- **Failed edges** — Broken relationships between nodes
+- **Overloaded agents** — Agents exceeding healthy task counts
+- **Dependency cycles** — Circular chains that would cause deadlocks
+
+Use `detect_issues` via the [TopsiServer MCP](/mcp/topsi-server) to query issues programmatically.
+
+## MCP interface
+
+Topsi exposes 10 tools through its dedicated MCP server. See the [TopsiServer Reference](/mcp/topsi-server) for the complete tool API.
+
+## Crate structure
+
+```
+crates/topsi/src/
+├── agent.rs              # TopsiAgent with access control
+├── topology/
+│   ├── graph.rs          # Graph nodes, edges, clusters
+│   ├── engine.rs         # Topology reasoning
+│   ├── routing.rs        # Path-finding algorithms
+│   ├── clusters.rs       # Team management
+│   ├── patterns.rs       # Bottleneck detection
+│   ├── invariants.rs     # Constraint checking
+│   └── voice.rs          # Voice topology (meetings)
+├── prioritization/
+│   ├── free_energy.rs    # EFE calculations
+│   ├── priority_score.rs # Multi-factor scoring
+│   ├── recommender.rs    # Recommendations
+│   └── goals.rs          # Goal tracking
+├── meeting.rs            # Meeting manager
+├── context.rs            # Global topology context
+├── config.rs             # Configuration
+└── tools/                # MCP tool schemas
+```

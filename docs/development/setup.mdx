@@ -1,0 +1,150 @@
+---
+title: "Development Setup"
+description: "Set up your local PCG CC development environment — prerequisites, installation, and first run"
+---
+
+# Development Setup
+
+Get PCG CC running locally for development in under 10 minutes.
+
+## Prerequisites
+
+| Requirement | Version | Purpose |
+|------------|---------|---------|
+| **Rust** | 1.75+ | Backend compilation |
+| **Node.js** | 20+ | Frontend build tooling |
+| **pnpm** | 9+ | Package management |
+| **SQLx CLI** | Latest | Database migrations |
+| **Git** | 2.30+ | Worktree support |
+
+<Steps>
+<Step title="Install Rust toolchain">
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  rustup default stable
+  ```
+</Step>
+
+<Step title="Install Node.js and pnpm">
+  ```bash
+  # Install Node.js (via nvm recommended)
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+  nvm install 20
+
+  # Install pnpm
+  npm install -g pnpm
+  ```
+</Step>
+
+<Step title="Install SQLx CLI">
+  ```bash
+  cargo install sqlx-cli --no-default-features --features sqlite
+  ```
+</Step>
+
+<Step title="Clone and install dependencies">
+  ```bash
+  git clone https://github.com/nicholasgriffintn/pcg-cc-mcp.git
+  cd pcg-cc-mcp
+  pnpm install
+  ```
+</Step>
+
+<Step title="Start development servers">
+  ```bash
+  pnpm run dev
+  ```
+
+  This starts both servers:
+  - **Frontend**: `http://localhost:3000` (Vite dev server with HMR)
+  - **Backend**: Auto-assigned port (proxied through Vite)
+
+  <Check>
+  Open `http://localhost:3000` in your browser. You should see the Mission Control dashboard.
+  </Check>
+</Step>
+</Steps>
+
+## Individual server commands
+
+<Tabs>
+<Tab title="Both servers">
+  ```bash
+  pnpm run dev
+  ```
+</Tab>
+
+<Tab title="Frontend only">
+  ```bash
+  npm run frontend:dev    # Port 3000
+  ```
+</Tab>
+
+<Tab title="Backend only">
+  ```bash
+  npm run backend:dev     # Auto-assigned port
+  ```
+</Tab>
+</Tabs>
+
+## Database
+
+The SQLite database is automatically copied from `dev_assets_seed/` when the dev server starts. No manual database setup is required.
+
+To apply new migrations manually:
+
+```bash
+sqlx migrate run
+```
+
+<Note>
+Migrations also run automatically on server startup, so restarting the dev server applies any pending migrations.
+</Note>
+
+## Environment variables
+
+### Build-time
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `GITHUB_CLIENT_ID` | GitHub OAuth app ID | Preconfigured |
+| `POSTHOG_API_KEY` | Analytics (optional) | None |
+
+### Runtime
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `BACKEND_PORT` | Backend server port | Auto-assigned |
+| `FRONTEND_PORT` | Frontend dev port | `3000` |
+| `HOST` | Backend bind address | `127.0.0.1` |
+| `DISABLE_WORKTREE_ORPHAN_CLEANUP` | Debug flag for worktrees | `false` |
+
+## Verification
+
+Run the full check suite to verify your setup:
+
+```bash
+npm run check
+```
+
+This runs frontend linting, formatting checks, TypeScript compilation, and backend `cargo clippy`.
+
+<AccordionGroup>
+<Accordion title="Troubleshooting: SQLx compile errors">
+If you see `set DATABASE_URL to use query macros online, or run cargo sqlx prepare`, the SQLx query cache needs regenerating:
+
+```bash
+DATABASE_URL="sqlite:path/to/dev.db" cargo sqlx prepare --workspace
+```
+
+Most new code uses runtime queries to avoid this requirement.
+</Accordion>
+
+<Accordion title="Troubleshooting: Port conflicts">
+If port 3000 is already in use, set a different frontend port:
+
+```bash
+FRONTEND_PORT=3001 npm run frontend:dev
+```
+</Accordion>
+</AccordionGroup>
