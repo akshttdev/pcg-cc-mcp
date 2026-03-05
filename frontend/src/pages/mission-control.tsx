@@ -120,58 +120,59 @@ export default function MissionControlPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-background">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-primary p-2">
-            <Activity className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold">Mission Control</h1>
-            <p className="text-sm text-muted-foreground">
-              Monitor and coordinate active agent executions
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          {/* Pending approvals indicator */}
-          <PendingApprovalsIndicator />
-
-          {/* Summary stats */}
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{totalActiveCount}</span>
-              <span className="text-muted-foreground">Active</span>
+      <div className="relative border-b border-border/40 bg-card/50 backdrop-blur-sm overflow-hidden">
+        <div className="ambient-glow -top-48 -right-32" />
+        <div className="page-header px-4 sm:px-6 lg:px-8 py-4 max-w-[1600px] mx-auto relative">
+          <div className="flex items-center gap-3">
+            <div className="section-header-icon">
+              <Activity className="h-5 w-5" />
             </div>
-            <Separator orientation="vertical" className="h-5" />
-            <div className="flex items-center gap-2">
-              <Cpu className="h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground">
-                {dashboard?.by_project.length ?? 0} Projects
-              </span>
+            <div>
+              <h1 className="page-title">Mission Control</h1>
+              <p className="page-description">
+                Monitor and coordinate active agent executions
+              </p>
             </div>
-            <Separator orientation="vertical" className="h-5" />
-            <div className="flex items-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${eventsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-              <span className="text-muted-foreground text-xs">
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <PendingApprovalsIndicator />
+
+            <div className="hidden sm:flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <Bot className="h-4 w-4 text-muted-foreground" />
+                <span className="font-semibold">{totalActiveCount}</span>
+                <span className="text-muted-foreground">Active</span>
+              </div>
+              <Separator orientation="vertical" className="h-5" />
+              <div className="flex items-center gap-2">
+                <Cpu className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  {dashboard?.by_project.length ?? 0} Projects
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-surface-2">
+              <div className={`status-dot ${eventsConnected ? 'status-dot-online' : 'status-dot-error'}`} />
+              <span className="text-muted-foreground text-xs font-medium">
                 {eventsConnected ? 'Live' : 'Disconnected'}
               </span>
             </div>
-          </div>
 
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="h-3.5 w-3.5 sm:mr-2" />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-hidden p-6">
-        <div className="h-full grid grid-cols-12 gap-6">
+      <div className="flex-1 overflow-hidden p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
+        <div className="h-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 sm:gap-6">
           {/* Left panel - Active agents */}
-          <div className="col-span-3 flex flex-col overflow-hidden">
+          <div className="xl:col-span-3 md:col-span-1 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-medium flex items-center gap-2">
                 <Bot className="h-4 w-4" />
@@ -182,7 +183,7 @@ export default function MissionControlPage() {
               )}
             </div>
 
-            <div className="flex-1 overflow-auto space-y-3 pr-2">
+            <div className="flex-1 overflow-auto space-y-3 pr-2 animate-stagger">
               {isLoading ? (
                 <>
                   <AgentCardSkeleton />
@@ -215,7 +216,7 @@ export default function MissionControlPage() {
           </div>
 
           {/* Center panel - Timeline and details */}
-          <div className="col-span-6 flex flex-col overflow-hidden">
+          <div className="xl:col-span-6 md:col-span-1 flex flex-col overflow-hidden">
             <Tabs defaultValue="timeline" className="h-full flex flex-col">
               <TabsList className="w-fit">
                 <TabsTrigger value="timeline" className="gap-2">
@@ -376,7 +377,7 @@ export default function MissionControlPage() {
               </TabsContent>
 
               <TabsContent value="grid" className="flex-1 mt-4 overflow-hidden">
-                <div className="grid grid-cols-2 gap-4 h-full overflow-auto">
+                <div className="grid grid-cols-2 gap-4 h-full overflow-auto animate-stagger">
                   {dashboard?.by_project.map((project) => (
                     <Card key={project.project_id}>
                       <CardHeader className="pb-2">
@@ -424,7 +425,7 @@ export default function MissionControlPage() {
           </div>
 
           {/* Right panel - Control, Artifacts and Collaboration */}
-          <div className="col-span-3 flex flex-col gap-4 overflow-hidden">
+          <div className="xl:col-span-3 md:col-span-2 xl:col-auto flex flex-col gap-4 overflow-hidden">
             {selectedExecution ? (
               <>
                 {/* Execution Control Panel */}

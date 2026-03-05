@@ -166,7 +166,7 @@ export default function PulsePage() {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {/* Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-stagger">
             <Card>
               <CardContent className="p-4">
                 <div className="text-2xl font-bold">{stats?.total_content ?? 0}</div>

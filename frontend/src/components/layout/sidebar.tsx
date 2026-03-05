@@ -28,8 +28,6 @@ import {
   BarChart3,
   Bot,
   Network,
-  Globe,
-  Activity,
   Building2,
   UserCircle,
   GripVertical,
@@ -56,7 +54,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { projectsApi, organizationsApi, projectFoldersApi, tasksApi, personsApi, type PersonRecord } from '@/lib/api';
-import type { SidebarTree, SidebarOrg, SidebarClient as SidebarClientType, SidebarProject as SidebarProjectType, SidebarProjectFolder as SidebarProjectFolderType, SidebarSharedBoardGroup as SidebarSharedBoardGroupType } from '@/lib/api';
+import type { SidebarTree, SidebarOrg, SidebarClient as SidebarClientType, SidebarProject as SidebarProjectType, SidebarProjectFolder as SidebarProjectFolderType } from '@/lib/api';
 import { showProjectForm } from '@/lib/modals';
 import type { Project, ProjectBoard, TaskWithAttemptStatus } from 'shared/types';
 import { useCommandStore } from '@/stores/useCommandStore';
@@ -100,8 +98,6 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi' },
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
-  { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse' },
-  { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh' },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'Settings', icon: Settings, to: '/settings', id: 'settings' },
 ];
@@ -982,12 +978,14 @@ function SortableProjectList({
 
 function ClientGroup({
   client,
+  orgId,
   projectId,
   expandedProjects,
   onToggleProject,
   queryClient,
 }: {
   client: SidebarClientType;
+  orgId: string;
   projectId?: string;
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
@@ -1011,20 +1009,18 @@ function ClientGroup({
           variant="ghost"
           className="w-full justify-between px-2 py-1 h-auto font-normal text-xs"
         >
-          <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0 group/client">
             <HealthDot status={client.health_status} />
             <UserCircle className="h-3.5 w-3.5 text-blue-500 shrink-0" />
             <span className="truncate">{client.name}</span>
-            {/* CRM tracking dot: green = linked + researched, amber = linked but not researched, none = untracked */}
-            {client.crm_person_id && (
-              <span
-                className={cn(
-                  'inline-block w-1.5 h-1.5 rounded-full shrink-0',
-                  (client.crm_confidence ?? 0) > 0.4 ? 'bg-green-500' : 'bg-amber-400'
-                )}
-                title={(client.crm_confidence ?? 0) > 0.4 ? 'CRM: tracked & researched' : 'CRM: linked, not yet researched'}
-              />
-            )}
+            <Link
+              to={`/organizations/${orgId}?tab=projects&client=${client.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="opacity-0 group-hover/client:opacity-100 ml-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+              title={`${client.name} in org profile`}
+            >
+              <ExternalLink className="h-3 w-3" />
+            </Link>
           </div>
           <div className="flex items-center gap-1">
             {client.active_issues_count != null && client.active_issues_count > 0 && (
@@ -1061,84 +1057,6 @@ function ClientGroup({
 }
 
 // ============================================================================
-// SharedBoardGroup — renders boards shared TO this org from a source org
-// ============================================================================
-
-function SharedBoardGroup({
-  group,
-  projectId: _projectId,
-}: {
-  group: SidebarSharedBoardGroupType;
-  projectId?: string;
-}) {
-  const location = useLocation();
-  const [expanded, setExpanded] = useState(false);
-
-  const shareLabel = group.share_type === 'joint_venture'
-    ? 'Joint Venture'
-    : group.share_type === 'review'
-    ? 'Review'
-    : 'Collaboration';
-
-  return (
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          className="w-full justify-between px-2 py-1 h-auto font-normal text-xs"
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Share2 className="h-3.5 w-3.5 text-orange-500 shrink-0" />
-            <span className="truncate">{group.source_org_name}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] px-1 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300">
-              {shareLabel}
-            </span>
-            {expanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-          </div>
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pl-4">
-        <div className="space-y-0.5 py-0.5">
-          {group.boards.map((board) => {
-            const params = new URLSearchParams({ board: board.board_id });
-            const isActive =
-              location.pathname === `/projects/${board.project_id}/tasks` &&
-              location.search.includes(`board=${board.board_id}`);
-
-            return (
-              <Link
-                key={board.board_id}
-                to={{
-                  pathname: `/projects/${board.project_id}/tasks`,
-                  search: params.toString(),
-                }}
-                className={cn(
-                  'block px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground truncate',
-                  isActive && 'bg-accent text-accent-foreground'
-                )}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Folder className="h-3 w-3 text-muted-foreground shrink-0" />
-                  <span className="truncate">
-                    {board.project_name} &rarr; {board.board_name}
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-// ============================================================================
 // OrgSection — renders org name as section header with internal projects + clients
 // ============================================================================
 
@@ -1157,6 +1075,7 @@ function OrgSection({
   onToggleProject: (id: string) => void;
   queryClient: QueryClient;
 }) {
+  const location = useLocation();
   const hasActiveProject =
     org.internal_projects.some((p) => p.id === projectId) ||
     (org.internal_folders || []).some((f) => f.projects.some((p) => p.id === projectId)) ||
@@ -1173,33 +1092,29 @@ function OrgSection({
   }, [hasActiveProject]);
 
   return (
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          className="group w-full justify-between px-2 py-1.5 h-auto font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground"
+    <div>
+      <div className="flex items-center px-2 py-1.5">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="shrink-0 mr-1 text-muted-foreground hover:text-foreground"
         >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <HealthDot status={org.health_status} />
-            <Building2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{org.name}</span>
-            <Link
-              to={`/organizations/${org.id}`}
-              onClick={(e) => e.stopPropagation()}
-              className="opacity-0 group-hover:opacity-100 ml-0.5 shrink-0 text-muted-foreground hover:text-foreground"
-              title={`${org.name} overview`}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Link>
-          </div>
-          {expanded ? (
-            <ChevronDown className="h-3 w-3" />
-          ) : (
-            <ChevronRight className="h-3 w-3" />
+          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </button>
+        <Link
+          to={`/organizations/${org.id}`}
+          className={cn(
+            'flex items-center gap-1.5 min-w-0 font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors',
+            location.pathname === `/organizations/${org.id}` && 'text-foreground'
           )}
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pl-2">
+          title={`${org.name} overview`}
+        >
+          <HealthDot status={org.health_status} />
+          <Building2 className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{org.name}</span>
+        </Link>
+      </div>
+      {expanded && (
+      <div className="pl-2">
         <div className="space-y-0.5">
           {/* Org-level CRM — collapsible, same pattern as project CRM */}
           <OrgCrmSidebarLinks orgId={org.id} location={location} />
@@ -1229,28 +1144,13 @@ function OrgSection({
             <ClientGroup
               key={client.id}
               client={client}
+              orgId={org.id}
               projectId={projectId}
               expandedProjects={expandedProjects}
               onToggleProject={onToggleProject}
               queryClient={queryClient}
             />
           ))}
-
-          {/* Shared boards from other orgs */}
-          {org.shared_boards && org.shared_boards.length > 0 && (
-            <div className="space-y-0.5 py-0.5">
-              <div className="px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Shared with You
-              </div>
-              {org.shared_boards.map((group) => (
-                <SharedBoardGroup
-                  key={group.source_org_id}
-                  group={group}
-                  projectId={projectId}
-                />
-              ))}
-            </div>
-          )}
 
           {/* New Client / New Folder buttons (org admin only) */}
           {isAdmin && org.role === 'admin' && (
@@ -1285,8 +1185,9 @@ function OrgSection({
             </>
           )}
         </div>
-      </CollapsibleContent>
-    </Collapsible>
+      </div>
+      )}
+    </div>
   );
 }
 
@@ -1395,42 +1296,41 @@ export function Sidebar({ className }: SidebarProps) {
   });
 
   return (
-    <div className={cn("flex flex-col h-full bg-muted/30 border-r", className)}>
+    <div className={cn("flex flex-col h-full sidebar-container", className)}>
       {/* Primary Navigation */}
-      <div className="p-3 border-b">
-        <div className="space-y-1">
+      <div className="p-3 border-b border-border/40">
+        <div className="space-y-0.5">
           {filteredPrimaryNav.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname.startsWith(item.to);
 
             return (
               <Link key={item.id} to={item.to}>
-                <Button
-                  variant="ghost"
+                <div
                   className={cn(
-                    "w-full justify-start px-3 py-2 h-auto font-medium",
-                    isActive && "bg-accent text-accent-foreground",
-                    item.id === 'nora' && "bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/30 dark:hover:bg-purple-950/50",
-                    item.id === 'topsi' && "bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/30 dark:hover:bg-cyan-950/50"
+                    "sidebar-nav-item",
+                    isActive && "sidebar-nav-item-active",
+                    item.id === 'nora' && !isActive && "bg-purple-50/50 hover:bg-purple-100/50 dark:bg-purple-950/20 dark:hover:bg-purple-950/40",
+                    item.id === 'topsi' && !isActive && "bg-cyan-50/50 hover:bg-cyan-100/50 dark:bg-cyan-950/20 dark:hover:bg-cyan-950/40"
                   )}
                 >
                   <Icon className={cn(
-                    "h-4 w-4 mr-3",
+                    "h-4 w-4",
                     item.id === 'nora' && "text-purple-600",
                     item.id === 'topsi' && "text-cyan-600"
                   )} />
-                  <span className="text-sm">{item.label}</span>
+                  <span className="flex-1">{item.label}</span>
                   {item.id === 'nora' && (
-                    <span className="ml-auto text-[10px] bg-purple-600 text-white px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] bg-purple-600 text-white px-1.5 py-0.5 rounded">
                       ADMIN
                     </span>
                   )}
                   {item.id === 'topsi' && (
-                    <span className="ml-auto text-[10px] bg-cyan-600 text-white px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] bg-cyan-600 text-white px-1.5 py-0.5 rounded">
                       ADMIN
                     </span>
                   )}
-                </Button>
+                </div>
               </Link>
             );
           })}
@@ -1439,42 +1339,38 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* Global Views - Admin Only */}
       {isAdmin && (
-        <div className="border-b">
+        <div className="border-b border-border/40">
           <Collapsible open={globalViewsExpanded} onOpenChange={setGlobalViewsExpanded}>
             <CollapsibleTrigger asChild>
-              <Button
-                variant="ghost"
-                className="w-full justify-between px-3 py-2 h-auto font-medium text-muted-foreground hover:text-foreground"
-              >
-                <div className="flex items-center">
-                  <BarChart3 className="h-4 w-4 mr-3" />
-                  <span className="text-sm">Global Views</span>
+              <div className="sidebar-nav-item mx-3 my-1.5 justify-between">
+                <div className="flex items-center gap-2.5">
+                  <BarChart3 className="h-4 w-4" />
+                  <span>Global Views</span>
                 </div>
                 {globalViewsExpanded ? (
-                  <ChevronDown className="h-4 w-4" />
+                  <ChevronDown className="h-3.5 w-3.5" />
                 ) : (
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-3.5 w-3.5" />
                 )}
-              </Button>
+              </div>
             </CollapsibleTrigger>
             <CollapsibleContent className="px-3 pb-2">
-              <div className="space-y-1 pl-4 border-l border-muted ml-2">
+              <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
                 {GLOBAL_VIEW_ITEMS.map((item) => {
                   const Icon = item.icon;
                   const isActive = location.pathname === item.to;
 
                   return (
                     <Link key={item.id} to={item.to}>
-                      <Button
-                        variant="ghost"
+                      <div
                         className={cn(
-                          "w-full justify-start px-2 py-1.5 h-auto font-normal text-sm",
-                          isActive && "bg-accent text-accent-foreground"
+                          "sidebar-nav-item text-xs py-1",
+                          isActive && "sidebar-nav-item-active"
                         )}
                       >
-                        <Icon className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                        <Icon className="h-3.5 w-3.5" />
                         {item.label}
-                      </Button>
+                      </div>
                     </Link>
                   );
                 })}
@@ -1486,7 +1382,7 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* Favorites Section */}
       {favorites.length > 0 && (
-        <div className="border-b">
+        <div className="border-b border-border/40">
           <div className="px-3 py-2">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Favorites
