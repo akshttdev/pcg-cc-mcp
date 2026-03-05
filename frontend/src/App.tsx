@@ -61,7 +61,6 @@ const CrmDeliveryPage       = lazy(() => import('@/pages/crm-delivery').then(m =
 const CrmConferencesPage    = lazy(() => import('@/pages/crm-conferences').then(m => ({ default: m.CrmConferencesPage })));
 const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').then(m => ({ default: m.CrmContactDetailPage })));
 const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
-const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
 const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
 const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
@@ -339,12 +338,8 @@ function AppContent() {
                         element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
                       />
                       <Route
-                        path="/people"
-                        element={<ProtectedRoute><PeoplePage /></ProtectedRoute>}
-                      />
-                      <Route
                         path="/people/:personId"
-                        element={<ProtectedRoute><PersonDetailPage /></ProtectedRoute>}
+                        element={<ProtectedRoute adminOnly><PersonDetailPage /></ProtectedRoute>}
                       />
                       <Route
                         path="/proposals"
