@@ -207,7 +207,7 @@ impl AccessControl {
         #[derive(sqlx::FromRow)]
         struct MemberRow {
             user_id: Vec<u8>,
-            project_id: String,
+            project_id: Vec<u8>,  // BLOB in SQLite — must use from_slice
             role: String,
             granted_at: String,
             project_name: String,
@@ -231,7 +231,7 @@ impl AccessControl {
                     String::from_utf8_lossy(&row.user_id).to_string()
                 };
 
-                if let Ok(project_id) = Uuid::parse_str(&row.project_id) {
+                if let Ok(project_id) = Uuid::from_slice(&row.project_id) {
                     let role = match row.role.as_str() {
                         "owner" => ProjectRole::Owner,
                         "editor" => ProjectRole::Editor,
@@ -256,8 +256,8 @@ impl AccessControl {
                         .insert(project_id, access);
                 }
             }
-        } else {
-            tracing::debug!("project_members table not found, skipping membership sync");
+        } else if let Err(e) = member_result {
+            tracing::warn!("Failed to sync project_members: {}", e);
         }
 
         tracing::info!(

@@ -51,7 +51,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         router = router
             .route("/auth/login", post(auth_sqlite::login))
             .route("/auth/me", get(auth_sqlite::get_current_user))
-            .route("/auth/logout", post(auth_sqlite::logout));
+            .route("/auth/logout", post(auth_sqlite::logout))
+            .route("/auth/register", post(auth_sqlite::register))
+            .route("/auth/invite-info", get(super::organizations::invite_info));
     }
 
     // Add external auth routes (always available)

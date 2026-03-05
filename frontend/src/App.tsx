@@ -19,6 +19,7 @@ import { HotkeysProvider } from 'react-hotkeys-hook';
 import { ProjectProvider } from '@/contexts/project-context';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LoginPage } from '@/components/auth/LoginPage';
+import { SignupPage } from '@/pages/auth/SignupPage';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AdminRoute } from '@/components/auth/AdminRoute';
 import { ThemeMode } from 'shared/types';
@@ -243,6 +244,7 @@ function AppContent() {
                   <Suspense fallback={<PageLoader />}>
                     <SentryRoutes>
                       <Route path="/login" element={<LoginPage />} />
+                      <Route path="/signup" element={<SignupPage />} />
                       <Route
                         path="/oauth/:provider/callback"
                         element={<ProtectedRoute><OAuthCallbackPage /></ProtectedRoute>}

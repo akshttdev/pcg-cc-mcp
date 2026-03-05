@@ -1366,7 +1366,7 @@ impl TaskServer {
                 description: item.description.clone(),
                 parent_task_attempt: None,
                 image_ids: None,
-                priority,
+                priority: Some(priority),
                 assignee_id: item.assignee_id.clone(),
                 assigned_agent: None,
                 agent_id: None,

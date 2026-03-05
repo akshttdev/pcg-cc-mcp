@@ -59,6 +59,9 @@ pub struct Person {
     /// FK to users(id) — assigned sales rep
     pub assigned_to: Option<Uuid>,
 
+    /// FK to organizations(id) — the org representing this person's company
+    pub company_org_id: Option<Uuid>,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -120,6 +123,7 @@ pub struct CreatePerson {
     pub emails: Option<Vec<serde_json::Value>>,
     pub phones: Option<Vec<serde_json::Value>>,
     pub assigned_to: Option<Uuid>,
+    pub company_org_id: Option<Uuid>,
 }
 
 #[derive(Debug, Default, Deserialize, TS)]
@@ -148,6 +152,7 @@ pub struct UpdatePerson {
     pub emails: Option<Vec<serde_json::Value>>,
     pub phones: Option<Vec<serde_json::Value>>,
     pub assigned_to: Option<Uuid>,
+    pub company_org_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]

@@ -69,13 +69,20 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
           </Button>
 
           {/* Logo */}
-          <div className="flex items-center mr-3 sm:mr-5 cursor-pointer hover:opacity-80 transition-opacity shrink-0" onClick={() => navigate('/projects')}>
+          <div className="flex items-center gap-2.5 mr-3 sm:mr-5 cursor-pointer hover:opacity-80 transition-opacity shrink-0" onClick={() => navigate('/projects')}>
             <img
-              src="/orcha-logo.png"
-              alt="ORCHA"
-              className="h-7 sm:h-8 w-auto"
+              src="/pcg-icon.png"
+              alt="Powerclub Global"
+              className="h-8 sm:h-9 w-auto"
             />
-            <span className="ml-2 text-base sm:text-lg font-bold tracking-wide hidden sm:inline">ORCHA</span>
+            <div className="hidden sm:flex flex-col leading-none">
+              <span style={{ fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: '0.08em', fontSize: '0.85rem', color: '#b8962e' }}>
+                POWERCLUB GLOBAL
+              </span>
+              <span style={{ fontFamily: "'Cinzel', serif", fontWeight: 400, letterSpacing: '0.18em', fontSize: '0.6rem' }} className="text-muted-foreground">
+                DASHBOARD
+              </span>
+            </div>
           </div>
 
           <div className="flex-1 min-w-0">

@@ -36,6 +36,9 @@ pub struct Organization {
     pub is_active: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub invite_token: Option<String>,
+    pub pending_owner_email: Option<String>,
+    pub created_by_org_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -219,7 +222,7 @@ impl User {
 impl Organization {
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at FROM organizations WHERE id = ?"
+            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id FROM organizations WHERE id = ?"
         )
         .bind(id)
         .fetch_optional(pool)
@@ -228,7 +231,7 @@ impl Organization {
 
     pub async fn find_by_slug(pool: &SqlitePool, slug: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at FROM organizations WHERE slug = ?"
+            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id FROM organizations WHERE slug = ?"
         )
         .bind(slug)
         .fetch_optional(pool)
@@ -237,7 +240,7 @@ impl Organization {
 
     pub async fn find_all_active(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at FROM organizations WHERE is_active = 1 ORDER BY name ASC"
+            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id FROM organizations WHERE is_active = 1 ORDER BY name ASC"
         )
         .fetch_all(pool)
         .await
@@ -245,7 +248,7 @@ impl Organization {
 
     pub async fn find_by_user(pool: &SqlitePool, user_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            r#"SELECT o.id, o.name, o.slug, o.description, o.avatar_url, o.owner_id, o.settings, o.is_active, o.created_at, o.updated_at
+            r#"SELECT o.id, o.name, o.slug, o.description, o.avatar_url, o.owner_id, o.settings, o.is_active, o.created_at, o.updated_at, o.invite_token, o.pending_owner_email, o.created_by_org_id
                FROM organizations o
                INNER JOIN organization_members om ON om.organization_id = o.id
                WHERE om.user_id = ? AND o.is_active = 1
@@ -265,7 +268,7 @@ impl Organization {
         sqlx::query_as::<_, Organization>(
             r#"INSERT INTO organizations (id, name, slug, description, avatar_url, owner_id)
                VALUES (?, ?, ?, ?, ?, ?)
-               RETURNING id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at"#,
+               RETURNING id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id"#,
         )
         .bind(id)
         .bind(&data.name)
@@ -294,7 +297,7 @@ impl Organization {
         sqlx::query_as::<_, Organization>(
             r#"UPDATE organizations SET name = ?, slug = ?, description = ?, avatar_url = ?, updated_at = datetime('now')
                WHERE id = ?
-               RETURNING id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at"#,
+               RETURNING id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id"#,
         )
         .bind(name)
         .bind(slug)
