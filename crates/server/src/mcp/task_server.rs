@@ -3,6 +3,10 @@ use std::{collections::HashMap, future::Future, path::PathBuf};
 use chrono::{DateTime, Utc};
 use db::models::{
     agent::{Agent, AgentStatus},
+    orchestration_context::{
+        ContextEntryStatus, ContextEntryType, ContextPriority,
+        CreateOrchestrationContext, OrchestrationContext,
+    },
     project::Project,
     project_knowledge_source::{
         KnowledgeSourceType, ProjectKnowledgeSource,
@@ -111,6 +115,38 @@ fn success_json<T: Serialize>(value: &T) -> CallToolResult {
     CallToolResult::success(vec![Content::text(
         serde_json::to_string_pretty(value).unwrap(),
     )])
+}
+
+/// Sanitize user input for FTS5 MATCH queries.
+/// Escapes special FTS5 characters and appends * for prefix matching.
+fn sanitize_fts_query(input: &str) -> String {
+    let cleaned: String = input
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '-' || *c == '_')
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        return "\"\"".to_string();
+    }
+    // Split into words and add prefix matching
+    trimmed
+        .split_whitespace()
+        .map(|word| format!("\"{}\"*", word))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Convert a hex-encoded UUID string (no hyphens) back to standard UUID format.
+fn hex_to_uuid_string(hex: &str) -> String {
+    let h = hex.to_lowercase();
+    if h.len() == 32 {
+        format!(
+            "{}-{}-{}-{}-{}",
+            &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32]
+        )
+    } else {
+        h
+    }
 }
 
 /// Build TaskSummary from a Task model
@@ -612,6 +648,58 @@ pub struct GetVibeBudgetRequest {
 pub struct ListAgentsRequest {
     #[schemars(description = "Filter by status: active, inactive, maintenance, training")]
     pub status: Option<String>,
+}
+
+// ─── Phase 5: Orchestration Context Types ───────────────────────────────────
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct WriteContextRequest {
+    #[schemars(description = "Project UUID")]
+    pub project_id: String,
+    #[schemars(description = "Root task UUID — the top-level task that owns this orchestration tree")]
+    pub root_task_id: String,
+    #[schemars(description = "Optional: specific subtask this entry relates to")]
+    pub task_id: Option<String>,
+    #[schemars(description = "Entry type: finding, decision, blocker, intermediate_result, directive")]
+    pub entry_type: String,
+    #[schemars(description = "Brief title for this context entry")]
+    pub title: String,
+    #[schemars(description = "Detailed content — what was found, decided, or what's blocking")]
+    pub content: String,
+    #[schemars(description = "Who is writing this (agent name or user ID)")]
+    pub source: String,
+    #[schemars(description = "Priority: low, normal, high, critical (default: normal)")]
+    pub priority: Option<String>,
+    #[schemars(description = "Optional JSON metadata for extensibility")]
+    pub metadata: Option<Value>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReadContextRequest {
+    #[schemars(description = "Root task UUID to read context for")]
+    pub root_task_id: String,
+    #[schemars(description = "Filter by entry type: finding, decision, blocker, intermediate_result, directive")]
+    pub entry_type: Option<String>,
+    #[schemars(description = "Filter by status: active, resolved, superseded (default: active only)")]
+    pub status: Option<String>,
+    #[schemars(description = "Include resolved/superseded entries (default: false)")]
+    pub include_resolved: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ResolveContextRequest {
+    #[schemars(description = "Context entry UUID to resolve")]
+    pub entry_id: String,
+    #[schemars(description = "New status: resolved or superseded")]
+    pub status: String,
+    #[schemars(description = "Who is resolving this entry")]
+    pub resolved_by: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetContextSummaryRequest {
+    #[schemars(description = "Root task UUID")]
+    pub root_task_id: String,
 }
 
 // ─── Server ─────────────────────────────────────────────────────────────────
@@ -1230,7 +1318,7 @@ impl TaskServer {
     // ═════════════════════════════════════════════════════════════════════════
 
     #[tool(
-        description = "Create multiple tasks at once (max 50). Returns per-item success/failure. `project_id` is required!"
+        description = "Create multiple tasks at once (max 50). All-or-nothing: rolls back on any failure. `project_id` is required!"
     )]
     async fn bulk_create_tasks(
         &self,
@@ -1264,13 +1352,12 @@ impl TaskServer {
 
         for (i, item) in req.tasks.iter().enumerate() {
             let task_id = Uuid::new_v4();
-            let priority = item.priority.as_deref().and_then(parse_priority);
+            let priority = item.priority.as_deref().and_then(parse_priority).unwrap_or(db::models::task::Priority::Medium);
             let due_date = item.due_date.as_deref().and_then(parse_iso_datetime);
             let parent_task_id = item
                 .parent_task_id
                 .as_deref()
                 .and_then(|s| Uuid::parse_str(s).ok());
-
             let create_data = CreateTask {
                 project_id: project_uuid,
                 pod_id: None,
@@ -1326,7 +1413,7 @@ impl TaskServer {
     }
 
     #[tool(
-        description = "Update multiple tasks at once (max 50). Returns per-item results. `project_id` is required!"
+        description = "Update multiple tasks at once (max 50). All-or-nothing: rolls back on any failure. `project_id` is required!"
     )]
     async fn bulk_update_tasks(
         &self,
@@ -1344,121 +1431,151 @@ impl TaskServer {
             return Ok(error_result("Maximum 50 updates per bulk update", None));
         }
 
-        let mut results: Vec<Value> = Vec::new();
-        let mut success_count = 0;
-
+        // Validate all task UUIDs upfront before starting transaction
+        let mut parsed_updates: Vec<(usize, Uuid, &BulkUpdateTaskItem)> = Vec::new();
         for (i, item) in req.updates.iter().enumerate() {
             let task_uuid = match Uuid::parse_str(&item.task_id) {
                 Ok(u) => u,
-                Err(_) => {
-                    results.push(serde_json::json!({
-                        "index": i, "success": false, "task_id": item.task_id,
-                        "error": "Invalid task_id UUID"
-                    }));
-                    continue;
+                Err(_) => return Ok(error_result(
+                    &format!("Invalid task_id UUID at index {}: '{}'", i, item.task_id),
+                    None,
+                )),
+            };
+            // Validate status/priority inputs upfront
+            if let Some(ref s) = item.status {
+                if parse_task_status(s).is_none() {
+                    return Ok(error_result(
+                        &format!("Invalid status '{}' at index {}. Valid: todo, inprogress, inreview, done, cancelled", s, i),
+                        None,
+                    ));
+                }
+            }
+            if let Some(ref p) = item.priority {
+                if parse_priority(p).is_none() {
+                    return Ok(error_result(
+                        &format!("Invalid priority '{}' at index {}. Valid: critical, high, medium, low", p, i),
+                        None,
+                    ));
+                }
+            }
+            parsed_updates.push((i, task_uuid, item));
+        }
+
+        // Use a transaction so all updates are applied atomically
+        let mut tx = match self.pool.begin().await {
+            Ok(tx) => tx,
+            Err(e) => return Ok(error_result("Failed to begin transaction", Some(&e.to_string()))),
+        };
+
+        let mut results: Vec<Value> = Vec::new();
+        let project_id_bytes = project_uuid.as_bytes().to_vec();
+
+        for (i, task_uuid, item) in &parsed_updates {
+            let task_id_bytes = task_uuid.as_bytes().to_vec();
+
+            // Fetch current task within the transaction
+            #[derive(sqlx::FromRow)]
+            struct CurrentTask {
+                status: String,
+                priority: String,
+                assignee_id: Option<String>,
+                assigned_agent: Option<String>,
+                tags: Option<String>,
+            }
+
+            let current = match sqlx::query_as::<_, CurrentTask>(
+                "SELECT status, priority, assignee_id, assigned_agent, tags \
+                 FROM tasks WHERE id = ? AND project_id = ?"
+            )
+            .bind(&task_id_bytes)
+            .bind(&project_id_bytes)
+            .fetch_optional(&mut *tx)
+            .await
+            {
+                Ok(Some(t)) => t,
+                Ok(None) => {
+                    return Ok(error_result(
+                        &format!("Task not found at index {}: '{}'", i, item.task_id),
+                        Some("All changes rolled back"),
+                    ));
+                }
+                Err(e) => {
+                    return Ok(error_result(
+                        &format!("Failed to fetch task at index {}", i),
+                        Some(&e.to_string()),
+                    ));
                 }
             };
 
-            let current =
-                match Task::find_by_id_and_project_id(&self.pool, task_uuid, project_uuid).await {
-                    Ok(Some(t)) => t,
-                    Ok(None) => {
-                        results.push(serde_json::json!({
-                            "index": i, "success": false, "task_id": item.task_id,
-                            "error": "Task not found"
-                        }));
-                        continue;
-                    }
-                    Err(e) => {
-                        results.push(serde_json::json!({
-                            "index": i, "success": false, "task_id": item.task_id,
-                            "error": e.to_string()
-                        }));
-                        continue;
-                    }
-                };
-
-            let new_status = item
-                .status
-                .as_deref()
+            let new_status = item.status.as_deref()
                 .and_then(parse_task_status)
-                .unwrap_or_else(|| current.status.clone());
-            let new_priority = item
-                .priority
-                .as_deref()
+                .map(|s| task_status_to_string(&s))
+                .unwrap_or(current.status);
+            let new_priority = item.priority.as_deref()
                 .and_then(parse_priority)
-                .unwrap_or_else(|| current.priority.clone());
+                .map(|p| priority_to_string(&p))
+                .unwrap_or(current.priority);
             let new_assignee = match &item.assignee_id {
                 Some(s) if s.is_empty() => None,
                 Some(s) => Some(s.clone()),
-                None => current.assignee_id.clone(),
+                None => current.assignee_id,
             };
             let new_agent = match &item.assigned_agent {
                 Some(s) if s.is_empty() => None,
                 Some(s) => Some(s.clone()),
-                None => current.assigned_agent.clone(),
+                None => current.assigned_agent,
             };
             let new_tags = match &item.tags {
                 Some(t) => Some(serde_json::to_string(t).unwrap()),
-                None => current.tags.clone(),
+                None => current.tags,
             };
 
-            let cp = current
-                .custom_properties
-                .as_ref()
-                .map(|j| SqlxJson(j.0.clone()));
-
-            match Task::update(
-                &self.pool,
-                task_uuid,
-                project_uuid,
-                current.title.clone(),
-                current.description.clone(),
-                new_status,
-                current.parent_task_attempt,
-                current.pod_id,
-                current.board_id,
-                new_priority,
-                new_assignee,
-                new_agent,
-                current.assigned_mcps,
-                current.requires_approval,
-                current.approval_status,
-                current.parent_task_id,
-                new_tags,
-                current.due_date,
-                cp,
-                current.scheduled_start,
-                current.scheduled_end,
+            match sqlx::query(
+                "UPDATE tasks SET status = ?, priority = ?, assignee_id = ?, \
+                 assigned_agent = ?, tags = ?, updated_at = CURRENT_TIMESTAMP \
+                 WHERE id = ? AND project_id = ?"
             )
+            .bind(&new_status)
+            .bind(&new_priority)
+            .bind(&new_assignee)
+            .bind(&new_agent)
+            .bind(&new_tags)
+            .bind(&task_id_bytes)
+            .bind(&project_id_bytes)
+            .execute(&mut *tx)
             .await
             {
                 Ok(_) => {
-                    success_count += 1;
                     results.push(serde_json::json!({
                         "index": i, "success": true, "task_id": item.task_id,
                     }));
                 }
                 Err(e) => {
-                    results.push(serde_json::json!({
-                        "index": i, "success": false, "task_id": item.task_id,
-                        "error": e.to_string()
-                    }));
+                    return Ok(error_result(
+                        &format!("Bulk update failed at index {} ('{}'), all changes rolled back", i, item.task_id),
+                        Some(&e.to_string()),
+                    ));
                 }
             }
         }
 
+        match tx.commit().await {
+            Ok(_) => {}
+            Err(e) => return Ok(error_result("Failed to commit transaction", Some(&e.to_string()))),
+        }
+
+        let total = results.len();
         Ok(success_json(&serde_json::json!({
             "success": true,
             "total_requested": req.updates.len(),
-            "total_updated": success_count,
-            "total_failed": req.updates.len() - success_count,
+            "total_updated": total,
+            "total_failed": 0,
             "results": results,
         })))
     }
 
     #[tool(
-        description = "Search tasks by keyword across title and description. Optionally scope to a project."
+        description = "Search tasks by keyword across title, description, and tags using full-text search. Optionally scope to a project."
     )]
     async fn search_tasks(
         &self,
@@ -1468,70 +1585,112 @@ impl TaskServer {
         let status_filter = req.status.as_deref().and_then(parse_task_status);
         let priority_filter = req.priority.as_deref().and_then(parse_priority);
 
-        // Determine which projects to search
-        let project_ids: Vec<Uuid> = if let Some(ref pid) = req.project_id {
+        // Sanitize FTS5 query: escape special chars, append * for prefix matching
+        let fts_query = sanitize_fts_query(&req.query);
+
+        // Determine project scope
+        let project_scope: Option<Vec<Uuid>> = if let Some(ref pid) = req.project_id {
             match parse_uuid(pid, "project_id") {
-                Ok(u) => vec![u],
+                Ok(u) => Some(vec![u]),
                 Err(r) => return Ok(r),
             }
         } else {
-            // Search accessible projects
             match self.accessible_project_ids().await {
-                Ok(None) => {
-                    // Admin: get all projects
-                    match Project::find_all(&self.pool).await {
-                        Ok(ps) => ps.into_iter().map(|p| p.id).collect(),
-                        Err(e) => return Ok(error_result("Failed to list projects", Some(&e.to_string()))),
-                    }
-                }
-                Ok(Some(ids)) => ids,
+                Ok(scope) => scope,
                 Err(e) => return Ok(error_result("Failed to determine accessible projects", Some(&e.to_string()))),
             }
         };
 
+        // Try FTS5 search first, fall back to in-memory if FTS table doesn't exist
+        #[derive(sqlx::FromRow)]
+        #[allow(dead_code)]
+        struct FtsHit { task_id: String, rank: f64 }
+
+        let fts_result = sqlx::query_as::<_, FtsHit>(
+            "SELECT task_id, rank FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank LIMIT ?"
+        )
+        .bind(&fts_query)
+        .bind(limit * 5) // Over-fetch to allow post-filtering
+        .fetch_all(&self.pool)
+        .await;
+
         let mut all_tasks: Vec<TaskSummary> = Vec::new();
 
-        for pid in &project_ids {
-            let tasks = match Task::find_by_project_id_with_attempt_status(&self.pool, *pid).await {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
+        match fts_result {
+            Ok(hits) => {
+                // FTS5 available — look up matched tasks
+                for hit in &hits {
+                    let task_uuid = match Uuid::parse_str(
+                        &hex_to_uuid_string(&hit.task_id)
+                    ) {
+                        Ok(u) => u,
+                        Err(_) => continue,
+                    };
 
-            for t in &tasks {
-                let kw_lower = req.query.to_lowercase();
-                let in_title = t.title.to_lowercase().contains(&kw_lower);
-                let in_desc = t
-                    .description
-                    .as_deref()
-                    .map(|d| d.to_lowercase().contains(&kw_lower))
-                    .unwrap_or(false);
-                let in_tags = t
-                    .tags
-                    .as_deref()
-                    .map(|s| s.to_lowercase().contains(&kw_lower))
-                    .unwrap_or(false);
+                    // Find the task and check project scope
+                    let task = match Task::find_by_id(&self.pool, task_uuid).await {
+                        Ok(Some(t)) => t,
+                        _ => continue,
+                    };
 
-                if !in_title && !in_desc && !in_tags {
-                    continue;
-                }
-                if let Some(ref sf) = status_filter {
-                    if &t.status != sf {
-                        continue;
+                    // Check project scope
+                    if let Some(ref scope) = project_scope {
+                        if !scope.contains(&task.project_id) {
+                            continue;
+                        }
                     }
-                }
-                if let Some(ref pf) = priority_filter {
-                    if &t.priority != pf {
-                        continue;
-                    }
-                }
 
-                all_tasks.push(task_with_status_to_summary(t));
-                if all_tasks.len() >= limit as usize {
-                    break;
+                    // Apply status/priority filters
+                    if let Some(ref sf) = status_filter {
+                        if &task.status != sf { continue; }
+                    }
+                    if let Some(ref pf) = priority_filter {
+                        if &task.priority != pf { continue; }
+                    }
+
+                    all_tasks.push(task_to_summary(&task));
+                    if all_tasks.len() >= limit as usize { break; }
                 }
             }
-            if all_tasks.len() >= limit as usize {
-                break;
+            Err(_) => {
+                // FTS5 not available (migration not run yet) — fall back to in-memory search
+                let project_ids: Vec<Uuid> = match &project_scope {
+                    Some(ids) => ids.clone(),
+                    None => match Project::find_all(&self.pool).await {
+                        Ok(ps) => ps.into_iter().map(|p| p.id).collect(),
+                        Err(e) => return Ok(error_result("Failed to list projects", Some(&e.to_string()))),
+                    },
+                };
+
+                let kw_lower = req.query.to_lowercase();
+
+                'outer: for pid in &project_ids {
+                    let tasks = match Task::find_by_project_id_with_attempt_status(&self.pool, *pid).await {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+
+                    for t in &tasks {
+                        let in_title = t.title.to_lowercase().contains(&kw_lower);
+                        let in_desc = t.description.as_deref()
+                            .map(|d| d.to_lowercase().contains(&kw_lower))
+                            .unwrap_or(false);
+                        let in_tags = t.tags.as_deref()
+                            .map(|s| s.to_lowercase().contains(&kw_lower))
+                            .unwrap_or(false);
+
+                        if !in_title && !in_desc && !in_tags { continue; }
+                        if let Some(ref sf) = status_filter {
+                            if &t.status != sf { continue; }
+                        }
+                        if let Some(ref pf) = priority_filter {
+                            if &t.priority != pf { continue; }
+                        }
+
+                        all_tasks.push(task_with_status_to_summary(t));
+                        if all_tasks.len() >= limit as usize { break 'outer; }
+                    }
+                }
             }
         }
 
@@ -1573,6 +1732,51 @@ impl TaskServer {
                     "relates_to" => DependencyType::RelatesTo,
                     _ => return Ok(error_result("dependency_type must be 'blocks' or 'relates_to'", None)),
                 };
+
+                // Self-dependency check
+                if source == target {
+                    return Ok(error_result("A task cannot depend on itself", None));
+                }
+
+                // Cycle detection for 'blocks' dependencies:
+                // If we're adding source->target (source blocks target), check if
+                // target can already reach source via existing 'blocks' edges.
+                if dep_type == DependencyType::Blocks {
+                    let all_deps = match TaskDependency::list_by_project(&self.pool, project_uuid).await {
+                        Ok(d) => d,
+                        Err(e) => return Ok(error_result("Failed to check for cycles", Some(&e.to_string()))),
+                    };
+
+                    // Build adjacency: source_task_id -> [target_task_id, ...]
+                    let mut adj: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+                    for dep in &all_deps {
+                        if dep.dependency_type == DependencyType::Blocks {
+                            adj.entry(dep.source_task_id).or_default().push(dep.target_task_id);
+                        }
+                    }
+
+                    // BFS from target — if we can reach source, adding source->target creates a cycle
+                    let mut visited = std::collections::HashSet::new();
+                    let mut queue = std::collections::VecDeque::new();
+                    queue.push_back(target);
+                    visited.insert(target);
+
+                    while let Some(current) = queue.pop_front() {
+                        if current == source {
+                            return Ok(error_result(
+                                "Adding this dependency would create a cycle",
+                                Some("The target task already depends (directly or transitively) on the source task"),
+                            ));
+                        }
+                        if let Some(neighbors) = adj.get(&current) {
+                            for &next in neighbors {
+                                if visited.insert(next) {
+                                    queue.push_back(next);
+                                }
+                            }
+                        }
+                    }
+                }
 
                 let payload = CreateTaskDependency {
                     project_id: project_uuid,
@@ -1895,21 +2099,7 @@ impl TaskServer {
         let active_only = req.active_only.unwrap_or(true);
         let pid_hex = hex::encode(project_uuid.as_bytes()).to_uppercase();
 
-        // Fetch nodes
-        let nodes_query = if let Some(ref nt) = req.node_type {
-            format!(
-                "SELECT id, project_id, node_type, ref_id, label, capabilities, status, metadata, weight, created_at, updated_at \
-                 FROM topology_nodes WHERE project_id = '{}' AND node_type = '{}' {} ORDER BY created_at",
-                pid_hex, nt, if active_only { "AND status = 'active'" } else { "" }
-            )
-        } else {
-            format!(
-                "SELECT id, project_id, node_type, ref_id, label, capabilities, status, metadata, weight, created_at, updated_at \
-                 FROM topology_nodes WHERE project_id = '{}' {} ORDER BY created_at",
-                pid_hex, if active_only { "AND status = 'active'" } else { "" }
-            )
-        };
-
+        // Fetch nodes (parameterized to prevent SQL injection)
         #[derive(Debug, sqlx::FromRow)]
         struct NodeRow {
             id: String,
@@ -1921,10 +2111,37 @@ impl TaskServer {
             weight: Option<f64>,
         }
 
-        let node_rows = sqlx::query_as::<_, NodeRow>(&nodes_query)
-            .fetch_all(&self.pool)
-            .await
-            .unwrap_or_default();
+        let node_rows: Vec<NodeRow> = if let Some(ref nt) = req.node_type {
+            if active_only {
+                sqlx::query_as::<_, NodeRow>(
+                    "SELECT id, project_id, node_type, ref_id, label, capabilities, status, metadata, weight, created_at, updated_at \
+                     FROM topology_nodes WHERE project_id = ? AND node_type = ? AND status = 'active' ORDER BY created_at"
+                )
+                .bind(&pid_hex).bind(nt)
+                .fetch_all(&self.pool).await.unwrap_or_default()
+            } else {
+                sqlx::query_as::<_, NodeRow>(
+                    "SELECT id, project_id, node_type, ref_id, label, capabilities, status, metadata, weight, created_at, updated_at \
+                     FROM topology_nodes WHERE project_id = ? AND node_type = ? ORDER BY created_at"
+                )
+                .bind(&pid_hex).bind(nt)
+                .fetch_all(&self.pool).await.unwrap_or_default()
+            }
+        } else if active_only {
+            sqlx::query_as::<_, NodeRow>(
+                "SELECT id, project_id, node_type, ref_id, label, capabilities, status, metadata, weight, created_at, updated_at \
+                 FROM topology_nodes WHERE project_id = ? AND status = 'active' ORDER BY created_at"
+            )
+            .bind(&pid_hex)
+            .fetch_all(&self.pool).await.unwrap_or_default()
+        } else {
+            sqlx::query_as::<_, NodeRow>(
+                "SELECT id, project_id, node_type, ref_id, label, capabilities, status, metadata, weight, created_at, updated_at \
+                 FROM topology_nodes WHERE project_id = ? ORDER BY created_at"
+            )
+            .bind(&pid_hex)
+            .fetch_all(&self.pool).await.unwrap_or_default()
+        };
 
         let nodes_json: Vec<Value> = node_rows
             .iter()
@@ -1939,21 +2156,7 @@ impl TaskServer {
             }))
             .collect();
 
-        // Fetch edges
-        let edges_query = if let Some(ref et) = req.edge_type {
-            format!(
-                "SELECT id, from_node_id, to_node_id, edge_type, weight, status, metadata \
-                 FROM topology_edges WHERE project_id = '{}' AND edge_type = '{}' {} ORDER BY created_at",
-                pid_hex, et, if active_only { "AND status = 'active'" } else { "" }
-            )
-        } else {
-            format!(
-                "SELECT id, from_node_id, to_node_id, edge_type, weight, status, metadata \
-                 FROM topology_edges WHERE project_id = '{}' {} ORDER BY created_at",
-                pid_hex, if active_only { "AND status = 'active'" } else { "" }
-            )
-        };
-
+        // Fetch edges (parameterized to prevent SQL injection)
         #[derive(Debug, sqlx::FromRow)]
         struct EdgeRow {
             id: String,
@@ -1964,10 +2167,37 @@ impl TaskServer {
             status: String,
         }
 
-        let edge_rows = sqlx::query_as::<_, EdgeRow>(&edges_query)
-            .fetch_all(&self.pool)
-            .await
-            .unwrap_or_default();
+        let edge_rows: Vec<EdgeRow> = if let Some(ref et) = req.edge_type {
+            if active_only {
+                sqlx::query_as::<_, EdgeRow>(
+                    "SELECT id, from_node_id, to_node_id, edge_type, weight, status, metadata \
+                     FROM topology_edges WHERE project_id = ? AND edge_type = ? AND status = 'active' ORDER BY created_at"
+                )
+                .bind(&pid_hex).bind(et)
+                .fetch_all(&self.pool).await.unwrap_or_default()
+            } else {
+                sqlx::query_as::<_, EdgeRow>(
+                    "SELECT id, from_node_id, to_node_id, edge_type, weight, status, metadata \
+                     FROM topology_edges WHERE project_id = ? AND edge_type = ? ORDER BY created_at"
+                )
+                .bind(&pid_hex).bind(et)
+                .fetch_all(&self.pool).await.unwrap_or_default()
+            }
+        } else if active_only {
+            sqlx::query_as::<_, EdgeRow>(
+                "SELECT id, from_node_id, to_node_id, edge_type, weight, status, metadata \
+                 FROM topology_edges WHERE project_id = ? AND status = 'active' ORDER BY created_at"
+            )
+            .bind(&pid_hex)
+            .fetch_all(&self.pool).await.unwrap_or_default()
+        } else {
+            sqlx::query_as::<_, EdgeRow>(
+                "SELECT id, from_node_id, to_node_id, edge_type, weight, status, metadata \
+                 FROM topology_edges WHERE project_id = ? ORDER BY created_at"
+            )
+            .bind(&pid_hex)
+            .fetch_all(&self.pool).await.unwrap_or_default()
+        };
 
         let edges_json: Vec<Value> = edge_rows
             .iter()
@@ -1981,14 +2211,7 @@ impl TaskServer {
             }))
             .collect();
 
-        // Fetch clusters
-        let clusters_query = format!(
-            "SELECT id, name, purpose, node_ids, leader_node_id, is_active \
-             FROM topology_clusters WHERE project_id = '{}' {}",
-            pid_hex,
-            if active_only { "AND is_active = 1" } else { "" }
-        );
-
+        // Fetch clusters (parameterized to prevent SQL injection)
         #[derive(Debug, sqlx::FromRow)]
         struct ClusterRow {
             id: String,
@@ -1999,10 +2222,21 @@ impl TaskServer {
             is_active: bool,
         }
 
-        let cluster_rows = sqlx::query_as::<_, ClusterRow>(&clusters_query)
-            .fetch_all(&self.pool)
-            .await
-            .unwrap_or_default();
+        let cluster_rows: Vec<ClusterRow> = if active_only {
+            sqlx::query_as::<_, ClusterRow>(
+                "SELECT id, name, purpose, node_ids, leader_node_id, is_active \
+                 FROM topology_clusters WHERE project_id = ? AND is_active = 1"
+            )
+            .bind(&pid_hex)
+            .fetch_all(&self.pool).await.unwrap_or_default()
+        } else {
+            sqlx::query_as::<_, ClusterRow>(
+                "SELECT id, name, purpose, node_ids, leader_node_id, is_active \
+                 FROM topology_clusters WHERE project_id = ?"
+            )
+            .bind(&pid_hex)
+            .fetch_all(&self.pool).await.unwrap_or_default()
+        };
 
         let clusters_json: Vec<Value> = cluster_rows
             .iter()
@@ -2043,20 +2277,16 @@ impl TaskServer {
         let include_resolved = req.include_resolved.unwrap_or(false);
         let pid_hex = hex::encode(project_uuid.as_bytes()).to_uppercase();
 
-        let mut query = format!(
-            "SELECT id, issue_type, severity, affected_nodes, affected_edges, description, \
-             suggested_action, resolved_at, resolution_notes, created_at \
-             FROM topology_issues WHERE project_id = '{}'",
-            pid_hex
-        );
-
-        if !include_resolved {
-            query.push_str(" AND resolved_at IS NULL");
-        }
+        // Validate severity input to prevent injection
         if let Some(ref sev) = req.severity {
-            query.push_str(&format!(" AND severity = '{}'", sev));
+            match sev.as_str() {
+                "info" | "warning" | "error" | "critical" => {}
+                _ => return Ok(error_result(
+                    "Invalid severity. Valid: info, warning, error, critical",
+                    None,
+                )),
+            }
         }
-        query.push_str(" ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'error' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, created_at DESC");
 
         #[derive(Debug, sqlx::FromRow)]
         struct IssueRow {
@@ -2071,10 +2301,54 @@ impl TaskServer {
             created_at: String,
         }
 
-        let rows = sqlx::query_as::<_, IssueRow>(&query)
-            .fetch_all(&self.pool)
-            .await
-            .unwrap_or_default();
+        let order_clause = " ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'error' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, created_at DESC";
+
+        let rows: Vec<IssueRow> = match (&req.severity, include_resolved) {
+            (Some(sev), false) => {
+                let q = format!(
+                    "SELECT id, issue_type, severity, affected_nodes, affected_edges, description, \
+                     suggested_action, resolved_at, resolution_notes, created_at \
+                     FROM topology_issues WHERE project_id = ? AND resolved_at IS NULL AND severity = ?{}",
+                    order_clause
+                );
+                sqlx::query_as::<_, IssueRow>(&q)
+                    .bind(&pid_hex).bind(sev)
+                    .fetch_all(&self.pool).await.unwrap_or_default()
+            }
+            (Some(sev), true) => {
+                let q = format!(
+                    "SELECT id, issue_type, severity, affected_nodes, affected_edges, description, \
+                     suggested_action, resolved_at, resolution_notes, created_at \
+                     FROM topology_issues WHERE project_id = ? AND severity = ?{}",
+                    order_clause
+                );
+                sqlx::query_as::<_, IssueRow>(&q)
+                    .bind(&pid_hex).bind(sev)
+                    .fetch_all(&self.pool).await.unwrap_or_default()
+            }
+            (None, false) => {
+                let q = format!(
+                    "SELECT id, issue_type, severity, affected_nodes, affected_edges, description, \
+                     suggested_action, resolved_at, resolution_notes, created_at \
+                     FROM topology_issues WHERE project_id = ? AND resolved_at IS NULL{}",
+                    order_clause
+                );
+                sqlx::query_as::<_, IssueRow>(&q)
+                    .bind(&pid_hex)
+                    .fetch_all(&self.pool).await.unwrap_or_default()
+            }
+            (None, true) => {
+                let q = format!(
+                    "SELECT id, issue_type, severity, affected_nodes, affected_edges, description, \
+                     suggested_action, resolved_at, resolution_notes, created_at \
+                     FROM topology_issues WHERE project_id = ?{}",
+                    order_clause
+                );
+                sqlx::query_as::<_, IssueRow>(&q)
+                    .bind(&pid_hex)
+                    .fetch_all(&self.pool).await.unwrap_or_default()
+            }
+        };
 
         let issues: Vec<Value> = rows
             .iter()
@@ -2115,6 +2389,7 @@ impl TaskServer {
 
         // Load active edges
         #[derive(Debug, sqlx::FromRow, Clone)]
+        #[allow(dead_code)]
         struct EdgeRow {
             id: String,
             from_node_id: String,
@@ -2123,11 +2398,11 @@ impl TaskServer {
             weight: Option<f64>,
         }
 
-        let edges = sqlx::query_as::<_, EdgeRow>(&format!(
+        let edges = sqlx::query_as::<_, EdgeRow>(
             "SELECT id, from_node_id, to_node_id, edge_type, weight \
-             FROM topology_edges WHERE project_id = '{}' AND status = 'active'",
-            pid_hex
-        ))
+             FROM topology_edges WHERE project_id = ? AND status = 'active'"
+        )
+        .bind(&pid_hex)
         .fetch_all(&self.pool)
         .await
         .unwrap_or_default();
@@ -2313,6 +2588,278 @@ impl TaskServer {
             "agents": agent_list,
         })))
     }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // PHASE 5 — Orchestration Context (shared blackboard)
+    // ═════════════════════════════════════════════════════════════════════════
+
+    #[tool(
+        description = "Write an entry to the orchestration context — the shared blackboard for a task tree. \
+                       Use this to share findings, decisions, blockers, intermediate results, or directives \
+                       with other agents working on related tasks. `root_task_id` is the top-level task."
+    )]
+    async fn write_context(
+        &self,
+        Parameters(req): Parameters<WriteContextRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let project_uuid = match parse_uuid(&req.project_id, "project_id") {
+            Ok(u) => u,
+            Err(r) => return Ok(r),
+        };
+        let root_task_uuid = match parse_uuid(&req.root_task_id, "root_task_id") {
+            Ok(u) => u,
+            Err(r) => return Ok(r),
+        };
+        let task_uuid = match &req.task_id {
+            Some(id) => match parse_uuid(id, "task_id") {
+                Ok(u) => Some(u),
+                Err(r) => return Ok(r),
+            },
+            None => None,
+        };
+
+        let entry_type: ContextEntryType = match req.entry_type.parse() {
+            Ok(t) => t,
+            Err(_) => return Ok(error_result(
+                "Invalid entry_type. Valid: finding, decision, blocker, intermediate_result, directive",
+                None,
+            )),
+        };
+
+        let priority: ContextPriority = match req.priority.as_deref().unwrap_or("normal").parse() {
+            Ok(p) => p,
+            Err(_) => return Ok(error_result(
+                "Invalid priority. Valid: low, normal, high, critical",
+                None,
+            )),
+        };
+
+        // Verify root task exists
+        match Task::find_by_id_and_project_id(&self.pool, root_task_uuid, project_uuid).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return Ok(error_result("Root task not found in the specified project", None)),
+            Err(e) => return Ok(error_result("Failed to verify root task", Some(&e.to_string()))),
+        }
+
+        let metadata_str = req.metadata.as_ref().map(|v| serde_json::to_string(v).unwrap());
+
+        let data = CreateOrchestrationContext {
+            root_task_id: root_task_uuid,
+            project_id: project_uuid,
+            task_id: task_uuid,
+            entry_type: entry_type.clone(),
+            title: req.title.clone(),
+            content: req.content.clone(),
+            source: req.source.clone(),
+            priority,
+            metadata: metadata_str,
+        };
+
+        match OrchestrationContext::create(&self.pool, &data).await {
+            Ok(ctx) => Ok(success_json(&serde_json::json!({
+                "success": true,
+                "entry_id": ctx.id.to_string(),
+                "entry_type": req.entry_type,
+                "title": req.title,
+                "root_task_id": req.root_task_id,
+                "message": format!("{} recorded to orchestration context", req.entry_type),
+            }))),
+            Err(e) => Ok(error_result("Failed to write context entry", Some(&e.to_string()))),
+        }
+    }
+
+    #[tool(
+        description = "Read the orchestration context for a task tree — see what other agents have found, \
+                       decided, or flagged as blockers. Returns entries sorted by priority then recency."
+    )]
+    async fn read_context(
+        &self,
+        Parameters(req): Parameters<ReadContextRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let root_task_uuid = match parse_uuid(&req.root_task_id, "root_task_id") {
+            Ok(u) => u,
+            Err(r) => return Ok(r),
+        };
+
+        let include_resolved = req.include_resolved.unwrap_or(false);
+
+        let entries = if include_resolved {
+            OrchestrationContext::find_by_root_task(&self.pool, root_task_uuid).await
+        } else {
+            OrchestrationContext::find_active_by_root_task(&self.pool, root_task_uuid).await
+        };
+
+        match entries {
+            Ok(entries) => {
+                // Apply optional type/status filters
+                let type_filter: Option<ContextEntryType> =
+                    req.entry_type.as_deref().and_then(|s| s.parse().ok());
+                let status_filter: Option<ContextEntryStatus> =
+                    req.status.as_deref().and_then(|s| s.parse().ok());
+
+                let filtered: Vec<Value> = entries
+                    .iter()
+                    .filter(|e| {
+                        if let Some(ref tf) = type_filter {
+                            if &e.entry_type != tf { return false; }
+                        }
+                        if let Some(ref sf) = status_filter {
+                            if &e.status != sf { return false; }
+                        }
+                        true
+                    })
+                    .map(|e| serde_json::json!({
+                        "id": e.id.to_string(),
+                        "entry_type": e.entry_type.to_string(),
+                        "title": e.title,
+                        "content": e.content,
+                        "source": e.source,
+                        "status": e.status.to_string(),
+                        "priority": e.priority.to_string(),
+                        "task_id": e.task_id.map(|id| id.to_string()),
+                        "resolved_by": e.resolved_by,
+                        "resolved_at": e.resolved_at.map(|dt| dt.to_rfc3339()),
+                        "metadata": e.metadata.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()),
+                        "created_at": e.created_at.to_rfc3339(),
+                    }))
+                    .collect();
+
+                Ok(success_json(&serde_json::json!({
+                    "success": true,
+                    "root_task_id": req.root_task_id,
+                    "count": filtered.len(),
+                    "entries": filtered,
+                })))
+            }
+            Err(e) => Ok(error_result("Failed to read context", Some(&e.to_string()))),
+        }
+    }
+
+    #[tool(
+        description = "Resolve or supersede a context entry. Use 'resolved' when a blocker is cleared \
+                       or a finding is addressed. Use 'superseded' when new information replaces an older entry."
+    )]
+    async fn resolve_context(
+        &self,
+        Parameters(req): Parameters<ResolveContextRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let entry_uuid = match parse_uuid(&req.entry_id, "entry_id") {
+            Ok(u) => u,
+            Err(r) => return Ok(r),
+        };
+
+        let status: ContextEntryStatus = match req.status.as_str() {
+            "resolved" => ContextEntryStatus::Resolved,
+            "superseded" => ContextEntryStatus::Superseded,
+            _ => return Ok(error_result("Invalid status. Use 'resolved' or 'superseded'", None)),
+        };
+
+        match OrchestrationContext::resolve(&self.pool, entry_uuid, &req.resolved_by, &status).await {
+            Ok(true) => Ok(success_json(&serde_json::json!({
+                "success": true,
+                "entry_id": req.entry_id,
+                "new_status": req.status,
+                "resolved_by": req.resolved_by,
+                "message": format!("Context entry marked as {}", req.status),
+            }))),
+            Ok(false) => Ok(error_result(
+                "Entry not found or already resolved/superseded",
+                None,
+            )),
+            Err(e) => Ok(error_result("Failed to resolve context entry", Some(&e.to_string()))),
+        }
+    }
+
+    #[tool(
+        description = "Get an aggregated summary of the orchestration context for a task tree — \
+                       counts by type, active blockers, recent decisions, and overall health."
+    )]
+    async fn get_context_summary(
+        &self,
+        Parameters(req): Parameters<GetContextSummaryRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let root_task_uuid = match parse_uuid(&req.root_task_id, "root_task_id") {
+            Ok(u) => u,
+            Err(r) => return Ok(r),
+        };
+
+        let all_entries = match OrchestrationContext::find_by_root_task(&self.pool, root_task_uuid).await {
+            Ok(e) => e,
+            Err(e) => return Ok(error_result("Failed to fetch context", Some(&e.to_string()))),
+        };
+
+        let mut total = 0;
+        let mut active = 0;
+        let mut by_type: HashMap<String, usize> = HashMap::new();
+        let mut active_blockers: Vec<Value> = Vec::new();
+        let mut recent_decisions: Vec<Value> = Vec::new();
+        let mut critical_entries: Vec<Value> = Vec::new();
+
+        for entry in &all_entries {
+            total += 1;
+            let type_str = entry.entry_type.to_string();
+            *by_type.entry(type_str.clone()).or_default() += 1;
+
+            if entry.status == ContextEntryStatus::Active {
+                active += 1;
+
+                if entry.entry_type == ContextEntryType::Blocker {
+                    active_blockers.push(serde_json::json!({
+                        "id": entry.id.to_string(),
+                        "title": entry.title,
+                        "priority": entry.priority.to_string(),
+                        "source": entry.source,
+                        "created_at": entry.created_at.to_rfc3339(),
+                    }));
+                }
+
+                if entry.priority == ContextPriority::Critical {
+                    critical_entries.push(serde_json::json!({
+                        "id": entry.id.to_string(),
+                        "entry_type": type_str,
+                        "title": entry.title,
+                        "source": entry.source,
+                    }));
+                }
+            }
+
+            if entry.entry_type == ContextEntryType::Decision && recent_decisions.len() < 5 {
+                recent_decisions.push(serde_json::json!({
+                    "id": entry.id.to_string(),
+                    "title": entry.title,
+                    "status": entry.status.to_string(),
+                    "source": entry.source,
+                    "created_at": entry.created_at.to_rfc3339(),
+                }));
+            }
+        }
+
+        let health = if !active_blockers.is_empty() {
+            if active_blockers.iter().any(|b| b["priority"] == "critical") {
+                "blocked_critical"
+            } else {
+                "blocked"
+            }
+        } else if active == 0 && total == 0 {
+            "no_context"
+        } else {
+            "healthy"
+        };
+
+        Ok(success_json(&serde_json::json!({
+            "success": true,
+            "root_task_id": req.root_task_id,
+            "total_entries": total,
+            "active_entries": active,
+            "resolved_entries": total - active,
+            "entries_by_type": by_type,
+            "active_blockers": active_blockers,
+            "active_blocker_count": active_blockers.len(),
+            "recent_decisions": recent_decisions,
+            "critical_entries": critical_entries,
+            "orchestration_health": health,
+        })))
+    }
 }
 
 // ─── MCP Resources ──────────────────────────────────────────────────────────
@@ -2326,6 +2873,7 @@ fn pcg_resource_templates() -> Vec<ResourceTemplate> {
         ("pcg://projects/{project_id}/knowledge", "Project Knowledge", "List knowledge sources for a project"),
         ("pcg://projects/{project_id}/topology", "Project Topology", "Get the topology graph (nodes, edges, clusters)"),
         ("pcg://projects/{project_id}/health", "Project Health", "Get health summary including issues and knowledge completeness"),
+        ("pcg://projects/{project_id}/context", "Orchestration Context", "Get active orchestration context entries across all task trees in the project"),
     ];
 
     templates
@@ -2355,14 +2903,17 @@ impl ServerHandler for TaskServer {
                 version: "2.0.0".to_string(),
             },
             instructions: Some(
-                "PCG Dashboard MCP v2 — Atlas-level project management for AI agents. \
-                 20 tools + 6 MCP resources. Use `list_projects` to discover project IDs. \
+                "PCG Dashboard MCP v2.1 — Atlas-level project management for AI agents. \
+                 24 tools + 7 MCP resources. Use `list_projects` to discover project IDs. \
                  Tools: list_projects, list_tasks, create_task, get_task, update_task, delete_task, \
                  evaluate_policy, bulk_create_tasks, bulk_update_tasks, search_tasks, \
                  manage_task_dependencies, add_knowledge, list_knowledge, get_knowledge_completeness, \
                  manage_knowledge, get_topology, get_topology_issues, find_topology_path, \
-                 get_vibe_budget, list_agents. \
-                 Resources: pcg://projects/{project_id}[/tasks|/knowledge|/topology|/health]"
+                 get_vibe_budget, list_agents, write_context, read_context, resolve_context, \
+                 get_context_summary. \
+                 Orchestration Context: agents share findings, decisions, blockers, and results \
+                 through a shared blackboard scoped to task trees (root_task_id). \
+                 Resources: pcg://projects/{project_id}[/tasks|/knowledge|/topology|/health|/context]"
                     .to_string(),
             ),
         }
@@ -2495,24 +3046,27 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
             struct CountRow { cnt: i64 }
 
             let node_count: i64 = sqlx::query_as::<_, CountRow>(
-                &format!("SELECT COUNT(*) as cnt FROM topology_nodes WHERE project_id = '{}' AND status = 'active'", pid_hex)
+                "SELECT COUNT(*) as cnt FROM topology_nodes WHERE project_id = ? AND status = 'active'"
             )
+            .bind(&pid_hex)
             .fetch_one(pool)
             .await
             .map(|r| r.cnt)
             .unwrap_or(0);
 
             let edge_count: i64 = sqlx::query_as::<_, CountRow>(
-                &format!("SELECT COUNT(*) as cnt FROM topology_edges WHERE project_id = '{}' AND status = 'active'", pid_hex)
+                "SELECT COUNT(*) as cnt FROM topology_edges WHERE project_id = ? AND status = 'active'"
             )
+            .bind(&pid_hex)
             .fetch_one(pool)
             .await
             .map(|r| r.cnt)
             .unwrap_or(0);
 
             let cluster_count: i64 = sqlx::query_as::<_, CountRow>(
-                &format!("SELECT COUNT(*) as cnt FROM topology_clusters WHERE project_id = '{}' AND is_active = 1", pid_hex)
+                "SELECT COUNT(*) as cnt FROM topology_clusters WHERE project_id = ? AND is_active = 1"
             )
+            .bind(&pid_hex)
             .fetch_one(pool)
             .await
             .map(|r| r.cnt)
@@ -2547,6 +3101,31 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
                     "knowledge_completeness": 0.0,
                 })),
             }
+        }
+        "context" => {
+            let entries = OrchestrationContext::find_by_project(pool, project_uuid)
+                .await
+                .map_err(|e| e.to_string())?;
+            let active: Vec<Value> = entries
+                .iter()
+                .filter(|e| e.status == ContextEntryStatus::Active)
+                .map(|e| serde_json::json!({
+                    "id": e.id.to_string(),
+                    "root_task_id": e.root_task_id.to_string(),
+                    "entry_type": e.entry_type.to_string(),
+                    "title": e.title,
+                    "content": e.content,
+                    "source": e.source,
+                    "priority": e.priority.to_string(),
+                    "task_id": e.task_id.map(|id| id.to_string()),
+                    "created_at": e.created_at.to_rfc3339(),
+                }))
+                .collect();
+            Ok(serde_json::json!({
+                "project_id": project.id.to_string(),
+                "active_entries": active.len(),
+                "entries": active,
+            }))
         }
         _ => Err(format!("Unknown resource path segment: {}", parts[1])),
     }

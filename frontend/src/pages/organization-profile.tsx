@@ -38,6 +38,17 @@ import {
   Facebook,
   Youtube,
   Inbox,
+  Plug,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Settings2,
+  Loader2,
+  Unplug,
+  Receipt,
+  Wallet,
+  Timer,
+  CreditCard,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -46,6 +57,7 @@ import {
   knowledgeApi,
   socialApi,
   tasksApi,
+  quickbooksApi,
   type OrganizationData,
   type ClientData,
   type CrmActivityRecord,
@@ -204,6 +216,7 @@ function OverviewTab({
           { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
           { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
           { label: 'Knowledge', icon: BookOpen, tab: 'knowledge', color: 'text-orange-500' },
+          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
           { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
         ].map(({ label, icon: Icon, tab, color }) => (
           <button
@@ -932,6 +945,283 @@ function SocialTab({ projectEntries }: { projectEntries: { id: string; name: str
 
 // ── Members Tab ───────────────────────────────────────────────────────────────
 
+// ── Integrations Tab ────────────────────────────────────────────────────────
+
+function IntegrationsTab({ orgId }: { orgId: string }) {
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const { data: qbStatus, isLoading: qbLoading, refetch: refetchQB } = useQuery({
+    queryKey: ['quickbooks-status', orgId],
+    queryFn: () => quickbooksApi.getStatus(orgId),
+    staleTime: 30_000,
+  });
+
+  const handleConnect = () => {
+    const url = quickbooksApi.getConnectUrl(orgId);
+    window.location.href = url;
+  };
+
+  const handleDisconnect = async () => {
+    if (!qbStatus?.account?.id) return;
+    if (!confirm('Disconnect QuickBooks? Entity mappings will be removed.')) return;
+    setDisconnecting(true);
+    try {
+      await quickbooksApi.disconnect(qbStatus.account.id);
+      refetchQB();
+    } catch (e) {
+      console.error('Failed to disconnect QuickBooks:', e);
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const handleSync = async () => {
+    if (!qbStatus?.account?.id) return;
+    setSyncing(true);
+    try {
+      await quickbooksApi.triggerSync(qbStatus.account.id);
+      refetchQB();
+    } catch (e) {
+      console.error('Sync failed:', e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleRefreshToken = async () => {
+    if (!qbStatus?.account?.id) return;
+    try {
+      await quickbooksApi.refreshToken(qbStatus.account.id);
+      refetchQB();
+    } catch (e) {
+      console.error('Token refresh failed:', e);
+    }
+  };
+
+  const qbAccount = qbStatus?.account;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-lg font-semibold">Organization Integrations</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Connect external services at the organization level. These integrations are shared across all projects.
+        </p>
+      </div>
+
+      {/* Accounting & Finance Section */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-50 to-blue-100">
+            <Wallet className="h-4 w-4 text-emerald-600" />
+          </span>
+          <div>
+            <h3 className="text-sm font-semibold">Accounting & Finance</h3>
+            <p className="text-xs text-muted-foreground">Invoicing, expenses, and cost tracking</p>
+          </div>
+        </div>
+
+        {/* QuickBooks Card */}
+        <Card className="border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden">
+          <div className="flex items-stretch">
+            {/* Left accent bar */}
+            <div className={`w-1 shrink-0 ${
+              qbLoading ? 'bg-muted' :
+              qbStatus?.connected ? 'bg-emerald-500' :
+              qbStatus?.needs_reauth ? 'bg-amber-500' :
+              'bg-muted-foreground/20'
+            }`} />
+
+            <div className="flex-1 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  {/* QB Logo placeholder */}
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#2CA01C]/10 border border-[#2CA01C]/20">
+                    <Receipt className="h-5 w-5 text-[#2CA01C]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-semibold">QuickBooks Online</h4>
+                      {qbLoading ? (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                          Checking
+                        </Badge>
+                      ) : qbStatus?.connected ? (
+                        <Badge className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-emerald-200">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Connected
+                        </Badge>
+                      ) : qbStatus?.needs_reauth ? (
+                        <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Reauthorize
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          Not connected
+                        </Badge>
+                      )}
+                    </div>
+                    {qbAccount?.company_name ? (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {qbAccount.company_name}
+                        <span className="text-muted-foreground/60 ml-1.5">
+                          Realm {qbAccount.realm_id}
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Sync invoices, customers, expenses & orchestrator costs with QuickBooks
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  {!qbLoading && qbStatus?.connected && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSync}
+                        disabled={syncing}
+                        className="h-8 text-xs"
+                      >
+                        {syncing ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        Sync
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleDisconnect}
+                        disabled={disconnecting}
+                        className="h-8 text-xs text-muted-foreground hover:text-destructive"
+                      >
+                        <Unplug className="h-3.5 w-3.5 mr-1.5" />
+                        Disconnect
+                      </Button>
+                    </>
+                  )}
+                  {!qbLoading && qbStatus?.needs_reauth && (
+                    <Button size="sm" onClick={handleRefreshToken} className="h-8 text-xs">
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      Reauthorize
+                    </Button>
+                  )}
+                  {!qbLoading && !qbStatus?.connected && !qbStatus?.needs_reauth && (
+                    <Button size="sm" onClick={handleConnect} className="h-8 text-xs">
+                      <Plug className="h-3.5 w-3.5 mr-1.5" />
+                      Connect QuickBooks
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Connected: Show sync scope & stats */}
+              {qbAccount && qbStatus?.connected && (
+                <div className="mt-4 pt-4 border-t border-border/40">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {[
+                      { key: 'invoices', label: 'Invoices', icon: Receipt, enabled: qbAccount.sync_invoices === 1 },
+                      { key: 'customers', label: 'Customers', icon: Contact2, enabled: qbAccount.sync_customers === 1 },
+                      { key: 'payments', label: 'Payments', icon: CreditCard, enabled: qbAccount.sync_payments === 1 },
+                      { key: 'expenses', label: 'Expenses', icon: Wallet, enabled: qbAccount.sync_expenses === 1 },
+                      { key: 'time', label: 'Time Tracking', icon: Timer, enabled: qbAccount.sync_time_tracking === 1 },
+                    ].map(({ key, label, icon: ScopeIcon, enabled }) => (
+                      <div
+                        key={key}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                          enabled
+                            ? 'border-emerald-200/60 bg-emerald-50/50 text-emerald-700'
+                            : 'border-border/40 bg-muted/30 text-muted-foreground'
+                        }`}
+                      >
+                        <ScopeIcon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="font-medium">{label}</span>
+                        {enabled ? (
+                          <CheckCircle2 className="h-3 w-3 ml-auto shrink-0" />
+                        ) : (
+                          <span className="ml-auto text-[10px] opacity-60">Off</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {qbAccount.last_sync_at
+                        ? `Last synced ${new Date(qbAccount.last_sync_at).toLocaleString()}`
+                        : 'Never synced'}
+                    </span>
+                    <span className="text-muted-foreground/40">|</span>
+                    <span>
+                      Environment: <span className="font-medium capitalize">{qbAccount.environment}</span>
+                    </span>
+                    <span className="text-muted-foreground/40">|</span>
+                    <span>
+                      Sync every <span className="font-medium">{qbAccount.sync_frequency_minutes}m</span>
+                    </span>
+                  </div>
+
+                  {qbAccount.last_error && (
+                    <div className="mt-3 flex items-start gap-2 text-xs text-amber-700 bg-amber-50 rounded-lg p-2.5 border border-amber-200/60">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span>{qbAccount.last_error}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Future: More org-level integrations */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-50 to-purple-100">
+            <Settings2 className="h-4 w-4 text-slate-600" />
+          </span>
+          <div>
+            <h3 className="text-sm font-semibold">More Integrations</h3>
+            <p className="text-xs text-muted-foreground">Additional org-level services coming soon</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {[
+            { name: 'Stripe', desc: 'Payment processing & billing', icon: CreditCard, color: 'text-purple-500' },
+            { name: 'Xero', desc: 'Alternative accounting platform', icon: Receipt, color: 'text-blue-500' },
+            { name: 'HubSpot', desc: 'CRM & marketing automation', icon: Target, color: 'text-orange-500' },
+          ].map(({ name, desc, icon: PlaceholderIcon, color }) => (
+            <Card key={name} className="border-dashed border-border/40 bg-muted/20">
+              <CardContent className="flex items-center gap-3 py-4 px-4">
+                <PlaceholderIcon className={`h-5 w-5 ${color} opacity-40`} />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-muted-foreground/60">{name}</p>
+                  <p className="text-xs text-muted-foreground/40">{desc}</p>
+                </div>
+                <Badge variant="outline" className="text-[10px] text-muted-foreground/40 border-border/30">
+                  Soon
+                </Badge>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
   const { data: members = [] } = useQuery<OrgMember[]>({
     queryKey: ['org-members', orgId],
@@ -1141,6 +1431,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <BookOpen className="h-4 w-4 mr-2" />
                 Knowledge
               </TabsTrigger>
+              <TabsTrigger value="integrations">
+                <Plug className="h-4 w-4 mr-2" />
+                Integrations
+              </TabsTrigger>
               <TabsTrigger value="members">
                 <Users className="h-4 w-4 mr-2" />
                 Members
@@ -1184,6 +1478,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
             <TabsContent value="knowledge">
               <KnowledgeTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
+            </TabsContent>
+
+            <TabsContent value="integrations">
+              <IntegrationsTab orgId={orgId} />
             </TabsContent>
 
             <TabsContent value="members">

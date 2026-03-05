@@ -16,6 +16,7 @@ use db::models::{
     execution_artifact::ExecutionArtifactError,
     execution_process::ExecutionProcessError,
     project::ProjectError,
+    quickbooks_account::QuickBooksAccountError,
     social_account::SocialAccountError,
     social_mention::SocialMentionError,
     social_post::SocialPostError,
@@ -73,6 +74,8 @@ pub enum ApiError {
     CrmDeal(#[from] CrmDealError),
     #[error(transparent)]
     CrmActivity(#[from] CrmActivityError),
+    #[error(transparent)]
+    QuickBooks(#[from] QuickBooksAccountError),
     #[error("Multipart error: {0}")]
     Multipart(#[from] MultipartError),
     #[error("IO error: {0}")]
@@ -262,6 +265,12 @@ impl IntoResponse for ApiError {
             ApiError::CrmActivity(e) => match e {
                 CrmActivityError::NotFound => (StatusCode::NOT_FOUND, "CrmActivityNotFound"),
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, "CrmActivityError"),
+            },
+            ApiError::QuickBooks(e) => match e {
+                QuickBooksAccountError::NotFound => (StatusCode::NOT_FOUND, "QuickBooksAccountNotFound"),
+                QuickBooksAccountError::AlreadyExists => (StatusCode::CONFLICT, "QuickBooksAccountAlreadyExists"),
+                QuickBooksAccountError::TokenExpired => (StatusCode::UNAUTHORIZED, "QuickBooksTokenExpired"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "QuickBooksError"),
             },
         };
 

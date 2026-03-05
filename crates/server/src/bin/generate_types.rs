@@ -270,6 +270,11 @@ fn generate_types_content() -> String {
         // Feedback types
         server::routes::feedback::SubmitFeedbackRequest::decl(),
         server::routes::feedback::SubmitFeedbackResponse::decl(),
+        // Orchestration context types
+        db::models::orchestration_context::OrchestrationContext::decl(),
+        db::models::orchestration_context::ContextEntryType::decl(),
+        db::models::orchestration_context::ContextEntryStatus::decl(),
+        db::models::orchestration_context::ContextPriority::decl(),
     ];
 
     let body = decls
