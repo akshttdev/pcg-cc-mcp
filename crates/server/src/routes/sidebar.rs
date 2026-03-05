@@ -79,6 +79,8 @@ pub struct SidebarClient {
     pub active_issues_count: Option<i64>,
     pub knowledge_completeness: Option<f64>,
     pub last_activity_at: Option<String>,
+    pub crm_person_id: Option<String>,
+    pub crm_confidence: Option<f64>,
     pub projects: Vec<SidebarProject>,
     pub folders: Vec<SidebarProjectFolder>,
 }
@@ -107,6 +109,8 @@ struct ClientRow {
     id: Vec<u8>,
     name: String,
     slug: String,
+    crm_contact_id: Option<Vec<u8>>,
+    crm_confidence: Option<f64>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -277,11 +281,14 @@ pub async fn get_sidebar_tree(
             .unwrap_or_default()
         };
 
-        // Get clients for this org
+        // Get clients for this org, joining CRM persons for tracking status
         let client_rows: Vec<ClientRow> = sqlx::query_as::<_, ClientRow>(
-            r#"SELECT id, name, slug FROM clients
-               WHERE organization_id = ? AND deleted_at IS NULL AND is_active = 1
-               ORDER BY name ASC"#,
+            r#"SELECT c.id, c.name, c.slug, c.crm_contact_id,
+                      p.intelligence_confidence as crm_confidence
+               FROM clients c
+               LEFT JOIN persons p ON p.id = c.crm_contact_id
+               WHERE c.organization_id = ? AND c.deleted_at IS NULL AND c.is_active = 1
+               ORDER BY c.name ASC"#,
         )
         .bind(&org_id_bytes)
         .fetch_all(pool)
@@ -425,6 +432,10 @@ pub async fn get_sidebar_tree(
                     active_issues_count: client_issues,
                     knowledge_completeness: client_kc,
                     last_activity_at: client_activity,
+                    crm_person_id: cr.crm_contact_id.as_ref()
+                        .and_then(|b| uuid_from_bytes(b))
+                        .map(|u| u.to_string()),
+                    crm_confidence: cr.crm_confidence,
                     projects,
                     folders,
                 }

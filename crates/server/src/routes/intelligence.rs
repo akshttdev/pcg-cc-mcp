@@ -117,16 +117,21 @@ pub async fn trigger_research(
     let pool_clone = pool.clone();
     let project_id = body.project_id;
     let full_name = person.full_name.clone();
+    let use_direct = body.agent_preference.as_deref() == Some("direct");
 
     tokio::spawn(async move {
-        let result = run_research_via_nora(
-            &pool_clone,
-            person_id,
-            research_prompt,
-            project_id,
-            &full_name,
-        )
-        .await;
+        let result = if use_direct {
+            run_research_direct(&pool_clone, person_id, &full_name, project_id).await
+        } else {
+            run_research_via_nora(
+                &pool_clone,
+                person_id,
+                research_prompt,
+                project_id,
+                &full_name,
+            )
+            .await
+        };
         if let Err(e) = result {
             tracing::error!("Intelligence research failed for person {}: {}", person_id, e);
             let _ = sqlx::query(
@@ -237,6 +242,20 @@ async fn run_research_via_nora(
         .map_err(|_| "Research timed out after 60s")?
         .map_err(|e| format!("Nora error: {}", e))?
     };
+
+    // Detect Nora failure responses (quota exceeded, API errors) and fall back to direct
+    let content_lower = response.content.to_lowercase();
+    let is_failure_response = content_lower.contains("api quota")
+        || content_lower.contains("quota limit")
+        || content_lower.contains("quota exceeded")
+        || content_lower.contains("quota limitation")
+        || content_lower.contains("openai api quota")
+        || (content_lower.contains("api quota") && content_lower.contains("exceeded"));
+
+    if is_failure_response {
+        tracing::warn!("Nora research hit quota error for person {}, falling back to direct Anthropic research", person_id);
+        return run_research_direct(pool, person_id, full_name, project_id).await;
+    }
 
     // Parse Nora's response and write to person record
     let summary = extract_summary_from_response(&response.content);
@@ -361,33 +380,59 @@ pub async fn write_intelligence_results(
 // ── Text extraction helpers ───────────────────────────────────────────────────
 
 fn extract_summary_from_response(text: &str) -> String {
-    // Try JSON extraction first
+    // Try direct JSON
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
         if let Some(s) = v.get("summary").and_then(|s| s.as_str()) {
             return s.to_string();
         }
     }
-    // Try to find a JSON block in the text
+    // Try JSON block — look for nested "summary" or "overview" anywhere in the JSON
     if let Some(start) = text.find('{') {
         if let Some(end) = text.rfind('}') {
             let json_str = &text[start..=end];
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+                // Try top-level "summary"
                 if let Some(s) = v.get("summary").and_then(|s| s.as_str()) {
                     return s.to_string();
+                }
+                // Try nested patterns common in Scout responses
+                for key in &["pcg_intelligence_report", "pcg_research_report", "pcg_contact_intelligence"] {
+                    if let Some(nested) = v.get(key) {
+                        if let Some(subj) = nested.get("subject") {
+                            if let Some(s) = subj.get("summary").and_then(|s| s.as_str()) {
+                                return s.to_string();
+                            }
+                        }
+                        if let Some(s) = nested.get("summary") {
+                            if let Some(ov) = s.get("overview").and_then(|o| o.as_str()) {
+                                return ov.to_string();
+                            }
+                            if let Some(st) = s.as_str() {
+                                return st.to_string();
+                            }
+                        }
+                    }
                 }
             }
         }
     }
-    // Fallback: first 500 chars of text
-    text.chars().take(500).collect()
+    // Strip markdown code fences and return first meaningful paragraph
+    let clean: String = text.lines()
+        .filter(|l| !l.trim_start().starts_with("```") && !l.trim().is_empty())
+        .take(8)
+        .collect::<Vec<_>>()
+        .join(" ");
+    clean.chars().take(600).collect()
 }
 
 fn extract_confidence_from_response(text: &str) -> f64 {
+    // Try direct JSON
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
         if let Some(c) = v.get("confidence").and_then(|c| c.as_f64()) {
             return c.clamp(0.0, 1.0);
         }
     }
+    // Try JSON block extraction
     if let Some(start) = text.find('{') {
         if let Some(end) = text.rfind('}') {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text[start..=end]) {
@@ -397,7 +442,22 @@ fn extract_confidence_from_response(text: &str) -> f64 {
             }
         }
     }
-    0.5 // default medium confidence
+    // Heuristic: if response contains substantive named data, assign higher confidence
+    let lower = text.to_lowercase();
+    let has_content = lower.contains("linkedin") || lower.contains("founded")
+        || lower.contains("ceo") || lower.contains("revenue")
+        || lower.contains("instagram") || lower.contains("twitter")
+        || lower.contains("annual") || lower.contains("employees");
+    let is_failure = lower.contains("insufficient data") || lower.contains("need more info")
+        || lower.contains("could not find") || lower.contains("unable to verify")
+        || lower.contains("no publicly") || lower.contains("i need a bit more");
+    if is_failure {
+        0.2
+    } else if has_content {
+        0.75
+    } else {
+        0.5
+    }
 }
 
 fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String {

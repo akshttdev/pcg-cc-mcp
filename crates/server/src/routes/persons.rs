@@ -21,6 +21,7 @@ use db::models::person::{
     UpdatePerson, UpsertPersonSocialProfile,
 };
 use db::models::invoice::{CreateInvoice, Invoice, UpdateInvoice};
+use db::models::person_note::{CreatePersonNote, PersonNote, UpdatePersonNote};
 
 const VIBE_PER_USD: f64 = 100.0; // 1 USD = 100 VIBE (1 VIBE = $0.01)
 
@@ -48,9 +49,15 @@ pub struct ListPersonsQueryParams {
     pub financial_role: Option<String>,
     pub lifecycle_stage: Option<String>,
     pub organization_id: Option<Uuid>,
+    pub assigned_to: Option<Uuid>,
     pub q: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListNotesParams {
+    pub status: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +75,7 @@ async fn list_persons(
         financial_role: params.financial_role,
         lifecycle_stage: params.lifecycle_stage,
         organization_id: params.organization_id,
+        assigned_to: params.assigned_to,
         query: params.q,
         limit: params.limit,
         offset: params.offset,
@@ -295,6 +303,60 @@ async fn delete_invoice(
 }
 
 // ---------------------------------------------------------------------------
+// Person Notes
+// ---------------------------------------------------------------------------
+
+/// GET /api/persons/:id/notes
+async fn list_person_notes(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Query(p): Query<ListNotesParams>,
+) -> Result<Json<ApiResponse<Vec<PersonNote>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let notes = PersonNote::list_for_person(pool, id, p.status.as_deref()).await?;
+    Ok(Json(ApiResponse::success(notes)))
+}
+
+/// POST /api/persons/:id/notes
+async fn create_person_note(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Json(mut data): Json<CreatePersonNote>,
+) -> Result<Json<ApiResponse<PersonNote>>, ApiError> {
+    let pool = &deployment.db().pool;
+    data.person_id = id;
+    let note = PersonNote::create(pool, data).await?;
+    Ok(Json(ApiResponse::success(note)))
+}
+
+/// PATCH /api/person-notes/:id
+async fn update_person_note(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Json(data): Json<UpdatePersonNote>,
+) -> Result<Json<ApiResponse<PersonNote>>, ApiError> {
+    let pool = &deployment.db().pool;
+    PersonNote::update(pool, id, data)
+        .await?
+        .map(|n| Json(ApiResponse::success(n)))
+        .ok_or_else(|| ApiError::NotFound(format!("Note {} not found", id)))
+}
+
+/// DELETE /api/person-notes/:id
+async fn delete_person_note(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deleted = PersonNote::delete(pool, id).await?;
+    if deleted {
+        Ok(Json(ApiResponse::success(())))
+    } else {
+        Err(ApiError::NotFound(format!("Note {} not found", id)))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -314,6 +376,15 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/persons/{id}/social-profiles/{platform}",
             delete(delete_social_profile),
+        )
+        // Person notes
+        .route(
+            "/persons/{id}/notes",
+            get(list_person_notes).post(create_person_note),
+        )
+        .route(
+            "/person-notes/{id}",
+            patch(update_person_note).delete(delete_person_note),
         )
         // Person invoices
         .route("/persons/{id}/invoices", get(list_person_invoices))

@@ -52,6 +52,13 @@ pub struct Person {
     pub tags: String,
     pub custom_fields: String,
 
+    /// JSON array of {value, label} — multiple email addresses
+    pub emails: String,
+    /// JSON array of {value, label} — multiple phone numbers
+    pub phones: String,
+    /// FK to users(id) — assigned sales rep
+    pub assigned_to: Option<Uuid>,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -110,6 +117,9 @@ pub struct CreatePerson {
     pub notes: Option<String>,
     pub tags: Option<Vec<String>>,
     pub custom_fields: Option<serde_json::Value>,
+    pub emails: Option<Vec<serde_json::Value>>,
+    pub phones: Option<Vec<serde_json::Value>>,
+    pub assigned_to: Option<Uuid>,
 }
 
 #[derive(Debug, Default, Deserialize, TS)]
@@ -135,6 +145,9 @@ pub struct UpdatePerson {
     pub notes: Option<String>,
     pub tags: Option<Vec<String>>,
     pub custom_fields: Option<serde_json::Value>,
+    pub emails: Option<Vec<serde_json::Value>>,
+    pub phones: Option<Vec<serde_json::Value>>,
+    pub assigned_to: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -156,6 +169,7 @@ pub struct ListPersonsQuery {
     pub financial_role: Option<String>,
     pub lifecycle_stage: Option<String>,
     pub organization_id: Option<Uuid>,
+    pub assigned_to: Option<Uuid>,
     pub query: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -194,6 +208,9 @@ impl Person {
         if q.organization_id.is_some() {
             where_parts.push("organization_id = ?".into());
         }
+        if q.assigned_to.is_some() {
+            where_parts.push("assigned_to = ?".into());
+        }
         if q.query.is_some() {
             where_parts.push("(full_name LIKE ? OR email LIKE ? OR company_name LIKE ?)".into());
         }
@@ -222,6 +239,9 @@ impl Person {
         if let Some(org_id) = q.organization_id {
             qb = qb.bind(org_id.as_bytes().as_slice().to_vec());
         }
+        if let Some(assigned_id) = q.assigned_to {
+            qb = qb.bind(assigned_id.as_bytes().as_slice().to_vec());
+        }
         if let Some(ref query) = q.query {
             let like = format!("%{}%", query);
             qb = qb.bind(like.clone()).bind(like.clone()).bind(like);
@@ -242,13 +262,29 @@ impl Person {
         let custom_fields = data.custom_fields
             .map(|v| v.to_string())
             .unwrap_or_else(|| "{}".into());
+        // Auto-populate emails/phones from flat fields if not provided
+        let emails = data.emails
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
+            .unwrap_or_else(|| {
+                data.email.as_ref()
+                    .map(|e| format!(r#"[{{"value":"{}","label":"primary"}}]"#, e))
+                    .unwrap_or_else(|| "[]".into())
+            });
+        let phones = data.phones
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
+            .unwrap_or_else(|| {
+                data.phone.as_ref()
+                    .map(|p| format!(r#"[{{"value":"{}","label":"primary"}}]"#, p))
+                    .unwrap_or_else(|| "[]".into())
+            });
 
         sqlx::query(
             r#"INSERT INTO persons
                (id, full_name, email, phone, avatar_url, person_type, financial_role,
                 client_profile, business_stage, lifecycle_stage, lead_score,
-                company_name, job_title, website, organization_id, notes, tags, custom_fields)
-               VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)"#,
+                company_name, job_title, website, organization_id, notes, tags, custom_fields,
+                emails, phones, assigned_to)
+               VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)"#,
         )
         .bind(id.as_bytes().as_slice())
         .bind(&data.full_name)
@@ -268,6 +304,9 @@ impl Person {
         .bind(&data.notes)
         .bind(&tags)
         .bind(&custom_fields)
+        .bind(&emails)
+        .bind(&phones)
+        .bind(data.assigned_to.as_ref().map(|u| u.as_bytes().to_vec()))
         .execute(pool)
         .await?;
 
@@ -294,6 +333,13 @@ impl Person {
             .unwrap_or(existing.custom_fields);
         let intelligence_confidence = data.intelligence_confidence
             .unwrap_or(existing.intelligence_confidence);
+        let emails = data.emails
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
+            .unwrap_or(existing.emails);
+        let phones = data.phones
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
+            .unwrap_or(existing.phones);
+        let assigned_to = if data.assigned_to.is_some() { data.assigned_to } else { existing.assigned_to };
 
         sqlx::query(
             r#"UPDATE persons SET
@@ -302,7 +348,7 @@ impl Person {
                lifecycle_stage=?10, lead_score=?11, company_name=?12, job_title=?13,
                website=?14, organization_id=?15, intelligence_summary=?16,
                intelligence_raw=?17, intelligence_confidence=?18, notes=?19,
-               tags=?20, custom_fields=?21,
+               tags=?20, custom_fields=?21, emails=?22, phones=?23, assigned_to=?24,
                updated_at=datetime('now','subsec')
                WHERE id=?1"#,
         )
@@ -327,6 +373,9 @@ impl Person {
         .bind(data.notes.or(existing.notes))
         .bind(&tags)
         .bind(&custom_fields)
+        .bind(&emails)
+        .bind(&phones)
+        .bind(assigned_to.as_ref().map(|u| u.as_bytes().to_vec()))
         .execute(pool)
         .await?;
 

@@ -3752,6 +3752,8 @@ export interface SidebarClient {
   active_issues_count?: number;
   knowledge_completeness?: number;
   last_activity_at?: string;
+  crm_person_id?: string;
+  crm_confidence?: number;
   projects: SidebarProject[];
   folders: SidebarProjectFolder[];
 }
@@ -4402,6 +4404,28 @@ export interface PersonRecord {
   notes?: string;
   tags: string;
   custom_fields: string;
+  /** JSON array of {value, label} */
+  emails: string;
+  /** JSON array of {value, label} */
+  phones: string;
+  assigned_to?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactValue {
+  value: string;
+  label: string;
+}
+
+export interface PersonNote {
+  id: string;
+  person_id: string;
+  author_id?: string;
+  text: string;
+  status: 'open' | 'follow_up' | 'resolved' | 'pinned';
+  attachments: string;
+  proposal_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -4463,6 +4487,9 @@ export interface CreatePersonInput {
   website?: string;
   notes?: string;
   tags?: string[];
+  emails?: ContactValue[];
+  phones?: ContactValue[];
+  assigned_to?: string;
 }
 
 export interface UpdatePersonInput {
@@ -4481,6 +4508,9 @@ export interface UpdatePersonInput {
   notes?: string;
   tags?: string[];
   intelligence_summary?: string;
+  emails?: ContactValue[];
+  phones?: ContactValue[];
+  assigned_to?: string;
 }
 
 export const personsApi = {
@@ -4489,6 +4519,7 @@ export const personsApi = {
     financial_role?: string;
     lifecycle_stage?: string;
     organization_id?: string;
+    assigned_to?: string;
     q?: string;
     limit?: number;
     offset?: number;
@@ -4498,6 +4529,7 @@ export const personsApi = {
     if (params?.financial_role) qs.set('financial_role', params.financial_role);
     if (params?.lifecycle_stage) qs.set('lifecycle_stage', params.lifecycle_stage);
     if (params?.organization_id) qs.set('organization_id', params.organization_id);
+    if (params?.assigned_to) qs.set('assigned_to', params.assigned_to);
     if (params?.q) qs.set('q', params.q);
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.offset) qs.set('offset', String(params.offset));
@@ -4568,6 +4600,35 @@ export const personsApi = {
     const response = await makeRequest(`/api/persons/${id}/invoices`);
     return handleApiResponse<InvoiceRecord[]>(response);
   },
+
+  listNotes: async (id: string, status?: string): Promise<PersonNote[]> => {
+    const qs = status ? `?status=${status}` : '';
+    const response = await makeRequest(`/api/persons/${id}/notes${qs}`);
+    return handleApiResponse<PersonNote[]>(response);
+  },
+
+  createNote: async (personId: string, data: { text: string; status?: string; proposal_id?: string }): Promise<PersonNote> => {
+    const response = await makeRequest(`/api/persons/${personId}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...data, person_id: personId }),
+    });
+    return handleApiResponse<PersonNote>(response);
+  },
+
+  updateNote: async (noteId: string, data: { text?: string; status?: string; proposal_id?: string }): Promise<PersonNote> => {
+    const response = await makeRequest(`/api/person-notes/${noteId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonNote>(response);
+  },
+
+  deleteNote: async (noteId: string): Promise<void> => {
+    const response = await makeRequest(`/api/person-notes/${noteId}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
 };
 
 // ── Proposals ─────────────────────────────────────────────────────────────────
@@ -4597,6 +4658,8 @@ export interface ProposalRecord {
   description: string;
   quote_amount_vibe: number;
   deal_type: DealType;
+  /** JSON array of person UUIDs */
+  contact_ids: string;
   sent_at?: string;
   seen_at?: string;
   verbal_at?: string;
@@ -4615,6 +4678,7 @@ export interface CreateProposalInput {
   description?: string;
   quote_amount_vibe?: number;
   deal_type?: DealType;
+  contact_ids?: string[];
 }
 
 export interface UpdateProposalInput {
@@ -4625,6 +4689,7 @@ export interface UpdateProposalInput {
   lead_id?: string;
   project_id?: string;
   owner_id?: string;
+  contact_ids?: string[];
 }
 
 export const proposalsApi = {

@@ -55,7 +55,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { projectsApi, organizationsApi, projectFoldersApi, tasksApi } from '@/lib/api';
+import { projectsApi, organizationsApi, projectFoldersApi, tasksApi, personsApi, type PersonRecord } from '@/lib/api';
 import type { SidebarTree, SidebarOrg, SidebarClient as SidebarClientType, SidebarProject as SidebarProjectType, SidebarProjectFolder as SidebarProjectFolderType, SidebarSharedBoardGroup as SidebarSharedBoardGroupType } from '@/lib/api';
 import { showProjectForm } from '@/lib/modals';
 import type { Project, ProjectBoard, TaskWithAttemptStatus } from 'shared/types';
@@ -153,6 +153,120 @@ function HealthDot({ status }: { status?: string }) {
 }
 
 // ============================================================================
+// OrgCrmSidebarLinks — expandable CRM sub-navigation for an organisation
+// ============================================================================
+
+function OrgCrmSidebarLinks({
+  orgId,
+  location,
+}: {
+  orgId: string;
+  location: { pathname: string; search: string };
+}) {
+  const isCrmActive =
+    (location.pathname === `/organizations/${orgId}` && location.search === '?tab=crm') ||
+    location.pathname.startsWith(`/organizations/${orgId}/crm`);
+  const [expanded, setExpanded] = useState(isCrmActive);
+
+  // Fetch CRM clients for this org so we can show them with traced/untraced status
+  const { data: clients = [] } = useQuery<PersonRecord[]>({
+    queryKey: ['sidebar-crm-clients', orgId],
+    queryFn: () => personsApi.list({ organization_id: orgId, person_type: 'client', limit: 50 }),
+    enabled: expanded,
+    staleTime: 60_000,
+  });
+
+  const crmLinks = [
+    { label: 'People & Leads',    to: `/organizations/${orgId}?tab=crm`,             icon: UserCircle },
+    { label: 'Acquisition',       to: `/organizations/${orgId}/crm/acquisition`,      icon: Target },
+    { label: 'Client Lifecycle',  to: `/organizations/${orgId}/crm/lifecycle`,        icon: TrendingUp },
+    { label: 'Proposals',         to: '/proposals',                                   icon: FileText },
+  ];
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            'flex items-center gap-2 pl-4 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground w-full text-left',
+            isCrmActive && 'text-accent-foreground'
+          )}
+        >
+          <Users className="h-3 w-3 text-muted-foreground" />
+          <span className="flex-1">CRM</span>
+          {clients.length > 0 && (
+            <span className="text-[10px] text-muted-foreground mr-1">{clients.length}</span>
+          )}
+          {expanded ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-0.5">
+          {/* Nav links */}
+          {crmLinks.map((link) => {
+            const Icon = link.icon;
+            const isActive =
+              link.to.includes('?tab=crm')
+                ? location.pathname === `/organizations/${orgId}` && location.search === '?tab=crm'
+                : location.pathname === link.to;
+            return (
+              <Link
+                key={link.to}
+                to={link.to}
+                className={cn(
+                  'flex items-center gap-2 pl-9 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                  isActive && 'bg-accent text-accent-foreground'
+                )}
+              >
+                <Icon className="h-3 w-3 text-muted-foreground" />
+                <span>{link.label}</span>
+              </Link>
+            );
+          })}
+
+          {/* Client list with traced/untraced indicators */}
+          {clients.length > 0 && (
+            <div className="pt-1">
+              <div className="pl-9 pr-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Clients
+              </div>
+              {clients.map((c) => {
+                const isPersonActive = location.pathname === `/people/${c.id}`;
+                // "traced" = has intelligence data with decent confidence
+                const traced = c.intelligence_confidence > 0.4;
+                return (
+                  <Link
+                    key={c.id}
+                    to={`/people/${c.id}`}
+                    title={c.company_name ?? c.full_name}
+                    className={cn(
+                      'flex items-center gap-2 pl-9 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                      isPersonActive && 'bg-accent text-accent-foreground'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'inline-block w-1.5 h-1.5 rounded-full shrink-0',
+                        traced ? 'bg-green-500' : 'bg-muted-foreground/40'
+                      )}
+                      title={traced ? 'Intelligence gathered' : 'Not yet researched'}
+                    />
+                    <span className="truncate">{c.company_name ?? c.full_name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 // CrmSidebarLinks — expandable CRM sub-navigation for a project
 // ============================================================================
 
@@ -901,6 +1015,16 @@ function ClientGroup({
             <HealthDot status={client.health_status} />
             <UserCircle className="h-3.5 w-3.5 text-blue-500 shrink-0" />
             <span className="truncate">{client.name}</span>
+            {/* CRM tracking dot: green = linked + researched, amber = linked but not researched, none = untracked */}
+            {client.crm_person_id && (
+              <span
+                className={cn(
+                  'inline-block w-1.5 h-1.5 rounded-full shrink-0',
+                  (client.crm_confidence ?? 0) > 0.4 ? 'bg-green-500' : 'bg-amber-400'
+                )}
+                title={(client.crm_confidence ?? 0) > 0.4 ? 'CRM: tracked & researched' : 'CRM: linked, not yet researched'}
+              />
+            )}
           </div>
           <div className="flex items-center gap-1">
             {client.active_issues_count != null && client.active_issues_count > 0 && (
@@ -1077,31 +1201,8 @@ function OrgSection({
       </CollapsibleTrigger>
       <CollapsibleContent className="pl-2">
         <div className="space-y-0.5">
-          {/* Org-level CRM pipeline boards */}
-          <div className="flex gap-1 px-1 py-1">
-            <Link
-              to={`/organizations/${org.id}/crm/acquisition`}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground flex-1',
-                location.pathname === `/organizations/${org.id}/crm/acquisition` &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <Target className="h-3 w-3 text-amber-500 shrink-0" />
-              <span>Acquisition</span>
-            </Link>
-            <Link
-              to={`/organizations/${org.id}/crm/lifecycle`}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground flex-1',
-                location.pathname === `/organizations/${org.id}/crm/lifecycle` &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <TrendingUp className="h-3 w-3 text-emerald-500 shrink-0" />
-              <span>Lifecycle</span>
-            </Link>
-          </div>
+          {/* Org-level CRM — collapsible, same pattern as project CRM */}
+          <OrgCrmSidebarLinks orgId={org.id} location={location} />
 
           {/* Internal projects and folders (no client) */}
           {(org.internal_projects.length > 0 || (org.internal_folders || []).length > 0) && (

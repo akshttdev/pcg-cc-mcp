@@ -1,10 +1,17 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import {
   Search,
   Users,
@@ -15,8 +22,12 @@ import {
   Building2,
   Mail,
   Phone,
+  UserCircle,
+  ChevronDown,
+  Globe,
 } from 'lucide-react';
 import { personsApi, type PersonRecord } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -29,25 +40,17 @@ const PERSON_TYPE_INFO: Record<string, { label: string; color: string }> = {
   contact:    { label: 'Contact',    color: 'bg-gray-100 text-gray-600' },
 };
 
-const FINANCIAL_ROLE_INFO: Record<string, { label: string; color: string }> = {
-  taker:   { label: 'Taker',   color: 'text-red-600' },
-  giver:   { label: 'Giver',   color: 'text-green-600' },
-  both:    { label: 'Taker + Giver', color: 'text-purple-600' },
-  neutral: { label: '',        color: '' },
-};
-
-const FILTERS = [
-  { key: undefined, label: 'All', icon: Users },
-  { key: 'team',       label: 'Team',       icon: UserCheck },
-  { key: 'client',     label: 'Clients',    icon: Briefcase },
-  { key: 'lead',       label: 'Leads',      icon: TrendingUp },
+const TYPE_FILTERS = [
+  { key: undefined,    label: 'All',         icon: Users },
+  { key: 'team',       label: 'Team',        icon: UserCheck },
+  { key: 'client',     label: 'Clients',     icon: Briefcase },
+  { key: 'lead',       label: 'Leads',       icon: TrendingUp },
   { key: 'contractor', label: 'Contractors', icon: Building2 },
 ];
 
 function PersonCard({ person }: { person: PersonRecord }) {
   const navigate = useNavigate();
   const typeInfo = PERSON_TYPE_INFO[person.person_type] ?? PERSON_TYPE_INFO.contact;
-  const roleInfo = FINANCIAL_ROLE_INFO[person.financial_role] ?? FINANCIAL_ROLE_INFO.neutral;
 
   const initials = person.full_name
     .split(' ')
@@ -61,24 +64,22 @@ function PersonCard({ person }: { person: PersonRecord }) {
       className="flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/40 cursor-pointer transition-colors group"
       onClick={() => navigate(`/people/${person.id}`)}
     >
-      {/* Avatar */}
       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
         {person.avatar_url ? (
           <img src={person.avatar_url} alt={person.full_name} className="w-full h-full rounded-full object-cover" />
-        ) : (
-          initials
-        )}
+        ) : initials}
       </div>
 
-      {/* Main info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium truncate">{person.full_name}</span>
           <Badge className={`text-xs px-1.5 py-0 ${typeInfo.color} border-0`}>
             {typeInfo.label}
           </Badge>
-          {roleInfo.label && (
-            <span className={`text-xs font-medium ${roleInfo.color}`}>{roleInfo.label}</span>
+          {person.intelligence_confidence > 0.6 && (
+            <span className="text-xs text-green-600 font-medium">
+              {Math.round(person.intelligence_confidence * 100)}%
+            </span>
           )}
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
@@ -88,18 +89,26 @@ function PersonCard({ person }: { person: PersonRecord }) {
               {person.company_name}
             </span>
           )}
-          {person.email && (
-            <span className="flex items-center gap-1 truncate">
-              <Mail className="h-3 w-3" />
-              {person.email}
-            </span>
-          )}
-          {person.phone && (
-            <span className="flex items-center gap-1">
-              <Phone className="h-3 w-3" />
-              {person.phone}
-            </span>
-          )}
+          {(() => {
+            const emailList = (() => { try { return JSON.parse(person.emails || '[]'); } catch { return []; } })();
+            const primaryEmail = emailList[0]?.value ?? person.email;
+            return primaryEmail ? (
+              <span className="flex items-center gap-1 truncate">
+                <Mail className="h-3 w-3" />
+                {primaryEmail}
+              </span>
+            ) : null;
+          })()}
+          {(() => {
+            const phoneList = (() => { try { return JSON.parse(person.phones || '[]'); } catch { return []; } })();
+            const primaryPhone = phoneList[0]?.value ?? person.phone;
+            return primaryPhone ? (
+              <span className="flex items-center gap-1">
+                <Phone className="h-3 w-3" />
+                {primaryPhone}
+              </span>
+            ) : null;
+          })()}
         </div>
         {person.intelligence_summary && (
           <p className="text-xs text-muted-foreground mt-1 line-clamp-1 italic">
@@ -108,7 +117,6 @@ function PersonCard({ person }: { person: PersonRecord }) {
         )}
       </div>
 
-      {/* Lifecycle */}
       <div className="hidden sm:block text-xs text-muted-foreground capitalize shrink-0">
         {person.lifecycle_stage.replace(/_/g, ' ')}
       </div>
@@ -122,14 +130,25 @@ function PersonCard({ person }: { person: PersonRecord }) {
 
 export function PeoplePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState<string | undefined>(undefined);
+  const [activeType, setActiveType] = useState<string | undefined>(undefined);
+  const [myContacts, setMyContacts] = useState(false);
+
+  // Org scoping: default to the user's first org, allow switching to "All"
+  const userOrgs: { id: string; name: string; slug: string }[] = (user as any)?.organizations ?? [];
+  const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>(
+    userOrgs.length > 0 ? userOrgs[0].id : undefined
+  );
+  const selectedOrg = userOrgs.find(o => o.id === selectedOrgId);
 
   const { data: persons = [], isLoading } = useQuery<PersonRecord[]>({
-    queryKey: ['persons', activeFilter, search],
+    queryKey: ['persons', activeType, search, myContacts, user?.id, selectedOrgId],
     queryFn: () =>
       personsApi.list({
-        person_type: activeFilter,
+        person_type: activeType,
+        assigned_to: myContacts && user?.id ? user.id : undefined,
+        organization_id: selectedOrgId,
         q: search || undefined,
         limit: 200,
       }),
@@ -147,7 +166,7 @@ export function PeoplePage() {
         <div>
           <h1 className="text-2xl font-semibold">People</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Universal contact intelligence — every team member, client, lead, and contractor in one place.
+            Contacts, leads, and clients for {selectedOrg?.name ?? 'all organisations'}.
           </p>
         </div>
         <Button onClick={() => navigate('/people/new')}>
@@ -155,16 +174,55 @@ export function PeoplePage() {
         </Button>
       </div>
 
-      {/* Filter pills */}
+      {/* Org scope switcher + My Contacts */}
       <div className="flex items-center gap-2 flex-wrap">
-        {FILTERS.map((f) => {
+        {/* Org selector */}
+        {userOrgs.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border border-border hover:bg-muted/60 transition-colors font-medium">
+                <Building2 className="h-3.5 w-3.5" />
+                {selectedOrg?.name ?? 'All Orgs'}
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => setSelectedOrgId(undefined)}>
+                <Globe className="h-4 w-4 mr-2" />
+                All Organisations
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {userOrgs.map(org => (
+                <DropdownMenuItem key={org.id} onClick={() => setSelectedOrgId(org.id)}>
+                  <Building2 className="h-4 w-4 mr-2" />
+                  {org.name}
+                  {selectedOrgId === org.id && <span className="ml-auto text-primary">✓</span>}
+                </DropdownMenuItem>
+              ))}
+              {selectedOrgId && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to={`/organizations/${selectedOrgId}?tab=crm`} className="flex items-center gap-2">
+                      <UserCheck className="h-4 w-4" />
+                      Open {selectedOrg?.name} CRM
+                    </Link>
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        {/* Type filter pills */}
+        {TYPE_FILTERS.map((f) => {
           const Icon = f.icon;
           const count = f.key ? (counts[f.key] ?? 0) : persons.length;
-          const active = activeFilter === f.key;
+          const active = activeType === f.key;
           return (
             <button
               key={f.key ?? 'all'}
-              onClick={() => setActiveFilter(f.key)}
+              onClick={() => setActiveType(f.key)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
                 active
                   ? 'bg-primary text-primary-foreground border-primary'
@@ -179,6 +237,18 @@ export function PeoplePage() {
             </button>
           );
         })}
+
+        <button
+          onClick={() => setMyContacts(!myContacts)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+            myContacts
+              ? 'bg-violet-600 text-white border-violet-600'
+              : 'border-border hover:bg-muted/60'
+          }`}
+        >
+          <UserCircle className="h-3.5 w-3.5" />
+          My Contacts
+        </button>
       </div>
 
       {/* Search */}
@@ -203,6 +273,11 @@ export function PeoplePage() {
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Users className="h-12 w-12 mb-3 opacity-30" />
           <p className="text-sm">No people found</p>
+          {selectedOrg && (
+            <p className="text-xs mt-1">
+              Showing contacts for <strong>{selectedOrg.name}</strong>
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-2">
