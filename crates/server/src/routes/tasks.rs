@@ -37,6 +37,49 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_task_middleware, middleware::access_control::AccessContext};
 
+/// Broadcast a task event to all connected WebSocket clients
+fn broadcast_task_event(deployment: &DeploymentImpl, op: &str, task_id: Uuid, task: Option<&TaskWithAttemptStatus>) {
+    let patch = match op {
+        "add" | "replace" => {
+            if let Some(t) = task {
+                json!([{
+                    "op": op,
+                    "path": format!("/tasks/{}", task_id),
+                    "value": t
+                }])
+            } else {
+                return;
+            }
+        }
+        "remove" => {
+            json!([{
+                "op": "remove",
+                "path": format!("/tasks/{}", task_id)
+            }])
+        }
+        _ => return,
+    };
+
+    if let Ok(patch) = serde_json::from_value::<json_patch::Patch>(patch) {
+        deployment.events().msg_store().push_patch(patch);
+    }
+}
+
+/// Convert a Task to TaskWithAttemptStatus with default values for a fresh task
+fn task_to_with_attempt_status(task: Task) -> TaskWithAttemptStatus {
+    TaskWithAttemptStatus {
+        task,
+        has_in_progress_attempt: false,
+        has_merged_attempt: false,
+        last_attempt_failed: false,
+        executor: String::new(),
+        last_execution_summary: None,
+        collaborators: None,
+        vibe_cost: None,
+        vibe_model: None,
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TaskQuery {
     pub project_id: Uuid,
@@ -181,6 +224,10 @@ pub async fn create_task(
             }),
         )
         .await;
+
+    // Broadcast task creation to WebSocket clients
+    let task_with_status = task_to_with_attempt_status(task.clone());
+    broadcast_task_event(&deployment, "add", task.id, Some(&task_with_status));
 
     Ok(ResponseJson(ApiResponse::success(task)))
 }
@@ -374,7 +421,7 @@ pub async fn create_task_and_start(
         .ok_or(ApiError::Database(SqlxError::RowNotFound))?;
 
     tracing::info!("Started execution process {}", execution_process.id);
-    Ok(ResponseJson(ApiResponse::success(TaskWithAttemptStatus {
+    let task_with_status = TaskWithAttemptStatus {
         task,
         has_in_progress_attempt: true,
         has_merged_attempt: false,
@@ -384,7 +431,12 @@ pub async fn create_task_and_start(
         collaborators: None,
         vibe_cost: None,
         vibe_model: None,
-    })))
+    };
+
+    // Broadcast task creation to WebSocket clients
+    broadcast_task_event(&deployment, "add", task_with_status.id, Some(&task_with_status));
+
+    Ok(ResponseJson(ApiResponse::success(task_with_status)))
 }
 
 pub async fn update_task(
@@ -495,6 +547,14 @@ pub async fn update_task(
         TaskImage::associate_many_dedup(&deployment.db().pool, task.id, image_ids).await?;
     }
 
+    // Broadcast task update to WebSocket clients
+    // Fetch full TaskWithAttemptStatus for accurate attempt info
+    if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(&deployment.db().pool, task.project_id).await {
+        if let Some(task_with_status) = tasks.into_iter().find(|t| t.id == task.id) {
+            broadcast_task_event(&deployment, "replace", task.id, Some(&task_with_status));
+        }
+    }
+
     Ok(ResponseJson(ApiResponse::success(task)))
 }
 
@@ -540,14 +600,17 @@ pub async fn delete_task(
         .collect();
 
     // Delete task from database (FK CASCADE will handle task_attempts)
-    let rows_affected = Task::delete(&deployment.db().pool, task.id).await?;
+    let task_id = task.id;
+    let rows_affected = Task::delete(&deployment.db().pool, task_id).await?;
 
     if rows_affected == 0 {
         return Err(ApiError::Database(SqlxError::RowNotFound));
     }
 
+    // Broadcast task deletion to WebSocket clients
+    broadcast_task_event(&deployment, "remove", task_id, None);
+
     // Spawn background worktree cleanup task
-    let task_id = task.id;
     tokio::spawn(async move {
         let span = tracing::info_span!("background_worktree_cleanup", task_id = %task_id);
         let _enter = span.enter();
