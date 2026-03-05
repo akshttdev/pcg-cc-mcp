@@ -212,6 +212,15 @@ export function TaskCard({
             : task.description}
         </p>
       )}
+      {task.screenshot && (
+        <div className="mt-2">
+          <img
+            src={task.screenshot}
+            alt="Task screenshot"
+            className="max-h-32 rounded-md border object-contain w-full bg-muted"
+          />
+        </div>
+      )}
       {!selectionMode && (
         <div className="mt-2 pt-2 border-t flex items-center justify-between gap-2">
           <TimeTrackerWidget taskId={task.id} compact />

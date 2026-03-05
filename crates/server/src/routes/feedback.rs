@@ -30,6 +30,8 @@ pub struct SubmitFeedbackRequest {
     pub email: Option<String>,
     /// Severity for bugs: low, medium, high, critical
     pub severity: Option<String>,
+    /// Base64 encoded screenshot image (optional)
+    pub screenshot: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -104,6 +106,7 @@ pub async fn submit_feedback(
         custom_properties: None,
         scheduled_start: None,
         scheduled_end: None,
+        screenshot: req.screenshot.clone(),
     };
 
     Task::create(pool, &create_task, task_id)
