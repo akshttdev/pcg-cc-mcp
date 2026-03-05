@@ -1,71 +1,101 @@
 ---
-title: "Install & Run Duck Kanban"
-description: "Complete installation guide for Duck Kanban on macOS, Linux, and Windows"
-sidebarTitle: "Installation"
+title: "Getting Started"
+description: "Set up PCG Command Centre — installation options for development and production deployment"
+sidebarTitle: "Getting Started"
 ---
 
-## Supported Systems
+# Getting Started
 
-We build and test Duck Kanban on the following systems:
+PCG CC can be run in two ways: **local development** for contributors, or **Docker deployment** for production use.
 
-- macOS (Intel and Apple Silicon)
-- Linux
-- Windows
+## Quick deploy (Docker)
+
+The fastest way to run PCG CC:
+
+```bash
+./quick-deploy.sh
+```
+
+Or step by step:
+
+```bash
+./deploy.sh setup
+./deploy.sh deploy
+```
+
+Access the platform at `http://localhost:8080`.
+
+<Info>
+Docker deployment includes GPU support, automated backups, reverse proxy, and optional Cloudflare tunnel. See the [Docker deployment guide](/deployment/docker) for full configuration.
+</Info>
 
 ## Prerequisites
 
-Before installing Duck Kanban, ensure you have:
+| Requirement | Development | Docker |
+|------------|-------------|--------|
+| **Docker** | Optional | Required |
+| **Rust** | Required (1.75+) | Not needed |
+| **Node.js** | Required (20+) | Not needed |
+| **pnpm** | Required (9+) | Not needed |
+| **OpenAI API key** | Recommended | Required |
+| **NVIDIA GPU** | Optional | Optional |
 
-- **Node.js**: Latest LTS version recommended
-- **Coding agent authentication**: Authenticate with your preferred coding agents outside of Duck Kanban
-
-<Info>
-All supported coding agents can be used via npx without separate installation. You can find authentication instructions for each coding agent on their respective [websites](./supported-coding-agents).
-</Info>
-
-## Safety Notice
-
-<Warning>
-Duck Kanban runs AI agents with --dangerously-skip-permissions/--yolo flags by default so they can work autonomously without constant approval prompts. Each task runs in an isolated git worktree, preventing agents from interfering with each other.
-Agents can still perform system-level actions, so review their work and keep backups.
-</Warning>
-
-## Installation & Setup
+## Local development setup
 
 <Steps>
-<Step title="Install and launch Duck Kanban">
-  Open a terminal and run:
-
+<Step title="Clone the repository">
   ```bash
-  npx duck-kanban
+  git clone https://github.com/nicholasgriffintn/pcg-cc-mcp.git
+  cd pcg-cc-mcp
+  ```
+</Step>
+
+<Step title="Install dependencies">
+  ```bash
+  pnpm install
+  ```
+</Step>
+
+<Step title="Start development servers">
+  ```bash
+  pnpm run dev
   ```
 
+  This starts:
+  - **Frontend**: `http://localhost:3000` (Vite dev server with HMR)
+  - **Backend**: Auto-assigned port (proxied through Vite)
+
   <Check>
-  The application will bind to a random free port, print the URL in the terminal, and automatically open in your default browser.
+  Open `http://localhost:3000` in your browser. You should see the Mission Control dashboard.
   </Check>
-</Step>
-
-<Step title="Complete initial setup">
-  Complete the setup dialogs to configure your coding agent and editor preferences. GitHub authentication is optional and can be configured later.
-</Step>
-
-<Step title="Create your first project">
-  You'll land on an empty Projects page. Click "Create your first project" to set up your initial project.
-</Step>
-
-<Step title="Add tasks">
-  Start tracking your work by [creating tasks](/core-features/creating-tasks) within your project.
-</Step>
-
-<Step title="Optional: Configure GitHub integration">
-  Connect to GitHub in [Settings](/configuration-customisation/global-settings) to enable branch management and pull request creation.
-</Step>
-
-<Step title="Optional: Set up MCP integration">
-  Streamline task creation with coding agents by [setting up MCP integration](/integrations/duck-kanban-mcp-server).
 </Step>
 </Steps>
 
+The SQLite database is automatically seeded from `dev_assets_seed/` on first run. Migrations apply automatically on startup.
+
 <Tip>
-To use a fixed port, specify the `PORT` environment variable: `PORT=8080 npx duck-kanban`
+For detailed development setup including environment variables, toolchain configuration, and troubleshooting, see the [Development Setup guide](/development/setup).
 </Tip>
+
+## Safety notice
+
+<Warning>
+PCG CC runs AI agents with autonomous permissions so they can work without constant approval prompts. Each task runs in an isolated git worktree, preventing agents from interfering with each other. Agents can still perform system-level actions — review their work and keep backups.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Development Setup" icon="wrench" href="/development/setup">
+    Detailed local development environment configuration.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    Understand the 17-crate workspace and system design.
+  </Card>
+  <Card title="MCP Servers" icon="plug" href="/mcp/overview">
+    24+ tools for AI agent integration.
+  </Card>
+  <Card title="Supported Agents" icon="robot" href="/supported-coding-agents">
+    Configure Claude, Gemini, Codex, and other AI agents.
+  </Card>
+</CardGroup>

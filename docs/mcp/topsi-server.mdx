@@ -1,0 +1,172 @@
+---
+title: "TopsiServer Reference"
+description: "Detailed reference for the TopsiServer MCP — 10 topology intelligence tools for agent routing, team formation, and system health"
+---
+
+# TopsiServer Reference
+
+The TopsiServer provides topology intelligence capabilities through 10 dedicated MCP tools. It enables AI agents to query the system graph, route tasks, form teams, and monitor health.
+
+**Binary**: `mcp_topsi_server`
+**Transport**: stdio
+
+```json
+{
+  "mcpServers": {
+    "pcg-topsi": {
+      "command": "path/to/mcp_topsi_server",
+      "args": ["--db", "path/to/pcg.db"]
+    }
+  }
+}
+```
+
+## Tools
+
+### `get_topology`
+
+Fetch the full topology graph for a project — all nodes, edges, and clusters.
+
+<ParamField query="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ResponseField name="nodes" type="array">
+Topology nodes (agents, tasks, resources) with ID, type, status, and capabilities.
+</ResponseField>
+
+<ResponseField name="edges" type="array">
+Relationships between nodes (can_execute, depends_on, etc.) with source, target, and type.
+</ResponseField>
+
+<ResponseField name="clusters" type="array">
+Active agent teams with name, member IDs, and status.
+</ResponseField>
+
+### `get_topology_health`
+
+Calculate per-node health scores and identify inactive or degraded nodes.
+
+<ParamField query="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ResponseField name="health_score" type="number">
+Overall health score (0.0 to 1.0). Calculated from node statuses, edge integrity, and cluster coverage.
+</ResponseField>
+
+<ResponseField name="inactive_nodes" type="array">
+Nodes that are not responding or have failed status.
+</ResponseField>
+
+### `detect_issues`
+
+Identify structural problems in the topology.
+
+<ParamField query="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+Detects:
+- **Isolated nodes** — Nodes with no edges (disconnected from the graph)
+- **Failed edges** — Broken relationships between nodes
+- **Overloaded agents** — Agents with too many active assignments
+- **Dependency cycles** — Circular chains in task dependencies
+
+### `get_topology_summary`
+
+Quick statistics overview without the full graph payload.
+
+<ParamField query="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ResponseField name="node_count" type="integer">
+Total topology nodes.
+</ResponseField>
+
+<ResponseField name="edge_count" type="integer">
+Total topology edges.
+</ResponseField>
+
+<ResponseField name="cluster_count" type="integer">
+Active clusters/teams.
+</ResponseField>
+
+<ResponseField name="health_score" type="number">
+Overall health score.
+</ResponseField>
+
+### `route_task`
+
+Find the best available agent to execute a task based on capabilities, workload, and topology position.
+
+<ParamField body="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ParamField body="task_id" type="string" required>
+UUID of the task to route.
+</ParamField>
+
+<ParamField body="required_capabilities" type="array">
+List of capability strings the agent must have (e.g., `["rust", "testing"]`).
+</ParamField>
+
+Returns the recommended agent with a routing score and reasoning.
+
+### `form_team`
+
+Create a dynamic cluster of agents for coordinated work on a complex objective.
+
+<ParamField body="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ParamField body="team_name" type="string" required>
+Human-readable name for the team.
+</ParamField>
+
+<ParamField body="agent_ids" type="array" required>
+Array of topology node IDs (agent nodes) to include in the team.
+</ParamField>
+
+### `dissolve_team`
+
+Release agents from a cluster, returning them to the general pool.
+
+<ParamField body="cluster_id" type="string" required>
+UUID of the cluster to dissolve.
+</ParamField>
+
+### `get_agent_statuses`
+
+List all agents with their current status, capabilities, and workload.
+
+<ParamField query="project_id" type="string">
+Optional project filter. If omitted, returns all agents.
+</ParamField>
+
+### `get_system_pulse`
+
+Real-time system health and activity metrics.
+
+<ParamField query="project_id" type="string">
+Optional project filter.
+</ParamField>
+
+Returns node counts by status, active task counts, cluster utilisation, and overall system health.
+
+### `get_recommendations`
+
+Priority-ranked recommendations for improving topology health and task throughput.
+
+<ParamField query="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="5">
+Maximum number of recommendations.
+</ParamField>
+
+Returns actionable suggestions such as "Form a team for the 3 blocked frontend tasks" or "Agent X is overloaded — redistribute 2 tasks".

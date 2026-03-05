@@ -1,0 +1,112 @@
+---
+title: "Crate Map"
+description: "Guide to all 17 Rust crates in the PCG CC workspace — what each one does and where to find key code"
+---
+
+# Crate Map
+
+The PCG CC workspace contains 17 Rust crates. This page maps each crate's purpose, key files, and how they connect.
+
+## Core Infrastructure
+
+### `crates/server`
+**The main application server.** Contains the Axum HTTP server, all REST API routes, MCP server implementations, and the frontend embed.
+
+| Path | What it contains |
+|------|-----------------|
+| `src/routes/` | 103 route files — REST API endpoints |
+| `src/mcp/task_server.rs` | TaskServer MCP (24 tools, 7 resources) |
+| `src/mcp/topsi_server.rs` | Topsi MCP (10 topology tools) |
+| `src/mcp/nora_server.rs` | Nora executive assistant MCP |
+| `src/mcp/pulse_server.rs` | Pulse real-time metrics MCP |
+| `src/bin/` | Server binary + MCP server binaries + type generator |
+
+### `crates/db`
+**Database layer.** All SQLx models, migrations, repositories, and query logic.
+
+| Path | What it contains |
+|------|-----------------|
+| `src/models/` | 111 model files (one per table) |
+| `migrations/` | 136 SQLite migrations (June 2025 – March 2026) |
+| `src/repositories/` | Organization, session, user repositories |
+| `src/constants.rs` | Well-known UUIDs (Bug Reports project, dev admin) |
+
+### `crates/services`
+**Business logic.** 45+ services that the server routes call into.
+
+| Path | What it contains |
+|------|-----------------|
+| `src/services/agent_registry/` | Central agent registry and management |
+| `src/services/git/` | Git operations (clone, commit, diff, merge) |
+| `src/services/worktree_manager/` | Git worktree lifecycle for task attempts |
+| `src/services/media_pipeline/` | Media processing and asset management |
+| `src/services/social/` | Social platform integrations |
+| `src/services/editron/` | Editron video event processing |
+| `src/services/apn_bridge/` | Alpha Protocol Network bridge |
+| `src/services/events/` | Event system (SSE, notifications) |
+
+### `crates/utils`
+**Shared utilities.** Asset management, type helpers, event streams.
+
+### `crates/executors`
+**AI executor plugins.** Each executor wraps a different AI provider (Claude, Gemini, etc.) with a common interface. Actions: `coding_agent_initial`, `coding_agent_follow_up`, `script`.
+
+---
+
+## Sovereign Stack
+
+### `crates/topsi`
+**Topological Super Intelligence.** The master orchestrator that manages the agent topology graph — task routing, dynamic team formation, health monitoring, and policy enforcement.
+
+<Info>
+Topsi has its own MCP server (`mcp_topsi_server`) with 10 dedicated tools for topology operations.
+</Info>
+
+### `crates/nora`
+**Executive AI Assistant.** COO-level coordination — voice interaction (British accent), workflow management, editron tracking, and project oversight.
+
+### `crates/alpha-protocol-core`
+**Sovereign mesh networking.** P2P transport via libp2p, Ed25519 identity, ChaCha20-Poly1305 encryption, NATS relay, DHT discovery. This is the infrastructure layer that enables sovereign deployment.
+
+---
+
+## Clients
+
+### `crates/apn-client`
+HTTP client for the Alpha Protocol Network API. Manages network identity, peer connections, and capability advertisement.
+
+### `crates/pythia-client`
+HTTP client for Pythia Layer 3. Handles task routing, VIBE economic transactions, and reward distribution.
+
+---
+
+## Specialised Services
+
+### `crates/cinematics`
+AI video generation from briefs using ComfyUI. Generates visual content from structured descriptions.
+
+### `crates/topiclips`
+"Beeple Everydays" — artistic video clips generated from topology evolution snapshots via the cinematics pipeline.
+
+### `crates/editron-runner`
+Standalone Editron event recap/analysis pipeline. Processes event footage into structured summaries.
+
+---
+
+## CLI & Tooling
+
+### `crates/cli`
+**ORCHA CLI.** Interactive development session terminal built with rustyline and crossterm. Connects to the platform as an agent interface.
+
+### `crates/setup-wizard`
+Onboarding wizard for new installations. Collects configuration, creates initial user, and seeds the database.
+
+---
+
+## Deployment
+
+### `crates/deployment`
+Cloud/general deployment traits and abstractions.
+
+### `crates/local-deployment`
+Local deployment orchestration — process management, port allocation, service health checks.

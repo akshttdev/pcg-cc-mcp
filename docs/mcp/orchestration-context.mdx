@@ -1,0 +1,147 @@
+---
+title: "Orchestration Context"
+description: "Shared blackboard system for multi-agent coordination — how agents share findings, decisions, and blockers across task trees"
+---
+
+# Orchestration Context
+
+The Orchestration Context is a **shared blackboard** that enables multi-agent coordination across parallel task execution. Agents write findings, decisions, blockers, and directives to a common surface, allowing subsequent tasks to build on prior work.
+
+## Concept
+
+When multiple agents work on related tasks (e.g., a parent task decomposed into subtasks), they need to share information:
+
+- An agent researching competitors discovers a key finding
+- Another agent building a feature encounters a blocker
+- A third agent needs to know about both before proceeding
+
+The orchestration context provides this shared state without requiring direct agent-to-agent communication.
+
+## Entry types
+
+| Type | Purpose | Example |
+|------|---------|---------|
+| `finding` | Discovery or analysis result | "Competitor X launched 3 new products this quarter" |
+| `decision` | Choice made during execution | "Using PostgreSQL instead of MySQL for this service" |
+| `blocker` | Obstacle requiring resolution | "API rate limit exceeded — need credentials upgrade" |
+| `intermediate_result` | Partial work output | "Draft schema design attached in metadata" |
+| `directive` | Instruction for subsequent tasks | "All API endpoints must use v2 authentication" |
+
+## Status lifecycle
+
+```
+active → resolved     (problem solved)
+active → superseded   (newer entry replaces this one)
+```
+
+Entries start as `active`. Blockers are marked `resolved` when the issue is fixed. Any entry can be `superseded` when a newer entry provides updated information.
+
+## Priority levels
+
+| Priority | When to use |
+|----------|------------|
+| `low` | Nice-to-know context |
+| `normal` | Standard findings and decisions (default) |
+| `high` | Important blockers or critical decisions |
+| `critical` | Execution-stopping issues requiring immediate attention |
+
+## MCP tools
+
+### Writing context
+
+```json
+{
+  "tool": "write_context",
+  "arguments": {
+    "project_id": "uuid",
+    "root_task_id": "uuid",
+    "task_id": "uuid",
+    "entry_type": "blocker",
+    "title": "API rate limit exceeded",
+    "content": "The external API returns 429 after 100 requests/minute. Need to implement request throttling or upgrade the API plan.",
+    "source": "claude-agent-1",
+    "priority": "high"
+  }
+}
+```
+
+### Reading context
+
+```json
+{
+  "tool": "read_context",
+  "arguments": {
+    "project_id": "uuid",
+    "root_task_id": "uuid",
+    "entry_type": "blocker",
+    "status": "active",
+    "priority": "high"
+  }
+}
+```
+
+All filter parameters are optional. Omit them to get all entries for the task tree.
+
+### Resolving entries
+
+```json
+{
+  "tool": "resolve_context",
+  "arguments": {
+    "context_id": "uuid",
+    "resolved_by": "claude-agent-2"
+  }
+}
+```
+
+### Getting a summary
+
+```json
+{
+  "tool": "get_context_summary",
+  "arguments": {
+    "project_id": "uuid",
+    "root_task_id": "uuid"
+  }
+}
+```
+
+Returns aggregated counts: active blockers, unresolved decisions, total findings, and overall health status.
+
+## Usage pattern
+
+A typical multi-agent workflow:
+
+<Steps>
+<Step title="Task starts — read prior context">
+  The agent calls `read_context` to understand what previous agents have discovered, decided, or been blocked by.
+</Step>
+
+<Step title="Agent discovers information">
+  The agent calls `write_context` with a `finding` or `decision` entry to share what it has learned.
+</Step>
+
+<Step title="Agent encounters an obstacle">
+  The agent writes a `blocker` entry with `high` or `critical` priority. Other agents or the orchestrator can see this.
+</Step>
+
+<Step title="Another agent resolves the blocker">
+  A subsequent agent or human calls `resolve_context` to mark the blocker as resolved, with attribution.
+</Step>
+
+<Step title="Orchestrator checks health">
+  The orchestrator calls `get_context_summary` to see if there are unresolved blockers before proceeding with dependent tasks.
+</Step>
+</Steps>
+
+## Scoping
+
+Context entries are scoped by `root_task_id` — the top-level parent task. All subtasks within that tree share the same context surface. This means:
+
+- Subtask A can see findings from Subtask B if they share the same root
+- Different task trees are isolated from each other
+- The `project_id` provides an additional scope for project-wide queries
+
+## Database
+
+The context is stored in the `orchestration_contexts` table with indexes on `root_task_id`, `project_id`, `task_id`, and `(entry_type, status)` for efficient filtering.
