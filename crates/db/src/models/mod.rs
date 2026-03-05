@@ -79,6 +79,7 @@ pub mod pulse_collection_run;
 pub mod pulse_content_item;
 pub mod pulse_source;
 pub mod pulse_tracking_config;
+pub mod orchestration_context;
 pub mod project_knowledge_source;
 // Topology modules: exist on disk but use sqlx::query! macros that require
 // DATABASE_URL or cached queries. The MCP TaskServer uses raw SQL for topology
@@ -99,6 +100,7 @@ pub mod media_asset;
 pub mod review_token;
 pub mod review_comment;
 pub mod person_note;
+pub mod quickbooks_account;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

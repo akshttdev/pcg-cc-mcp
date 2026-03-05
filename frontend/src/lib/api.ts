@@ -3943,6 +3943,120 @@ export const organizationsApi = {
 };
 
 // ============================================================================
+// QuickBooks API
+// ============================================================================
+
+export interface QuickBooksAccountRecord {
+  id: string;
+  organization_id: string;
+  realm_id: string;
+  company_name?: string;
+  environment: string;
+  sync_enabled: number;
+  sync_frequency_minutes: number;
+  last_sync_at?: string;
+  sync_invoices: number;
+  sync_customers: number;
+  sync_payments: number;
+  sync_expenses: number;
+  sync_time_tracking: number;
+  status: string;
+  last_error?: string;
+  metadata?: string;
+  connected_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QBConnectionStatus {
+  connected: boolean;
+  account?: QuickBooksAccountRecord;
+  needs_reauth: boolean;
+}
+
+export interface QuickBooksEntityMapRecord {
+  id: string;
+  quickbooks_account_id: string;
+  pcg_entity_type: string;
+  pcg_entity_id: string;
+  qbo_entity_type: string;
+  qbo_entity_id: string;
+  qbo_sync_token?: string;
+  last_synced_at?: string;
+  sync_direction: string;
+  sync_status: string;
+  last_error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const quickbooksApi = {
+  getStatus: async (organizationId: string): Promise<QBConnectionStatus> => {
+    const response = await makeRequest(`/api/quickbooks/status?organization_id=${organizationId}`);
+    return handleApiResponse<QBConnectionStatus>(response);
+  },
+
+  getConnectUrl: (organizationId: string): string => {
+    return `/api/quickbooks/connect?organization_id=${organizationId}`;
+  },
+
+  listAccounts: async (organizationId: string): Promise<QuickBooksAccountRecord[]> => {
+    const response = await makeRequest(`/api/quickbooks/accounts?organization_id=${organizationId}`);
+    return handleApiResponse<QuickBooksAccountRecord[]>(response);
+  },
+
+  getAccount: async (accountId: string): Promise<QuickBooksAccountRecord> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}`);
+    return handleApiResponse<QuickBooksAccountRecord>(response);
+  },
+
+  updateAccount: async (accountId: string, data: Partial<{
+    company_name: string;
+    sync_enabled: boolean;
+    sync_frequency_minutes: number;
+    sync_invoices: boolean;
+    sync_customers: boolean;
+    sync_payments: boolean;
+    sync_expenses: boolean;
+    sync_time_tracking: boolean;
+    status: string;
+  }>): Promise<QuickBooksAccountRecord> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<QuickBooksAccountRecord>(response);
+  },
+
+  disconnect: async (accountId: string): Promise<void> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  refreshToken: async (accountId: string): Promise<void> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/refresh`, {
+      method: 'POST',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  triggerSync: async (accountId: string, entityTypes?: string[]): Promise<any> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/sync`, {
+      method: 'POST',
+      body: JSON.stringify({ entity_types: entityTypes }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  listEntityMaps: async (accountId: string): Promise<QuickBooksEntityMapRecord[]> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/entity-map`);
+    return handleApiResponse<QuickBooksEntityMapRecord[]>(response);
+  },
+};
+
+// ============================================================================
 // Project Folders API
 // ============================================================================
 

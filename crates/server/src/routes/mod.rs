@@ -93,6 +93,7 @@ pub mod feedback;
 pub mod intelligence;
 pub mod media_library;
 pub mod review;
+pub mod quickbooks;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -157,6 +158,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
         .merge(media_library::router(&deployment))
+        .merge(quickbooks::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
         .layer(middleware::from_fn_with_state(
