@@ -118,7 +118,11 @@ export type Priority = "critical" | "high" | "medium" | "low";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "changesrequested";
 
-export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
+export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
+/**
+ * Base64 encoded screenshot image for bug reports
+ */
+screenshot: string | null, };
 
 export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, has_merged_attempt: boolean, last_attempt_failed: boolean, executor: string, 
 /**
@@ -136,11 +140,19 @@ vibe_cost: bigint | null,
 /**
  * Model used for the most recent vibe transaction on this task
  */
-vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
+vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
+/**
+ * Base64 encoded screenshot image for bug reports
+ */
+screenshot: string | null, };
 
 export type TaskRelationships = { parent_task: Task | null, current_attempt: TaskAttempt, children: Array<Task>, };
 
-export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
+export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
+/**
+ * Base64 encoded screenshot image for bug reports
+ */
+screenshot?: string | null, };
 
 export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_task_attempt: string | null, image_ids: Array<string> | null, pod_id?: string | null, board_id?: string | null, priority: Priority | null, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null | null, assigned_mcps: Array<string> | null, requires_approval: boolean | null, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null | null, scheduled_end: string | null | null, };
 
