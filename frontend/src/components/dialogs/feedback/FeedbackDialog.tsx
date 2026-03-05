@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -60,6 +60,19 @@ export const FeedbackDialog = NiceModal.create(() => {
   const [severity, setSeverity] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Reset form state when modal opens
+  useEffect(() => {
+    if (modal.visible) {
+      setType('bug');
+      setTitle('');
+      setDescription('');
+      setEmail('');
+      setSeverity('medium');
+      setIsSubmitting(false);
+      setSubmitted(false);
+    }
+  }, [modal.visible]);
 
   const selectedType = FEEDBACK_TYPES.find((t) => t.value === type);
   const Icon = selectedType?.icon || MessageCircleQuestion;

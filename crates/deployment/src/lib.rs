@@ -386,17 +386,17 @@ pub trait Deployment: Clone + Send + Sync + 'static {
 
         let repo_path_str = git_repo_path.to_string_lossy().to_string();
 
-        // Check if project already exists with this repo path
-        match Project::find_by_git_repo_path(&self.db().pool, &repo_path_str).await {
-            Ok(Some(existing)) => {
+        // Check if project already exists with this repo path (including soft-deleted)
+        // This prevents recreating projects that were intentionally deleted
+        match Project::exists_by_git_repo_path_including_deleted(&self.db().pool, &repo_path_str).await {
+            Ok(true) => {
                 tracing::debug!(
-                    "Topos project '{}' already exists in database (id: {})",
-                    discovered.name,
-                    existing.id
+                    "Topos project '{}' already exists in database (or was deleted)",
+                    discovered.name
                 );
                 return;
             }
-            Ok(None) => {
+            Ok(false) => {
                 // Project doesn't exist, create it
             }
             Err(e) => {
