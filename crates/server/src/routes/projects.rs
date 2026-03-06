@@ -44,8 +44,13 @@ pub async fn get_projects(
         return Ok(ResponseJson(ApiResponse::success(projects)));
     }
 
-    // For regular users, get only projects they have access to
+    // For regular users, get projects from all access paths:
+    // 1. Direct project_members
+    // 2. Organization membership (projects under their orgs)
+    // 3. Client membership (projects under their clients)
+    // 4. Task assignment (projects where they have assigned tasks)
     let user_id_bytes = access_context.user_id.as_bytes().to_vec();
+    let user_id_str = access_context.user_id.to_string();
 
     #[derive(sqlx::FromRow)]
     struct ProjectRow {
@@ -53,9 +58,30 @@ pub async fn get_projects(
     }
 
     let project_ids: Vec<Uuid> = sqlx::query_as::<_, ProjectRow>(
-        "SELECT DISTINCT project_id as id FROM project_members WHERE user_id = ?",
+        r#"
+        SELECT DISTINCT id FROM (
+            -- Direct project membership
+            SELECT project_id as id FROM project_members WHERE user_id = ?1
+            UNION
+            -- Organization membership → org projects
+            SELECT p.id FROM projects p
+            INNER JOIN organization_members om ON om.organization_id = p.organization_id
+            WHERE om.user_id = ?1 AND p.organization_id IS NOT NULL
+            UNION
+            -- Client membership → client projects
+            SELECT p.id FROM projects p
+            INNER JOIN client_members cm ON cm.client_id = p.client_id
+            WHERE cm.user_id = ?1 AND p.client_id IS NOT NULL
+            UNION
+            -- Task assignment (no project membership, but assigned tasks)
+            SELECT CAST(project_id AS BLOB) as id FROM tasks
+            WHERE assignee_id = ?2 AND deleted_at IS NULL
+        )
+        WHERE id IS NOT NULL
+        "#,
     )
     .bind(&user_id_bytes)
+    .bind(&user_id_str)
     .fetch_all(&deployment.db().pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch user projects: {}", e)))?

@@ -84,9 +84,22 @@ pub struct AccessContext {
     pub user_id: Uuid,
     pub is_admin: bool,
     pub is_active: bool,
+    pub platform_roles: Vec<String>,
 }
 
 impl AccessContext {
+    pub fn has_platform_role(&self, role: &str) -> bool {
+        self.platform_roles.iter().any(|r| r == role)
+    }
+
+    pub fn is_operator(&self) -> bool {
+        self.has_platform_role("operator")
+    }
+
+    pub fn is_client_user(&self) -> bool {
+        self.has_platform_role("client_user")
+    }
+
     /// Check if user has admin access
     pub fn require_admin(&self) -> Result<(), ApiError> {
         if !self.is_admin {
@@ -310,7 +323,7 @@ impl AccessContext {
 
                 if let Some(cr) = client_role {
                     let granted_role = match cr.role.as_str() {
-                        "admin" => ProjectRole::Editor,
+                        "admin" => ProjectRole::Admin,
                         "editor" => ProjectRole::Editor,
                         "viewer" => ProjectRole::Viewer,
                         _ => ProjectRole::Viewer,
@@ -328,9 +341,111 @@ impl AccessContext {
             }
         }
 
+        // 4. Check task-level assignment (user has tasks assigned in this project)
+        let task_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND assignee_id = ? AND deleted_at IS NULL"
+        )
+        .bind(project_id)
+        .bind(self.user_id.to_string())
+        .fetch_one(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+        if task_count > 0 {
+            // Task-only assignees get Viewer access (scoped to their tasks by the task listing layer)
+            let granted_role = ProjectRole::Viewer;
+            let has_access = match required_role {
+                ProjectRole::Viewer => granted_role.can_read(),
+                _ => false,
+            };
+            if has_access {
+                return Ok(granted_role);
+            }
+        }
+
         Err(ApiError::Forbidden(
             "You do not have access to this project".to_string(),
         ))
+    }
+
+    /// Determine the user's access scope for a project.
+    /// Returns "full" if user is a project/org/client member, "assigned_only" if only task assignee.
+    pub async fn get_project_access_scope(
+        &self,
+        pool: &sqlx::SqlitePool,
+        project_id: &str,
+    ) -> Result<&'static str, ApiError> {
+        if self.is_admin {
+            return Ok("full");
+        }
+
+        let project_uuid = Uuid::parse_str(project_id)
+            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
+        let project_id_bytes = project_uuid.as_bytes().to_vec();
+        let user_id_bytes = self.user_id.as_bytes().to_vec();
+
+        // Check direct project membership
+        let direct: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? LIMIT 1"
+        )
+        .bind(&project_id_bytes)
+        .bind(&user_id_bytes)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+        if direct.is_some() {
+            return Ok("full");
+        }
+
+        // Check org/client membership
+        #[derive(sqlx::FromRow)]
+        struct ProjectParent {
+            organization_id: Option<Vec<u8>>,
+            client_id: Option<Vec<u8>>,
+        }
+
+        let parent: Option<ProjectParent> = sqlx::query_as(
+            "SELECT organization_id, client_id FROM projects WHERE id = ?"
+        )
+        .bind(&project_id_bytes)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+        if let Some(p) = &parent {
+            if let Some(ref org_id) = p.organization_id {
+                let org_member: Option<i64> = sqlx::query_scalar(
+                    "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1"
+                )
+                .bind(org_id)
+                .bind(&user_id_bytes)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+                if org_member.is_some() {
+                    return Ok("full");
+                }
+            }
+
+            if let Some(ref client_id) = p.client_id {
+                let client_member: Option<i64> = sqlx::query_scalar(
+                    "SELECT 1 FROM client_members WHERE client_id = ? AND user_id = ? LIMIT 1"
+                )
+                .bind(client_id)
+                .bind(&user_id_bytes)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+                if client_member.is_some() {
+                    return Ok("full");
+                }
+            }
+        }
+
+        Ok("assigned_only")
     }
 
     /// Check if user has access to a board via cross-org board sharing.
@@ -402,6 +517,43 @@ impl AccessContext {
     }
 }
 
+/// Load platform roles for a user from user_platform_roles table
+async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: Uuid) -> Vec<String> {
+    #[derive(FromRow)]
+    struct RoleRow {
+        role: String,
+    }
+
+    sqlx::query_as::<_, RoleRow>(
+        "SELECT role FROM user_platform_roles WHERE user_id = ?"
+    )
+    .bind(user_id.as_bytes().to_vec())
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| r.role)
+    .collect()
+}
+
+/// Build AccessContext from a verified session, loading platform roles
+async fn build_access_context(
+    pool: &sqlx::SqlitePool,
+    user_id: Uuid,
+    is_admin: bool,
+    is_active: bool,
+) -> AccessContext {
+    let platform_roles = load_platform_roles(pool, user_id).await;
+    // is_admin is true if either the users.is_admin flag OR platform_admin role exists
+    let effective_admin = is_admin || platform_roles.iter().any(|r| r == "platform_admin");
+    AccessContext {
+        user_id,
+        is_admin: effective_admin,
+        is_active,
+        platform_roles,
+    }
+}
+
 /// Extract user from session token or cookie
 pub async fn get_current_user(
     deployment: &DeploymentImpl,
@@ -413,10 +565,8 @@ pub async fn get_current_user(
     // Try to get session from cookie first (SQLite auth)
     if let Some(cookies) = cookie_header {
         if let Some(session_id) = extract_session_from_cookies(cookies) {
-            // Hash the session token before lookup (sessions are stored as SHA256 hashes)
             let session_token_hash = db::services::AuthService::hash_session_token(&session_id);
 
-            // Find session and join with user
             #[derive(FromRow)]
             struct UserSession {
                 id: Vec<u8>,
@@ -449,21 +599,20 @@ pub async fn get_current_user(
                 .execute(&pool)
                 .await;
 
-                return Ok(AccessContext {
+                return Ok(build_access_context(
+                    &pool,
                     user_id,
-                    is_admin: user_session.is_admin == 1,
-                    is_active: user_session.is_active == 1,
-                });
+                    user_session.is_admin == 1,
+                    user_session.is_active == 1,
+                ).await);
             }
         }
     }
 
     // Try Bearer token (for API access)
     if let Some(token) = auth_header.and_then(|h| h.strip_prefix("Bearer ")) {
-        // Hash the token using SHA256 (same as session tokens)
         let token_hash = db::services::AuthService::hash_session_token(token);
 
-        // Find session and join with user
         #[derive(FromRow)]
         struct UserSession {
             id: Vec<u8>,
@@ -496,11 +645,12 @@ pub async fn get_current_user(
             .execute(&pool)
             .await;
 
-            return Ok(AccessContext {
+            return Ok(build_access_context(
+                &pool,
                 user_id,
-                is_admin: user_session.is_admin == 1,
-                is_active: user_session.is_active == 1,
-            });
+                user_session.is_admin == 1,
+                user_session.is_active == 1,
+            ).await);
         }
     }
 
