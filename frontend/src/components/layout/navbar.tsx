@@ -15,6 +15,7 @@ import { useProject } from '@/contexts/project-context';
 import { showProjectForm } from '@/lib/modals';
 import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 import { useCommandStore } from '@/stores/useCommandStore';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 
 
 export function Navbar() {
@@ -126,6 +127,7 @@ export function Navbar() {
               </>
             )}
 
+            <NotificationCenter />
             <ProfileSection />
           </div>
         </div>

@@ -1,6 +1,7 @@
 use std::{future::Future, path::PathBuf};
 
 use db::models::{
+    comment::{AuthorType, CommentType, CreateTaskComment, TaskComment},
     project::Project,
     task::{CreateTask, Task, TaskStatus},
 };
@@ -94,6 +95,12 @@ pub struct TaskSummary {
     pub has_merged_attempt: Option<bool>,
     #[schemars(description = "Whether the last execution attempt failed")]
     pub last_attempt_failed: Option<bool>,
+    #[schemars(description = "Task priority: critical, high, medium, low")]
+    pub priority: Option<String>,
+    #[schemars(description = "Assigned user ID (if any)")]
+    pub assignee_id: Option<String>,
+    #[schemars(description = "Due date (ISO 8601, if set)")]
+    pub due_date: Option<String>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -211,6 +218,57 @@ pub struct GetTaskResponse {
     pub success: bool,
     pub task: Option<TaskSummary>,
     pub project_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AssignTaskRequest {
+    #[schemars(description = "The ID of the project containing the task")]
+    pub project_id: String,
+    #[schemars(description = "The ID of the task to assign")]
+    pub task_id: String,
+    #[schemars(description = "The username or UUID of the user to assign the task to. Use 'unassign' to clear.")]
+    pub assignee: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddCommentRequest {
+    #[schemars(description = "The ID of the project containing the task")]
+    pub project_id: String,
+    #[schemars(description = "The ID of the task to comment on")]
+    pub task_id: String,
+    #[schemars(description = "The comment text content")]
+    pub content: String,
+    #[schemars(description = "Optional: 'comment', 'status_update', 'review', 'system', 'handoff'. Default: 'comment'")]
+    pub comment_type: Option<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct AddCommentResponse {
+    pub success: bool,
+    pub comment_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListProjectMembersRequest {
+    #[schemars(description = "The ID of the project to list members for")]
+    pub project_id: String,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ProjectMemberSummary {
+    pub user_id: String,
+    pub username: String,
+    pub full_name: String,
+    pub role: String,
+    pub is_admin: bool,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ListProjectMembersResponse {
+    pub success: bool,
+    pub members: Vec<ProjectMemberSummary>,
+    pub count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -543,6 +601,9 @@ impl TaskServer {
                         has_in_progress_attempt: Some(task.has_in_progress_attempt),
                         has_merged_attempt: Some(task.has_merged_attempt),
                         last_attempt_failed: Some(task.last_attempt_failed),
+                        priority: Some(format!("{:?}", task.priority).to_lowercase()),
+                        assignee_id: task.assignee_id.clone(),
+                        due_date: task.due_date.map(|d| d.to_rfc3339()),
                     })
                     .collect();
 
@@ -710,6 +771,9 @@ impl TaskServer {
                     has_in_progress_attempt: None,
                     has_merged_attempt: None,
                     last_attempt_failed: None,
+                    priority: Some(format!("{:?}", updated_task.priority).to_lowercase()),
+                    assignee_id: updated_task.assignee_id.clone(),
+                    due_date: updated_task.due_date.map(|d| d.to_rfc3339()),
                 };
 
                 let response = UpdateTaskResponse {
@@ -873,7 +937,7 @@ impl TaskServer {
             (Ok(Some(task)), Ok(Some(project))) => {
                 let task_summary = TaskSummary {
                     id: task.id.to_string(),
-                    title: task.title,
+                    title: task.title.clone(),
                     description: task.description,
                     status: task_status_to_string(&task.status),
                     created_at: task.created_at.to_rfc3339(),
@@ -881,6 +945,9 @@ impl TaskServer {
                     has_in_progress_attempt: None,
                     has_merged_attempt: None,
                     last_attempt_failed: None,
+                    priority: Some(format!("{:?}", task.priority).to_lowercase()),
+                    assignee_id: task.assignee_id.clone(),
+                    due_date: task.due_date.map(|d| d.to_rfc3339()),
                 };
 
                 let response = GetTaskResponse {
@@ -911,6 +978,267 @@ impl TaskServer {
                 Ok(CallToolResult::error(vec![Content::text(
                     serde_json::to_string_pretty(&error_response).unwrap(),
                 )]))
+            }
+        }
+    }
+
+    #[tool(
+        description = "Assign a task to a team member. Pass 'unassign' as the assignee to clear assignment. `project_id` and `task_id` are required!"
+    )]
+    async fn assign_task(
+        &self,
+        Parameters(AssignTaskRequest {
+            project_id,
+            task_id,
+            assignee,
+        }): Parameters<AssignTaskRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let project_uuid = match Uuid::parse_str(&project_id) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    r#"{"success": false, "error": "Invalid project ID format"}"#,
+                )]));
+            }
+        };
+        let task_uuid = match Uuid::parse_str(&task_id) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    r#"{"success": false, "error": "Invalid task ID format"}"#,
+                )]));
+            }
+        };
+
+        // Find the task
+        let current_task =
+            match Task::find_by_id_and_project_id(&self.pool, task_uuid, project_uuid).await {
+                Ok(Some(task)) => task,
+                Ok(None) => {
+                    return Ok(CallToolResult::error(vec![Content::text(
+                        r#"{"success": false, "error": "Task not found in project"}"#,
+                    )]));
+                }
+                Err(e) => {
+                    let msg = format!(r#"{{"success": false, "error": "{}"}}"#, e);
+                    return Ok(CallToolResult::error(vec![Content::text(msg)]));
+                }
+            };
+
+        // Resolve assignee — either "unassign" or a username/UUID
+        let assignee_id: Option<String> = if assignee.to_lowercase() == "unassign" {
+            None
+        } else {
+            // Try as UUID first, then look up by username
+            match Uuid::parse_str(&assignee) {
+                Ok(uuid) => Some(uuid.to_string()),
+                Err(_) => {
+                    // Look up by username
+                    #[derive(sqlx::FromRow)]
+                    struct UserId { id: Vec<u8> }
+                    match sqlx::query_as::<_, UserId>(
+                        "SELECT id FROM users WHERE username = ? COLLATE NOCASE AND is_active = 1",
+                    )
+                    .bind(&assignee)
+                    .fetch_optional(&self.pool)
+                    .await
+                    {
+                        Ok(Some(row)) => Uuid::from_slice(&row.id).ok().map(|u| u.to_string()),
+                        _ => {
+                            let msg = format!(
+                                r#"{{"success": false, "error": "User '{}' not found"}}"#,
+                                assignee
+                            );
+                            return Ok(CallToolResult::error(vec![Content::text(msg)]));
+                        }
+                    }
+                }
+            }
+        };
+
+        let custom_properties = current_task
+            .custom_properties
+            .as_ref()
+            .map(|json| json.0.clone())
+            .map(SqlxJson);
+
+        let task_title = current_task.title.clone();
+        match Task::update(
+            &self.pool,
+            task_uuid,
+            project_uuid,
+            current_task.title,
+            current_task.description,
+            current_task.status,
+            current_task.parent_task_attempt,
+            current_task.pod_id,
+            current_task.board_id,
+            current_task.priority,
+            assignee_id.clone(),
+            current_task.assigned_agent,
+            current_task.assigned_mcps,
+            current_task.requires_approval,
+            current_task.approval_status,
+            current_task.parent_task_id,
+            current_task.tags,
+            current_task.due_date,
+            custom_properties,
+            current_task.scheduled_start,
+            current_task.scheduled_end,
+        )
+        .await
+        {
+            Ok(_) => {
+                let msg = if assignee_id.is_some() {
+                    format!("Task '{}' assigned to '{}'", task_title, assignee)
+                } else {
+                    format!("Task '{}' unassigned", task_title)
+                };
+                let response = serde_json::json!({ "success": true, "message": msg });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&response).unwrap(),
+                )]))
+            }
+            Err(e) => {
+                let msg = format!(r#"{{"success": false, "error": "{}"}}"#, e);
+                Ok(CallToolResult::error(vec![Content::text(msg)]))
+            }
+        }
+    }
+
+    #[tool(
+        description = "Add a comment to a task. Use this to leave notes, status updates, or handoff messages. `project_id`, `task_id`, and `content` are required!"
+    )]
+    async fn add_comment(
+        &self,
+        Parameters(AddCommentRequest {
+            project_id,
+            task_id,
+            content,
+            comment_type,
+        }): Parameters<AddCommentRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let _project_uuid = match Uuid::parse_str(&project_id) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    r#"{"success": false, "error": "Invalid project ID format"}"#,
+                )]));
+            }
+        };
+        let task_uuid = match Uuid::parse_str(&task_id) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    r#"{"success": false, "error": "Invalid task ID format"}"#,
+                )]));
+            }
+        };
+
+        let ct = match comment_type.as_deref() {
+            Some("status_update") => CommentType::StatusUpdate,
+            Some("review") => CommentType::Review,
+            Some("system") => CommentType::System,
+            Some("handoff") => CommentType::Handoff,
+            _ => CommentType::Comment,
+        };
+
+        let author_id = self
+            .user_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "mcp-agent".to_string());
+
+        let data = CreateTaskComment {
+            task_id: task_uuid,
+            author_id,
+            author_type: AuthorType::Agent,
+            content,
+            comment_type: Some(ct),
+            parent_comment_id: None,
+            mentions: None,
+            metadata: None,
+        };
+
+        match TaskComment::create(&self.pool, &data).await {
+            Ok(comment) => {
+                let response = AddCommentResponse {
+                    success: true,
+                    comment_id: comment.id.to_string(),
+                    message: "Comment added successfully".to_string(),
+                };
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&response).unwrap(),
+                )]))
+            }
+            Err(e) => {
+                let msg = format!(r#"{{"success": false, "error": "{}"}}"#, e);
+                Ok(CallToolResult::error(vec![Content::text(msg)]))
+            }
+        }
+    }
+
+    #[tool(
+        description = "List all members of a project with their roles. `project_id` is required!"
+    )]
+    async fn list_project_members(
+        &self,
+        Parameters(ListProjectMembersRequest { project_id }): Parameters<ListProjectMembersRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let project_uuid = match Uuid::parse_str(&project_id) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    r#"{"success": false, "error": "Invalid project ID format"}"#,
+                )]));
+            }
+        };
+
+        #[derive(sqlx::FromRow)]
+        struct MemberRow {
+            user_id: Vec<u8>,
+            username: String,
+            full_name: String,
+            role: String,
+            is_admin: i32,
+        }
+
+        let members = sqlx::query_as::<_, MemberRow>(
+            r#"SELECT pm.user_id, u.username, u.full_name, pm.role, u.is_admin
+               FROM project_members pm
+               JOIN users u ON pm.user_id = u.id
+               WHERE pm.project_id = ? AND u.is_active = 1"#,
+        )
+        .bind(project_uuid.as_bytes().as_slice())
+        .fetch_all(&self.pool)
+        .await;
+
+        match members {
+            Ok(rows) => {
+                let members: Vec<ProjectMemberSummary> = rows
+                    .iter()
+                    .filter_map(|r| {
+                        Uuid::from_slice(&r.user_id).ok().map(|uid| ProjectMemberSummary {
+                            user_id: uid.to_string(),
+                            username: r.username.clone(),
+                            full_name: r.full_name.clone(),
+                            role: r.role.clone(),
+                            is_admin: r.is_admin == 1,
+                        })
+                    })
+                    .collect();
+                let count = members.len();
+                let response = ListProjectMembersResponse {
+                    success: true,
+                    members,
+                    count,
+                };
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&response).unwrap(),
+                )]))
+            }
+            Err(e) => {
+                let msg = format!(r#"{{"success": false, "error": "{}"}}"#, e);
+                Ok(CallToolResult::error(vec![Content::text(msg)]))
             }
         }
     }
@@ -991,7 +1319,7 @@ impl ServerHandler for TaskServer {
                 name: "pcg-dashboard-mcp".to_string(),
                 version: "1.0.0".to_string(),
             },
-            instructions: Some("PCG Dashboard MCP exposes task governance tools. Use these tools to inspect or manage tasks and always pass the `project_id` you are working with. Call `list_tasks` to discover task IDs. TOOLS: 'list_projects', 'list_tasks', 'create_task', 'get_task', 'update_task', 'delete_task', 'evaluate_policy'. Provide `project_id`/`task_id` as required.".to_string()),
+            instructions: Some("PCG Dashboard MCP exposes project management tools. Always pass the `project_id` you are working with. Call `list_tasks` to discover task IDs, `list_project_members` to find team members. TOOLS: 'list_projects', 'list_tasks', 'create_task', 'get_task', 'update_task', 'delete_task', 'assign_task', 'add_comment', 'list_project_members', 'evaluate_policy'. Provide `project_id`/`task_id` as required.".to_string()),
         }
     }
 }

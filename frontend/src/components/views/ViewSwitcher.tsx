@@ -7,7 +7,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { LayoutGrid, Table2, Calendar, GalleryVertical, Clock } from 'lucide-react';
+import { LayoutGrid, Table2, Calendar, GalleryVertical, Clock, BarChart3 } from 'lucide-react';
 import { useViewStore, type ViewType } from '@/stores/useViewStore';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +17,12 @@ const VIEW_OPTIONS: Array<{
   icon: React.ComponentType<{ className?: string }>;
   description: string;
 }> = [
+  {
+    type: 'overview',
+    label: 'Overview',
+    icon: BarChart3,
+    description: 'Project summary dashboard',
+  },
   {
     type: 'board',
     label: 'Board',

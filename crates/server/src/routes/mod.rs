@@ -85,6 +85,7 @@ pub mod repos;
 pub mod scratch;
 pub mod sessions;
 pub mod tags;
+pub mod notifications;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -146,6 +147,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(tags::router(&deployment))
         .merge(scratch::router(&deployment))
         .merge(repos::router(&deployment))
+        .merge(notifications::router())
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
