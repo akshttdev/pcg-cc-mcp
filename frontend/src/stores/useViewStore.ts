@@ -3,6 +3,13 @@ import { persist } from 'zustand/middleware';
 
 export type ViewType = 'overview' | 'board' | 'table' | 'gallery' | 'timeline' | 'calendar';
 
+export type SortField = 'priority' | 'due_date' | 'updated_at' | 'created_at' | 'assignee_id' | 'title';
+export type SortDirection = 'asc' | 'desc';
+export interface SortOption {
+  field: SortField;
+  direction: SortDirection;
+}
+
 export interface ViewConfig {
   id: string;
   projectId: string;
@@ -21,6 +28,9 @@ interface ViewStore {
   // Enhanced cards preference
   useEnhancedCards: boolean;
 
+  // Sort preference
+  sortOption: SortOption;
+
   // Saved views
   savedViews: Record<string, ViewConfig[]>; // projectId -> views[]
 
@@ -28,6 +38,7 @@ interface ViewStore {
   setViewType: (viewType: ViewType) => void;
   setCurrentView: (viewId: string | null) => void;
   setUseEnhancedCards: (enabled: boolean) => void;
+  setSortOption: (sort: SortOption) => void;
   saveView: (view: ViewConfig) => void;
   deleteView: (projectId: string, viewId: string) => void;
   getSavedViews: (projectId: string) => ViewConfig[];
@@ -40,6 +51,7 @@ export const useViewStore = create<ViewStore>()(
       currentViewType: 'board',
       currentViewId: null,
       useEnhancedCards: true, // Default to enhanced cards
+      sortOption: { field: 'priority', direction: 'asc' },
       savedViews: {},
 
       setViewType: (viewType) => set({ currentViewType: viewType }),
@@ -47,6 +59,8 @@ export const useViewStore = create<ViewStore>()(
       setCurrentView: (viewId) => set({ currentViewId: viewId }),
 
       setUseEnhancedCards: (enabled) => set({ useEnhancedCards: enabled }),
+
+      setSortOption: (sort) => set({ sortOption: sort }),
 
       saveView: (view) =>
         set((state) => {
