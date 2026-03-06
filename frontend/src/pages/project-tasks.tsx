@@ -55,7 +55,9 @@ import { ProjectOverview } from '@/components/projects/ProjectOverview';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
+import { useProjectAccess } from '@/hooks/useProjectAccess';
 import { useTaskAgentFlowMap } from '@/hooks/useAgentFlows';
+import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import NiceModal from '@ebay/nice-modal-react';
 import { useHotkeysContext } from 'react-hotkeys-hook';
@@ -160,13 +162,26 @@ export function ProjectTasks() {
     [navigateToTask, navigateToAttempt, projectId, selectedTask]
   );
 
+  const { user } = useAuth();
+
   // Stream tasks for this project
   const {
-    tasks,
+    tasks: allTasks,
     tasksById,
     isLoading,
     error: streamError,
   } = useProjectTasks(projectId || '');
+
+  // Fetch project access scope (full vs assigned_only)
+  const { data: projectAccess } = useProjectAccess(projectId);
+
+  // Apply access scope: task-only assignees see only their tasks
+  const tasks = useMemo(() => {
+    if (!projectAccess || projectAccess.access_scope !== 'assigned_only' || !user) {
+      return allTasks;
+    }
+    return allTasks.filter(t => t.assignee_id === user.id);
+  }, [allTasks, projectAccess, user]);
 
   // Fetch agent flows for all tasks to display on cards
   const taskIds = useMemo(() => tasks.map(t => t.id), [tasks]);
