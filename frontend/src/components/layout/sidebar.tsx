@@ -1121,25 +1121,45 @@ function OrgSection({
             </div>
           )}
 
-          {/* New Folder button (org admin only) */}
+          {/* New Client / New Folder buttons (org admin only) */}
           {isAdmin && org.role === 'admin' && (
-            <Button
-              variant="ghost"
-              className="w-full justify-start px-2 py-1 h-auto text-xs text-muted-foreground hover:text-foreground"
-              onClick={async () => {
-                const name = window.prompt('Folder name:');
-                if (!name?.trim()) return;
-                try {
-                  await projectFoldersApi.create(org.id, { name: name.trim() });
-                  queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
-                } catch (err) {
-                  console.error('Failed to create folder:', err);
-                }
-              }}
-            >
-              <Plus className="h-3 w-3 mr-1.5" />
-              New Folder
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                className="w-full justify-start px-2 py-1 h-auto text-xs text-muted-foreground hover:text-foreground"
+                onClick={async () => {
+                  const name = window.prompt('Client name:');
+                  if (!name?.trim()) return;
+                  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                  try {
+                    await organizationsApi.createClient(org.id, { name: name.trim(), slug });
+                    queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                  } catch (err) {
+                    console.error('Failed to create client:', err);
+                  }
+                }}
+              >
+                <Plus className="h-3 w-3 mr-1.5" />
+                New Client
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start px-2 py-1 h-auto text-xs text-muted-foreground hover:text-foreground"
+                onClick={async () => {
+                  const name = window.prompt('Folder name:');
+                  if (!name?.trim()) return;
+                  try {
+                    await projectFoldersApi.create(org.id, { name: name.trim() });
+                    queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                  } catch (err) {
+                    console.error('Failed to create folder:', err);
+                  }
+                }}
+              >
+                <Plus className="h-3 w-3 mr-1.5" />
+                New Folder
+              </Button>
+            </>
           )}
         </div>
       </CollapsibleContent>
