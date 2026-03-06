@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO agent_sessions (id, task_attempt_id, executor, agent_working_dir)\n            VALUES ($1, $2, $3, $4)\n            RETURNING\n                id as \"id!: Uuid\",\n                task_attempt_id as \"task_attempt_id!: Uuid\",\n                executor,\n                agent_working_dir,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "task_attempt_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "executor",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "agent_working_dir",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "98709ce185ad4ee2c84d8e264c462a44ac0b10e5525ff823c137bd6a35efbf0c"
+}
