@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE airtable_bases SET last_synced_at = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "39ea7513896dd838b3e3c94830bdb371f70848b6e0f08873356a017b5092b72c"
+}

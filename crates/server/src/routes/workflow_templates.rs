@@ -192,6 +192,7 @@ async fn convert_deal(
                 custom_properties: Some(custom_properties),
                 scheduled_start: None,
                 scheduled_end: None,
+                screenshot: None,
             };
 
             Task::create(pool, &create_task, task_id)

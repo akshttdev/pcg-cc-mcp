@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE project_onboarding\n               SET status = $2, current_phase = $3, context_data = $4,\n                   recommendations = $5, completed_at = $6, updated_at = datetime('now', 'subsec')\n               WHERE id = $1\n               RETURNING\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                status as \"status!: OnboardingStatus\",\n                current_phase,\n                context_data,\n                recommendations,\n                started_at as \"started_at!: DateTime<Utc>\",\n                completed_at as \"completed_at: DateTime<Utc>\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "status!: OnboardingStatus",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "current_phase",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "context_data",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "recommendations",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "started_at!: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "completed_at: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "06ec7b642672bff080ca6008eb9cef146ec253b9eb5144d0ef3a7adea4d8418c"
+}

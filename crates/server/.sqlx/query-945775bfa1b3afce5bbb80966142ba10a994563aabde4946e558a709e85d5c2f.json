@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE projects SET vibe_budget_limit = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "945775bfa1b3afce5bbb80966142ba10a994563aabde4946e558a709e85d5c2f"
+}
