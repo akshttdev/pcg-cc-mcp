@@ -1121,41 +1121,138 @@ function OrgSection({
             </div>
           )}
 
-          {/* New Client / New Folder buttons (org admin only) */}
+          {/* New Folder button (org admin only) */}
           {isAdmin && org.role === 'admin' && (
-            <>
-              <Button
-                variant="ghost"
-                className="w-full justify-start px-2 py-1 h-auto text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  // TODO: Open client creation dialog
-                }}
-              >
-                <Plus className="h-3 w-3 mr-1.5" />
-                New Client
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start px-2 py-1 h-auto text-xs text-muted-foreground hover:text-foreground"
-                onClick={async () => {
-                  const name = window.prompt('Folder name:');
-                  if (!name?.trim()) return;
-                  try {
-                    await projectFoldersApi.create(org.id, { name: name.trim() });
-                    queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
-                  } catch (err) {
-                    console.error('Failed to create folder:', err);
-                  }
-                }}
-              >
-                <Plus className="h-3 w-3 mr-1.5" />
-                New Folder
-              </Button>
-            </>
+            <Button
+              variant="ghost"
+              className="w-full justify-start px-2 py-1 h-auto text-xs text-muted-foreground hover:text-foreground"
+              onClick={async () => {
+                const name = window.prompt('Folder name:');
+                if (!name?.trim()) return;
+                try {
+                  await projectFoldersApi.create(org.id, { name: name.trim() });
+                  queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                } catch (err) {
+                  console.error('Failed to create folder:', err);
+                }
+              }}
+            >
+              <Plus className="h-3 w-3 mr-1.5" />
+              New Folder
+            </Button>
           )}
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+// ============================================================================
+// SidebarOrgGroups — separates orgs into active (has content) vs empty
+// ============================================================================
+
+function orgHasContent(org: SidebarOrg): boolean {
+  return (
+    org.internal_projects.length > 0 ||
+    (org.internal_folders || []).length > 0 ||
+    org.clients.some(
+      (c) => c.projects.length > 0 || (c.folders || []).length > 0
+    ) ||
+    (org.shared_boards || []).length > 0
+  );
+}
+
+function SidebarOrgGroups({
+  sidebarTree,
+  projectId,
+  isAdmin,
+  expandedProjects,
+  onToggleProject,
+  queryClient,
+}: {
+  sidebarTree: SidebarTree;
+  projectId?: string;
+  isAdmin: boolean;
+  expandedProjects: Set<string>;
+  onToggleProject: (id: string) => void;
+  queryClient: QueryClient;
+}) {
+  const [showEmptyOrgs, setShowEmptyOrgs] = useState(false);
+
+  // Filter out orgs with empty names, then split into active vs empty
+  const validOwnedOrgs = sidebarTree.owned_orgs.filter((org) => org.name.trim() !== '');
+  const activeOrgs = validOwnedOrgs.filter(orgHasContent);
+  const emptyOrgs = validOwnedOrgs.filter((org) => !orgHasContent(org));
+
+  return (
+    <>
+      {/* Active organizations (have projects/clients/folders) */}
+      {activeOrgs.map((org) => (
+        <OrgSection
+          key={org.id || org.slug}
+          org={org}
+          projectId={projectId}
+          isAdmin={isAdmin}
+          expandedProjects={expandedProjects}
+          onToggleProject={onToggleProject}
+          queryClient={queryClient}
+        />
+      ))}
+
+      {/* Empty organizations — collapsed toggle */}
+      {emptyOrgs.length > 0 && (
+        <Collapsible open={showEmptyOrgs} onOpenChange={setShowEmptyOrgs}>
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              className="w-full justify-between px-2 py-1.5 h-auto text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground"
+            >
+              <span>Other Organizations ({emptyOrgs.length})</span>
+              {showEmptyOrgs ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            {emptyOrgs.map((org) => (
+              <OrgSection
+                key={org.id || org.slug}
+                org={org}
+                projectId={projectId}
+                isAdmin={isAdmin}
+                expandedProjects={expandedProjects}
+                onToggleProject={onToggleProject}
+                queryClient={queryClient}
+              />
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Guest access organizations */}
+      {sidebarTree.member_orgs.length > 0 && (
+        <>
+          <div className="px-2 pt-3 pb-1">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Guest Access
+            </span>
+          </div>
+          {sidebarTree.member_orgs.map((org) => (
+            <OrgSection
+              key={org.id || org.slug}
+              org={org}
+              projectId={projectId}
+              isAdmin={isAdmin}
+              expandedProjects={expandedProjects}
+              onToggleProject={onToggleProject}
+              queryClient={queryClient}
+            />
+          ))}
+        </>
+      )}
+    </>
   );
 }
 
@@ -1411,42 +1508,14 @@ export function Sidebar({ className }: SidebarProps) {
                 Loading projects...
               </div>
             ) : hasTree ? (
-              <>
-                {/* Owned organizations */}
-                {sidebarTree!.owned_orgs.map((org) => (
-                  <OrgSection
-                    key={org.id || org.slug}
-                    org={org}
-                    projectId={projectId}
-                    isAdmin={isAdmin}
-                    expandedProjects={expandedProjects}
-                    onToggleProject={toggleProject}
-                    queryClient={queryClient}
-                  />
-                ))}
-
-                {/* Guest access organizations */}
-                {sidebarTree!.member_orgs.length > 0 && (
-                  <>
-                    <div className="px-2 pt-3 pb-1">
-                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                        Guest Access
-                      </span>
-                    </div>
-                    {sidebarTree!.member_orgs.map((org) => (
-                      <OrgSection
-                        key={org.id || org.slug}
-                        org={org}
-                        projectId={projectId}
-                        isAdmin={isAdmin}
-                        expandedProjects={expandedProjects}
-                        onToggleProject={toggleProject}
-                        queryClient={queryClient}
-                      />
-                    ))}
-                  </>
-                )}
-              </>
+              <SidebarOrgGroups
+                sidebarTree={sidebarTree!}
+                projectId={projectId}
+                isAdmin={isAdmin}
+                expandedProjects={expandedProjects}
+                onToggleProject={toggleProject}
+                queryClient={queryClient}
+              />
             ) : useFlatFallback ? (
               // Fallback: flat project list
               isProjectsLoading ? (
