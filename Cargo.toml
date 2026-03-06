@@ -18,7 +18,8 @@ members = [
     "frontend/src-tauri",
     "crates/cli",
     "crates/setup-wizard",
-    "crates/editron-runner"
+    "crates/editron-runner",
+    "crates/discord-bots"
 ]
 exclude = [
     "src-tauri"

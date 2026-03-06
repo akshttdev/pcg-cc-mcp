@@ -1,0 +1,60 @@
+[package]
+name = "discord-bots"
+version = "0.0.96"
+edition = "2021"
+description = "Discord bot agents for Nora (Executive Assistant) and Topsi (Platform Orchestrator)"
+
+[lib]
+name = "discord_bots"
+path = "src/lib.rs"
+
+[[bin]]
+name = "discord-bots"
+path = "src/main.rs"
+
+[dependencies]
+# Discord
+serenity = { version = "0.12", default-features = false, features = [
+    "client",
+    "gateway",
+    "model",
+    "rustls_backend",
+    "cache",
+    "voice",
+] }
+
+# Discord voice
+songbird = { version = "0.4", features = ["serenity", "rustls", "receive"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { workspace = true }
+serde_json = "1.0"
+
+# HTTP client (to call PCG backend API)
+reqwest = { version = "0.11", features = ["json", "multipart"] }
+
+# Audio processing
+base64 = "0.21"
+byteorder = "1.5"
+
+# Async trait for voice event handlers
+async-trait = "0.1"
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Configuration
+dotenv = "0.15"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }

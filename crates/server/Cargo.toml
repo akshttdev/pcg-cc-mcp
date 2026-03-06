@@ -78,6 +78,7 @@ async-nats = "0.37"
 alpha-protocol-core = { path = "../alpha-protocol-core" }
 apn-client = { path = "../apn-client" }
 pythia-client = { path = "../pythia-client" }
+discord-bots = { path = "../discord-bots" }
 
 [dev-dependencies]
 tempfile = "3.8"
