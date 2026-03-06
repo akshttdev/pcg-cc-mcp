@@ -13,6 +13,7 @@ pub mod activity;
 pub mod agent_flow_events;
 pub mod agent_flows;
 pub mod airtable;
+pub mod apn_data;
 pub mod aptos;
 pub mod approvals;
 pub mod artifact_reviews;
@@ -80,6 +81,10 @@ pub mod clients;
 pub mod project_folders;
 pub mod sidebar;
 pub mod knowledge;
+pub mod repos;
+pub mod scratch;
+pub mod sessions;
+pub mod tags;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -106,6 +111,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // These routes handle sensitive data and must not be publicly accessible
     let protected_routes = Router::new()
         .merge(invitations::router(&deployment))
+        .merge(apn_data::router())
         .merge(airtable::router())
         .merge(social_accounts::router(&deployment))
         .merge(social_posts::router(&deployment))
@@ -136,6 +142,10 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(board_shares::router(&deployment))
         .merge(sidebar::router(&deployment))
         .merge(knowledge::router(&deployment))
+        .merge(sessions::router(&deployment))
+        .merge(tags::router(&deployment))
+        .merge(scratch::router(&deployment))
+        .merge(repos::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -183,6 +193,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(pythia::router(&deployment))
+        .route("/data-sync-test", get(apn_data::apn_ping))
         .merge(protected_routes)
         .merge(admin_routes)
         .with_state(deployment);
