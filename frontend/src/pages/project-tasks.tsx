@@ -49,6 +49,7 @@ import {
 } from '@/lib/responsive-config';
 
 import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
+import { SortMenu } from '@/components/tasks/SortMenu';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import { EnhancedTaskDetailsPanel } from '@/components/tasks';
 import { ProjectOverview } from '@/components/projects/ProjectOverview';
@@ -89,7 +90,7 @@ export function ProjectTasks() {
   const [showArchived, setShowArchived] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const { currentViewType, useEnhancedCards, setUseEnhancedCards } = useViewStore();
+  const { currentViewType, useEnhancedCards, setUseEnhancedCards, sortOption } = useViewStore();
   const {
     selectionMode,
     selectedTaskIds,
@@ -295,7 +296,7 @@ export function ProjectTasks() {
     return result;
   }, [tasks, boardFilter, searchQuery, projectId, getActiveFilters, showArchived]);
 
-  // Memoize grouped filtered tasks, sorted by priority within each column
+  // Memoize grouped filtered tasks, sorted by active sort option within each column
   const groupedFilteredTasks = useMemo(() => {
     const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
     const groups: Record<string, Task[]> = {};
@@ -310,20 +311,59 @@ export function ProjectTasks() {
         groups['todo'].push(task);
       }
     });
-    // Sort each column: priority first (critical > high > medium > low), then by due date
+
+    const dir = sortOption.direction === 'asc' ? 1 : -1;
+
     for (const status of taskStatuses) {
       groups[status].sort((a, b) => {
-        const pa = priorityOrder[a.priority || 'medium'] ?? 2;
-        const pb = priorityOrder[b.priority || 'medium'] ?? 2;
-        if (pa !== pb) return pa - pb;
-        // Within same priority, overdue/soon due dates first
-        const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-        const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
-        return da - db;
+        let cmp = 0;
+        switch (sortOption.field) {
+          case 'priority': {
+            const pa = priorityOrder[a.priority || 'medium'] ?? 2;
+            const pb = priorityOrder[b.priority || 'medium'] ?? 2;
+            cmp = pa - pb;
+            // Secondary: due date soonest first
+            if (cmp === 0) {
+              const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+              const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+              cmp = da - db;
+            }
+            break;
+          }
+          case 'due_date': {
+            const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+            const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+            cmp = da - db;
+            break;
+          }
+          case 'updated_at': {
+            const ua = new Date(a.updated_at).getTime();
+            const ub = new Date(b.updated_at).getTime();
+            cmp = ua - ub;
+            break;
+          }
+          case 'created_at': {
+            const ca = new Date(a.created_at).getTime();
+            const cb = new Date(b.created_at).getTime();
+            cmp = ca - cb;
+            break;
+          }
+          case 'assignee_id': {
+            const aa = a.assignee_id || '';
+            const ab = b.assignee_id || '';
+            cmp = aa.localeCompare(ab);
+            break;
+          }
+          case 'title': {
+            cmp = a.title.localeCompare(b.title);
+            break;
+          }
+        }
+        return cmp * dir;
       });
     }
     return groups;
-  }, [filteredTasks]);
+  }, [filteredTasks, sortOption]);
 
   useKeyNavUp(
     () => {
@@ -715,6 +755,7 @@ export function ProjectTasks() {
                   projectId={projectId}
                   onClick={() => setFilterPanelOpen(true)}
                 />
+                <SortMenu />
                 <SavedFiltersMenu projectId={projectId} />
                 <Button
                   variant="outline"
