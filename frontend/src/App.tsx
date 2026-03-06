@@ -6,6 +6,7 @@ import {
 import { KeyboardShortcutsProvider } from '@/contexts/keyboard-shortcuts-context';
 import { HotkeysProvider } from 'react-hotkeys-hook';
 import { ProjectProvider } from '@/contexts/project-context';
+import { OrganizationProvider } from '@/contexts/organization-context';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -42,6 +43,8 @@ const CrmDeliveryPage       = lazy(() => import('@/pages/crm-delivery').then(m =
 const CrmConferencesPage    = lazy(() => import('@/pages/crm-conferences').then(m => ({ default: m.CrmConferencesPage })));
 const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').then(m => ({ default: m.CrmContactDetailPage })));
 const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
+const OrganizationOverview  = lazy(() => import('@/pages/organization-overview').then(m => ({ default: m.OrganizationOverview })));
+const ClientOverview        = lazy(() => import('@/pages/client-overview').then(m => ({ default: m.ClientOverview })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -84,15 +87,17 @@ function App() {
         <Route element={
           <AuthProvider>
             <UserSystemProvider>
-              <ProjectProvider>
-                <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
-                  <KeyboardShortcutsProvider>
-                    <NiceModal.Provider>
-                      <AppShell />
-                    </NiceModal.Provider>
-                  </KeyboardShortcutsProvider>
-                </HotkeysProvider>
-              </ProjectProvider>
+              <OrganizationProvider>
+                <ProjectProvider>
+                  <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
+                    <KeyboardShortcutsProvider>
+                      <NiceModal.Provider>
+                        <AppShell />
+                      </NiceModal.Provider>
+                    </KeyboardShortcutsProvider>
+                  </HotkeysProvider>
+                </ProjectProvider>
+              </OrganizationProvider>
             </UserSystemProvider>
           </AuthProvider>
         }>
@@ -151,6 +156,14 @@ function App() {
           <Route
             path="/projects/:projectId/crm/overview"
             element={<ProtectedRoute><CrmOverviewPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId"
+            element={<ProtectedRoute><OrganizationOverview /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/clients/:clientId"
+            element={<ProtectedRoute><ClientOverview /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/crm/acquisition"

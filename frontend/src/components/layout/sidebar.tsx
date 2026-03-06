@@ -337,6 +337,20 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
             </div>
           )}
 
+          {/* Tasks link */}
+          <Link
+            to={`/projects/${project.id}/tasks`}
+            className={cn(
+              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+              location.pathname === `/projects/${project.id}/tasks` &&
+                !location.search &&
+                'bg-foreground/15 text-foreground font-medium'
+            )}
+          >
+            <ListTodo className="h-3 w-3 text-muted-foreground" />
+            <span>Tasks</span>
+          </Link>
+
           {!isBoardsLoading && !boardsError &&
             (boardsData ?? []).map((board) => {
               const boardTasks = tasksByBoard.get(board.id) ?? [];
@@ -630,6 +644,20 @@ function SortableSidebarProjectFolder({
                     Failed to load boards
                   </div>
                 )}
+
+                {/* Tasks link */}
+                <Link
+                  to={`/projects/${project.id}/tasks`}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                    location.pathname === `/projects/${project.id}/tasks` &&
+                      !location.search &&
+                      'bg-foreground/15 text-foreground font-medium'
+                  )}
+                >
+                  <ListTodo className="h-3 w-3 text-muted-foreground" />
+                  <span>Tasks</span>
+                </Link>
 
                 {!isBoardsLoading && !boardsError &&
                   boardsData.map((board) => {

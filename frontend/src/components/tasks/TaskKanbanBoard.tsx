@@ -9,7 +9,7 @@ import {
 import { TaskCard } from './TaskCard';
 import { EnhancedTaskCard, type TaskCardMode } from './EnhancedTaskCard';
 import type { TaskStatus, TaskWithAttemptStatus } from 'shared/types';
-import type { AgentFlow } from '@/lib/api';
+import type { AgentFlow, UserListItem } from '@/lib/api';
 import { useTasksCardData } from '@/hooks/useTaskCardData';
 
 import { statusBoardColors, statusLabels } from '@/utils/status-labels';
@@ -28,10 +28,13 @@ interface TaskKanbanBoardProps {
   isSelected?: (taskId: string) => boolean;
   onToggleSelection?: (taskId: string) => void;
   agentFlowMap?: Map<string, AgentFlow>;
+  onArchiveTask?: (task: Task) => void;
+  showArchived?: boolean;
   // New props for enhanced cards
   useEnhancedCards?: boolean;
   defaultCardMode?: TaskCardMode;
   onSendMessageToAgent?: (taskId: string, message: string, agentName?: string) => Promise<string>;
+  usersMap?: Map<string, UserListItem>;
 }
 
 function TaskKanbanBoard({
@@ -49,6 +52,7 @@ function TaskKanbanBoard({
   useEnhancedCards = false,
   defaultCardMode,
   onSendMessageToAgent,
+  usersMap,
 }: TaskKanbanBoardProps) {
   // Collect all task IDs for batch fetching enriched data
   const allTaskIds = useMemo(() => {
@@ -69,10 +73,23 @@ function TaskKanbanBoard({
     <KanbanProvider onDragEnd={onDragEnd}>
       {Object.entries(groupedTasks).map(([status, statusTasks]) => (
         <KanbanBoard key={status} id={status as TaskStatus}>
-          <KanbanHeader
-            name={statusLabels[status as TaskStatus]}
-            color={statusBoardColors[status as TaskStatus]}
-          />
+          <KanbanHeader>
+            <div
+              className="sticky top-0 z-20 flex shrink-0 items-center gap-2 p-3 border-b border-dashed bg-background rounded-lg"
+              style={{
+                backgroundImage: `linear-gradient(hsl(var(${statusBoardColors[status as TaskStatus]}) / 0.03), hsl(var(${statusBoardColors[status as TaskStatus]}) / 0.03))`,
+              }}
+            >
+              <div
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: `hsl(var(${statusBoardColors[status as TaskStatus]}))` }}
+              />
+              <p className="m-0 text-sm flex-1">{statusLabels[status as TaskStatus]}</p>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {statusTasks.length}
+              </span>
+            </div>
+          </KanbanHeader>
           <KanbanCards>
             {statusTasks.map((task, index) => {
               const cardData = cardDataMap.get(task.id);
@@ -98,6 +115,7 @@ function TaskKanbanBoard({
                     workflowEvents={cardData?.workflowEvents}
                     onSendMessage={createMessageHandler(task.id)}
                     defaultMode={defaultCardMode}
+                    usersMap={usersMap}
                   />
                 );
               }
@@ -117,6 +135,7 @@ function TaskKanbanBoard({
                   isSelected={isSelected?.(task.id)}
                   onToggleSelection={onToggleSelection}
                   agentFlow={agentFlowMap?.get(task.id)}
+                  usersMap={usersMap}
                 />
               );
             })}
