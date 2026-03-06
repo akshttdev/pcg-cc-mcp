@@ -29,7 +29,7 @@ import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget'
 import { AgentFlowBadges } from './AgentFlowBadges';
 import { ExecutionSummaryInline } from './ExecutionSummaryInline';
 import type { TaskWithAttemptStatus } from 'shared/types';
-import type { AgentFlow } from '@/lib/api';
+import type { AgentFlow, UserListItem } from '@/lib/api';
 
 type Task = TaskWithAttemptStatus;
 
@@ -48,6 +48,7 @@ interface TaskCardProps {
   onToggleSelection?: (taskId: string) => void;
   agentFlow?: AgentFlow;
   dimmed?: boolean;
+  usersMap?: Map<string, UserListItem>;
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
@@ -130,6 +131,7 @@ export function TaskCard({
   onToggleSelection,
   agentFlow,
   dimmed,
+  usersMap,
 }: TaskCardProps) {
   const handleClick = useCallback(() => {
     if (selectionMode && onToggleSelection) {
@@ -165,25 +167,71 @@ export function TaskCard({
       forwardedRef={localRef}
       className={dimmed ? 'opacity-60' : undefined}
     >
-      <div className="flex flex-1 gap-2 items-center min-w-0">
-        {/* Checkbox for selection mode */}
-        {selectionMode && (
+      <div className="flex flex-col gap-1.5 min-w-0">
+        <div className="flex items-start gap-2 min-w-0">
+          {/* Checkbox for selection mode */}
+          {selectionMode && (
+            <div
+              className="pt-0.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelection?.(task.id);
+              }}
+            >
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onToggleSelection?.(task.id)}
+              />
+            </div>
+          )}
+          <h4 className="flex-1 min-w-0 line-clamp-2 font-light text-sm">
+            {task.title}
+          </h4>
+          {/* Actions Menu */}
           <div
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleSelection?.(task.id);
-            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={() => onToggleSelection?.(task.id)}
-            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 hover:bg-muted shrink-0"
+                >
+                  <MoreHorizontal className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEdit(task)}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+                {onDuplicate && (
+                  <DropdownMenuItem onClick={() => onDuplicate(task)}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Duplicate
+                  </DropdownMenuItem>
+                )}
+                {onArchive && (
+                  <DropdownMenuItem onClick={() => onArchive(task)}>
+                    <Archive className="h-4 w-4 mr-2" />
+                    {task.archived_at ? 'Unarchive' : 'Archive'}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => onDelete(task.id)}
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        )}
-        <h4 className="flex-1 min-w-0 line-clamp-2 font-light text-sm">
-          {task.title}
-        </h4>
-        <div className="flex items-center space-x-1">
+        </div>
+        <div className="flex items-center flex-wrap gap-1">
           {/* Priority Badge */}
           <PriorityBadge priority={task.priority} />
           {/* In Progress Spinner */}
@@ -231,49 +279,6 @@ export function TaskCard({
               )}
             </div>
           )}
-          {/* Actions Menu */}
-          <div
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 hover:bg-muted"
-                >
-                  <MoreHorizontal className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(task)}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-                {onDuplicate && (
-                  <DropdownMenuItem onClick={() => onDuplicate(task)}>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Duplicate
-                  </DropdownMenuItem>
-                )}
-                {onArchive && (
-                  <DropdownMenuItem onClick={() => onArchive(task)}>
-                    <Archive className="h-4 w-4 mr-2" />
-                    {task.archived_at ? 'Unarchive' : 'Archive'}
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  onClick={() => onDelete(task.id)}
-                  className="text-destructive"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         </div>
       </div>
       {/* Meta row: due date + description preview */}
@@ -297,14 +302,26 @@ export function TaskCard({
         <div className="mt-2 pt-2 border-t flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <TimeTrackerWidget taskId={task.id} compact />
-            {task.assignee_id && (
-              <div
-                className="h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 shrink-0"
-                title={task.assignee_id}
-              >
-                {task.assignee_id.charAt(0).toUpperCase()}
-              </div>
-            )}
+            {task.assignee_id && (() => {
+              const assignee = usersMap?.get(task.assignee_id);
+              const displayName = assignee?.full_name || assignee?.username || assignee?.email || task.assignee_id;
+              const initials = assignee?.full_name
+                ? assignee.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                : (assignee?.username?.[0] || displayName[0] || '?').toUpperCase();
+              return (
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <div
+                    className="h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300 border border-violet-200 dark:border-violet-800 shrink-0"
+                    title={displayName}
+                  >
+                    {initials}
+                  </div>
+                  <span className="text-xs text-muted-foreground truncate">
+                    {assignee?.full_name || assignee?.username || assignee?.email || 'Unassigned'}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
           {task.vibe_cost != null && task.vibe_cost > 0 && (
             <div

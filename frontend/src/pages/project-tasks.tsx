@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle, Archive, Plus, Sparkles } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
-import { projectsApi, tasksApi, attemptsApi, agentsApi, resolveApiUrl } from '@/lib/api';
+import { projectsApi, tasksApi, attemptsApi, agentsApi, usersApi, resolveApiUrl } from '@/lib/api';
+import type { UserListItem } from '@/lib/api';
 import type { AgentChatRequest } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { ViewSwitcher } from '@/components/views/ViewSwitcher';
@@ -164,6 +165,19 @@ export function ProjectTasks() {
   );
 
   const { user } = useAuth();
+
+  // Fetch users for assignee display
+  const { data: usersData } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => usersApi.list(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const usersMap = useMemo(() => {
+    const map = new Map<string, UserListItem>();
+    usersData?.forEach(u => map.set(u.id, u));
+    return map;
+  }, [usersData]);
 
   // Stream tasks for this project
   const {
@@ -748,9 +762,9 @@ export function ProjectTasks() {
 
           {/* View Switcher */}
           {tasks && tasks.length > 0 && projectId && (
-            <div className="px-6 py-4 border-b bg-background/95 backdrop-blur sticky top-0 z-10 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">{project?.name || 'Tasks'}</h2>
-              <div className="flex items-center gap-2">
+            <div className="px-6 py-4 border-b bg-background/95 backdrop-blur sticky top-0 z-10 flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold mr-auto">{project?.name || 'Tasks'}</h2>
+              <div className="flex items-center gap-2 flex-wrap">
                 <FilterButton
                   projectId={projectId}
                   onClick={() => setFilterPanelOpen(true)}
@@ -933,6 +947,7 @@ export function ProjectTasks() {
                 useEnhancedCards={useEnhancedCards}
                 onSendMessageToAgent={handleSendMessageToAgent}
                 showArchived={showArchived}
+                usersMap={usersMap}
               />
             </div>
           )}
