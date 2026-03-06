@@ -441,6 +441,14 @@ pub async fn get_current_user(
                 let user_id = Uuid::from_slice(&user_session.id)
                     .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
 
+                // Extend session expiry on activity (sliding window)
+                let _ = sqlx::query(
+                    "UPDATE sessions SET expires_at = datetime('now', '+7 days'), last_used_at = datetime('now') WHERE token_hash = ?"
+                )
+                .bind(&session_token_hash)
+                .execute(&pool)
+                .await;
+
                 return Ok(AccessContext {
                     user_id,
                     is_admin: user_session.is_admin == 1,
@@ -479,6 +487,14 @@ pub async fn get_current_user(
         if let Some(user_session) = result {
             let user_id = Uuid::from_slice(&user_session.id)
                 .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
+
+            // Extend session expiry on activity (sliding window)
+            let _ = sqlx::query(
+                "UPDATE sessions SET expires_at = datetime('now', '+7 days'), last_used_at = datetime('now') WHERE token_hash = ?"
+            )
+            .bind(&token_hash)
+            .execute(&pool)
+            .await;
 
             return Ok(AccessContext {
                 user_id,

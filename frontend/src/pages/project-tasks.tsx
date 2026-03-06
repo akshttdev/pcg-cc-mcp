@@ -51,6 +51,7 @@ import {
 import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import { EnhancedTaskDetailsPanel } from '@/components/tasks';
+import { ProjectOverview } from '@/components/projects/ProjectOverview';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
@@ -279,8 +280,9 @@ export function ProjectTasks() {
     return result;
   }, [tasks, boardFilter, searchQuery, projectId, getActiveFilters, showArchived]);
 
-  // Memoize grouped filtered tasks
+  // Memoize grouped filtered tasks, sorted by priority within each column
   const groupedFilteredTasks = useMemo(() => {
+    const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
     const groups: Record<string, Task[]> = {};
     taskStatuses.forEach((status) => {
       groups[status] = [];
@@ -293,6 +295,18 @@ export function ProjectTasks() {
         groups['todo'].push(task);
       }
     });
+    // Sort each column: priority first (critical > high > medium > low), then by due date
+    for (const status of taskStatuses) {
+      groups[status].sort((a, b) => {
+        const pa = priorityOrder[a.priority || 'medium'] ?? 2;
+        const pb = priorityOrder[b.priority || 'medium'] ?? 2;
+        if (pa !== pb) return pa - pb;
+        // Within same priority, overdue/soon due dates first
+        const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+        const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+        return da - db;
+      });
+    }
     return groups;
   }, [filteredTasks]);
 
@@ -799,6 +813,8 @@ export function ProjectTasks() {
                 </CardContent>
               </Card>
             </div>
+          ) : currentViewType === 'overview' && project ? (
+            <ProjectOverview project={project} tasks={filteredTasks} />
           ) : currentViewType === 'table' && projectId ? (
             <div className="w-full h-full p-6">
               <TableView
