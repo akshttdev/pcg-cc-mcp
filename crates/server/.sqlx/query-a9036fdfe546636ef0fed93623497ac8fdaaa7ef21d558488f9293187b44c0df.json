@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO media_batches (\n                id, project_id, reference_name, source_url, storage_tier,\n                checksum_required, status, file_count, total_size_bytes,\n                last_error, metadata, created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 13
+    },
+    "nullable": []
+  },
+  "hash": "a9036fdfe546636ef0fed93623497ac8fdaaa7ef21d558488f9293187b44c0df"
+}

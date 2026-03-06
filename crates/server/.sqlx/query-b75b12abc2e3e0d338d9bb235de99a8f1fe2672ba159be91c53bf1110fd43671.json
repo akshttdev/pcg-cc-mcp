@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM airtable_record_links WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "b75b12abc2e3e0d338d9bb235de99a8f1fe2672ba159be91c53bf1110fd43671"
+}

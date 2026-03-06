@@ -737,6 +737,7 @@ impl TaskServer {
             custom_properties: req.custom_properties.clone(),
             scheduled_start,
             scheduled_end,
+            screenshot: None,
         };
 
         match Task::create(&self.pool, &create_task_data, task_id).await {
@@ -1291,6 +1292,7 @@ impl TaskServer {
                 custom_properties: None,
                 scheduled_start: None,
                 scheduled_end: None,
+                screenshot: None,
             };
 
             match Task::create(&self.pool, &create_data, task_id).await {

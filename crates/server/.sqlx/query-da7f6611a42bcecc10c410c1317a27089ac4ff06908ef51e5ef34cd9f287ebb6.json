@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                name,\n                field_type as \"field_type!: CustomFieldType\",\n                required as \"required!: bool\",\n                options as \"options: Json<Value>\",\n                default_value as \"default_value: Json<Value>\",\n                metadata as \"metadata: Json<Value>\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n              FROM custom_field_definitions\n              WHERE project_id = $1\n              ORDER BY created_at",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "field_type!: CustomFieldType",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "required!: bool",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "options: Json<Value>",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "default_value: Json<Value>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata: Json<Value>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "da7f6611a42bcecc10c410c1317a27089ac4ff06908ef51e5ef34cd9f287ebb6"
+}

@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                tagline,\n                industry,\n                primary_color as \"primary_color!: String\",\n                secondary_color as \"secondary_color!: String\",\n                brand_voice,\n                target_audience,\n                logo_asset_id as \"logo_asset_id?: Uuid\",\n                guidelines_asset_id as \"guidelines_asset_id?: Uuid\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            FROM project_brand_profiles\n            WHERE project_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "tagline",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "industry",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "primary_color!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "secondary_color!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "brand_voice",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "target_audience",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "logo_asset_id?: Uuid",
+        "ordinal": 8,
+        "type_info": "Blob"
+      },
+      {
+        "name": "guidelines_asset_id?: Uuid",
+        "ordinal": 9,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "8d5b5ef725ad0041c3161b34a51dada454d2f8ba8d41a7cc7df35c675ca413d0"
+}

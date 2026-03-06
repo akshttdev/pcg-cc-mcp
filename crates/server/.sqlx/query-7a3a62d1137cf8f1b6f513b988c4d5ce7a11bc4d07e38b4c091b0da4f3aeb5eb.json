@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE peer_nodes\n            SET is_active = 0\n            WHERE id IN (\n                SELECT p1.id\n                FROM peer_nodes p1\n                INNER JOIN peer_nodes p2 ON\n                    p1.cpu_cores = p2.cpu_cores\n                    AND p1.ram_mb = p2.ram_mb\n                    AND (\n                        (p1.gpu_model = p2.gpu_model AND p1.gpu_model IS NOT NULL)\n                        OR (p1.gpu_model IS NULL AND p2.gpu_model IS NULL)\n                    )\n                    AND p1.node_id != p2.node_id\n                    AND p1.last_heartbeat_at < p2.last_heartbeat_at\n                WHERE p1.is_active = 1\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "7a3a62d1137cf8f1b6f513b988c4d5ce7a11bc4d07e38b4c091b0da4f3aeb5eb"
+}

@@ -76,6 +76,7 @@ async-nats = "0.37"
 alpha-protocol-core = { path = "../alpha-protocol-core" }
 apn-client = { path = "../apn-client" }
 pythia-client = { path = "../pythia-client" }
+json-patch = "2.0"
 
 [dev-dependencies]
 tempfile = "3.8"

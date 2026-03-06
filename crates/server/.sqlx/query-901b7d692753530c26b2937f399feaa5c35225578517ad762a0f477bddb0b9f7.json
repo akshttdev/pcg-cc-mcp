@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO dropbox_sources (\n                id, account_id, label, source_url, project_id, storage_tier,\n                checksum_required, reference_name_template, ingest_strategy,\n                access_token, cursor, last_processed_at, auto_ingest, created_at,\n                updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 15
+    },
+    "nullable": []
+  },
+  "hash": "901b7d692753530c26b2937f399feaa5c35225578517ad762a0f477bddb0b9f7"
+}

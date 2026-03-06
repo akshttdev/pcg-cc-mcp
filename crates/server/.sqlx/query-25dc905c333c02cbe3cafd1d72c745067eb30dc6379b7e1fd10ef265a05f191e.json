@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM project_brand_profiles WHERE project_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "25dc905c333c02cbe3cafd1d72c745067eb30dc6379b7e1fd10ef265a05f191e"
+}
