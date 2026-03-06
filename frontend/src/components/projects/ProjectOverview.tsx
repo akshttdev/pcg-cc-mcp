@@ -95,7 +95,7 @@ export function ProjectOverview({ project, tasks, members }: ProjectOverviewProp
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.inProgress + stats.inReview}</p>
-                <p className="text-xs text-muted-foreground">In Progress</p>
+                <p className="text-xs text-muted-foreground">Active</p>
               </div>
             </div>
           </CardContent>
