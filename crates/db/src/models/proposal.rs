@@ -22,6 +22,10 @@ pub struct Proposal {
     /// one-off | retainer | hybrid
     pub deal_type: String,
 
+    pub company_id: Option<Uuid>,
+    /// JSON array of contact person UUIDs: ["uuid", ...]
+    pub contact_ids: String,
+
     pub sent_at: Option<DateTime<Utc>>,
     pub seen_at: Option<DateTime<Utc>>,
     pub verbal_at: Option<DateTime<Utc>>,
@@ -39,9 +43,11 @@ pub struct CreateProposal {
     pub organization_id: Option<Uuid>,
     pub owner_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
+    pub company_id: Option<Uuid>,
     pub description: Option<String>,
     pub quote_amount_vibe: Option<i64>,
     pub deal_type: Option<String>,
+    pub contact_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -54,6 +60,8 @@ pub struct UpdateProposal {
     pub lead_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
     pub owner_id: Option<Uuid>,
+    pub company_id: Option<Uuid>,
+    pub contact_ids: Option<Vec<String>>,
 }
 
 impl Proposal {
@@ -70,21 +78,27 @@ impl Proposal {
         let quote = input.quote_amount_vibe.unwrap_or(0);
         let deal_type = input.deal_type.unwrap_or_else(|| "one-off".into());
 
+        let contact_ids_json = input.contact_ids
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()))
+            .unwrap_or_else(|| "[]".to_string());
+
         sqlx::query(
             r#"INSERT INTO proposals
-               (id, lead_id, organization_id, owner_id, project_id,
-                title, description, quote_amount_vibe, deal_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+               (id, lead_id, organization_id, owner_id, project_id, company_id,
+                title, description, quote_amount_vibe, deal_type, contact_ids)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         )
         .bind(id)
         .bind(input.lead_id)
         .bind(input.organization_id)
         .bind(input.owner_id)
         .bind(input.project_id)
+        .bind(input.company_id)
         .bind(&input.title)
         .bind(&description)
         .bind(quote)
         .bind(&deal_type)
+        .bind(&contact_ids_json)
         .execute(pool)
         .await?;
 
@@ -133,6 +147,11 @@ impl Proposal {
         if let Some(v) = input.lead_id     { qb.push(", lead_id = ").push_bind(v); }
         if let Some(v) = input.project_id  { qb.push(", project_id = ").push_bind(v); }
         if let Some(v) = input.owner_id    { qb.push(", owner_id = ").push_bind(v); }
+        if let Some(v) = input.company_id  { qb.push(", company_id = ").push_bind(v); }
+        if let Some(v) = input.contact_ids {
+            let json = serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string());
+            qb.push(", contact_ids = ").push_bind(json);
+        }
         qb.push(" WHERE id = ").push_bind(id);
         qb.build().execute(pool).await?;
         Self::find_by_id(pool, id).await

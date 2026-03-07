@@ -3,7 +3,6 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -25,6 +24,7 @@ import {
   X,
   Search,
   BookOpen,
+  Brain,
   Share2,
   MessageSquare,
   FileText,
@@ -32,7 +32,6 @@ import {
   Pencil,
   Boxes,
   Network,
-  RefreshCw,
   AlertTriangle,
   Linkedin,
   Instagram,
@@ -50,13 +49,10 @@ import {
   tasksApi,
   type OrganizationData,
   type ClientData,
-  type CrmContactRecord,
   type CrmActivityRecord,
   type ProjectKnowledgeResponse,
-  type ProjectKnowledgeSource,
   type SocialAccountRecord,
   type SocialMentionRecord,
-  type TaskWithAttemptStatus,
 } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
@@ -94,11 +90,11 @@ function formatCurrency(amount: number) {
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({
-  orgId,
+  orgId: _orgId,
   projectEntries,
   projectCount,
-  clientCount,
-  memberCount,
+  clientCount: _clientCount,
+  memberCount: _memberCount,
   totalDealValue,
   totalDeals,
   contactCount,
@@ -208,7 +204,7 @@ function OverviewTab({
           { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
           { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
           { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
-          { label: 'Knowledge', icon: BookOpen, tab: 'knowledge', color: 'text-orange-500' },
+          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
           { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
         ].map(({ label, icon: Icon, tab, color }) => (
           <button
@@ -434,7 +430,7 @@ function ContactCard({ contact }: { contact: OrgContact }) {
 // ── Projects Tab ──────────────────────────────────────────────────────────────
 
 function ProjectsTab({
-  orgId,
+  orgId: _orgId,
   sidebarOrg,
   clientFilter,
   onClearClientFilter,
@@ -653,7 +649,6 @@ function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: 
             const completeness = data.completeness
               ? Math.round(data.completeness.knowledge_completeness * 100)
               : 0;
-            const allSources = Object.values(data.sources_by_type).flat();
             return (
               <Card key={projectId} className="bg-card/80 backdrop-blur-sm border-border/50">
                 <CardHeader className="pb-3">
@@ -1144,8 +1139,8 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 Social
               </TabsTrigger>
               <TabsTrigger value="knowledge">
-                <BookOpen className="h-4 w-4 mr-2" />
-                Knowledge
+                <Brain className="h-4 w-4 mr-2" />
+                Intelligence
               </TabsTrigger>
               <TabsTrigger value="members">
                 <Users className="h-4 w-4 mr-2" />

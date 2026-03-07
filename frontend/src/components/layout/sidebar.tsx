@@ -21,15 +21,11 @@ import {
   Crown,
   Star,
   Box,
-  Share2,
   Megaphone,
   Users,
   ListTodo,
   BarChart3,
-  Bot,
   Network,
-  Globe,
-  Activity,
   Building2,
   UserCircle,
   GripVertical,
@@ -40,11 +36,13 @@ import {
   Target,
   TrendingUp,
   Package,
-  Calendar,
   FileText,
   LayoutDashboard,
   Receipt,
   ExternalLink,
+  Brain,
+  Sparkles,
+  LayoutGrid,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -112,6 +110,7 @@ const GLOBAL_VIEW_ITEMS: NavItem[] = [
   { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
   { label: 'All CRM', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
   { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
+  { label: 'Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
 ];
 
 const EXTERNAL_LINKS = [
@@ -150,73 +149,6 @@ function HealthDot({ status }: { status?: string }) {
 }
 
 // ============================================================================
-// CrmSidebarLinks — expandable CRM sub-navigation for a project
-// ============================================================================
-
-function CrmSidebarLinks({
-  projectId,
-  location,
-  indent = 'pl-5',
-}: {
-  projectId: string;
-  location: ReturnType<typeof useLocation>;
-  indent?: string;
-}) {
-  const isCrmActive = location.pathname.startsWith(`/projects/${projectId}/crm`);
-  const [expanded, setExpanded] = useState(isCrmActive);
-
-  const crmLinks = [
-    { label: 'Overview', to: `/projects/${projectId}/crm/overview`, icon: BarChart3 },
-    { label: 'Sales Pipeline', to: `/projects/${projectId}/crm/sales`, icon: TrendingUp },
-    { label: 'Client Delivery', to: `/projects/${projectId}/crm/delivery`, icon: Package },
-    { label: 'Contacts', to: `/projects/${projectId}/crm`, icon: Users },
-    { label: 'Conferences', to: `/projects/${projectId}/crm/conferences`, icon: Calendar },
-  ];
-
-  return (
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <CollapsibleTrigger asChild>
-        <button
-          className={cn(
-            `flex items-center gap-2 ${indent} pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground w-full text-left`,
-            isCrmActive && 'text-accent-foreground'
-          )}
-        >
-          <Users className="h-3 w-3 text-muted-foreground" />
-          <span className="flex-1">CRM</span>
-          {expanded ? (
-            <ChevronDown className="h-3 w-3" />
-          ) : (
-            <ChevronRight className="h-3 w-3" />
-          )}
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="space-y-0.5">
-          {crmLinks.map((link) => {
-            const Icon = link.icon;
-            const isActive = link.to === `/projects/${projectId}/crm`
-              ? location.pathname === link.to
-              : location.pathname === link.to;
-            return (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={cn(
-                  `flex items-center gap-2 ${indent} pl-7 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground`,
-                  isActive && 'bg-accent text-accent-foreground'
-                )}
-              >
-                <Icon className="h-3 w-3 text-muted-foreground" />
-                <span>{link.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
 
 // ============================================================================
 // ProjectFolder — existing component for rendering leaf-level project items
@@ -380,34 +312,28 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
             </Link>
           )}
 
-          {/* Project Controller / Master Control */}
-          <Link
-            to={`/projects/${project.id}/control`}
-            className={cn(
-              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-2 border-t pt-2',
-              location.pathname === `/projects/${project.id}/control` &&
-                'bg-accent text-accent-foreground'
-            )}
-          >
-            <Bot className="h-3 w-3 text-purple-500" />
-            <span className="font-medium">Controller</span>
-          </Link>
-
-          {/* CRM Section */}
-          <CrmSidebarLinks projectId={project.id} location={location} indent="pl-5" />
-
-          {/* Social Media Link */}
-          <Link
-            to={`/projects/${project.id}/social`}
-            className={cn(
-              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-              location.pathname === `/projects/${project.id}/social` &&
-                'bg-accent text-accent-foreground'
-            )}
-          >
-            <Share2 className="h-3 w-3 text-muted-foreground" />
-            <span>Social</span>
-          </Link>
+          {/* Project quick-nav: Overview · Contacts · Pipeline · Deliverables · Experiences */}
+          <div className="mt-1 border-t pt-1 space-y-0.5">
+            {[
+              { label: 'Overview',     to: `/projects/${project.id}/tasks`,        icon: LayoutGrid,      color: 'text-muted-foreground' },
+              { label: 'Contacts',     to: `/projects/${project.id}/crm`,           icon: Users,           color: 'text-blue-500' },
+              { label: 'Pipeline',     to: `/projects/${project.id}/crm/sales`,     icon: TrendingUp,      color: 'text-amber-500' },
+              { label: 'Deliverables', to: `/projects/${project.id}/deliverables`,  icon: Package,         color: 'text-green-500' },
+              { label: 'Experiences',  to: `/projects/${project.id}/social`,        icon: Sparkles,        color: 'text-pink-500' },
+            ].map(({ label, to, icon: Icon, color }) => (
+              <Link
+                key={to}
+                to={to}
+                className={cn(
+                  'flex items-center gap-2 pl-5 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                  location.pathname === to && 'bg-accent text-accent-foreground'
+                )}
+              >
+                <Icon className={cn('h-3 w-3 shrink-0', color)} />
+                <span>{label}</span>
+              </Link>
+            ))}
+          </div>
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -565,52 +491,28 @@ function SortableSidebarProjectFolder({
                 );
               })}
 
-            {/* Controller */}
-            <Link
-              to={`/projects/${project.id}/control`}
-              className={cn(
-                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-1 border-t pt-2',
-                location.pathname === `/projects/${project.id}/control` &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <Bot className="h-3 w-3 text-purple-500" />
-              <span className="font-medium">Controller</span>
-            </Link>
-
-            {/* CRM Section */}
-            <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
-
-            {/* Social */}
-            <Link
-              to={`/projects/${project.id}/social`}
-              className={cn(
-                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === `/projects/${project.id}/social` &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <Share2 className="h-3 w-3 text-muted-foreground" />
-              <span>Social</span>
-            </Link>
-
-            {/* Knowledge */}
-            <Link
-              to={`/projects/${project.id}/knowledge`}
-              className={cn(
-                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === `/projects/${project.id}/knowledge` &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <BookOpen className="h-3 w-3 text-muted-foreground" />
-              <span>Knowledge</span>
-              {project.knowledge_completeness != null && (
-                <span className="text-[9px] text-muted-foreground ml-auto">
-                  {Math.round(project.knowledge_completeness * 100)}%
-                </span>
-              )}
-            </Link>
+            {/* Project quick-nav: Overview · Contacts · Pipeline · Deliverables · Experiences */}
+            <div className="mt-1 border-t pt-1 space-y-0.5">
+              {[
+                { label: 'Overview',     to: `/projects/${project.id}/tasks`,        icon: LayoutGrid,  color: 'text-muted-foreground' },
+                { label: 'Contacts',     to: `/projects/${project.id}/crm`,           icon: Users,       color: 'text-blue-500' },
+                { label: 'Pipeline',     to: `/projects/${project.id}/crm/sales`,     icon: TrendingUp,  color: 'text-amber-500' },
+                { label: 'Deliverables', to: `/projects/${project.id}/deliverables`,  icon: Package,     color: 'text-green-500' },
+                { label: 'Experiences',  to: `/projects/${project.id}/social`,        icon: Sparkles,    color: 'text-pink-500' },
+              ].map(({ label, to, icon: Icon, color }) => (
+                <Link
+                  key={to}
+                  to={to}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                    location.pathname === to && 'bg-accent text-accent-foreground'
+                  )}
+                >
+                  <Icon className={cn('h-3 w-3 shrink-0', color)} />
+                  <span>{label}</span>
+                </Link>
+              ))}
+            </div>
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -990,19 +892,27 @@ function OrgSection({
       {expanded && (
       <div className="pl-2">
         <div className="space-y-0.5">
-          {/* Org-level CRM pipelines link */}
-          <div className="px-1 py-1">
-            <Link
-              to={`/organizations/${org.id}?tab=pipelines`}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.search.includes('tab=pipelines') && location.pathname === `/organizations/${org.id}` &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <Target className="h-3 w-3 text-amber-500 shrink-0" />
-              <span>Pipelines</span>
-            </Link>
+          {/* Org-level quick links — deep-link into detailed management tabs */}
+          <div className="px-1 py-1 space-y-0.5">
+            {[
+              { label: 'Pipeline',      tab: 'pipelines', icon: Target,   color: 'text-amber-500'  },
+              { label: 'CRM',           tab: 'contacts',  icon: Users,    color: 'text-blue-500'   },
+              { label: 'Social',        tab: 'social',    icon: Megaphone,color: 'text-purple-500' },
+              { label: 'Intelligence',  tab: 'knowledge', icon: Brain,    color: 'text-emerald-500'},
+            ].map(({ label, tab, icon: Icon, color }) => (
+              <Link
+                key={tab}
+                to={`/organizations/${org.id}?tab=${tab}`}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                  location.search.includes(`tab=${tab}`) && location.pathname === `/organizations/${org.id}` &&
+                    'bg-accent text-accent-foreground'
+                )}
+              >
+                <Icon className={cn('h-3 w-3 shrink-0', color)} />
+                <span>{label}</span>
+              </Link>
+            ))}
           </div>
 
           {/* Internal projects and folders (no client) */}

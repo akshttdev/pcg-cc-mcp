@@ -87,6 +87,9 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
           dev_script: null,
           cleanup_script: null,
           copy_files: null,
+          organization_id: null,
+          client_id: null,
+          folder_id: null,
         };
 
         await projectsApi.create(createData);
@@ -138,6 +141,9 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
             dev_script: null,
             cleanup_script: null,
             copy_files: null,
+            organization_id: null,
+            client_id: null,
+            folder_id: null,
           };
 
           await projectsApi.create(createData);

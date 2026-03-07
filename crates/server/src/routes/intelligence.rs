@@ -413,11 +413,209 @@ fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String 
     response.to_string()
 }
 
+// ── Company Intelligence ───────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CompanyResearchRequest {
+    pub agent_preference: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompanyResearchJobResponse {
+    pub company_id: Uuid,
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompanyIntelligenceStatusResponse {
+    pub company_id: Uuid,
+    pub status: String,
+    pub summary: Option<String>,
+    pub confidence: f64,
+    pub agent: Option<String>,
+    pub last_run_at: Option<String>,
+}
+
+/// POST /api/companies/:id/research
+pub async fn trigger_company_research(
+    State(d): State<DeploymentImpl>,
+    Path(company_id): Path<Uuid>,
+    Json(_body): Json<CompanyResearchRequest>,
+) -> Result<Json<ApiResponse<CompanyResearchJobResponse>>, ApiError> {
+    use db::models::company::Company;
+    let pool = d.db().pool.clone();
+
+    let company = Company::find_by_id(&pool, company_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
+
+    // Mark as queued
+    sqlx::query(
+        "UPDATE companies SET intelligence_status = 'queued', updated_at = datetime('now','subsec') WHERE id = ?",
+    )
+    .bind(company_id)
+    .execute(&pool)
+    .await?;
+
+    let company_name = company.name.clone();
+    let pool2 = pool.clone();
+
+    tokio::spawn(async move {
+        run_company_research(&pool2, company_id, &company_name).await;
+    });
+
+    Ok(Json(ApiResponse::success(CompanyResearchJobResponse {
+        company_id,
+        status: "queued".into(),
+        message: format!(
+            "Research queued for {} — Astra will gather company intelligence.",
+            company.name
+        ),
+    })))
+}
+
+/// GET /api/companies/:id/intelligence-status
+pub async fn get_company_intelligence_status(
+    State(d): State<DeploymentImpl>,
+    Path(company_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<CompanyIntelligenceStatusResponse>>, ApiError> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        intelligence_status: String,
+        intelligence_summary: Option<String>,
+        intelligence_confidence: Option<f64>,
+        intelligence_agent: Option<String>,
+        intelligence_last_run_at: Option<String>,
+    }
+    let pool = &d.db().pool;
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT intelligence_status, intelligence_summary, intelligence_confidence, \
+         intelligence_agent, intelligence_last_run_at FROM companies WHERE id = ?",
+    )
+    .bind(company_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let row = row.ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
+    Ok(Json(ApiResponse::success(CompanyIntelligenceStatusResponse {
+        company_id,
+        status: row.intelligence_status,
+        summary: row.intelligence_summary,
+        confidence: row.intelligence_confidence.unwrap_or(0.0),
+        agent: row.intelligence_agent,
+        last_run_at: row.intelligence_last_run_at,
+    })))
+}
+
+async fn run_company_research(pool: &sqlx::SqlitePool, company_id: Uuid, company_name: &str) {
+    sqlx::query(
+        "UPDATE companies SET intelligence_status = 'running', updated_at = datetime('now','subsec') WHERE id = ?",
+    )
+    .bind(company_id)
+    .execute(pool)
+    .await
+    .ok();
+
+    let research_prompt = format!(
+        "Research the company '{}'. Provide: \
+        1) Company overview and background, \
+        2) Industry positioning and market segment, \
+        3) Leadership and key personnel, \
+        4) Business model and revenue streams, \
+        5) Recent news, developments, or announcements, \
+        6) Competitive landscape and differentiation, \
+        7) Market opportunity size. \
+        Format as a professional intelligence brief.",
+        company_name
+    );
+
+    // Try via Nora agent first
+    use crate::routes::intelligence::{run_company_research_direct};
+    run_company_research_direct(pool, company_id, company_name, &research_prompt).await;
+}
+
+pub async fn run_company_research_direct(
+    pool: &sqlx::SqlitePool,
+    company_id: Uuid,
+    company_name: &str,
+    research_prompt: &str,
+) {
+    let client = reqwest::Client::new();
+    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+        Ok(k) => k,
+        Err(_) => {
+            write_company_intel_results(pool, company_id, "No API key configured", 0.0, "{}").await;
+            return;
+        }
+    };
+
+    let body = serde_json::json!({
+        "model": "claude-opus-4-6",
+        "max_tokens": 2048,
+        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 4}],
+        "messages": [{"role": "user", "content": research_prompt}]
+    });
+
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("anthropic-beta", "web-search-2025-03-05")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .await;
+
+    let (summary, confidence) = match resp {
+        Ok(r) if r.status().is_success() => {
+            let val: serde_json::Value = r.json().await.unwrap_or_default();
+            let text = extract_text_from_anthropic_response(&val);
+            let conf = if text.len() > 200 { 0.75 } else { 0.3 };
+            (text, conf)
+        }
+        _ => (format!("Research unavailable for {}", company_name), 0.1),
+    };
+
+    write_company_intel_results(pool, company_id, &summary, confidence, "{}").await;
+}
+
+async fn write_company_intel_results(
+    pool: &sqlx::SqlitePool,
+    company_id: Uuid,
+    summary: &str,
+    confidence: f64,
+    raw: &str,
+) {
+    sqlx::query(
+        "UPDATE companies SET \
+         intelligence_status = 'done', \
+         intelligence_summary = ?, \
+         intelligence_raw = ?, \
+         intelligence_confidence = ?, \
+         intelligence_last_run_at = datetime('now','subsec'), \
+         updated_at = datetime('now','subsec') \
+         WHERE id = ?",
+    )
+    .bind(summary)
+    .bind(raw)
+    .bind(confidence)
+    .bind(company_id)
+    .execute(pool)
+    .await
+    .ok();
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/persons/{id}/research", post(trigger_research))
         .route("/persons/{id}/intelligence-status", get(get_intelligence_status))
+        .route("/companies/{id}/research", post(trigger_company_research))
+        .route(
+            "/companies/{id}/intelligence-status",
+            get(get_company_intelligence_status),
+        )
         .with_state(deployment.clone())
 }
