@@ -41,6 +41,7 @@ import {
   ExternalLink,
   Sparkles,
   LayoutGrid,
+  Brain,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -143,6 +144,67 @@ function HealthDot({ status }: { status?: string }) {
       className={cn('inline-block w-1.5 h-1.5 rounded-full shrink-0', color)}
       title={`Health: ${status}`}
     />
+  );
+}
+
+// ============================================================================
+// OrgCrmSection — collapsible CRM with Overview/Contacts/Pipeline/Deliverables/Experiences
+// ============================================================================
+
+function OrgCrmSection({
+  orgId,
+  location,
+}: {
+  orgId: string;
+  location: ReturnType<typeof useLocation>;
+}) {
+  const isOnOrg = location.pathname === `/organizations/${orgId}`;
+  const isCrmActive =
+    isOnOrg &&
+    (location.search.includes('tab=contacts') ||
+      location.search.includes('tab=pipelines') ||
+      location.search.includes('tab=deliverables') ||
+      !location.search);
+  const [open, setOpen] = useState(isCrmActive);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+            isCrmActive && 'text-accent-foreground font-medium'
+          )}
+        >
+          <Users className="h-3 w-3 shrink-0 text-blue-500" />
+          <span className="flex-1 text-left">CRM</span>
+          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-4 space-y-0.5 py-0.5">
+          {[
+            { label: 'Overview',     to: `/organizations/${orgId}`,                 icon: LayoutGrid, color: 'text-muted-foreground', match: isOnOrg && !location.search },
+            { label: 'Contacts',     to: `/organizations/${orgId}?tab=contacts`,    icon: Users,      color: 'text-blue-400',          match: isOnOrg && location.search.includes('tab=contacts') },
+            { label: 'Pipeline',     to: `/organizations/${orgId}?tab=pipelines`,   icon: TrendingUp, color: 'text-amber-500',         match: isOnOrg && location.search.includes('tab=pipelines') },
+            { label: 'Deliverables', to: `/organizations/${orgId}?tab=deliverables`,icon: Package,    color: 'text-green-500',         match: isOnOrg && location.search.includes('tab=deliverables') },
+            { label: 'Experiences',  to: `/organizations/${orgId}?tab=social`,      icon: Sparkles,   color: 'text-pink-500',          match: isOnOrg && location.search.includes('tab=social') },
+          ].map(({ label, to, icon: Icon, color, match }) => (
+            <Link
+              key={label}
+              to={to}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                match && 'bg-accent text-accent-foreground'
+              )}
+            >
+              <Icon className={cn('h-3 w-3 shrink-0', color)} />
+              <span>{label}</span>
+            </Link>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -844,27 +906,31 @@ function OrgSection({
       {expanded && (
       <div className="pl-2">
         <div className="space-y-0.5">
-          {/* Org-level workspace links */}
+          {/* Org-level workspace links: CRM (expandable), Social, Intelligence */}
           <div className="px-1 py-1 space-y-0.5">
-            {[
-              { label: 'Overview',     to: `/organizations/${org.id}`,                    icon: LayoutGrid, color: 'text-muted-foreground', match: location.pathname === `/organizations/${org.id}` && !location.search },
-              { label: 'Contacts',     to: `/organizations/${org.id}?tab=contacts`,        icon: Users,      color: 'text-blue-500',          match: location.search.includes('tab=contacts') },
-              { label: 'Pipeline',     to: `/organizations/${org.id}?tab=pipelines`,       icon: TrendingUp, color: 'text-amber-500',         match: location.search.includes('tab=pipelines') },
-              { label: 'Deliverables', to: `/organizations/${org.id}?tab=deliverables`,    icon: Package,    color: 'text-green-500',         match: location.search.includes('tab=deliverables') },
-              { label: 'Experiences',  to: `/organizations/${org.id}?tab=social`,          icon: Sparkles,   color: 'text-pink-500',          match: location.search.includes('tab=social') },
-            ].map(({ label, to, icon: Icon, color, match }) => (
-              <Link
-                key={label}
-                to={to}
-                className={cn(
-                  'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                  location.pathname === `/organizations/${org.id}` && match && 'bg-accent text-accent-foreground'
-                )}
-              >
-                <Icon className={cn('h-3 w-3 shrink-0', color)} />
-                <span>{label}</span>
-              </Link>
-            ))}
+            <OrgCrmSection orgId={org.id} location={location} />
+
+            <Link
+              to={`/social-command`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                location.pathname === '/social-command' && 'bg-accent text-accent-foreground'
+              )}
+            >
+              <Megaphone className="h-3 w-3 shrink-0 text-purple-500" />
+              <span>Social</span>
+            </Link>
+
+            <Link
+              to={`/companies`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                location.pathname === '/companies' && 'bg-accent text-accent-foreground'
+              )}
+            >
+              <Brain className="h-3 w-3 shrink-0 text-emerald-500" />
+              <span>Intelligence</span>
+            </Link>
           </div>
 
           {/* Internal projects and folders (no client) */}
