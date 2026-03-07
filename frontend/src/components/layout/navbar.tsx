@@ -71,11 +71,11 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
           {/* Logo */}
           <div className="flex items-center mr-3 sm:mr-5 cursor-pointer hover:opacity-80 transition-opacity shrink-0" onClick={() => navigate('/projects')}>
             <img
-              src="/orcha-logo.png"
-              alt="ORCHA"
-              className="h-7 sm:h-8 w-auto"
+              src="/pcg-globe-logo.png"
+              alt="Powerclub Global"
+              className="h-8 sm:h-9 w-auto"
             />
-            <span className="ml-2 text-base sm:text-lg font-bold tracking-wide hidden sm:inline">ORCHA</span>
+            <span className="ml-2 text-sm sm:text-base font-semibold hidden sm:inline tracking-widest uppercase" style={{ fontFamily: "'Cinzel', serif", color: '#b8952a' }}>Powerclub Global</span>
           </div>
 
           <div className="flex-1 min-w-0">

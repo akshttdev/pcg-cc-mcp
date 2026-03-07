@@ -95,6 +95,13 @@ pub mod proposal;
 pub mod deliverable;
 pub mod operator_rate;
 pub mod meeting_session;
+pub mod company;
+pub mod entity_graph;
+pub mod topology_node;
+pub mod topology_edge;
+pub mod topology_cluster;
+pub mod topology_issue;
+pub mod topology_route;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

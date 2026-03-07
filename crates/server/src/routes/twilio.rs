@@ -107,6 +107,7 @@ async fn get_twilio_handler() -> Option<Arc<TwilioCallHandler>> {
 pub fn twilio_routes() -> Router<DeploymentImpl> {
     Router::new()
         .route("/twilio/voice", post(handle_incoming_call))
+        .route("/twilio/sms", post(handle_incoming_sms))
         .route("/twilio/speech", post(handle_speech_input))
         .route("/twilio/audio/{audio_id}", get(serve_audio))
         .route("/twilio/status", post(handle_call_status))
@@ -1460,6 +1461,163 @@ async fn process_with_nora(
         .to_string();
 
     Ok((text, input_tokens, output_tokens))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SMS Handling
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Twilio SMS webhook params
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct TwilioSmsRequest {
+    pub message_sid: String,
+    pub from: String,
+    pub to: String,
+    pub body: String,
+    pub from_city: Option<String>,
+    pub from_country: Option<String>,
+    pub num_media: Option<String>,
+}
+
+/// POST /twilio/sms — Handle incoming SMS messages
+pub async fn handle_incoming_sms(
+    State(deployment): State<DeploymentImpl>,
+    Form(request): Form<TwilioSmsRequest>,
+) -> impl IntoResponse {
+    info!(
+        "Incoming SMS: {} from {} (sid={})",
+        &request.body[..request.body.len().min(80)],
+        request.from,
+        request.message_sid
+    );
+
+    let pool = &deployment.db().pool;
+
+    // ── CRM lookup: who is texting? ──────────────────────────────────────────
+    let (caller_name, caller_type) =
+        match CrmContact::find_by_phone_global(pool, &request.from).await {
+            Ok(Some(contact)) => {
+                let name = contact
+                    .full_name
+                    .unwrap_or_else(|| contact.email.unwrap_or_else(|| "Unknown".into()));
+                (name, "returning_client")
+            }
+            _ => {
+                // Check PCG team
+                if let Some((_, full_name, _)) =
+                    lookup_pcg_team_member(pool, &request.from).await
+                {
+                    (full_name, "pcg_team")
+                } else {
+                    ("Unknown".to_string(), "new_contact")
+                }
+            }
+        };
+
+    // ── Process through Nora ─────────────────────────────────────────────────
+    let sms_context = json!({
+        "channel": "sms",
+        "caller_type": caller_type,
+        "caller": {
+            "caller_name": caller_name,
+            "caller_role": caller_type,
+            "phone": request.from,
+        }
+    });
+
+    let nora_text = match process_sms_with_nora(&request.body, &request.from, Some(sms_context)).await {
+        Ok(text) => text,
+        Err(e) => {
+            error!("Nora SMS processing failed: {}", e);
+            "I'm sorry, I'm having a moment. Please try again shortly.".to_string()
+        }
+    };
+
+    // ── TwiML response ───────────────────────────────────────────────────────
+    let twiml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>{}</Message></Response>",
+        xml_escape(&nora_text)
+    );
+
+    (StatusCode::OK, [("Content-Type", "application/xml")], twiml)
+}
+
+/// Process an SMS through Nora's LLM (text channel — no voice constraints).
+async fn process_sms_with_nora(
+    message: &str,
+    from_number: &str,
+    context: Option<serde_json::Value>,
+) -> Result<String, String> {
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
+        .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
+
+    let caller_type = context
+        .as_ref()
+        .and_then(|ctx| ctx.get("caller_type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    let system_prompt = if caller_type == "pcg_team" {
+        NORA_PCG_TEAM_SYSTEM
+    } else {
+        NORA_CLIENT_SYSTEM
+    };
+
+    let caller_note = context
+        .as_ref()
+        .and_then(|ctx| ctx.get("caller"))
+        .and_then(|c| c.get("caller_name"))
+        .and_then(|v| v.as_str())
+        .filter(|n| !n.is_empty() && *n != "Unknown")
+        .map(|name| format!("[SMS from {} ({})] ", name, from_number))
+        .unwrap_or_else(|| format!("[SMS from {}] ", from_number));
+
+    let sms_instruction = "[SMS channel — reply as plain text, no markdown, \
+        keep under 300 characters if possible. British English.]";
+
+    let body = json!({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 300,
+        "system": format!("{}\n\n{}", system_prompt, sms_instruction),
+        "messages": [{
+            "role": "user",
+            "content": format!("{}{}", caller_note, message)
+        }]
+    });
+
+    let client = reqwest::Client::new();
+    let fut = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send();
+
+    let resp = match timeout(Duration::from_secs(15), fut).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return Err(format!("HTTP error: {}", e)),
+        Err(_) => return Ok("I'm just catching up — please send again in a moment.".into()),
+    };
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| format!("JSON parse: {}", e))?;
+    let text = data["content"][0]["text"]
+        .as_str()
+        .unwrap_or("Sorry, I didn't quite catch that. Could you rephrase?")
+        .to_string();
+
+    Ok(text)
+}
+
+/// Escape special XML characters for TwiML body
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 /// Safely truncate a string for logging (UTF-8 aware)

@@ -103,6 +103,9 @@ pub struct EmailAccount {
     pub signature: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // Polymorphic ownership (added migration 20260306300000)
+    pub owner_type: String,
+    pub owner_id: String,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -255,6 +258,47 @@ impl EmailAccount {
         .await?;
 
         Ok(accounts)
+    }
+
+    /// Find all email accounts owned by a given entity (agent, user, organization, project).
+    /// owner_type: 'agent' | 'user' | 'organization' | 'project'
+    /// owner_id: UUID hex of the owning entity
+    pub async fn find_by_owner(
+        pool: &SqlitePool,
+        owner_type: &str,
+        owner_id: &str,
+    ) -> Result<Vec<Self>, EmailAccountError> {
+        let accounts = sqlx::query_as::<_, EmailAccount>(
+            r#"SELECT * FROM email_accounts
+               WHERE owner_type = ?1 AND owner_id = ?2 AND status != 'revoked'
+               ORDER BY created_at ASC"#,
+        )
+        .bind(owner_type)
+        .bind(owner_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(accounts)
+    }
+
+    /// Find the primary active email account for an owner, preferring the given provider.
+    pub async fn find_primary_for_owner(
+        pool: &SqlitePool,
+        owner_type: &str,
+        owner_id: &str,
+        preferred_provider: Option<EmailProvider>,
+    ) -> Result<Option<Self>, EmailAccountError> {
+        let accounts = Self::find_by_owner(pool, owner_type, owner_id).await?;
+        if accounts.is_empty() {
+            return Ok(None);
+        }
+        if let Some(provider) = preferred_provider {
+            let p = provider.to_string();
+            if let Some(a) = accounts.iter().find(|a| a.provider == p) {
+                return Ok(Some(a.clone()));
+            }
+        }
+        Ok(accounts.into_iter().next())
     }
 
     pub async fn find_active(pool: &SqlitePool) -> Result<Vec<Self>, EmailAccountError> {

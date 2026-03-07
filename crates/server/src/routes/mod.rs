@@ -91,6 +91,7 @@ pub mod command_center;
 pub mod automations;
 pub mod feedback;
 pub mod intelligence;
+pub mod graph;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -154,6 +155,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(deliverables::router(&deployment))
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
+        .merge(graph::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
         .layer(middleware::from_fn_with_state(

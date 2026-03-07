@@ -2757,14 +2757,18 @@ export const emailApi = {
   },
 
   initiateOAuth: async (
-    projectId: string,
+    projectId: string | null,
     provider: string,
-    redirectUri: string
+    redirectUri: string,
+    ownerType?: string,
+    ownerId?: string
   ): Promise<OAuthUrlResponse> => {
     const response = await makeRequest('/api/email/oauth/initiate', {
       method: 'POST',
       body: JSON.stringify({
-        project_id: projectId,
+        ...(projectId ? { project_id: projectId } : {}),
+        ...(ownerType ? { owner_type: ownerType } : {}),
+        ...(ownerId ? { owner_id: ownerId } : {}),
         provider,
         redirect_uri: redirectUri,
       }),
@@ -4592,6 +4596,8 @@ export interface ProposalRecord {
   organization_id?: string;
   owner_id?: string;
   project_id?: string;
+  company_id?: string;
+  contact_ids: string;
   status: ProposalStatus;
   title: string;
   description: string;
@@ -4867,6 +4873,96 @@ export interface IntelligenceStatus {
   agent?: string;
   last_run_at?: string;
 }
+
+// ============================================================
+// Companies API (knowledge-graph company entities)
+// ============================================================
+
+export interface CompanyRecord {
+  id: string;
+  name: string;
+  slug?: string | null;
+  website?: string | null;
+  industry?: string | null;
+  description?: string | null;
+  logo_url?: string | null;
+  headquarters?: string | null;
+  intelligence_summary?: string | null;
+  intelligence_raw?: string | null;
+  intelligence_status: string;
+  intelligence_last_run_at?: string | null;
+  intelligence_confidence?: number | null;
+  intelligence_agent?: string | null;
+  organization_id?: string | null;
+  created_by_org_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const companiesApi = {
+  list: async (params?: { limit?: number; has_platform_org?: boolean }): Promise<CompanyRecord[]> => {
+    const qs = new URLSearchParams();
+    if (params?.limit != null) qs.set('limit', String(params.limit));
+    if (params?.has_platform_org != null) qs.set('has_platform_org', String(params.has_platform_org));
+    const response = await makeRequest(`/api/companies?${qs.toString()}`);
+    return handleApiResponse<CompanyRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<CompanyRecord> => {
+    const response = await makeRequest(`/api/companies/${id}`);
+    return handleApiResponse<CompanyRecord>(response);
+  },
+
+  create: async (data: { name: string; website?: string; industry?: string; description?: string }): Promise<CompanyRecord> => {
+    const response = await makeRequest('/api/companies', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CompanyRecord>(response);
+  },
+
+  update: async (id: string, data: Partial<CompanyRecord>): Promise<CompanyRecord> => {
+    const response = await makeRequest(`/api/companies/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CompanyRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/companies/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  listProposals: async (id: string): Promise<ProposalRecord[]> => {
+    const response = await makeRequest(`/api/companies/${id}/proposals`);
+    return handleApiResponse<ProposalRecord[]>(response);
+  },
+
+  listPersons: async (id: string): Promise<PersonRecord[]> => {
+    const response = await makeRequest(`/api/companies/${id}/persons`);
+    return handleApiResponse<PersonRecord[]>(response);
+  },
+
+  getIntelligenceStatus: async (id: string): Promise<{ status: string; summary?: string; confidence: number; agent?: string; last_run_at?: string }> => {
+    const company = await companiesApi.get(id);
+    return {
+      status: company.intelligence_status,
+      summary: company.intelligence_summary ?? undefined,
+      confidence: company.intelligence_confidence ?? 0,
+      agent: company.intelligence_agent ?? undefined,
+      last_run_at: company.intelligence_last_run_at ?? undefined,
+    };
+  },
+
+  research: async (id: string): Promise<{ status: string; message: string }> => {
+    const response = await makeRequest(`/api/companies/${id}/research`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    return handleApiResponse<{ status: string; message: string }>(response);
+  },
+};
 
 export const intelligenceApi = {
   triggerResearch: async (personId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ person_id: string; status: string; message: string }> => {

@@ -156,6 +156,11 @@ const FINE_ART_SOCIETY_PROJECT: Project = {
   copy_files: null,
   vibe_budget_limit: null,
   vibe_spent_amount: 0,
+  organization_id: null,
+  client_id: null,
+  folder_id: null,
+  aptos_address: null,
+  aptos_funded: false,
   created_at: new Date(),
   updated_at: new Date(),
 };

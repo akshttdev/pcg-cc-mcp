@@ -23,6 +23,8 @@ pub struct ListAccountsQuery {
     pub project_id: Option<Uuid>,
     pub provider: Option<String>,
     pub active_only: Option<bool>,
+    pub owner_type: Option<String>,
+    pub owner_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -39,9 +41,35 @@ pub struct OAuthCallbackQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct InitiateOAuthRequest {
-    pub project_id: Uuid,
+    /// Legacy: project-scoped connection
+    pub project_id: Option<Uuid>,
     pub provider: String,
     pub redirect_uri: String,
+    /// New: polymorphic owner type ("agent" | "user" | "organization" | "project")
+    pub owner_type: Option<String>,
+    /// New: UUID hex of the owning entity
+    pub owner_id: Option<String>,
+}
+
+/// Parse the owner from an OAuth state string.
+/// New format:  "owner_type/owner_id:nonce"  e.g. "agent/abc123:nonce"
+/// Legacy format: "project_uuid:nonce"
+fn parse_state_owner(state: &str) -> (String, String) {
+    // nonce is always after the last ':'
+    let without_nonce = state.split(':').next().unwrap_or(state);
+    if without_nonce.contains('/') {
+        // New format: owner_type/owner_id
+        let mut parts = without_nonce.splitn(2, '/');
+        let ot = parts.next().unwrap_or("project").to_string();
+        let oi = parts.next().unwrap_or("").to_string();
+        (ot, oi)
+    } else {
+        // Legacy: bare UUID => project
+        (
+            "project".to_string(),
+            without_nonce.to_string(),
+        )
+    }
 }
 
 /// GET /email/accounts - List email accounts
@@ -51,12 +79,14 @@ async fn list_accounts(
 ) -> Result<Json<ApiResponse<Vec<EmailAccount>>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    let accounts = if let Some(project_id) = query.project_id {
+    let accounts = if let (Some(owner_type), Some(owner_id)) = (&query.owner_type, &query.owner_id) {
+        EmailAccount::find_by_owner(pool, owner_type, owner_id).await?
+    } else if let Some(project_id) = query.project_id {
         EmailAccount::find_by_project(pool, project_id).await?
     } else if query.active_only.unwrap_or(false) {
         EmailAccount::find_active(pool).await?
     } else {
-        // Return empty if no project specified and not active_only
+        // Return empty if no filter specified
         vec![]
     };
 
@@ -138,9 +168,18 @@ async fn initiate_oauth(
     let provider: EmailProvider = request.provider.parse()
         .map_err(|e: String| ApiError::BadRequest(e))?;
 
-    // Generate a state token that encodes the project along with a random nonce
+    // Generate a state token that encodes the owner along with a random nonce.
+    // Format: "owner_type/owner_id:nonce"
     let state_nonce = uuid::Uuid::new_v4().to_string();
-    let state_raw = format!("{}:{}", request.project_id, state_nonce);
+    let (owner_type, owner_id) = match (request.owner_type.as_deref(), request.owner_id.as_deref()) {
+        (Some(ot), Some(oi)) => (ot.to_string(), oi.to_string()),
+        _ => {
+            let pid = request.project_id
+                .ok_or_else(|| ApiError::BadRequest("Either project_id or owner_type+owner_id required".into()))?;
+            ("project".to_string(), pid.as_simple().to_string())
+        }
+    };
+    let state_raw = format!("{}/{}:{}", owner_type, owner_id, state_nonce);
     let state_param = urlencoding::encode(&state_raw);
 
     let auth_url = match provider {
@@ -267,10 +306,14 @@ async fn gmail_oauth_callback(
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to parse user info: {}", e)))?;
 
-    // Parse project_id from state (format: "project_id:random_uuid")
-    let project_id: Uuid = query.state.split(':').next()
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| ApiError::BadRequest("Invalid state parameter".into()))?;
+    // Parse owner from state
+    let (owner_type, owner_id) = parse_state_owner(&query.state);
+    // For backward compat, project_id still required on CreateEmailAccount — use nil if non-project
+    let project_id: Uuid = if owner_type == "project" {
+        owner_id.parse().unwrap_or(Uuid::nil())
+    } else {
+        Uuid::nil()
+    };
 
     // Calculate token expiry
     let token_expires_at = tokens.expires_in.map(|secs| {
@@ -296,6 +339,17 @@ async fn gmail_oauth_callback(
         granted_scopes: Some(EmailAccount::gmail_scopes().iter().map(|s| s.to_string()).collect()),
         metadata: None,
     }).await?;
+
+    // Stamp owner_type/owner_id on the new account
+    sqlx::query(
+        "UPDATE email_accounts SET owner_type = ?, owner_id = ? WHERE id = ?"
+    )
+    .bind(&owner_type)
+    .bind(&owner_id)
+    .bind(account.id)
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to set account owner: {}", e)))?;
 
     Ok(Json(ApiResponse::success(account)))
 }
@@ -400,10 +454,13 @@ async fn zoho_oauth_callback(
         .map(|e| e.mail_id.clone())
         .ok_or_else(|| ApiError::InternalError("No email address found".into()))?;
 
-    // Parse project_id from state
-    let project_id: Uuid = query.state.split(':').next()
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| ApiError::BadRequest("Invalid state parameter".into()))?;
+    // Parse owner from state
+    let (owner_type, owner_id) = parse_state_owner(&query.state);
+    let project_id: Uuid = if owner_type == "project" {
+        owner_id.parse().unwrap_or(Uuid::nil())
+    } else {
+        Uuid::nil()
+    };
 
     // Calculate token expiry
     let token_expires_at = tokens.expires_in.map(|secs| {
@@ -437,6 +494,17 @@ async fn zoho_oauth_callback(
             "zoho_domain": zoho_domain,
         })),
     }).await?;
+
+    // Stamp owner_type/owner_id on the new account
+    sqlx::query(
+        "UPDATE email_accounts SET owner_type = ?, owner_id = ? WHERE id = ?"
+    )
+    .bind(&owner_type)
+    .bind(&owner_id)
+    .bind(account.id)
+    .execute(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to set account owner: {}", e)))?;
 
     Ok(Json(ApiResponse::success(account)))
 }

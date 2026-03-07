@@ -8,6 +8,7 @@ use db::models::{
     task::{Priority, TaskStatus},
 };
 use serde::{Deserialize, Serialize};
+use services::services::agent_channels::{AgentChannelService, ChannelOwner};
 use services::services::media_pipeline::{
     EditSessionRequest, MediaBatchAnalysisRequest, MediaBatchIngestRequest, MediaPipelineService,
     MediaStorageTier, RenderJobRequest, VideoRenderPriority as PipelineRenderPriority,
@@ -28,6 +29,10 @@ pub struct ExecutiveTools {
     email_service: Option<EmailService>,
     discord_service: Option<DiscordService>,
     calendar_service: Option<CalendarService>,
+    // Agent communication channels (OAuth-based, DB-backed)
+    agent_channel_service: Option<Arc<AgentChannelService>>,
+    /// The agent identity to use as sender for channel operations
+    agent_owner: Option<ChannelOwner>,
     // Task execution
     task_executor: Option<Arc<TaskExecutor>>,
     media_pipeline: Option<MediaPipelineService>,
@@ -350,6 +355,19 @@ pub enum NoraExecutiveTool {
         subject: String,
         body: String,
         priority: EmailPriority,
+    },
+    /// Read Nora's inbox (or an org/project inbox when owner is specified)
+    ReadInbox {
+        limit: usize,
+        /// Optional: "agent", "organization", "project" — defaults to Nora's own account
+        owner_type: Option<String>,
+        /// Optional: UUID of the owner (required when owner_type is set)
+        owner_id: Option<String>,
+    },
+    /// Send an SMS from Nora's Twilio number
+    SendSms {
+        to: String,
+        message: String,
     },
     SendDiscordMessage {
         channel: String,
@@ -841,6 +859,8 @@ impl ExecutiveTools {
             email_service: EmailService::from_env().ok(),
             discord_service: DiscordService::from_env().ok(),
             calendar_service: CalendarService::from_env().ok(),
+            agent_channel_service: None,
+            agent_owner: None,
             task_executor: None,
             media_pipeline: None,
             workflow_orchestrator: None,
@@ -867,6 +887,13 @@ impl ExecutiveTools {
     /// Set the unified execution engine (new architecture)
     pub fn set_execution_engine(&mut self, engine: Arc<crate::execution::ExecutionEngine>) {
         self.execution_engine = Some(engine);
+    }
+
+    /// Wire the agent communication channel service.
+    /// Call this from `NoraAgent::with_database` once the pool is available.
+    pub fn set_agent_channels(&mut self, service: Arc<AgentChannelService>, owner: ChannelOwner) {
+        self.agent_channel_service = Some(service);
+        self.agent_owner = Some(owner);
     }
 
     /// Generate OpenAI-compatible function schemas for available tools
@@ -1101,6 +1128,54 @@ impl ExecutiveTools {
                             }
                         },
                         "required": ["to", "subject", "body"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "read_inbox",
+                    "description": "Read email messages from Nora's inbox (nora@powerclubglobal.com) or, if specified, an organisation/project inbox. Use this when asked to check, read, or summarise emails.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {
+                                "type": "integer",
+                                "description": "Number of messages to retrieve (default 10, max 50)",
+                                "default": 10
+                            },
+                            "owner_type": {
+                                "type": "string",
+                                "enum": ["agent", "organization", "project", "user"],
+                                "description": "Whose inbox to read. Omit to default to Nora's own inbox."
+                            },
+                            "owner_id": {
+                                "type": "string",
+                                "description": "UUID of the owner (required when owner_type is set)"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "send_sms",
+                    "description": "Send an SMS text message from Nora's phone number (+14053008311). Use this when asked to text, SMS, or send a message to a phone number.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "to": {
+                                "type": "string",
+                                "description": "Recipient phone number in E.164 format (e.g. +14155551234)"
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "The SMS message text (keep under 1600 characters)"
+                            }
+                        },
+                        "required": ["to", "message"]
                     }
                 }
             }),
@@ -2100,6 +2175,21 @@ impl ExecutiveTools {
                     body,
                     priority: EmailPriority::Normal,
                 })
+            }
+            "read_inbox" => {
+                let limit = arguments
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v.min(50) as usize)
+                    .unwrap_or(10);
+                let owner_type = arguments.get("owner_type").and_then(|v| v.as_str()).map(String::from);
+                let owner_id = arguments.get("owner_id").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::ReadInbox { limit, owner_type, owner_id })
+            }
+            "send_sms" => {
+                let to = arguments.get("to")?.as_str()?.to_string();
+                let message = arguments.get("message")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::SendSms { to, message })
             }
             "send_discord_message" => {
                 let message = arguments.get("message")?.as_str()?.to_string();
@@ -5585,6 +5675,34 @@ impl ExecutiveTools {
                 self.execute_send_email(&recipients, &subject, &body, &priority)
                     .await
             }
+            NoraExecutiveTool::ReadInbox {
+                limit,
+                owner_type,
+                owner_id,
+            } => {
+                // Build optional override owner from params
+                let override_owner = match (owner_type.as_deref(), owner_id.as_deref()) {
+                    (Some("organization"), Some(id)) => id
+                        .parse::<uuid::Uuid>()
+                        .ok()
+                        .map(ChannelOwner::Organization),
+                    (Some("project"), Some(id)) => id
+                        .parse::<uuid::Uuid>()
+                        .ok()
+                        .map(ChannelOwner::Project),
+                    (Some("user"), Some(id)) => {
+                        id.parse::<uuid::Uuid>().ok().map(ChannelOwner::User)
+                    }
+                    (Some("agent"), Some(id)) => {
+                        id.parse::<uuid::Uuid>().ok().map(ChannelOwner::Agent)
+                    }
+                    _ => None,
+                };
+                self.execute_read_inbox(limit, override_owner).await
+            }
+            NoraExecutiveTool::SendSms { to, message } => {
+                self.execute_send_sms(&to, &message).await
+            }
             NoraExecutiveTool::SendDiscordMessage {
                 channel,
                 message,
@@ -5963,15 +6081,14 @@ impl ExecutiveTools {
         body: &str,
         priority: &EmailPriority,
     ) -> crate::Result<serde_json::Value> {
-        // Try to use real SMTP service if configured
-        if let Some(ref email_service) = self.email_service {
-            match email_service
-                .send_email(recipients, subject, body, false)
-                .await
-            {
+        // Prefer OAuth channel service (Nora's connected Zoho account)
+        if let (Some(ref svc), Some(ref owner)) =
+            (&self.agent_channel_service, &self.agent_owner)
+        {
+            match svc.send_email(owner, recipients, subject, body).await {
                 Ok(message_id) => {
                     tracing::info!(
-                        "Email sent successfully to {:?} with ID: {}",
+                        "Email sent via AgentChannelService to {:?} (id={})",
                         recipients,
                         message_id
                     );
@@ -5981,24 +6098,110 @@ impl ExecutiveTools {
                         "subject": subject,
                         "priority": format!("{:?}", priority),
                         "message_id": message_id,
-                        "sent_via": "SMTP"
+                        "sent_via": "zoho_oauth"
                     }));
                 }
                 Err(e) => {
-                    tracing::warn!("SMTP send failed, logging only: {}", e);
+                    tracing::warn!("AgentChannelService send failed, trying SMTP: {}", e);
                 }
             }
         }
 
-        // Fallback: Log only
-        tracing::info!("Email would be sent to {:?}: {}", recipients, subject);
+        // Fallback: SMTP (legacy env-var config)
+        if let Some(ref email_service) = self.email_service {
+            match email_service
+                .send_email(recipients, subject, body, false)
+                .await
+            {
+                Ok(message_id) => {
+                    tracing::info!(
+                        "Email sent via SMTP to {:?} (id={})",
+                        recipients,
+                        message_id
+                    );
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "recipients": recipients,
+                        "subject": subject,
+                        "priority": format!("{:?}", priority),
+                        "message_id": message_id,
+                        "sent_via": "smtp"
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("SMTP send failed: {}", e);
+                }
+            }
+        }
+
+        // Final fallback: log only
+        tracing::warn!("No email transport configured — email logged only: {:?} / {}", recipients, subject);
         Ok(serde_json::json!({
-            "success": true,
+            "success": false,
             "recipients": recipients,
             "subject": subject,
             "priority": format!("{:?}", priority),
-            "message_id": uuid::Uuid::new_v4().to_string(),
-            "note": "SMTP not configured - email logged only. Set SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM_EMAIL env vars to enable."
+            "note": "No email account connected. Connect Nora's Zoho account via Settings → Integrations."
+        }))
+    }
+
+    async fn execute_read_inbox(
+        &self,
+        limit: usize,
+        owner_override: Option<ChannelOwner>,
+    ) -> crate::Result<serde_json::Value> {
+        let svc = self
+            .agent_channel_service
+            .as_ref()
+            .ok_or_else(|| NoraError::ToolsError("No channel service configured".into()))?;
+
+        let owner = owner_override
+            .as_ref()
+            .or(self.agent_owner.as_ref())
+            .ok_or_else(|| NoraError::ToolsError("No agent owner configured".into()))?;
+
+        match svc.read_inbox(owner, limit).await {
+            Ok(messages) => Ok(serde_json::json!({
+                "success": true,
+                "count": messages.len(),
+                "messages": messages
+            })),
+            Err(e) => Ok(serde_json::json!({
+                "success": false,
+                "error": e.to_string()
+            })),
+        }
+    }
+
+    async fn execute_send_sms(
+        &self,
+        to: &str,
+        message: &str,
+    ) -> crate::Result<serde_json::Value> {
+        if let Some(ref svc) = self.agent_channel_service {
+            match svc.send_sms(to, message).await {
+                Ok(sid) => {
+                    tracing::info!("SMS sent to {} (sid={})", to, sid);
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "to": to,
+                        "message_sid": sid,
+                        "sent_via": "twilio"
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("SMS send failed: {}", e);
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "error": e.to_string()
+                    }));
+                }
+            }
+        }
+
+        Ok(serde_json::json!({
+            "success": false,
+            "note": "Twilio not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER env vars."
         }))
     }
 

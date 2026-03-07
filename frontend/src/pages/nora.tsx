@@ -5,7 +5,9 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { NoraAssistant, NoraCoordinationPanel, NoraVoiceControls, NoraPlansPanel } from '@/components/nora';
-import { Crown, Users, Mic, Settings, MessageSquare, Activity, RefreshCw, Zap, Shuffle, Bot, Cpu, Clock, LayoutGrid } from 'lucide-react';
+import { Crown, Users, Mic, Settings, MessageSquare, Activity, RefreshCw, Zap, Shuffle, Bot, Cpu, Clock, LayoutGrid, Video, Plug } from 'lucide-react';
+import { MeetingMode, MeetingHistory } from '@/components/topsi';
+import { AgentIntegrationsTab } from '@/components/email';
 import { toast } from 'sonner';
 import {
   applyNoraMode,
@@ -140,7 +142,7 @@ export function NoraPage() {
       {/* Main Content */}
       <div className="flex-1 p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
-          <TabsList className="grid w-full grid-cols-5 mb-6">
+          <TabsList className="grid w-full grid-cols-7 mb-6">
             <TabsTrigger value="assistant" className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" />
               Chat Assistant
@@ -160,6 +162,14 @@ export function NoraPage() {
             <TabsTrigger value="plans" className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
               Orchestration
+            </TabsTrigger>
+            <TabsTrigger value="meeting" className="flex items-center gap-2">
+              <Video className="w-4 h-4" />
+              Meeting
+            </TabsTrigger>
+            <TabsTrigger value="integrations" className="flex items-center gap-2">
+              <Plug className="w-4 h-4" />
+              Integrations
             </TabsTrigger>
           </TabsList>
 
@@ -525,6 +535,53 @@ export function NoraPage() {
 
           <TabsContent value="plans" className="h-full">
             <NoraPlansPanel />
+          </TabsContent>
+
+          <TabsContent value="meeting" className="h-full">
+            <Tabs defaultValue="live" className="h-full flex flex-col">
+              <TabsList className="w-fit mb-4">
+                <TabsTrigger value="live" className="gap-2">
+                  <Video className="h-4 w-4" />
+                  Live Meeting
+                </TabsTrigger>
+                <TabsTrigger value="history" className="gap-2">
+                  <Clock className="h-4 w-4" />
+                  Past Meetings
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="live" className="flex-1 overflow-auto">
+                <MeetingMode />
+              </TabsContent>
+              <TabsContent value="history" className="flex-1 overflow-auto">
+                <MeetingHistory />
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+          <TabsContent value="integrations" className="h-full">
+            <div className="max-w-3xl">
+              <AgentIntegrationsTab
+                ownerType="agent"
+                ownerId="0907dc4f3f7f4c4093cff36a833eaa78"
+                agentName="Nora"
+                channels={[
+                  {
+                    id: 'email',
+                    label: 'Email',
+                    address: 'nora@powerclubglobal.com',
+                    provider: 'zoho',
+                    description: "Nora's primary email identity",
+                  },
+                  {
+                    id: 'sms',
+                    label: 'SMS',
+                    address: '+14053008311',
+                    provider: 'twilio',
+                    description: "Nora's dedicated SMS/phone line",
+                    externalOnly: true,
+                  },
+                ]}
+              />
+            </div>
           </TabsContent>
         </Tabs>
       </div>
