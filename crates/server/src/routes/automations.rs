@@ -223,3 +223,73 @@ async fn automation_complete_project_draft_invoice(pool: &SqlitePool) -> Result<
     }
     Ok(())
 }
+
+// ── REST API ──────────────────────────────────────────────────────────────────
+
+use axum::{routing::get, Json, Router};
+use serde::Serialize;
+use utils::response::ApiResponse;
+use crate::DeploymentImpl;
+
+#[derive(Serialize)]
+pub struct AutomationDefinition {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub trigger: &'static str,
+    pub action: &'static str,
+    pub schedule: &'static str,
+}
+
+fn automation_definitions() -> Vec<AutomationDefinition> {
+    vec![
+        AutomationDefinition {
+            id: "waiting_on_client_followup",
+            name: "Waiting-on-Client Follow-up",
+            description: "Creates a follow-up task when a project is waiting on the client for 3+ days.",
+            trigger: "Project status = waiting_on_client",
+            action: "Create follow-up task assigned to account manager",
+            schedule: "Hourly",
+        },
+        AutomationDefinition {
+            id: "churn_overdue_leads",
+            name: "Churn Overdue Leads",
+            description: "Marks leads as churned after 5+ unanswered follow-up attempts.",
+            trigger: "Lead with 5+ follow-up tasks all completed",
+            action: "Set lifecycle_stage = churned",
+            schedule: "Hourly",
+        },
+        AutomationDefinition {
+            id: "sql_draft_proposal_task",
+            name: "SQL → Draft Proposal Task",
+            description: "Creates a 'Draft proposal' task when a lead enters the SQL pipeline stage.",
+            trigger: "Lead enters SQL stage",
+            action: "Create Draft Proposal task for lead owner",
+            schedule: "Hourly",
+        },
+        AutomationDefinition {
+            id: "signed_proposal_create_project",
+            name: "Signed Proposal → Create Project",
+            description: "Automatically provisions a new project when a proposal is marked contract_signed.",
+            trigger: "Proposal status = contract_signed",
+            action: "Create project and add contact as client member",
+            schedule: "Hourly",
+        },
+        AutomationDefinition {
+            id: "complete_project_draft_invoice",
+            name: "Complete Project → Draft Invoice",
+            description: "Drafts an AR invoice when a project is marked complete.",
+            trigger: "Project status = complete",
+            action: "Create AR invoice for project budget",
+            schedule: "Hourly",
+        },
+    ]
+}
+
+async fn list_automations() -> Json<ApiResponse<Vec<AutomationDefinition>>> {
+    Json(ApiResponse::success(automation_definitions()))
+}
+
+pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+    Router::new().route("/automations", get(list_automations))
+}
