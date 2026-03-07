@@ -49,6 +49,7 @@ pub mod task_attempts;
 pub mod task_templates;
 pub mod tasks;
 pub mod twilio;
+pub mod bot_bridge;
 pub mod users;
 pub mod autonomy;
 pub mod cinematics;
@@ -205,6 +206,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .nest("/images", images::routes())
         .merge(cinematics::router(&deployment))
         .merge(twilio::twilio_routes())
+        .merge(bot_bridge::router())
         .merge(activity::router())
         .merge(aptos::router(&deployment))
         .merge(webhooks::router())
