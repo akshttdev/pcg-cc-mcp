@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
+const ProposalCreateModal = lazy(() =>
+  import('@/components/dialogs/ProposalCreateModal').then((m) => ({ default: m.ProposalCreateModal }))
+);
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -23,6 +26,8 @@ import {
   Users,
   RefreshCw,
   ExternalLink,
+  Plus,
+  MessageSquare,
 } from 'lucide-react';
 import { personsApi, intelligenceApi, type PersonWithSocials, type PersonSocialProfile, type InvoiceRecord, type IntelligenceStatus } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
@@ -158,6 +163,7 @@ export function PersonDetailPage() {
   const queryClient = useQueryClient();
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchStatus, setResearchStatus] = useState<IntelligenceStatus | null>(null);
+  const [showCreateProposal, setShowCreateProposal] = useState(false);
 
   const { data: person, isLoading } = useQuery<PersonWithSocials>({
     queryKey: ['persons', personId],
@@ -281,20 +287,29 @@ export function PersonDetailPage() {
           )}
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleResearch}
-          disabled={researchLoading}
-          className="shrink-0"
-        >
-          {researchLoading ? (
-            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Sparkles className="h-4 w-4 mr-2" />
-          )}
-          Research
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCreateProposal(true)}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Proposal
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResearch}
+            disabled={researchLoading}
+          >
+            {researchLoading ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            Research
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -341,6 +356,22 @@ export function PersonDetailPage() {
 
               {person.notes && (
                 <p className="text-sm text-muted-foreground pt-2 border-t">{person.notes}</p>
+              )}
+
+              {(person.onboarding_channel || person.preferred_contact) && (
+                <div className="flex flex-wrap gap-3 pt-2 border-t text-xs text-muted-foreground">
+                  {person.onboarding_channel && (
+                    <span className="flex items-center gap-1">
+                      <MessageSquare className="h-3 w-3" />
+                      Onboarded via <span className="capitalize font-medium text-foreground">{person.onboarding_channel.replace(/_/g, ' ')}</span>
+                    </span>
+                  )}
+                  {person.preferred_contact && (
+                    <span className="flex items-center gap-1">
+                      Preferred: <span className="capitalize font-medium text-foreground">{person.preferred_contact.replace(/_/g, ' ')}</span>
+                    </span>
+                  )}
+                </div>
               )}
 
               <div className="text-xs text-muted-foreground pt-1 border-t flex gap-4">
@@ -542,6 +573,14 @@ export function PersonDetailPage() {
           </Card>
         </div>
       </div>
+
+      <Suspense fallback={null}>
+        <ProposalCreateModal
+          open={showCreateProposal}
+          onClose={() => setShowCreateProposal(false)}
+          defaultLeadId={personId}
+        />
+      </Suspense>
     </div>
   );
 }

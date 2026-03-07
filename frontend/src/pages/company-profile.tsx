@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
+const ProposalCreateModal = lazy(() =>
+  import('@/components/dialogs/ProposalCreateModal').then((m) => ({ default: m.ProposalCreateModal }))
+);
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -12,6 +15,8 @@ import {
   RefreshCw,
   Users,
   FileText,
+  Download,
+  Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -395,6 +400,9 @@ export function CompanyProfilePage() {
     };
   }, [intel?.status, companyId, refetchIntel, queryClient]);
 
+  const [showCreateProposal, setShowCreateProposal] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
   async function handleRunResearch() {
     if (!companyId) return;
     try {
@@ -403,6 +411,18 @@ export function CompanyProfilePage() {
       refetchIntel();
     } catch {
       toast.error('Failed to queue research');
+    }
+  }
+
+  async function handleExportAnalysis() {
+    if (!companyId || !company) return;
+    setIsExporting(true);
+    try {
+      await companiesApi.exportAnalysis(companyId, company.name);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -478,6 +498,27 @@ export function CompanyProfilePage() {
                 </a>
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExportAnalysis}
+              disabled={isExporting}
+              title="Download business analysis document"
+            >
+              {isExporting ? (
+                <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1" />
+              )}
+              Export
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setShowCreateProposal(true)}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Proposal
+            </Button>
             {company.organization_id ? (
               <Button
                 size="sm"
@@ -547,6 +588,14 @@ export function CompanyProfilePage() {
           />
         )}
       </div>
+
+      <Suspense fallback={null}>
+        <ProposalCreateModal
+          open={showCreateProposal}
+          onClose={() => setShowCreateProposal(false)}
+          defaultCompanyId={companyId}
+        />
+      </Suspense>
     </div>
   );
 }

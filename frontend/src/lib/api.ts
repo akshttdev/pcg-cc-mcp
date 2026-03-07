@@ -4406,6 +4406,10 @@ export interface PersonRecord {
   notes?: string;
   tags: string;
   custom_fields: string;
+  /** How this person first engaged: 'email'|'instagram'|'whatsapp'|'linkedin'|'twitter'|'sms'|'phone'|'in_person' */
+  onboarding_channel?: string;
+  /** Preferred outbound contact channel */
+  preferred_contact?: string;
   created_at: string;
   updated_at: string;
 }
@@ -4485,6 +4489,8 @@ export interface UpdatePersonInput {
   notes?: string;
   tags?: string[];
   intelligence_summary?: string;
+  onboarding_channel?: string;
+  preferred_contact?: string;
 }
 
 export const personsApi = {
@@ -4618,6 +4624,7 @@ export interface CreateProposalInput {
   organization_id?: string;
   owner_id?: string;
   project_id?: string;
+  company_id?: string;
   description?: string;
   quote_amount_vibe?: number;
   deal_type?: DealType;
@@ -4685,6 +4692,30 @@ export const proposalsApi = {
   delete: async (id: string): Promise<void> => {
     const response = await makeRequest(`/api/proposals/${id}`, { method: 'DELETE' });
     return handleApiResponse<void>(response);
+  },
+
+  scheduleMeeting: async (
+    id: string,
+    data: {
+      scheduled_at: string;
+      duration_min?: number;
+      location?: string;
+      agenda?: string;
+      channel?: string;
+      invitees: Array<{ person_id: string; channel?: string; channel_address?: string }>;
+    }
+  ): Promise<{ meeting: ScheduledMeetingRecord; dispatched: InviteDispatchResult[] }> => {
+    const response = await makeRequest(`/api/proposals/${id}/schedule-meeting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
+  },
+
+  listScheduledMeetings: async (id: string): Promise<ScheduledMeetingRecord[]> => {
+    const response = await makeRequest(`/api/proposals/${id}/scheduled-meetings`);
+    return handleApiResponse(response);
   },
 };
 
@@ -4961,6 +4992,74 @@ export const companiesApi = {
       body: JSON.stringify({}),
     });
     return handleApiResponse<{ status: string; message: string }>(response);
+  },
+
+  exportAnalysis: async (id: string, companyName?: string): Promise<void> => {
+    const response = await makeRequest(`/api/companies/${id}/export-analysis`);
+    if (!response.ok) throw new Error('Export failed');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = companyName ? `PCG_Analysis_${companyName.replace(/\s+/g, '_')}.md` : 'PCG_Analysis.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+};
+
+// ── Scheduled Meeting types ───────────────────────────────────────────────────
+
+export interface ScheduledMeetingInviteeRecord {
+  id: string;
+  scheduled_meeting_id: string;
+  person_id: string;
+  channel: string;
+  channel_address: string;
+  status: string;
+  sent_at?: string;
+  created_at: string;
+}
+
+export interface ScheduledMeetingRecord {
+  id: string;
+  proposal_id: string;
+  scheduled_at: string;
+  duration_min: number;
+  location?: string;
+  agenda?: string;
+  channel: string;
+  invite_status: string;
+  invite_sent_at?: string;
+  notes?: string;
+  invitees: ScheduledMeetingInviteeRecord[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InviteDispatchResult {
+  person_id: string;
+  channel: string;
+  status: string;
+  message: string;
+}
+
+export const meetingsApi = {
+  publish: async (
+    sessionId: string,
+    data: {
+      project_id: string;
+      company_id?: string;
+      proposal_id?: string;
+      attendee_person_ids?: string[];
+      source_title?: string;
+    }
+  ): Promise<{ session_id: string; knowledge_source_id: string; message: string }> => {
+    const response = await makeRequest(`/api/topsi/meeting/${sessionId}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
   },
 };
 
