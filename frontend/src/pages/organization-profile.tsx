@@ -114,6 +114,11 @@ import {
   type PersonOrgContact,
   dataSourcesApi,
   workflowsApi,
+  agentFlowsApi,
+  wideResearchApi,
+  resolveApiUrl,
+  type AgentFlow,
+  type WideResearchSession,
   type DataSourceRecord,
   type UpdateDataSourceRequest,
   type ExecutionArtifact,
@@ -1276,85 +1281,253 @@ function ArtifactsView({ orgId }: { orgId: string }) {
 // ── Workflows Management View ───────────────────────────────────────────────
 
 function WorkflowsView({ orgId: _orgId }: { orgId: string }) {
-  const { data: workflows = [], isLoading } = useQuery({
+  const [wfTab, setWfTab] = useState('pipelines');
+
+  const { data: workflows = [] } = useQuery({
     queryKey: ['workflowDefinitions'],
     queryFn: () => workflowsApi.listDefinitions(),
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-48">
-        <div className="text-sm text-muted-foreground">Loading workflows...</div>
-      </div>
-    );
-  }
+  const { data: agentFlows = [] } = useQuery({
+    queryKey: ['agentFlows'],
+    queryFn: () => agentFlowsApi.list(),
+  });
+
+  const { data: researchSessions = [] } = useQuery({
+    queryKey: ['wideResearch'],
+    queryFn: () => wideResearchApi.list(),
+  });
+
+  const { data: automations = [] } = useQuery({
+    queryKey: ['automationDefinitions'],
+    queryFn: () =>
+      fetch(resolveApiUrl('/api/automations'), { credentials: 'include' })
+        .then((r) => r.json())
+        .then((res) => res?.data ?? []),
+  });
+
+  const { data: conferences = [] } = useQuery({
+    queryKey: ['conferenceWorkflows'],
+    queryFn: () =>
+      fetch(resolveApiUrl('/api/nora/workflows'), { credentials: 'include' })
+        .then((r) => r.json())
+        .then((data) => (Array.isArray(data) ? data : [])),
+  });
+
+  const statusColor = (status: string) => {
+    if (['completed', 'done', 'ready'].includes(status)) return 'border-l-green-500';
+    if (['failed', 'error'].includes(status)) return 'border-l-red-500';
+    if (['running', 'active', 'processing'].includes(status)) return 'border-l-yellow-500';
+    return 'border-l-blue-500';
+  };
+
+  const statusBadgeVariant = (status: string): 'default' | 'destructive' | 'outline' => {
+    if (['completed', 'done', 'ready'].includes(status)) return 'default';
+    if (['failed', 'error'].includes(status)) return 'destructive';
+    return 'outline';
+  };
+
+  const fmt = (ts?: string) =>
+    ts ? new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <GitBranch className="h-5 w-5 text-muted-foreground" />
-          <h2 className="text-lg font-semibold">Workflows</h2>
-          <Badge variant="secondary">{workflows.length}</Badge>
-        </div>
-        <Button size="sm" variant="outline" disabled className="gap-1.5">
-          <Plus className="h-3.5 w-3.5" />
-          New Workflow
-        </Button>
+      <div className="flex items-center gap-2">
+        <GitBranch className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Workflows</h2>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        Workflows are data processing pipelines that extract structured information from data sources.
-        Run them from any data source detail page.
-      </p>
+      <Tabs value={wfTab} onValueChange={setWfTab}>
+        <TabsList className="tab-grid-6 mb-4">
+          <TabsTrigger value="pipelines">
+            Pipelines
+            {(workflows as any[]).length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs">{(workflows as any[]).length}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="agent-flows">
+            Agent Flows
+            {(agentFlows as AgentFlow[]).length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs">{(agentFlows as AgentFlow[]).length}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="research">
+            Research
+            {(researchSessions as WideResearchSession[]).length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs">{(researchSessions as WideResearchSession[]).length}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="conference">
+            Conference
+            {(conferences as any[]).length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs">{(conferences as any[]).length}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="automations">
+            Automations
+            {(automations as any[]).length > 0 && <Badge variant="secondary" className="ml-1.5 text-xs">{(automations as any[]).length}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="editron">
+            Editron
+          </TabsTrigger>
+        </TabsList>
 
-      {workflows.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p className="text-sm">No workflows defined yet.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {workflows.map((wf: any) => (
-            <Card key={wf.id} className="bg-card/80 border-border/50">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <GitBranch className="h-4 w-4 text-purple-500" />
-                    <CardTitle className="text-base">{wf.name}</CardTitle>
-                  </div>
-                  <Badge variant="outline">{wf.steps?.length ?? 0} steps</Badge>
-                </div>
-                <CardDescription className="text-xs">ID: {wf.id}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1">
-                  {(wf.steps ?? []).map((step: any, idx: number) => (
-                    <div key={step.id} className="flex items-center gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground">
-                          {idx + 1}
-                        </div>
-                        {idx < (wf.steps?.length ?? 0) - 1 && (
-                          <div className="absolute ml-2.5 mt-6 w-px h-3 bg-border" />
-                        )}
+        {/* Data-source pipelines (Fraze's workflow) */}
+        <TabsContent value="pipelines">
+          {(workflows as any[]).length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No data pipeline workflows defined yet.</p>
+              <p className="text-xs mt-1">Run a workflow from any data source detail page.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(workflows as any[]).map((wf) => (
+                <Card key={wf.id} className="bg-card/80 border-border/50">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <GitBranch className="h-4 w-4 text-purple-500" />
+                        <CardTitle className="text-base">{wf.name}</CardTitle>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm">{step.name}</span>
-                        {step.depends_on?.length > 0 && (
-                          <span className="text-xs text-muted-foreground ml-2">
-                            (depends on: {step.depends_on.join(', ')})
-                          </span>
-                        )}
-                      </div>
+                      <Badge variant="outline">{wf.steps?.length ?? 0} steps</Badge>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                    <CardDescription className="text-xs">ID: {wf.id}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-1">
+                      {(wf.steps ?? []).map((step: any, idx: number) => (
+                        <div key={step.id} className="flex items-center gap-2">
+                          <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground shrink-0">
+                            {idx + 1}
+                          </div>
+                          <span className="text-sm">{step.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Agent Flows */}
+        <TabsContent value="agent-flows">
+          {(agentFlows as AgentFlow[]).length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No agent flows recorded yet.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {(agentFlows as AgentFlow[]).map((flow) => (
+                <Card key={flow.id} className={`border-l-4 bg-card/80 ${statusColor(flow.status)}`}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm capitalize">{flow.flow_type} flow</CardTitle>
+                      <Badge variant={statusBadgeVariant(flow.status)} className="text-xs capitalize">{flow.status}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-sm space-y-1">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Phase</span><span className="capitalize">{flow.current_phase}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Started</span><span>{fmt(flow.created_at)}</span></div>
+                    <div className="text-xs text-muted-foreground truncate font-mono pt-1">{flow.id}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Wide Research */}
+        <TabsContent value="research">
+          {(researchSessions as WideResearchSession[]).length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No wide research sessions yet.</p>
+              <p className="text-xs mt-1">Multi-agent parallel research sessions will appear here.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {(researchSessions as WideResearchSession[]).map((s) => (
+                <Card key={s.id} className={`border-l-4 bg-card/80 ${statusColor(s.status)}`}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <CardTitle className="text-sm line-clamp-1">{s.task_description}</CardTitle>
+                      <Badge variant={statusBadgeVariant(s.status)} className="text-xs capitalize shrink-0">{s.status}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-sm space-y-2">
+                    <Progress value={s.total_subagents > 0 ? (s.completed_count / s.total_subagents) * 100 : 0} className="h-1.5" />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{s.completed_count}/{s.total_subagents} subagents</span>
+                      <span>{fmt(s.created_at)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Conference Workflows */}
+        <TabsContent value="conference">
+          {(conferences as any[]).length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No conference workflows yet.</p>
+              <p className="text-xs mt-1">Conference research and content pipelines will appear here.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {(conferences as any[]).map((c) => (
+                <Card key={c.id} className={`border-l-4 bg-card/80 ${statusColor(c.status)}`}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">{c.conferenceName}</CardTitle>
+                      <Badge variant={statusBadgeVariant(c.status)} className="text-xs capitalize">{c.status}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-sm space-y-1">
+                    {c.location && <div className="flex justify-between"><span className="text-muted-foreground">Location</span><span>{c.location}</span></div>}
+                    <div className="flex justify-between"><span className="text-muted-foreground">Dates</span><span>{fmt(c.startDate)} – {fmt(c.endDate)}</span></div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* CRM Automations */}
+        <TabsContent value="automations">
+          {(automations as any[]).length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No automations loaded.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(automations as any[]).map((a) => (
+                <Card key={a.id} className="border-l-4 border-l-blue-500 bg-card/80">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">{a.name}</CardTitle>
+                      <Badge variant="outline" className="text-xs">{a.schedule}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-sm space-y-1.5">
+                    <p className="text-muted-foreground text-xs">{a.description}</p>
+                    <div className="flex gap-2 text-xs"><span className="text-muted-foreground shrink-0">Trigger:</span><span>{a.trigger}</span></div>
+                    <div className="flex gap-2 text-xs"><span className="text-muted-foreground shrink-0">Action:</span><span>{a.action}</span></div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Editron */}
+        <TabsContent value="editron">
+          <div className="text-center py-12 text-muted-foreground">
+            <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">No Editron cinematic briefs yet.</p>
+            <p className="text-xs mt-1">Render jobs and cinematic briefs from Editron Pro will appear here.</p>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
