@@ -28,9 +28,34 @@ pub struct Company {
     pub industry: Option<String>,
     pub description: Option<String>,
     pub logo_url: Option<String>,
+    pub cover_image_url: Option<String>,
     pub headquarters: Option<String>,
+    pub address: Option<String>,
+    pub city: Option<String>,
+    pub country: Option<String>,
 
-    // Public intelligence (mirrors persons.intelligence_*)
+    // Direct contact
+    pub phone: Option<String>,
+    pub email: Option<String>,
+    pub whatsapp: Option<String>,
+    pub instagram_handle: Option<String>,
+    pub linkedin_url: Option<String>,
+    pub twitter_handle: Option<String>,
+    pub facebook_url: Option<String>,
+
+    // Business details
+    pub founded_year: Option<i32>,
+    pub employee_count: Option<String>, // '1-10','11-50','51-200','201-500','500+'
+    pub tags: Option<String>,           // JSON array
+    pub business_hours: Option<String>, // JSON object {mon:'9am-5pm', ...}
+    pub notes: Option<String>,
+
+    // Google My Business
+    pub gmb_rating: Option<f64>,
+    pub gmb_review_count: Option<i32>,
+    pub gmb_place_id: Option<String>,
+
+    // Public intelligence
     pub intelligence_summary: Option<String>,
     pub intelligence_raw: Option<String>,
     pub intelligence_status: String,
@@ -39,7 +64,7 @@ pub struct Company {
     pub intelligence_agent: Option<String>,
 
     // Platform links
-    pub organization_id: Option<Uuid>,  // set when company joins as an org
+    pub organization_id: Option<Uuid>,   // set when company joins as an org
     pub created_by_org_id: Option<Uuid>, // admin org that discovered/created this
 
     pub created_at: DateTime<Utc>,
@@ -67,7 +92,26 @@ pub struct UpdateCompany {
     pub industry: Option<String>,
     pub description: Option<String>,
     pub logo_url: Option<String>,
+    pub cover_image_url: Option<String>,
     pub headquarters: Option<String>,
+    pub address: Option<String>,
+    pub city: Option<String>,
+    pub country: Option<String>,
+    pub phone: Option<String>,
+    pub email: Option<String>,
+    pub whatsapp: Option<String>,
+    pub instagram_handle: Option<String>,
+    pub linkedin_url: Option<String>,
+    pub twitter_handle: Option<String>,
+    pub facebook_url: Option<String>,
+    pub founded_year: Option<i32>,
+    pub employee_count: Option<String>,
+    pub tags: Option<String>,
+    pub business_hours: Option<String>,
+    pub notes: Option<String>,
+    pub gmb_rating: Option<f64>,
+    pub gmb_review_count: Option<i32>,
+    pub gmb_place_id: Option<String>,
     pub organization_id: Option<Uuid>,
     pub intelligence_summary: Option<String>,
     pub intelligence_status: Option<String>,
@@ -223,13 +267,32 @@ impl Company {
         let mut qb = sqlx::QueryBuilder::new(
             "UPDATE companies SET updated_at = datetime('now','subsec')",
         );
-        if let Some(v) = input.name             { qb.push(", name = ").push_bind(v); }
-        if let Some(v) = input.website          { qb.push(", website = ").push_bind(v); }
-        if let Some(v) = input.industry         { qb.push(", industry = ").push_bind(v); }
-        if let Some(v) = input.description      { qb.push(", description = ").push_bind(v); }
-        if let Some(v) = input.logo_url         { qb.push(", logo_url = ").push_bind(v); }
-        if let Some(v) = input.headquarters     { qb.push(", headquarters = ").push_bind(v); }
-        if let Some(v) = input.organization_id  { qb.push(", organization_id = ").push_bind(v); }
+        if let Some(v) = input.name              { qb.push(", name = ").push_bind(v); }
+        if let Some(v) = input.website           { qb.push(", website = ").push_bind(v); }
+        if let Some(v) = input.industry          { qb.push(", industry = ").push_bind(v); }
+        if let Some(v) = input.description       { qb.push(", description = ").push_bind(v); }
+        if let Some(v) = input.logo_url          { qb.push(", logo_url = ").push_bind(v); }
+        if let Some(v) = input.cover_image_url   { qb.push(", cover_image_url = ").push_bind(v); }
+        if let Some(v) = input.headquarters      { qb.push(", headquarters = ").push_bind(v); }
+        if let Some(v) = input.address           { qb.push(", address = ").push_bind(v); }
+        if let Some(v) = input.city              { qb.push(", city = ").push_bind(v); }
+        if let Some(v) = input.country           { qb.push(", country = ").push_bind(v); }
+        if let Some(v) = input.phone             { qb.push(", phone = ").push_bind(v); }
+        if let Some(v) = input.email             { qb.push(", email = ").push_bind(v); }
+        if let Some(v) = input.whatsapp          { qb.push(", whatsapp = ").push_bind(v); }
+        if let Some(v) = input.instagram_handle  { qb.push(", instagram_handle = ").push_bind(v); }
+        if let Some(v) = input.linkedin_url      { qb.push(", linkedin_url = ").push_bind(v); }
+        if let Some(v) = input.twitter_handle    { qb.push(", twitter_handle = ").push_bind(v); }
+        if let Some(v) = input.facebook_url      { qb.push(", facebook_url = ").push_bind(v); }
+        if let Some(v) = input.founded_year      { qb.push(", founded_year = ").push_bind(v); }
+        if let Some(v) = input.employee_count    { qb.push(", employee_count = ").push_bind(v); }
+        if let Some(v) = input.tags              { qb.push(", tags = ").push_bind(v); }
+        if let Some(v) = input.business_hours    { qb.push(", business_hours = ").push_bind(v); }
+        if let Some(v) = input.notes             { qb.push(", notes = ").push_bind(v); }
+        if let Some(v) = input.gmb_rating        { qb.push(", gmb_rating = ").push_bind(v); }
+        if let Some(v) = input.gmb_review_count  { qb.push(", gmb_review_count = ").push_bind(v); }
+        if let Some(v) = input.gmb_place_id      { qb.push(", gmb_place_id = ").push_bind(v); }
+        if let Some(v) = input.organization_id   { qb.push(", organization_id = ").push_bind(v); }
         if let Some(v) = input.intelligence_summary { qb.push(", intelligence_summary = ").push_bind(v); }
         if let Some(v) = input.intelligence_status  { qb.push(", intelligence_status = ").push_bind(v); }
         qb.push(" WHERE id = ").push_bind(id);
