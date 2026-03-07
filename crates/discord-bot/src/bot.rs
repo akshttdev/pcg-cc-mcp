@@ -79,6 +79,8 @@ struct BotState {
     pool: sqlx::SqlitePool,
     server_port: u16,
     dedicated_agent: Option<ActiveAgent>,
+    /// Bot token stored for direct Discord API calls (voice state HTTP fallback)
+    bot_token: String,
     /// Protect rate-limit state (only accessed during slash command handling)
     rate_limits: Mutex<RateLimits>,
     /// Auto-record: minimum non-bot members in a voice channel to auto-join.
@@ -148,6 +150,7 @@ pub async fn run_bot(
         pool,
         server_port,
         dedicated_agent,
+        bot_token: token.clone(),
         rate_limits: Mutex::new(RateLimits::new()),
         autorecord_min_members: autorecord_min,
     });
@@ -530,41 +533,15 @@ async fn join_voice(
             }
             None => {
                 info!(
-                    "join_voice: cache miss for user {} in guild {} — trying HTTP API",
+                    "join_voice: cache miss for user {} in guild {} — trying Discord REST API",
                     invoker_id, guild_id
                 );
-                match state.http.voice_state(guild_id, invoker_id).await {
-                    Ok(resp) => match resp.model().await {
-                        Ok(vs) => match vs.channel_id {
-                            Some(id) => {
-                                info!("join_voice: found channel {} for user {} (HTTP API)", id, invoker_id);
-                                id
-                            }
-                            None => {
-                                followup(
-                                    state,
-                                    interaction,
-                                    app_id,
-                                    "You need to **join a voice channel first**, then run this command.",
-                                )
-                                .await;
-                                return;
-                            }
-                        },
-                        Err(e) => {
-                            warn!("join_voice: failed to decode voice state from HTTP: {}", e);
-                            followup(
-                                state,
-                                interaction,
-                                app_id,
-                                "You need to **join a voice channel first**, then run this command.",
-                            )
-                            .await;
-                            return;
-                        }
-                    },
-                    Err(e) => {
-                        warn!("join_voice: HTTP voice state lookup failed: {}", e);
+                match fetch_voice_channel_id(&state.bot_token, guild_id.get(), invoker_id.get()).await {
+                    Some(id) => {
+                        info!("join_voice: found channel {} for user {} (REST fallback)", id, invoker_id);
+                        Id::new(id)
+                    }
+                    None => {
                         followup(
                             state,
                             interaction,
@@ -626,9 +603,7 @@ async fn do_join_voice(
 ) {
     let key = session_key(guild_id.get(), agent.name());
 
-    // Clear any stale songbird state and existing session
-    let _ = state.songbird.remove(guild_id).await;
-
+    // End any existing PCG session for this guild+agent combo
     if let Some((_, old_session)) = DISCORD_SESSIONS.remove(&key) {
         TRANSCRIPT_CHANNELS.remove(&old_session.meeting_session_id);
         let _ = sqlx::query(
@@ -690,29 +665,50 @@ async fn do_join_voice(
     let (event_tx, _) = broadcast::channel::<TranscriptEvent>(256);
     TRANSCRIPT_CHANNELS.insert(meeting_id.clone(), event_tx.clone());
 
-    // Join the voice channel
-    let handler_lock = match state.songbird.join(guild_id, channel_id).await {
-        Ok(h) => h,
-        Err(e) => {
-            error!("Songbird failed to join #{}: {}", channel_name, e);
-            TRANSCRIPT_CHANNELS.remove(&meeting_id);
-            let _ = sqlx::query("DELETE FROM meeting_sessions WHERE id = ?1")
-                .bind(&meeting_id)
-                .execute(&state.pool)
-                .await;
-            if let Some((interaction, app_id)) = respond {
-                followup(
-                    state,
-                    interaction,
-                    app_id,
-                    &format!(
-                        "Failed to join **#{}**: `{}`\n\nMake sure I have **Connect** and **Speak** permissions in that channel.",
-                        channel_name, e
-                    ),
-                )
-                .await;
+    // Join the voice channel.
+    // Strategy: try once without clearing state (the happy path), then on failure
+    // do remove() + 1.5s wait to flush Discord's state, then retry once.
+    // This avoids sending a spurious disconnect that races with the join handshake.
+    let handler_lock = {
+        let first = state.songbird.join(guild_id, channel_id).await;
+        match first {
+            Ok(h) => h,
+            Err(e1) => {
+                warn!(
+                    "First join attempt failed for #{}: {} — clearing state and retrying in 1.5s",
+                    channel_name, e1
+                );
+                // Clear any stale internal songbird state from the failed attempt
+                let _ = state.songbird.remove(guild_id).await;
+                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+
+                match state.songbird.join(guild_id, channel_id).await {
+                    Ok(h) => h,
+                    Err(e2) => {
+                        error!("Both join attempts failed for #{}: {}", channel_name, e2);
+                        TRANSCRIPT_CHANNELS.remove(&meeting_id);
+                        let _ = sqlx::query("DELETE FROM meeting_sessions WHERE id = ?1")
+                            .bind(&meeting_id)
+                            .execute(&state.pool)
+                            .await;
+                        if let Some((interaction, app_id)) = respond {
+                            let hint = if e2.to_string().contains("establish") || e2.to_string().contains("timed") {
+                                "This is usually a **permissions issue** — make sure I have **Connect** and **Speak** in that channel, or a network issue on the server side."
+                            } else {
+                                "Check that I have **Connect** and **Speak** permissions in that channel."
+                            };
+                            followup(
+                                state,
+                                interaction,
+                                app_id,
+                                &format!("Failed to join **#{}** after 2 attempts: `{}`\n\n{}", channel_name, e2, hint),
+                            )
+                            .await;
+                        }
+                        return;
+                    }
+                }
             }
-            return;
         }
     };
 
@@ -720,10 +716,9 @@ async fn do_join_voice(
 
     // Update bot nickname to signal active session (Craig pattern)
     let nick = format!("[Listening] {}", agent.name());
-    let _ = state.http
-        .update_current_member(guild_id)
-        .nick(Some(&nick))
-        .await;
+    if let Ok(req) = state.http.update_current_member(guild_id).nick(Some(&nick)) {
+        let _ = req.await;
+    }
 
     // Build in-memory session
     let session = DiscordVoiceSession::new(
@@ -796,10 +791,9 @@ async fn leave_voice(
             }
 
             // Restore nickname
-            let _ = state.http
-                .update_current_member(guild_id)
-                .nick(Some(agent.name()))
-                .await;
+            if let Ok(req) = state.http.update_current_member(guild_id).nick(Some(agent.name())) {
+                let _ = req.await;
+            }
 
             followup(
                 state,
@@ -988,4 +982,56 @@ async fn followup(
         .content(content)
         .unwrap_or_else(|_| unreachable!())
         .await;
+}
+
+// ─── Discord REST API helpers ─────────────────────────────────────────────────
+
+/// Fetch a user's current voice channel ID via the Discord REST API.
+///
+/// Used as a fallback when the InMemoryCache doesn't have the user's voice state
+/// (e.g. the user was in a channel before the bot received its GUILD_CREATE event,
+/// or there was a brief cache warm-up race on startup).
+///
+/// Discord API: GET /guilds/{guild_id}/voice-states/{user_id}
+async fn fetch_voice_channel_id(bot_token: &str, guild_id: u64, user_id: u64) -> Option<u64> {
+    let url = format!(
+        "https://discord.com/api/v10/guilds/{}/voice-states/{}",
+        guild_id, user_id
+    );
+
+    let client = reqwest::Client::new();
+    let resp = match client
+        .get(&url)
+        .header("Authorization", format!("Bot {}", bot_token))
+        .header("User-Agent", "PCGBot/1.0")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("Discord REST voice state request failed: {}", e);
+            return None;
+        }
+    };
+
+    if !resp.status().is_success() {
+        // 404 = user not in a voice channel (expected)
+        if resp.status().as_u16() != 404 {
+            warn!("Discord REST voice state returned {}", resp.status());
+        }
+        return None;
+    }
+
+    let json: serde_json::Value = match resp.json().await {
+        Ok(j) => j,
+        Err(e) => {
+            warn!("Failed to parse Discord voice state response: {}", e);
+            return None;
+        }
+    };
+
+    // Response: { "channel_id": "123456789", ... }
+    json["channel_id"]
+        .as_str()
+        .and_then(|s| s.parse::<u64>().ok())
 }

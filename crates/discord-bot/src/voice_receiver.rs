@@ -11,7 +11,7 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::audio;
-use crate::session::{ActiveAgent, DiscordVoiceSession, TranscriptEvent, UserAudioBuffer};
+use crate::session::{DiscordVoiceSession, TranscriptEvent, UserAudioBuffer};
 
 /// Shared state between the Receiver and the session manager
 pub struct ReceiverState {
