@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useExecutionEvents, ActiveExecution } from '@/hooks/useExecutionEvents';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -18,11 +18,34 @@ import {
   Play,
   WifiOff,
   Clock,
+  Zap,
+  History,
 } from 'lucide-react';
+import { agentFlowsApi } from '@/lib/api';
+
+interface AgentFlow {
+  id: string;
+  flow_type: string;
+  status: string;
+  current_phase: string;
+  created_at: string;
+  task_id?: string;
+}
+
+interface AutomationDefinition {
+  id: string;
+  name: string;
+  description: string;
+  trigger: string;
+  action: string;
+  schedule: string;
+}
 
 export function WorkflowsPage() {
   const [selectedExecution, setSelectedExecution] = useState<ActiveExecution | null>(null);
   const [activeTab, setActiveTab] = useState('active');
+  const [agentFlows, setAgentFlows] = useState<AgentFlow[]>([]);
+  const [automations, setAutomations] = useState<AutomationDefinition[]>([]);
 
   const {
     activeExecutions,
@@ -30,6 +53,17 @@ export function WorkflowsPage() {
     connected,
     connectionMode,
   } = useExecutionEvents({ maxHistory: 50 });
+
+  useEffect(() => {
+    agentFlowsApi.list().then((flows) => {
+      if (Array.isArray(flows)) setAgentFlows(flows);
+    }).catch(() => {});
+
+    fetch('/api/automations', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((res) => { if (res?.data) setAutomations(res.data); })
+      .catch(() => {});
+  }, []);
 
   const stats = {
     active: activeExecutions.length,
@@ -46,6 +80,11 @@ export function WorkflowsPage() {
   const formatTime = (ts?: string) => {
     if (!ts) return '-';
     return new Date(ts).toLocaleTimeString();
+  };
+
+  const formatDate = (ts?: string) => {
+    if (!ts) return '-';
+    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
@@ -107,7 +146,7 @@ export function WorkflowsPage() {
           className="h-full flex flex-col"
         >
           <div className="border-b px-4 sm:px-6">
-            <TabsList className="tab-grid-3 sm:w-fit sm:grid-cols-2">
+            <TabsList className="sm:w-fit grid grid-cols-4 sm:grid-cols-4 gap-1">
               <TabsTrigger value="active">
                 Active
                 {activeExecutions.length > 0 && (
@@ -121,6 +160,16 @@ export function WorkflowsPage() {
                 <Badge variant="secondary" className="ml-2">
                   {completedExecutions.length}
                 </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="flows">
+                <History className="h-3.5 w-3.5 mr-1.5" />
+                Agent Flows
+                <Badge variant="secondary" className="ml-2">{agentFlows.length}</Badge>
+              </TabsTrigger>
+              <TabsTrigger value="automations">
+                <Zap className="h-3.5 w-3.5 mr-1.5" />
+                Automations
+                <Badge variant="secondary" className="ml-2">{automations.length}</Badge>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -234,6 +283,100 @@ export function WorkflowsPage() {
                         <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/30">
                           <span>Duration: {formatDuration(exec.durationMs)}</span>
                           <span>{formatTime(exec.completedAt)}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Agent Flows tab */}
+          <TabsContent value="flows" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            {agentFlows.length === 0 ? (
+              <div className="empty-state h-full">
+                <History className="empty-state-icon" />
+                <p className="empty-state-title">No Agent Flows</p>
+                <p className="empty-state-description">Agent execution flows will appear here</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+                {agentFlows.map((flow) => (
+                  <Card
+                    key={flow.id}
+                    className={`border-l-4 ${
+                      flow.status === 'completed' ? 'border-l-green-500' :
+                      flow.status === 'failed' ? 'border-l-red-500' :
+                      'border-l-yellow-500'
+                    }`}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm capitalize">{flow.flow_type} flow</CardTitle>
+                        <Badge
+                          variant={
+                            flow.status === 'completed' ? 'default' :
+                            flow.status === 'failed' ? 'destructive' : 'outline'
+                          }
+                          className="text-xs capitalize"
+                        >
+                          {flow.status}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Phase</span>
+                          <span className="capitalize">{flow.current_phase}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Started</span>
+                          <span>{formatDate(flow.created_at)}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground pt-1 truncate">
+                          {flow.id}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Automations tab */}
+          <TabsContent value="automations" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            {automations.length === 0 ? (
+              <div className="empty-state h-full">
+                <Zap className="empty-state-icon" />
+                <p className="empty-state-title">No Automations</p>
+                <p className="empty-state-description">CRM automations are loaded from the server</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+                {automations.map((automation) => (
+                  <Card key={automation.id} className="border-l-4 border-l-blue-500">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm">{automation.name}</CardTitle>
+                        <Badge variant="outline" className="text-xs gap-1">
+                          <Clock className="h-3 w-3" />
+                          {automation.schedule}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground mb-3">{automation.description}</p>
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground shrink-0">Trigger:</span>
+                          <span>{automation.trigger}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground shrink-0">Action:</span>
+                          <span>{automation.action}</span>
                         </div>
                       </div>
                     </CardContent>

@@ -214,6 +214,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(autonomy::router(&deployment))
         .merge(agent_flows::router(&deployment))
         .merge(agent_flow_events::router(&deployment))
+        .merge(automations::router(&deployment))
         .merge(wide_research::router(&deployment))
         .merge(artifact_reviews::router(&deployment))
         .merge(task_artifacts::router(&deployment))
