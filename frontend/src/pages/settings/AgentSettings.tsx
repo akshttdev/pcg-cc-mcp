@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Plus, Wallet, Search, X, SortAsc, SortDesc } from 'lucide-react';
+import { Loader2, Plus, Wallet, Search, X, SortAsc, SortDesc, Mail, MessageSquare } from 'lucide-react';
+import { emailApi } from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,90 @@ const SORT_OPTIONS = [
   { value: 'priority', label: 'Priority' },
   { value: 'tasks_completed', label: 'Tasks Completed' },
 ] as const;
+
+// Nora's agent UUID — stable, set at DB seed time
+const NORA_AGENT_ID = '0907dc4f3f7f4c4093cff36a833eaa78';
+
+function NoraCommunicationChannels() {
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [emailStatus, setEmailStatus] = useState<'unknown' | 'connected' | 'error'>('unknown');
+
+  const handleConnectEmail = async () => {
+    try {
+      setConnecting('email');
+      const result = await emailApi.initiateOAuth(
+        null,
+        'zoho',
+        `${window.location.origin}/oauth/zoho/callback`,
+        'agent',
+        NORA_AGENT_ID,
+      );
+      window.location.href = result.auth_url;
+    } catch (err) {
+      console.error('Failed to initiate Nora email OAuth:', err);
+      setEmailStatus('error');
+    } finally {
+      setConnecting(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Email */}
+      <div className="flex items-center justify-between rounded-lg border p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-[#C8202B] flex items-center justify-center text-white font-bold">
+            Z
+          </div>
+          <div>
+            <p className="font-medium">nora@powerclubglobal.com</p>
+            <p className="text-sm text-muted-foreground">Zoho Mail — Nora's email identity</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {emailStatus === 'connected' && (
+            <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200 text-xs">
+              Connected
+            </Badge>
+          )}
+          {emailStatus === 'error' && (
+            <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 text-xs">
+              Error
+            </Badge>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleConnectEmail}
+            disabled={connecting === 'email'}
+          >
+            {connecting === 'email' ? (
+              <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Connecting…</>
+            ) : (
+              <><Mail className="h-3 w-3 mr-1" />Connect / Reconnect</>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* SMS — informational (auto-configured via env) */}
+      <div className="flex items-center justify-between rounded-lg border p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-[#F22F46] flex items-center justify-center text-white">
+            <MessageSquare className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="font-medium">+14053008311</p>
+            <p className="text-sm text-muted-foreground">Twilio SMS — Nora's phone identity</p>
+          </div>
+        </div>
+        <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200 text-xs">
+          Active
+        </Badge>
+      </div>
+    </div>
+  );
+}
 
 export function AgentSettings() {
   const { t } = useTranslation('settings');
@@ -245,7 +330,7 @@ export function AgentSettings() {
   // Format VIBE amount with USD equivalent
   const formatVibeAmount = useCallback(
     (vibe: number) => {
-      const usdValue = vibe * 0.001; // 1 VIBE = $0.001
+      const usdValue = vibe * 0.01; // 1 VIBE = $0.01
       return (
         <span title={`$${usdValue.toFixed(4)} USD`}>
           {numberFormatter.format(vibe)}
@@ -518,6 +603,22 @@ export function AgentSettings() {
         </CardContent>
       </Card>
 
+      {/* ── Nora Channel Integrations ─────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5" />
+            Nora Channel Integrations
+          </CardTitle>
+          <CardDescription>
+            Connect Nora's own communication channels — email and SMS identity.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <NoraCommunicationChannels />
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -734,19 +835,19 @@ export function AgentSettings() {
                 </div>
                 {/* VIBE Budget Stats */}
                 <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
-                  <div className="text-xs font-medium text-primary mb-2">VIBE Budget (1 VIBE = $0.001)</div>
+                  <div className="text-xs font-medium text-primary mb-2">VIBE Budget (1 VIBE = $0.01)</div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Budget limit</span>
                     <span className="font-medium text-primary">
                       {currentWallet.vibe_budget_limit != null
-                        ? `${formatAmount(currentWallet.vibe_budget_limit)} (~$${(currentWallet.vibe_budget_limit * 0.001).toFixed(2)})`
+                        ? `${formatAmount(currentWallet.vibe_budget_limit)} (~$${(currentWallet.vibe_budget_limit * 0.01).toFixed(2)})`
                         : 'Unlimited'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Spent</span>
                     <span className="font-medium">
-                      {formatAmount(currentWallet.vibe_spent_amount)} (~${(currentWallet.vibe_spent_amount * 0.001).toFixed(2)})
+                      {formatAmount(currentWallet.vibe_spent_amount)} (~${(currentWallet.vibe_spent_amount * 0.01).toFixed(2)})
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -760,7 +861,7 @@ export function AgentSettings() {
                       }
                     >
                       {currentWallet.vibe_budget_limit != null
-                        ? `${formatAmount(currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount)} (~$${((currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount) * 0.001).toFixed(2)})`
+                        ? `${formatAmount(currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount)} (~$${((currentWallet.vibe_budget_limit - currentWallet.vibe_spent_amount) * 0.01).toFixed(2)})`
                         : 'Unlimited'}
                     </span>
                   </div>

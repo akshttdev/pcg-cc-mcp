@@ -18,7 +18,8 @@ import {
   Activity,
   Users,
   Wallet,
-  Building2,
+  Brain,
+  Megaphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NiceModal from '@ebay/nice-modal-react';
@@ -204,24 +205,25 @@ export function ProfileSection({ className }: ProfileSectionProps) {
 
           <DropdownMenuSeparator />
 
-          {/* Organizations */}
-          {user.organizations && user.organizations.length > 0 && (
-            <>
-              <DropdownMenuLabel className="text-xs text-muted-foreground">
-                Organizations
-              </DropdownMenuLabel>
-              {user.organizations.map((org) => (
-                <DropdownMenuItem key={org.id} className="cursor-pointer">
-                  <Building2 className="mr-2 h-4 w-4" />
-                  <div className="flex-1">
-                    <div className="text-sm">{org.name}</div>
-                    <div className="text-xs text-muted-foreground capitalize">{org.role}</div>
-                  </div>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-            </>
-          )}
+          {/* CRM / Social / Intelligence quick links */}
+          <>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              Modules
+            </DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => navigate('/crm')} className="cursor-pointer">
+              <Users className="mr-2 h-4 w-4" />
+              <span>CRM</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/social-command')} className="cursor-pointer">
+              <Megaphone className="mr-2 h-4 w-4" />
+              <span>Social</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/companies')} className="cursor-pointer">
+              <Brain className="mr-2 h-4 w-4" />
+              <span>Intelligence</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
 
           <DropdownMenuItem onClick={handleTeamManagement} className="cursor-pointer">
             <Users className="mr-2 h-4 w-4" />

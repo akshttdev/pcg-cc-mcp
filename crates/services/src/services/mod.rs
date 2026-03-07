@@ -1,3 +1,4 @@
+pub mod agent_channels;
 pub mod agent_registry;
 pub mod airtable_service;
 pub mod analytics;
@@ -34,5 +35,6 @@ pub mod vibe_pricing;
 pub mod visual_qc;
 pub mod scene_analysis;
 pub mod beat_analysis;
+pub mod editron;
 pub mod recap_assembly;
 pub mod user_onboarding;

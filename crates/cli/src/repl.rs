@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use colored::Colorize;
+use futures;
 use rustyline::{error::ReadlineError, history::DefaultHistory, Editor};
 use uuid::Uuid;
 
@@ -13,7 +14,7 @@ use crate::{
     api::{ApiClient, CreateTaskRequest, UpdateTaskRequest},
     config::Config,
     output::OutputHandler,
-    session::DevSession,
+    session::{ConversationLog, DevSession},
 };
 
 /// Format a number with thousand separators
@@ -44,6 +45,8 @@ pub struct PcgRepl {
     current_model: Option<String>,
     /// Current provider override (None = use agent default)
     current_provider: Option<String>,
+    /// Persistent conversation log saved on exit
+    conversation_log: ConversationLog,
 }
 
 impl PcgRepl {
@@ -69,6 +72,7 @@ impl PcgRepl {
             project_name: project,
             current_model: None,
             current_provider: None,
+            conversation_log: ConversationLog::new(None),
         };
 
         // If resuming, parse session ID
@@ -94,6 +98,9 @@ impl PcgRepl {
 
         // Start or resume session
         self.init_session().await?;
+
+        // Now that project name is known, update the conversation log
+        self.conversation_log = ConversationLog::new(self.project_name.clone());
 
         // Display welcome banner
         self.output.print_banner(
@@ -151,9 +158,15 @@ impl PcgRepl {
             }
         }
 
-        // Prompt to save session
-        if self.session.is_some() {
-            self.output.print_info("Session ended. Use 'orcha status' to view history.");
+        // Save conversation log
+        if !self.conversation_log.is_empty() {
+            match self.conversation_log.save() {
+                Ok(()) => self.output.print_info(&format!(
+                    "Session saved ({} messages). View with: orcha history",
+                    self.conversation_log.len()
+                )),
+                Err(e) => self.output.print_warning(&format!("Could not save session log: {}", e)),
+            }
         }
 
         Ok(())
@@ -289,6 +302,14 @@ impl PcgRepl {
                 self.handle_project_command(&parts[1..]).await?;
             }
 
+            "/boards" | "/board" => {
+                self.handle_boards_command().await?;
+            }
+
+            "/history" => {
+                self.handle_history_command(&parts[1..]).await?;
+            }
+
             "/clear" => {
                 print!("\x1B[2J\x1B[1;1H"); // Clear screen
             }
@@ -360,6 +381,11 @@ impl PcgRepl {
             "  {}    Switch to a project",
             "/project <name>".bright_yellow()
         );
+        println!();
+
+        println!("{}", "Board Commands:".bright_cyan());
+        println!("  {}           Task board for current project", "/boards".bright_yellow());
+        println!("  {}          Show recent session history", "/history".bright_yellow());
         println!();
 
         println!("{}", "Other Commands:".bright_cyan());
@@ -623,7 +649,7 @@ impl PcgRepl {
                 "  {} {} VIBE (${:.2} USD)",
                 "VIBE Cost:".dimmed(),
                 format_num(metrics.total_vibe_cost),
-                metrics.total_vibe_cost as f64 * 0.001
+                metrics.total_vibe_cost as f64 * 0.01
             );
             println!(
                 "  {} {}",
@@ -696,7 +722,7 @@ impl PcgRepl {
                         0, // commits - would need git integration
                         report.total_tokens,
                         report.total_vibe_cost,
-                        report.total_vibe_cost as f64 * 0.001,
+                        report.total_vibe_cost as f64 * 0.01,
                         &tasks,
                     );
 
@@ -809,6 +835,164 @@ impl PcgRepl {
         Ok(())
     }
 
+    /// Show kanban board — scoped to current project if set, otherwise full platform overview
+    async fn handle_boards_command(&mut self) -> Result<()> {
+        if let Some(project_id) = self.project_id {
+            // ── Single-project kanban ──
+            let project_name = self.project_name.clone().unwrap_or_default();
+            self.output.print_info("Fetching tasks…");
+
+            let tasks = self.api.list_tasks(project_id, None).await?;
+
+            let mut todo: Vec<(String, String)> = vec![];
+            let mut inprogress: Vec<(String, String)> = vec![];
+            let mut done: Vec<(String, String)> = vec![];
+
+            for t in &tasks {
+                let entry = (t.id.to_string()[..8].to_string(), t.title.clone());
+                match t.status.as_str() {
+                    "inprogress" | "in-progress" | "in_progress" => inprogress.push(entry),
+                    "done" | "completed"                         => done.push(entry),
+                    _                                            => todo.push(entry),
+                }
+            }
+
+            self.output.print_task_board(
+                &project_name,
+                &[
+                    ("TODO",        todo),
+                    ("IN PROGRESS", inprogress),
+                    ("DONE",        done),
+                ],
+            );
+        } else {
+            // ── Platform-wide overview ──
+            self.output.print_info("Fetching all projects…");
+            let projects = self.api.list_projects().await?;
+
+            if projects.is_empty() {
+                self.output.print_info("No projects found.");
+                return Ok(());
+            }
+
+            // Fetch tasks for all projects in parallel (cap at 20 to keep it fast)
+            let active_projects: Vec<_> = projects.iter().take(20).collect();
+            self.output.print_info(&format!("Loading tasks for {} projects…", active_projects.len()));
+
+            let task_futures: Vec<_> = active_projects
+                .iter()
+                .map(|p| self.api.list_tasks(p.id, None))
+                .collect();
+
+            let task_results = futures::future::join_all(task_futures).await;
+
+            println!();
+            println!("{}", "▶ Platform Board — All Projects".bright_yellow().bold());
+            println!("{}", "─".repeat(80).dimmed());
+            println!();
+            println!(
+                "{}",
+                format!("{:<32} {:>6} {:>12} {:>6}", "Project", "TODO", "IN PROGRESS", "DONE")
+                    .bright_white()
+                    .bold()
+            );
+            println!("{}", "─".repeat(60).dimmed());
+
+            let mut total_todo = 0usize;
+            let mut total_ip   = 0usize;
+            let mut total_done = 0usize;
+
+            for (project, tasks_result) in active_projects.iter().zip(task_results.iter()) {
+                let tasks = match tasks_result {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+
+                let todo  = tasks.iter().filter(|t| !matches!(t.status.as_str(), "inprogress"|"in-progress"|"in_progress"|"done"|"completed")).count();
+                let ip    = tasks.iter().filter(|t|  matches!(t.status.as_str(), "inprogress"|"in-progress"|"in_progress")).count();
+                let done  = tasks.iter().filter(|t|  matches!(t.status.as_str(), "done"|"completed")).count();
+
+                if tasks.is_empty() { continue; }
+
+                total_todo += todo;
+                total_ip   += ip;
+                total_done += done;
+
+                let name = if project.name.len() > 30 {
+                    format!("{}…", &project.name[..29])
+                } else {
+                    project.name.clone()
+                };
+
+                let ip_display = if ip > 0 { ip.to_string().bright_blue().to_string() } else { ip.to_string() };
+
+                println!(
+                    "{:<32} {:>6} {:>12} {:>6}",
+                    name.bright_white(),
+                    if todo > 0 { todo.to_string().bright_yellow().to_string() } else { todo.to_string() },
+                    ip_display,
+                    if done > 0 { done.to_string().bright_green().to_string() } else { done.to_string() },
+                );
+            }
+
+            println!("{}", "─".repeat(60).dimmed());
+            println!(
+                "{:<32} {:>6} {:>12} {:>6}",
+                "TOTAL".bright_white().bold(),
+                total_todo.to_string().bright_yellow().bold(),
+                total_ip.to_string().bright_blue().bold(),
+                total_done.to_string().bright_green().bold(),
+            );
+            println!();
+            println!("{}", "Tip: /project <name> then /boards for a full kanban view".dimmed());
+            println!();
+        }
+
+        Ok(())
+    }
+
+    /// Show recent session history
+    async fn handle_history_command(&mut self, _args: &[&str]) -> Result<()> {
+        use crate::session::ConversationLog;
+
+        let sessions = ConversationLog::list_saved(20);
+
+        if sessions.is_empty() {
+            self.output.print_info("No sessions saved yet. Sessions are saved when you exit orcha.");
+            return Ok(());
+        }
+
+        self.output.print_header("Recent Sessions");
+        println!();
+        println!(
+            "{}",
+            format!("{:<20} {:<24} {:>8} {:>7}", "Date", "Project", "Messages", "Tokens")
+                .bright_white()
+                .bold()
+        );
+        println!("{}", "─".repeat(65).dimmed());
+
+        for s in &sessions {
+            let date = &s.started_at[..16].replace('T', " ");
+            let project = s.project.as_deref().unwrap_or("(no project)");
+            let project_display = if project.len() > 22 {
+                format!("{}…", &project[..21])
+            } else {
+                project.to_string()
+            };
+            println!(
+                "{:<20} {:<24} {:>8} {:>7}",
+                date.dimmed(),
+                project_display.bright_cyan(),
+                s.message_count.to_string().bright_white(),
+                s.total_tokens.to_string().bright_yellow(),
+            );
+        }
+        println!();
+
+        Ok(())
+    }
+
     /// Process natural language input
     async fn process_input(&mut self, input: &str) -> Result<()> {
         // For now, route to the default agent
@@ -847,16 +1031,75 @@ impl PcgRepl {
             }
         }
 
-        // Try to chat with an agent
-        let agent_name = &self.config.agents.default;
+        // Route to the appropriate agent
+        let agent_name = self.config.agents.default.clone();
+        let session_id = self
+            .session
+            .as_ref()
+            .map(|s| s.id.to_string())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        if let Ok(Some(agent)) = self.api.get_agent_by_name(agent_name).await {
-            let session_id = self
-                .session
-                .as_ref()
-                .map(|s| s.id.to_string())
-                .unwrap_or_else(|| Uuid::new_v4().to_string());
+        // Build working-directory context so Topsi knows where we are
+        let dir_context = {
+            let dir_str = self.work_dir.to_string_lossy().to_string();
+            let git_branch = get_git_branch(&self.work_dir);
+            serde_json::json!({
+                "working_dir": dir_str,
+                "git_branch": git_branch,
+                "project": self.project_name,
+            })
+        };
 
+        // Log user message
+        self.conversation_log.add("user", input, 0, vec![]);
+
+        if agent_name == "topsi" {
+            // Topsi has a dedicated high-level endpoint
+            match self.api.chat_with_topsi(input, &session_id, self.project_id, Some(dir_context)).await {
+                Ok(response) => {
+                    let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
+
+                    // Show tool calls inline (Claude Code-style)
+                    if !response.tool_calls.is_empty() {
+                        println!();
+                        for tool in &response.tool_calls {
+                            self.output.print_tool_call(tool);
+                        }
+                    }
+
+                    if let Some(session) = &self.session {
+                        let vibe = (tokens as f64 * 0.05) as i64;
+                        session.update_cost(tokens, vibe);
+                    }
+
+                    // Log assistant response
+                    self.conversation_log.add(
+                        "assistant",
+                        &response.content,
+                        tokens,
+                        response.tool_calls.clone(),
+                    );
+
+                    self.output.print_response(&response.content);
+
+                    if let Some(session) = &self.session {
+                        let metrics = session.get_metrics();
+                        self.output.print_status_bar(
+                            metrics.total_tokens,
+                            metrics.total_vibe_cost,
+                            metrics.tasks_created,
+                            metrics.tasks_completed,
+                        );
+                    }
+                }
+                Err(e) => {
+                    self.output.print_error(&format!("Topsi error: {}", e));
+                    self.output.print_info(
+                        "Note: Make sure the ORCHA backend is running and Topsi is initialized.",
+                    );
+                }
+            }
+        } else if let Ok(Some(agent)) = self.api.get_agent_by_name(&agent_name).await {
             match self
                 .api
                 .chat_with_agent(
@@ -870,17 +1113,16 @@ impl PcgRepl {
                 .await
             {
                 Ok(response) => {
-                    // Update session metrics
+                    let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
+
                     if let Some(session) = &self.session {
-                        let tokens = response.input_tokens.unwrap_or(0) + response.output_tokens.unwrap_or(0);
-                        let vibe = (tokens as f64 * 0.05) as i64; // Rough VIBE estimate
+                        let vibe = (tokens as f64 * 0.05) as i64;
                         session.update_cost(tokens, vibe);
                     }
 
-                    // Display response
+                    self.conversation_log.add("assistant", &response.content, tokens, vec![]);
                     self.output.print_response(&response.content);
 
-                    // Show status bar
                     if let Some(session) = &self.session {
                         let metrics = session.get_metrics();
                         self.output.print_status_bar(
@@ -899,7 +1141,6 @@ impl PcgRepl {
                 }
             }
         } else {
-            // Fallback: just echo the input for now
             self.output.print_warning(&format!(
                 "Agent '{}' not available. Running in offline mode.",
                 agent_name
@@ -912,4 +1153,11 @@ impl PcgRepl {
 
         Ok(())
     }
+}
+
+/// Get the current git branch name for a directory (best-effort)
+fn get_git_branch(dir: &PathBuf) -> Option<String> {
+    let repo = git2::Repository::discover(dir).ok()?;
+    let head = repo.head().ok()?;
+    head.shorthand().map(|s| s.to_string())
 }

@@ -231,7 +231,9 @@ impl LLMClient {
     pub fn new(config: LLMConfig) -> Self {
         let api_key = match config.provider {
             LLMProvider::OpenAI => std::env::var("OPENAI_API_KEY").ok(),
-            LLMProvider::Anthropic => std::env::var("ANTHROPIC_API_KEY").ok(),
+            LLMProvider::Anthropic => std::env::var("NORA_ANTHROPIC_API_KEY")
+                .or_else(|_| std::env::var("ANTHROPIC_API_KEY"))
+                .ok(),
             LLMProvider::Ollama => None, // Ollama doesn't require an API key
         };
 

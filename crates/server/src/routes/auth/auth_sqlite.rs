@@ -214,12 +214,10 @@ pub async fn login(
         session_id: session_id.clone(),
     };
 
-    // Set session cookie with improved security settings
-    // Note: Add 'Secure' flag in production when using HTTPS
     let cookie = format!(
-        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age={}",
         session_id,
-        7 * 24 * 60 * 60 // 7 days in seconds (reduced from 30 for security)
+        7 * 24 * 60 * 60
     );
 
     Ok((

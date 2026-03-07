@@ -22,7 +22,10 @@ pub struct AnthropicProvider {
 impl AnthropicProvider {
     /// Create a new Anthropic provider
     pub fn new() -> Self {
-        let api_key = std::env::var("ANTHROPIC_API_KEY").ok();
+        // Check for NORA-specific key first, then fall back to general key
+        let api_key = std::env::var("NORA_ANTHROPIC_API_KEY")
+            .or_else(|_| std::env::var("ANTHROPIC_API_KEY"))
+            .ok();
 
         if api_key.is_some() {
             tracing::info!("Anthropic provider initialized with API key");

@@ -104,24 +104,24 @@ export function ProjectTasks() {
   } = useBulkSelectionStore();
   const { getActiveFilters } = useFilterStore();
 
-  // Helper functions to open task forms
-  const handleCreateTask = () => {
+  // Helper functions to open task forms - memoized to prevent re-renders
+  const handleCreateTask = useCallback(() => {
     if (project?.id) {
       openTaskForm({ projectId: project.id });
     }
-  };
+  }, [project?.id]);
 
-  const handleEditTask = (task: Task) => {
+  const handleEditTask = useCallback((task: Task) => {
     if (project?.id) {
       openTaskForm({ projectId: project.id, task });
     }
-  };
+  }, [project?.id]);
 
-  const handleDuplicateTask = (task: Task) => {
+  const handleDuplicateTask = useCallback((task: Task) => {
     if (project?.id) {
       openTaskForm({ projectId: project.id, initialTask: task });
     }
-  };
+  }, [project?.id]);
   const { query: searchQuery, focusInput } = useSearch();
 
   // Panel state
@@ -216,10 +216,8 @@ export function ProjectTasks() {
     }
   }, [taskId, tasksById]);
 
-  // Define task creation handler
-  const handleCreateNewTask = useCallback(() => {
-    handleCreateTask();
-  }, [handleCreateTask]);
+  // Task creation handler - directly use memoized handleCreateTask
+  const handleCreateNewTask = handleCreateTask;
 
   // Semantic keyboard shortcuts for kanban page
   // Prevent default is needed to stop the input having the value 'c'
@@ -273,14 +271,14 @@ export function ProjectTasks() {
     return params.get('board') ?? null;
   }, [location.search]);
 
-  const archivedCount = useMemo(() => tasks.filter((t) => t.archived_at).length, [tasks]);
+  const archivedCount = useMemo(() => tasks.filter((t) => (t as Record<string, unknown>).archived_at).length, [tasks]);
 
   const filteredTasks = useMemo(() => {
     let result = tasks;
 
     // Hide archived tasks unless explicitly requested
     if (!showArchived) {
-      result = result.filter((t) => !t.archived_at);
+      result = result.filter((t) => !(t as Record<string, unknown>).archived_at);
     }
 
     if (boardFilter) {
@@ -477,7 +475,7 @@ export function ProjectTasks() {
   const handleArchiveTask = useCallback(
     async (task: Task) => {
       try {
-        if (task.archived_at) {
+        if ((task as Record<string, unknown>).archived_at) {
           await tasksApi.unarchive(task.id);
         } else {
           await tasksApi.archive(task.id);
@@ -493,19 +491,9 @@ export function ProjectTasks() {
     [selectedTask, handleClosePanel]
   );
 
-  const handleEditTaskCallback = useCallback(
-    (task: Task) => {
-      handleEditTask(task);
-    },
-    [handleEditTask]
-  );
-
-  const handleDuplicateTaskCallback = useCallback(
-    (task: Task) => {
-      handleDuplicateTask(task);
-    },
-    [handleDuplicateTask]
-  );
+  // Direct references to memoized callbacks - no wrapper needed
+  const handleEditTaskCallback = handleEditTask;
+  const handleDuplicateTaskCallback = handleDuplicateTask;
 
   // Handler for sending messages to agents from task cards
   const handleSendMessageToAgent = useCallback(
@@ -531,6 +519,8 @@ export function ProjectTasks() {
               isWorkflowFollowUp: true,
             },
             stream: false,
+            model: null,
+            provider: null,
           };
 
           const response = await agentsApi.chat(agent.id, request);

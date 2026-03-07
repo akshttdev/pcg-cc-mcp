@@ -217,7 +217,7 @@ export function TaskCard({
                 {onArchive && (
                   <DropdownMenuItem onClick={() => onArchive(task)}>
                     <Archive className="h-4 w-4 mr-2" />
-                    {task.archived_at ? 'Unarchive' : 'Archive'}
+                    {(task as Record<string, unknown>).archived_at ? 'Unarchive' : 'Archive'}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
@@ -296,6 +296,15 @@ export function TaskCard({
                 : task.description}
             </p>
           )}
+        </div>
+      )}
+      {task.screenshot && (
+        <div className="mt-2">
+          <img
+            src={task.screenshot}
+            alt="Task screenshot"
+            className="max-h-32 rounded-md border object-contain w-full bg-muted"
+          />
         </div>
       )}
       {!selectionMode && (

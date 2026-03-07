@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { crmPipelinesApi, crmDealsApi } from '@/lib/api';
+import { crmPipelinesApi, crmDealsApi, projectsApi, organizationsApi } from '@/lib/api';
 import type {
   PipelineType,
   CreateCrmDeal,
   UpdateCrmDeal,
   MoveDealRequest,
+  CrmDealWithContact,
 } from '@/types/crm';
 
 // Query keys for cache invalidation
@@ -59,6 +60,52 @@ export function useCrmKanban(pipelineId: string | undefined) {
     queryFn: () => crmDealsApi.getKanbanData(pipelineId!),
     enabled: !!pipelineId,
     staleTime: 30 * 1000, // 30 seconds - more frequent updates for kanban
+    placeholderData: keepPreviousData,
+  });
+}
+
+// ── Org-scoped hooks ──
+
+export const orgCrmQueryKeys = {
+  pipelines: (orgId: string) => ['crm', 'org-pipelines', orgId] as const,
+  pipelinesByType: (orgId: string, type: PipelineType) =>
+    ['crm', 'org-pipelines', orgId, type] as const,
+  kanban: (orgId: string, pipelineId: string) =>
+    ['crm', 'org-kanban', orgId, pipelineId] as const,
+};
+
+// Hook to list all pipelines for an organization
+export function useOrgCrmPipelines(orgId: string, pipelineType?: PipelineType) {
+  return useQuery({
+    queryKey: pipelineType
+      ? orgCrmQueryKeys.pipelinesByType(orgId, pipelineType)
+      : orgCrmQueryKeys.pipelines(orgId),
+    queryFn: () => crmPipelinesApi.listOrgPipelines(orgId),
+    enabled: !!orgId,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
+    select: pipelineType
+      ? (data) => data.filter((p) => p.pipeline_type === pipelineType)
+      : undefined,
+  });
+}
+
+// Hook to get first pipeline of a given type across the org
+export function useOrgCrmPipelineByType(orgId: string, pipelineType: PipelineType) {
+  const { data: pipelines, ...rest } = useOrgCrmPipelines(orgId, pipelineType);
+  return {
+    ...rest,
+    data: pipelines?.[0],
+  };
+}
+
+// Hook to get org-aggregated Kanban board data
+export function useOrgCrmKanban(orgId: string, pipelineId: string | undefined) {
+  return useQuery({
+    queryKey: orgCrmQueryKeys.kanban(orgId, pipelineId || ''),
+    queryFn: () => crmDealsApi.getOrgKanbanData(orgId, pipelineId!),
+    enabled: !!orgId && !!pipelineId,
+    staleTime: 30 * 1000,
     placeholderData: keepPreviousData,
   });
 }
@@ -211,4 +258,39 @@ export function useDeleteDeal() {
       queryClient.invalidateQueries({ queryKey: ['crm', 'deals'] });
     },
   });
+}
+
+// Hook to fetch projects by client ID
+export function useClientProjects(clientId?: string) {
+  return useQuery({
+    queryKey: ['projects', 'byClient', clientId],
+    queryFn: () => projectsApi.getByClientId(clientId!),
+    enabled: !!clientId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// Hook to resolve a deal's client and fetch their projects
+export function useDealClient(orgId?: string, deal?: CrmDealWithContact | null) {
+  // Fetch org clients
+  const { data: clients } = useQuery({
+    queryKey: ['organizations', orgId, 'clients'],
+    queryFn: () => organizationsApi.getClients(orgId!),
+    enabled: !!orgId && !!deal,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Match client by company name
+  const matchedClient = clients?.find(
+    (c) => deal?.contact_company && c.name.toLowerCase() === deal.contact_company.toLowerCase()
+  );
+
+  // Fetch projects for the matched client
+  const { data: projects, isLoading: isProjectsLoading } = useClientProjects(matchedClient?.id);
+
+  return {
+    client: matchedClient ?? null,
+    projects: projects ?? [],
+    isLoading: isProjectsLoading,
+  };
 }

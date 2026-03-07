@@ -24,10 +24,15 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use deployment::Deployment;
+use db::models::project::Project;
+use sqlx;
 use db::models::task_attempt::{CreateTaskAttempt, TaskAttempt};
+use db::models::vibe_deposit::{VibeDeposit, VibeWithdrawal};
+use db::models::vibe_transaction::{VibeSourceType, VibeTransaction};
 use executors::executors::BaseCodingAgent;
 use executors::profile::ExecutorProfileId;
 use services::services::container::ContainerService;
+use services::services::vibe_pricing::VibePricingService;
 
 // Import voice types from Nora
 use nora::voice::{
@@ -35,7 +40,7 @@ use nora::voice::{
     tts::VoiceProfile,
 };
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 /// Bridge between Topsi and the Deployment layer for task execution
 struct DeploymentBridge {
@@ -209,6 +214,8 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         // Meeting mode routes
         .route("/topsi/meeting/list", get(list_meetings))
         .route("/topsi/meeting/start", post(start_meeting))
+        .route("/topsi/meeting/join", post(join_meeting))
+        .route("/topsi/meeting/message", post(meeting_text_message))
         .route("/topsi/meeting/audio", post(meeting_audio_chunk))
         .route("/topsi/meeting/end", post(end_meeting))
         .route("/topsi/meeting/status/{session_id}", get(meeting_status))
@@ -491,11 +498,48 @@ pub struct MeetingTranscriptResponse {
     pub total_count: i64,
 }
 
+/// Request to join an existing meeting session
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinMeetingRequest {
+    pub session_id: String,
+}
+
+/// Response from joining a meeting
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinMeetingResponse {
+    pub session_id: String,
+    pub title: String,
+    pub project_id: String,
+    pub participant_count: i32,
+}
+
+/// Request to add a typed text message/link to an active meeting (no audio)
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingMessageRequest {
+    pub session_id: String,
+    pub text: String,
+    pub speaker_label: Option<String>,
+    pub is_link: Option<bool>,
+}
+
+/// Response from posting a meeting message
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingMessageResponse {
+    pub session_id: String,
+    pub segment_index: i32,
+    pub text: String,
+}
+
 /// Query params for listing meetings
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListMeetingsQuery {
     pub project_id: Option<String>,
+    pub status: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -707,10 +751,45 @@ pub async fn get_topsi_status(
 /// Chat with Topsi
 pub async fn chat_with_topsi(
     State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
     headers: axum::http::HeaderMap,
     Json(request): Json<TopsiChatRequest>,
 ) -> Result<Json<TopsiResponse>, ApiError> {
     tracing::info!("Received chat request: {:?}", request.message);
+
+    let pool = state.db().pool.clone();
+
+    // Resolve project to bill against
+    let billing_project_id = match request.project_id {
+        Some(pid) => Some(pid),
+        None => {
+            let home: Option<Vec<u8>> = sqlx::query_scalar(
+                "SELECT home_project_id FROM users WHERE id = ?",
+            )
+            .bind(access_ctx.user_id.as_bytes().as_slice())
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten();
+            home.and_then(|bytes| Uuid::from_slice(&bytes).ok())
+        }
+    };
+
+    // VIBE Balance Check — uses real deposit ledger
+    if let Some(project_id) = billing_project_id {
+        let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
+        let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
+        let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
+            .await
+            .map(|s| s.total_vibe)
+            .unwrap_or(0);
+        let balance = total_deposited - total_withdrawn - total_spent;
+        if balance <= 0 {
+            return Err(ApiError::PaymentRequired(
+                "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
+            ));
+        }
+    }
 
     let topsi_instance = get_topsi_instance().await?;
     let instance = topsi_instance.read().await;
@@ -740,6 +819,27 @@ pub async fn chat_with_topsi(
             tracing::error!("Topsi processing error: {}", e);
             ApiError::InternalError(format!("Topsi processing failed: {}", e))
         })?;
+
+    // Record VIBE cost
+    if let Some(project_id) = billing_project_id {
+        let input_tokens = response.input_tokens.unwrap_or(0);
+        let output_tokens = response.output_tokens.unwrap_or(0);
+        if input_tokens > 0 || output_tokens > 0 {
+            let vibe_pricing = VibePricingService::new(pool.clone());
+            match vibe_pricing.record_llm_usage(
+                VibeSourceType::Project, project_id,
+                "claude-sonnet-4-20250514",
+                input_tokens, output_tokens,
+                None, None, None,
+            ).await {
+                Ok(tx) => {
+                    let _ = Project::adjust_vibe_spent(&pool, project_id, tx.amount_vibe).await;
+                    tracing::info!("[VIBE] Topsi recorded {} VIBE for project {}", tx.amount_vibe, project_id);
+                }
+                Err(e) => tracing::error!("[VIBE] Failed to record Topsi usage: {}", e),
+            }
+        }
+    }
 
     Ok(Json(response))
 }
@@ -1275,8 +1375,13 @@ async fn get_or_init_voice_engine() -> Result<Arc<RwLock<Option<VoiceEngine>>>, 
             tracing::info!("Initializing Topsi voice engine...");
 
             // Check for Chatterbox availability, fall back to OpenAI if not available
-            let chatterbox_port = std::env::var("CHATTERBOX_PORT").unwrap_or_else(|_| "8102".to_string());
-            let chatterbox_url = format!("http://localhost:{}/health", chatterbox_port);
+            // Respect CHATTERBOX_URL env var (e.g. http://localhost:8100), else check CHATTERBOX_PORT
+            let chatterbox_url = std::env::var("CHATTERBOX_URL")
+                .map(|url| format!("{}/health", url.trim_end_matches('/')))
+                .unwrap_or_else(|_| {
+                    let port = std::env::var("CHATTERBOX_PORT").unwrap_or_else(|_| "8100".to_string());
+                    format!("http://localhost:{}/health", port)
+                });
             let chatterbox_available = reqwest::Client::new()
                 .get(&chatterbox_url)
                 .timeout(std::time::Duration::from_secs(2))
@@ -1725,8 +1830,10 @@ pub async fn list_meetings(
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to list meetings: {}", e)))?;
 
+    let status_filter = params.status.as_deref();
     let meetings: Vec<MeetingSessionSummary> = sessions
         .into_iter()
+        .filter(|s| status_filter.map_or(true, |f| s.status == f))
         .map(|s| {
             let notes_value = s
                 .notes
@@ -1750,6 +1857,95 @@ pub async fn list_meetings(
 
     let total = meetings.len();
     Ok(Json(ListMeetingsResponse { meetings, total }))
+}
+
+/// Join an existing active meeting session (increments participant count)
+pub async fn join_meeting(
+    State(state): State<DeploymentImpl>,
+    Json(request): Json<JoinMeetingRequest>,
+) -> Result<Json<JoinMeetingResponse>, ApiError> {
+    let pool = &state.db().pool;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", request.session_id)))?;
+
+    if session.status != "active" {
+        return Err(ApiError::BadRequest("Meeting is not active".to_string()));
+    }
+
+    let new_count = session.participant_count.unwrap_or(0) + 1;
+    let updated = db::models::meeting_session::MeetingSession::update(
+        pool,
+        &session.id,
+        db::models::meeting_session::UpdateMeetingSession {
+            participant_count: Some(new_count),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    tracing::info!("[MEETING] User joined session {} — participants: {}", session.id, new_count);
+
+    Ok(Json(JoinMeetingResponse {
+        session_id: updated.id,
+        title: updated.title,
+        project_id: updated.project_id,
+        participant_count: updated.participant_count.unwrap_or(new_count),
+    }))
+}
+
+/// Add a typed text message or link to an active meeting without audio
+pub async fn meeting_text_message(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<MeetingMessageRequest>,
+) -> Result<Json<MeetingMessageResponse>, ApiError> {
+    let pool = &state.db().pool;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", request.session_id)))?;
+
+    if session.status != "active" {
+        return Err(ApiError::BadRequest("Meeting is not active".to_string()));
+    }
+
+    let count = db::models::meeting_session::MeetingSegment::count_by_session(pool, &request.session_id)
+        .await
+        .unwrap_or(0);
+
+    let text = if request.is_link.unwrap_or(false) {
+        format!("[SHARED LINK] {}", request.text)
+    } else {
+        request.text.clone()
+    };
+
+    let segment = db::models::meeting_session::MeetingSegment::create(
+        pool,
+        db::models::meeting_session::CreateMeetingSegment {
+            meeting_session_id: request.session_id.clone(),
+            segment_index: count as i32,
+            speaker_label: request.speaker_label.clone(),
+            text: text.clone(),
+            confidence: Some(1.0),
+            start_time_ms: 0,
+            end_time_ms: 0,
+            is_topsi_addressed: false,
+        },
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(e.to_string()))?;
+
+    let speaker = request.speaker_label.as_deref().unwrap_or("participant");
+    tracing::info!("[MEETING] Text message from {} in session {}: {}", speaker, request.session_id, &text[..text.len().min(80)]);
+
+    Ok(Json(MeetingMessageResponse {
+        session_id: request.session_id,
+        segment_index: segment.segment_index,
+        text,
+    }))
 }
 
 /// Start a new meeting session

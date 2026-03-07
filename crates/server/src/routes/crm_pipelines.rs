@@ -151,6 +151,65 @@ async fn reorder_stages(
     Ok(Json(ApiResponse::success(stages)))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ListOrgPipelinesQuery {
+    pub pipeline_type: Option<String>,
+}
+
+/// GET /organizations/:org_id/crm/pipelines - List pipelines across all org projects
+async fn list_org_pipelines(
+    State(deployment): State<DeploymentImpl>,
+    Path(org_id): Path<Uuid>,
+    Query(query): Query<ListOrgPipelinesQuery>,
+) -> Result<Json<ApiResponse<Vec<CrmPipeline>>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // Ensure default pipelines exist for all projects in this org
+    let org_projects = db::models::project::Project::find_by_organization(pool, org_id)
+        .await
+        .unwrap_or_default();
+    for project in &org_projects {
+        let _ = CrmPipeline::ensure_defaults(pool, project.id).await;
+    }
+
+    let pipeline_type_filter = if let Some(ref type_str) = query.pipeline_type {
+        Some(
+            type_str
+                .parse::<PipelineType>()
+                .map_err(|_| ApiError::BadRequest(format!("Invalid pipeline type: {}", type_str)))?,
+        )
+    } else {
+        None
+    };
+
+    let pipelines =
+        CrmPipeline::find_by_organization(pool, org_id, pipeline_type_filter).await?;
+
+    Ok(Json(ApiResponse::success(pipelines)))
+}
+
+/// GET /organizations/:org_id/crm/pipelines/:pipeline_id - Get pipeline with stages (org-scoped)
+async fn get_org_pipeline(
+    State(deployment): State<DeploymentImpl>,
+    Path((_org_id, pipeline_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ApiResponse<CrmPipelineWithStages>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let pipeline = CrmPipeline::find_with_stages(pool, pipeline_id).await?;
+    Ok(Json(ApiResponse::success(pipeline)))
+}
+
+/// GET /organizations/:org_id/crm/pipelines/:pipeline_id/kanban - Kanban data aggregated across org
+async fn get_org_kanban(
+    State(deployment): State<DeploymentImpl>,
+    Path((org_id, pipeline_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ApiResponse<db::models::crm_deal::KanbanBoardData>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let kanban_data =
+        db::models::crm_deal::CrmDeal::get_kanban_by_organization(pool, org_id, pipeline_id)
+            .await?;
+    Ok(Json(ApiResponse::success(kanban_data)))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/crm/pipelines", get(list_pipelines))
@@ -163,4 +222,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/pipelines/{pipeline_id}/stages/{stage_id}", patch(update_stage))
         .route("/crm/pipelines/{pipeline_id}/stages/{stage_id}", delete(delete_stage))
         .route("/crm/pipelines/{id}/stages/reorder", post(reorder_stages))
+        // Org-scoped CRM routes
+        .route("/organizations/{org_id}/crm/pipelines", get(list_org_pipelines))
+        .route("/organizations/{org_id}/crm/pipelines/{pipeline_id}", get(get_org_pipeline))
+        .route("/organizations/{org_id}/crm/pipelines/{pipeline_id}/kanban", get(get_org_kanban))
 }

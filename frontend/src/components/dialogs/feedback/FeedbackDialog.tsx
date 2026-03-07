@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -11,8 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MessageCircleQuestion, Bug, Lightbulb, AlertCircle, Send } from 'lucide-react';
+import { MessageCircleQuestion, Bug, Lightbulb, AlertCircle, Send, ImagePlus, X } from 'lucide-react';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { resolveApiUrl } from '@/lib/api';
 
 type FeedbackType = 'bug' | 'feature' | 'improvement' | 'question' | 'other';
 
@@ -59,6 +60,59 @@ export const FeedbackDialog = NiceModal.create(() => {
   const [severity, setSeverity] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [screenshotName, setScreenshotName] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset form state when modal opens
+  useEffect(() => {
+    if (modal.visible) {
+      setType('bug');
+      setTitle('');
+      setDescription('');
+      setEmail('');
+      setSeverity('medium');
+      setIsSubmitting(false);
+      setSubmitted(false);
+      setScreenshot(null);
+      setScreenshotName('');
+    }
+  }, [modal.visible]);
+
+  // Convert file to base64
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image must be less than 5MB');
+      return;
+    }
+
+    setScreenshotName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setScreenshot(base64);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const removeScreenshot = useCallback(() => {
+    setScreenshot(null);
+    setScreenshotName('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
 
   const selectedType = FEEDBACK_TYPES.find((t) => t.value === type);
   const Icon = selectedType?.icon || MessageCircleQuestion;
@@ -73,10 +127,23 @@ export const FeedbackDialog = NiceModal.create(() => {
     setIsSubmitting(true);
 
     try {
-      // TODO: send feedbackData to backend/analytics
+      const response = await fetch(resolveApiUrl('/api/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          feedback_type: type,
+          title: title.trim(),
+          description: description.trim(),
+          email: email.trim() || undefined,
+          severity: type === 'bug' ? severity : undefined,
+          screenshot: screenshot || undefined,
+        }),
+      });
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (!response.ok) {
+        throw new Error('Failed to submit feedback');
+      }
 
       setSubmitted(true);
 
@@ -259,6 +326,52 @@ export const FeedbackDialog = NiceModal.create(() => {
             </p>
           </div>
 
+          {/* Screenshot Upload */}
+          <div>
+            <Label className="text-sm font-medium">
+              Screenshot <span className="text-muted-foreground">(optional)</span>
+            </Label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+              disabled={isSubmitting}
+            />
+            {screenshot ? (
+              <div className="mt-1.5 relative">
+                <img
+                  src={screenshot}
+                  alt="Screenshot preview"
+                  className="max-h-48 rounded-md border object-contain w-full bg-muted"
+                />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="absolute top-2 right-2 h-6 w-6 p-0"
+                  onClick={removeScreenshot}
+                  disabled={isSubmitting}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1">{screenshotName}</p>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-1.5 w-full"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSubmitting}
+              >
+                <ImagePlus className="h-4 w-4 mr-2" />
+                Attach Screenshot
+              </Button>
+            )}
+          </div>
+
           {/* Helper Info */}
           <div className="bg-muted/50 p-3 rounded-md">
             <p className="text-xs text-muted-foreground">
@@ -268,7 +381,7 @@ export const FeedbackDialog = NiceModal.create(() => {
                   <>
                     <li>Include steps to reproduce the issue</li>
                     <li>Mention your browser and OS</li>
-                    <li>Attach screenshots if possible</li>
+                    <li>Attach a screenshot to help us understand</li>
                   </>
                 )}
                 {type === 'feature' && (

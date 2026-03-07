@@ -80,10 +80,10 @@ export function ModelsSettings() {
     return `$${dollars.toFixed(2)}`;
   };
 
-  // Calculate VIBE cost (1 VIBE = $0.001)
+  // Calculate VIBE cost (1 VIBE = $0.01)
   const calculateVibePerMillion = (centsPer1M: number) => {
     const dollars = centsPer1M / 100;
-    return Math.ceil(dollars / 0.001);
+    return Math.ceil(dollars / 0.01);
   };
 
   // Local editor state (draft that may differ from server)
@@ -613,7 +613,7 @@ export function ModelsSettings() {
             </CardTitle>
             <CardDescription>
               Cost per million tokens for each AI model. Rates include a 2x multiplier over base API costs.
-              1 VIBE = $0.001 USD.
+              1 VIBE = $0.01 USD.
             </CardDescription>
           </div>
           <Button
@@ -713,7 +713,7 @@ export function ModelsSettings() {
                   VIBE Token Economics
                 </h4>
                 <div className="grid gap-2 text-sm text-muted-foreground">
-                  <p>• <strong>1 VIBE</strong> = $0.001 USD</p>
+                  <p>• <strong>1 VIBE</strong> = $0.01 USD</p>
                   <p>• <strong>1,000 VIBE</strong> = $1.00 USD</p>
                   <p>• Rates shown include <strong>2x markup</strong> over base API costs</p>
                   <p>• Example: 1M tokens of GPT-4o input = {formatCost(modelPricing.find(p => p.model === 'gpt-4o')?.input_cost_per_million || 500)} = {calculateVibePerMillion(modelPricing.find(p => p.model === 'gpt-4o')?.input_cost_per_million || 500).toLocaleString()} VIBE</p>

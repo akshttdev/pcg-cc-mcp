@@ -22,13 +22,13 @@ interface TaskKanbanBoardProps {
   onEditTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
   onDuplicateTask?: (task: Task) => void;
+  onArchiveTask?: (task: Task) => void;
   onViewTaskDetails: (task: Task) => void;
   selectedTask?: Task;
   selectionMode?: boolean;
   isSelected?: (taskId: string) => boolean;
   onToggleSelection?: (taskId: string) => void;
   agentFlowMap?: Map<string, AgentFlow>;
-  onArchiveTask?: (task: Task) => void;
   showArchived?: boolean;
   // New props for enhanced cards
   useEnhancedCards?: boolean;
@@ -62,12 +62,17 @@ function TaskKanbanBoard({
   // Fetch enriched card data (artifacts, workflow events) when using enhanced cards
   const { cardDataMap } = useTasksCardData(useEnhancedCards ? allTaskIds : []);
 
-  // Create a message handler that includes the taskId
-  const createMessageHandler = (taskId: string) => {
-    if (!onSendMessageToAgent) return undefined;
-    return (message: string, agentName?: string) =>
-      onSendMessageToAgent(taskId, message, agentName);
-  };
+  // Memoized map of message handlers per task ID to prevent re-renders
+  const messageHandlers = useMemo(() => {
+    if (!onSendMessageToAgent) return new Map<string, (message: string, agentName?: string) => Promise<string>>();
+    const handlers = new Map<string, (message: string, agentName?: string) => Promise<string>>();
+    for (const taskId of allTaskIds) {
+      handlers.set(taskId, (message: string, agentName?: string) =>
+        onSendMessageToAgent(taskId, message, agentName)
+      );
+    }
+    return handlers;
+  }, [allTaskIds, onSendMessageToAgent]);
 
   return (
     <KanbanProvider onDragEnd={onDragEnd}>
@@ -113,7 +118,7 @@ function TaskKanbanBoard({
                     primaryArtifact={cardData?.primaryArtifact}
                     artifacts={cardData?.artifacts}
                     workflowEvents={cardData?.workflowEvents}
-                    onSendMessage={createMessageHandler(task.id)}
+                    onSendMessage={messageHandlers.get(task.id)}
                     defaultMode={defaultCardMode}
                     usersMap={usersMap}
                   />

@@ -197,13 +197,45 @@ pub async fn create_task(
 
 /// Show session history
 pub async fn session_history(_api: &ApiClient, limit: usize) -> Result<()> {
-    let output = OutputHandler::new(false, false);
+    use crate::session::ConversationLog;
+    use colored::Colorize;
 
+    let output = OutputHandler::new(false, false);
     output.print_header(&format!("Recent Sessions (last {})", limit));
 
-    // Note: This endpoint may not exist yet
-    output.print_info("Session history will be available once DevelopmentSession is implemented.");
-    output.print_info("See docs/DEVELOPMENT_WORKFLOW_INTEGRATION_PLAN.md for the roadmap.");
+    let sessions = ConversationLog::list_saved(limit);
+
+    if sessions.is_empty() {
+        output.print_info("No sessions saved yet. Sessions are saved when you exit orcha.");
+        return Ok(());
+    }
+
+    println!();
+    println!(
+        "{}",
+        format!("{:<20} {:<26} {:>8} {:>8}", "Date", "Project", "Messages", "Tokens")
+            .bright_white()
+            .bold()
+    );
+    println!("{}", "─".repeat(65).dimmed());
+
+    for s in &sessions {
+        let date = s.started_at.get(..16).unwrap_or(&s.started_at).replace('T', " ");
+        let project = s.project.as_deref().unwrap_or("(no project)");
+        let project_display = if project.len() > 24 {
+            format!("{}…", &project[..23])
+        } else {
+            project.to_string()
+        };
+        println!(
+            "{:<20} {:<26} {:>8} {:>8}",
+            date.dimmed(),
+            project_display.bright_cyan(),
+            s.message_count.to_string().bright_white(),
+            s.total_tokens.to_string().bright_yellow(),
+        );
+    }
+    println!();
 
     Ok(())
 }
@@ -226,7 +258,7 @@ pub async fn show_cost(api: &ApiClient, _session: Option<&str>) -> Result<()> {
         "  {} {} VIBE (${:.2} USD)",
         "Total VIBE Spent:".bright_white(),
         format_num(total_vibe),
-        total_vibe as f64 * 0.001
+        total_vibe as f64 * 0.01
     );
     println!();
 

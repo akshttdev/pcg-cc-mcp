@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT hex(id) as id, name, slug, description FROM organizations WHERE deleted_at IS NULL ORDER BY name",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "slug",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      null,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "db749be11521b1f5cf24ad150f54d987a6073875315ede265c0ed413058370cd"
+}

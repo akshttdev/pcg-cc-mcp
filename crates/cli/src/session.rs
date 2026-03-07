@@ -3,15 +3,159 @@
 //! Tracks development sessions including git stats, token usage, and task linkage.
 
 use std::{
+    io::Write,
     path::Path,
     sync::atomic::{AtomicI32, AtomicI64, Ordering},
 };
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::{ApiClient, SessionReport, StartSessionRequest};
+
+// ─── Conversation Log ────────────────────────────────────────────────────────
+
+/// A single message in a conversation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationEntry {
+    pub timestamp: DateTime<Utc>,
+    pub role: String,
+    pub content: String,
+    #[serde(default)]
+    pub tokens: i64,
+    #[serde(default)]
+    pub tools_used: Vec<String>,
+}
+
+/// Persists every exchange to ~/.pcg/sessions/<date>-<id>.jsonl
+pub struct ConversationLog {
+    pub session_id: Uuid,
+    pub started_at: DateTime<Utc>,
+    pub project_name: Option<String>,
+    entries: Vec<ConversationEntry>,
+}
+
+impl ConversationLog {
+    pub fn new(project_name: Option<String>) -> Self {
+        Self {
+            session_id: Uuid::new_v4(),
+            started_at: Utc::now(),
+            project_name,
+            entries: Vec::new(),
+        }
+    }
+
+    pub fn add(&mut self, role: &str, content: &str, tokens: i64, tools: Vec<String>) {
+        self.entries.push(ConversationEntry {
+            timestamp: Utc::now(),
+            role: role.to_string(),
+            content: content.to_string(),
+            tokens,
+            tools_used: tools,
+        });
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn total_tokens(&self) -> i64 {
+        self.entries.iter().map(|e| e.tokens).sum()
+    }
+
+    /// Write JSONL to ~/.pcg/sessions/
+    pub fn save(&self) -> Result<()> {
+        if self.entries.is_empty() {
+            return Ok(());
+        }
+
+        let dir = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".pcg")
+            .join("sessions");
+        std::fs::create_dir_all(&dir)?;
+
+        let filename = format!(
+            "{}-{}.jsonl",
+            self.started_at.format("%Y-%m-%d-%H%M"),
+            &self.session_id.to_string()[..8]
+        );
+        let mut file = std::fs::File::create(dir.join(&filename))?;
+
+        // Line 1: header
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({
+                "type": "header",
+                "session_id": self.session_id,
+                "started_at": self.started_at.to_rfc3339(),
+                "project": self.project_name,
+                "message_count": self.entries.len(),
+                "total_tokens": self.total_tokens(),
+            })
+        )?;
+
+        // Remaining lines: conversation entries
+        for entry in &self.entries {
+            writeln!(file, "{}", serde_json::to_string(entry)?)?;
+        }
+
+        Ok(())
+    }
+
+    /// List saved sessions from disk, most recent first
+    pub fn list_saved(limit: usize) -> Vec<SessionSummary> {
+        let dir = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".pcg")
+            .join("sessions");
+
+        let Ok(read_dir) = std::fs::read_dir(&dir) else {
+            return vec![];
+        };
+
+        let mut summaries: Vec<SessionSummary> = read_dir
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map_or(false, |x| x == "jsonl"))
+            .filter_map(|e| {
+                let path = e.path();
+                let content = std::fs::read_to_string(&path).ok()?;
+                let first_line = content.lines().next()?;
+                let h: serde_json::Value = serde_json::from_str(first_line).ok()?;
+                Some(SessionSummary {
+                    session_id: h["session_id"].as_str().unwrap_or("").to_string(),
+                    started_at: h["started_at"].as_str().unwrap_or("").to_string(),
+                    project: h["project"].as_str().map(|s| s.to_string()),
+                    message_count: h["message_count"].as_u64().unwrap_or(0) as usize,
+                    total_tokens: h["total_tokens"].as_i64().unwrap_or(0),
+                    path: path.to_string_lossy().to_string(),
+                })
+            })
+            .collect();
+
+        summaries.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        summaries.truncate(limit);
+        summaries
+    }
+}
+
+/// Metadata for a saved session (one per file)
+#[derive(Debug, Clone)]
+pub struct SessionSummary {
+    pub session_id: String,
+    pub started_at: String,
+    pub project: Option<String>,
+    pub message_count: usize,
+    pub total_tokens: i64,
+    pub path: String,
+}
 
 /// Development session state
 pub struct DevSession {

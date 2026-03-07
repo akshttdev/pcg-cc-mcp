@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use tokio::process::Command;
 
+use services::services::beat_analysis::BeatAnalysisEngine;
+use services::services::scene_analysis::SceneAnalysisEngine;
+
 use crate::{NoraError, Result};
 
 use super::types::*;
@@ -19,11 +22,28 @@ const VIDEO_EXTENSIONS: &[&str] = &[
 const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "aac", "flac", "ogg", "m4a", "aif", "aiff"];
 
 /// Catalogs media files in a directory tree using `ffprobe`.
-pub struct MediaCataloger;
+/// Optionally runs deep scene and beat analysis on discovered assets.
+pub struct MediaCataloger {
+    scene_engine: SceneAnalysisEngine,
+    beat_engine: BeatAnalysisEngine,
+    enable_scene_analysis: bool,
+    enable_beat_analysis: bool,
+}
 
 impl MediaCataloger {
     pub fn new() -> Self {
-        Self
+        Self {
+            scene_engine: SceneAnalysisEngine::new(),
+            beat_engine: BeatAnalysisEngine::new(),
+            enable_scene_analysis: true,
+            enable_beat_analysis: true,
+        }
+    }
+
+    pub fn with_analysis_flags(mut self, scene: bool, beat: bool) -> Self {
+        self.enable_scene_analysis = scene;
+        self.enable_beat_analysis = beat;
+        self
     }
 
     /// Catalog all media files under the given root directory.
@@ -80,12 +100,96 @@ impl MediaCataloger {
             music_indices.len()
         );
 
+        // === Phase 4a: Deep Scene Analysis (parallel per B-roll clip) ===
+        if self.enable_scene_analysis && !broll_indices.is_empty() {
+            tracing::info!(
+                "[MEDIA_CATALOG] Running scene analysis on {} B-roll clips",
+                broll_indices.len()
+            );
+
+            let mut handles = Vec::new();
+            for &idx in &broll_indices {
+                let path = assets[idx].path.clone();
+                let engine = self.scene_engine.clone();
+                handles.push((
+                    idx,
+                    tokio::spawn(async move { engine.analyze_clip(&path, 3.0).await }),
+                ));
+            }
+
+            for (idx, handle) in handles {
+                match handle.await {
+                    Ok(Ok(clip_analysis)) => {
+                        let analysis = convert_scene_analysis(&clip_analysis);
+                        let scene_tags = generate_scene_tags(&analysis);
+                        assets[idx].content_tags.extend(scene_tags);
+                        assets[idx].content_tags.sort();
+                        assets[idx].content_tags.dedup();
+                        assets[idx].energy_level = energy_from_score(analysis.overall_energy);
+                        assets[idx].scene_analysis = Some(analysis);
+                    }
+                    Ok(Err(e)) => tracing::warn!(
+                        "[MEDIA_CATALOG] Scene analysis failed for {}: {}",
+                        assets[idx].filename,
+                        e
+                    ),
+                    Err(e) => tracing::warn!(
+                        "[MEDIA_CATALOG] Scene analysis task panicked for {}: {}",
+                        assets[idx].filename,
+                        e
+                    ),
+                }
+            }
+        }
+
+        // === Phase 4b: Beat Analysis (parallel per music track) ===
+        let mut music_beat_grid = None;
+        if self.enable_beat_analysis && !music_indices.is_empty() {
+            tracing::info!(
+                "[MEDIA_CATALOG] Running beat analysis on {} music tracks",
+                music_indices.len()
+            );
+
+            let mut handles = Vec::new();
+            for &idx in &music_indices {
+                let path = assets[idx].path.clone();
+                let engine = self.beat_engine.clone();
+                handles.push((
+                    idx,
+                    tokio::spawn(async move { engine.analyze(&path, None, 4).await }),
+                ));
+            }
+
+            for (idx, handle) in handles {
+                match handle.await {
+                    Ok(Ok(beat_result)) => {
+                        let analysis = convert_beat_analysis(&beat_result);
+                        if music_beat_grid.is_none() {
+                            music_beat_grid = Some(analysis.clone());
+                        }
+                        assets[idx].beat_analysis = Some(analysis);
+                    }
+                    Ok(Err(e)) => tracing::warn!(
+                        "[MEDIA_CATALOG] Beat analysis failed for {}: {}",
+                        assets[idx].filename,
+                        e
+                    ),
+                    Err(e) => tracing::warn!(
+                        "[MEDIA_CATALOG] Beat analysis task panicked for {}: {}",
+                        assets[idx].filename,
+                        e
+                    ),
+                }
+            }
+        }
+
         Ok(ShotCatalog {
             assets,
             total_duration_seconds: total_duration,
             interview_assets: interview_indices,
             broll_assets: broll_indices,
             music_assets: music_indices,
+            music_beat_grid,
         })
     }
 
@@ -267,6 +371,9 @@ impl MediaCataloger {
             energy_level,
             content_tags,
             fps,
+            scene_analysis: None,
+            visual_qc: None,
+            beat_analysis: None,
         })
     }
 }
@@ -476,6 +583,178 @@ fn is_audio_file(path: &Path) -> bool {
 /// Check if a path is any media file (video or audio).
 fn is_media_file(path: &Path) -> bool {
     is_video_file(path) || is_audio_file(path)
+}
+
+// ---------------------------------------------------------------------------
+// Analysis conversion helpers
+// ---------------------------------------------------------------------------
+
+/// Convert SceneAnalysisEngine's ContentType to our SceneContentType.
+fn convert_content_type(
+    ct: &services::services::scene_analysis::ContentType,
+) -> SceneContentType {
+    match ct {
+        services::services::scene_analysis::ContentType::HighEnergy => SceneContentType::HighEnergy,
+        services::services::scene_analysis::ContentType::Establishing => {
+            SceneContentType::Establishing
+        }
+        services::services::scene_analysis::ContentType::Intimate => SceneContentType::Intimate,
+        services::services::scene_analysis::ContentType::Transition => SceneContentType::Transition,
+        services::services::scene_analysis::ContentType::Ambient => SceneContentType::Ambient,
+    }
+}
+
+/// Convert a ClipAnalysis from the scene analysis engine into our pipeline type.
+fn convert_scene_analysis(
+    clip: &services::services::scene_analysis::ClipAnalysis,
+) -> ClipSceneAnalysis {
+    ClipSceneAnalysis {
+        segments: clip
+            .segments
+            .iter()
+            .map(|s| SceneSegment {
+                timestamp: s.timestamp,
+                duration: s.duration,
+                brightness: s.brightness,
+                motion_intensity: s.motion_intensity,
+                complexity: s.complexity,
+                energy_score: s.energy_score,
+                content_type: convert_content_type(&s.content_type),
+            })
+            .collect(),
+        overall_energy: clip.overall_energy,
+        peak_energy_timestamp: clip.peak_energy_timestamp,
+        dominant_content_type: convert_content_type(&clip.dominant_content_type),
+        usable: clip.usable,
+    }
+}
+
+/// Convert a BeatGridResult from the beat analysis engine into our pipeline type.
+fn convert_beat_analysis(
+    beat: &services::services::beat_analysis::BeatGridResult,
+) -> MusicBeatAnalysis {
+    MusicBeatAnalysis {
+        bpm: beat.bpm,
+        beat_interval: beat.beat_interval,
+        total_beats: beat.total_beats,
+        beats_per_bar: beat.beats_per_bar,
+        beats: beat
+            .beats
+            .iter()
+            .map(|b| BeatPoint {
+                timestamp: b.timestamp,
+                beat_number: b.beat_number,
+                bar_number: b.bar_number,
+                beat_in_bar: b.beat_in_bar,
+                is_downbeat: b.is_downbeat,
+                energy_at_beat: b.energy_at_beat,
+                is_strong_cut_point: b.is_strong_cut_point,
+            })
+            .collect(),
+        sections: beat
+            .sections
+            .iter()
+            .map(|s| MusicStructureSection {
+                name: s.name.clone(),
+                start: s.start,
+                end: s.end,
+                energy_level: s.energy_level,
+                suggested_content: format!("{:?}", s.suggested_content),
+            })
+            .collect(),
+        energy_curve: beat
+            .energy_curve
+            .iter()
+            .map(|e| MusicEnergyPoint {
+                timestamp: e.timestamp,
+                normalized_energy: e.normalized_energy,
+            })
+            .collect(),
+    }
+}
+
+/// Map a measured energy score to the heuristic EnergyLevel enum.
+fn energy_from_score(energy: f64) -> EnergyLevel {
+    if energy > 0.6 {
+        EnergyLevel::High
+    } else if energy > 0.3 {
+        EnergyLevel::Medium
+    } else {
+        EnergyLevel::Low
+    }
+}
+
+/// Generate semantic content tags from scene analysis results.
+fn generate_scene_tags(analysis: &ClipSceneAnalysis) -> Vec<String> {
+    let mut tags = Vec::new();
+
+    // Content type tags
+    match analysis.dominant_content_type {
+        SceneContentType::HighEnergy => tags.push("high-energy".to_string()),
+        SceneContentType::Establishing => {
+            tags.push("establishing".to_string());
+            tags.push("wide-shot".to_string());
+        }
+        SceneContentType::Intimate => {
+            tags.push("intimate".to_string());
+            tags.push("close-up".to_string());
+        }
+        SceneContentType::Transition => tags.push("transition".to_string()),
+        SceneContentType::Ambient => tags.push("ambient".to_string()),
+    }
+
+    // Energy level tags
+    if analysis.overall_energy > 0.7 {
+        tags.push("peak-energy".to_string());
+    } else if analysis.overall_energy > 0.5 {
+        tags.push("energetic".to_string());
+    } else if analysis.overall_energy > 0.3 {
+        tags.push("building".to_string());
+    } else {
+        tags.push("calm".to_string());
+    }
+
+    // Motion intensity tags (average across segments)
+    if !analysis.segments.is_empty() {
+        let avg_motion = analysis
+            .segments
+            .iter()
+            .map(|s| s.motion_intensity)
+            .sum::<f64>()
+            / analysis.segments.len() as f64;
+
+        if avg_motion > 0.5 {
+            tags.push("fast-motion".to_string());
+        } else if avg_motion > 0.2 {
+            tags.push("moderate-motion".to_string());
+        } else {
+            tags.push("static".to_string());
+        }
+
+        // Energy ramp detection
+        if analysis.segments.len() >= 2 {
+            let first_energy = analysis.segments.first().unwrap().energy_score;
+            let last_energy = analysis.segments.last().unwrap().energy_score;
+            if last_energy > first_energy * 1.5 {
+                tags.push("energy-ramp-up".to_string());
+            }
+            if first_energy > last_energy * 1.5 {
+                tags.push("energy-ramp-down".to_string());
+            }
+        }
+
+        // Peak moment detection
+        let peak = analysis
+            .segments
+            .iter()
+            .map(|s| s.energy_score)
+            .fold(0.0f64, f64::max);
+        if peak > 0.7 {
+            tags.push("has-peak-moment".to_string());
+        }
+    }
+
+    tags
 }
 
 #[cfg(test)]

@@ -60,7 +60,8 @@ impl std::str::FromStr for PipelineType {
 #[ts(export)]
 pub struct CrmPipeline {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
     pub name: String,
     pub description: Option<String>,
     pub pipeline_type: String,
@@ -192,6 +193,39 @@ impl CrmPipeline {
         .bind(project_id)
         .fetch_all(pool)
         .await?;
+
+        Ok(pipelines)
+    }
+
+    /// List all active pipelines across all projects in an organization
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+        pipeline_type: Option<PipelineType>,
+    ) -> Result<Vec<Self>, CrmPipelineError> {
+        let pipelines = if let Some(pt) = pipeline_type {
+            let pt_str = pt.to_string();
+            sqlx::query_as::<_, CrmPipeline>(
+                r#"SELECT cp.* FROM crm_pipelines cp
+                   JOIN projects p ON cp.project_id = p.id
+                   WHERE p.organization_id = ?1 AND cp.is_active = 1 AND cp.pipeline_type = ?2
+                   ORDER BY cp.name"#,
+            )
+            .bind(organization_id)
+            .bind(&pt_str)
+            .fetch_all(pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, CrmPipeline>(
+                r#"SELECT cp.* FROM crm_pipelines cp
+                   JOIN projects p ON cp.project_id = p.id
+                   WHERE p.organization_id = ?1 AND cp.is_active = 1
+                   ORDER BY cp.name"#,
+            )
+            .bind(organization_id)
+            .fetch_all(pool)
+            .await?
+        };
 
         Ok(pipelines)
     }

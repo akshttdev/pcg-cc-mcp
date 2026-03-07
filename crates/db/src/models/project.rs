@@ -48,11 +48,18 @@ pub struct Project {
     /// Sort order among siblings
     #[ts(type = "number")]
     pub sort_order: i32,
+    /// Aptos wallet address registered for on-chain deposits
+    pub aptos_address: Option<String>,
+    /// Whether this project has been funded with on-chain VIBE
+    pub aptos_funded: bool,
 
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
     pub updated_at: DateTime<Utc>,
+    /// Soft delete timestamp - if set, project is considered deleted
+    #[ts(type = "Date | null")]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -106,9 +113,12 @@ pub enum SearchMatchType {
 
 impl Project {
     pub async fn count(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
-        sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!: i64" FROM projects"#)
-            .fetch_one(pool)
-            .await
+        let result: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL"
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(result.0)
     }
 
     pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
@@ -116,8 +126,9 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id, parent_project_id, sort_order,
-                      created_at, updated_at
-               FROM projects ORDER BY created_at DESC"#,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                      created_at, updated_at, deleted_at
+               FROM projects WHERE deleted_at IS NULL ORDER BY created_at DESC"#,
         )
         .fetch_all(pool)
         .await
@@ -129,9 +140,10 @@ impl Project {
             r#"SELECT p.id, p.name, p.git_repo_path, p.setup_script, p.dev_script, p.cleanup_script, p.copy_files,
                    p.vibe_budget_limit, COALESCE(p.vibe_spent_amount, 0) as vibe_spent_amount,
                    p.organization_id, p.client_id, p.folder_id, p.parent_project_id, p.sort_order,
-                   p.created_at, p.updated_at
+                   p.aptos_address, COALESCE(p.aptos_funded, 0) as aptos_funded,
+                   p.created_at, p.updated_at, p.deleted_at
             FROM projects p
-            WHERE p.id IN (
+            WHERE p.deleted_at IS NULL AND p.id IN (
                 SELECT DISTINCT t.project_id
                 FROM tasks t
                 INNER JOIN task_attempts ta ON ta.task_id = t.id
@@ -149,8 +161,9 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id, parent_project_id, sort_order,
-                      created_at, updated_at
-               FROM projects WHERE id = ?"#,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                      created_at, updated_at, deleted_at
+               FROM projects WHERE id = ? AND deleted_at IS NULL"#,
         )
         .bind(id)
         .fetch_optional(pool)
@@ -165,12 +178,28 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id, parent_project_id, sort_order,
-                      created_at, updated_at
-               FROM projects WHERE git_repo_path = ?"#,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                      created_at, updated_at, deleted_at
+               FROM projects WHERE git_repo_path = ? AND deleted_at IS NULL"#,
         )
         .bind(git_repo_path)
         .fetch_optional(pool)
         .await
+    }
+
+    /// Check if a project exists with this git repo path, including soft-deleted projects.
+    /// Used by topos sync to avoid recreating deleted projects.
+    pub async fn exists_by_git_repo_path_including_deleted(
+        pool: &SqlitePool,
+        git_repo_path: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let result: Option<(i64,)> = sqlx::query_as(
+            "SELECT 1 FROM projects WHERE git_repo_path = ? LIMIT 1"
+        )
+        .bind(git_repo_path)
+        .fetch_optional(pool)
+        .await?;
+        Ok(result.is_some())
     }
 
     pub async fn find_by_git_repo_path_excluding_id(
@@ -182,8 +211,9 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id, parent_project_id, sort_order,
-                      created_at, updated_at
-               FROM projects WHERE git_repo_path = ? AND id != ?"#,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                      created_at, updated_at, deleted_at
+               FROM projects WHERE git_repo_path = ? AND id != ? AND deleted_at IS NULL"#,
         )
         .bind(git_repo_path)
         .bind(exclude_id)
@@ -196,7 +226,7 @@ impl Project {
         name: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         let row: Option<(Vec<u8>,)> =
-            sqlx::query_as("SELECT id FROM projects WHERE LOWER(name) = LOWER(?) LIMIT 1")
+            sqlx::query_as("SELECT id FROM projects WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL LIMIT 1")
                 .bind(name)
                 .fetch_optional(pool)
                 .await?;
@@ -223,7 +253,8 @@ impl Project {
                RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                          vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                          organization_id, client_id, folder_id, parent_project_id, sort_order,
-                         created_at, updated_at"#,
+                         aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                         created_at, updated_at, deleted_at"#,
         )
         .bind(project_id)
         .bind(&data.name)
@@ -256,11 +287,12 @@ impl Project {
         sqlx::query_as::<_, Project>(
             r#"UPDATE projects SET name = ?, git_repo_path = ?, setup_script = ?, dev_script = ?, cleanup_script = ?, copy_files = ?,
                organization_id = ?, client_id = ?
-               WHERE id = ?
+               WHERE id = ? AND deleted_at IS NULL
                RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                          vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                          organization_id, client_id, folder_id, parent_project_id, sort_order,
-                         created_at, updated_at"#,
+                         aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                         created_at, updated_at, deleted_at"#,
         )
         .bind(&name)
         .bind(&git_repo_path)
@@ -320,26 +352,26 @@ impl Project {
         self.vibe_budget_limit.map(|limit| limit - self.vibe_spent_amount)
     }
 
+    /// Soft delete a project by setting deleted_at timestamp
     pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!("DELETE FROM projects WHERE id = $1", id)
-            .execute(pool)
-            .await?;
+        let result = sqlx::query(
+            "UPDATE projects SET deleted_at = datetime('now', 'subsec') WHERE id = ? AND deleted_at IS NULL"
+        )
+        .bind(id)
+        .execute(pool)
+        .await?;
         Ok(result.rows_affected())
     }
 
     pub async fn exists(pool: &SqlitePool, id: Uuid) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query!(
-            r#"
-                SELECT COUNT(*) as "count!: i64"
-                FROM projects
-                WHERE id = $1
-            "#,
-            id
+        let result: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM projects WHERE id = ? AND deleted_at IS NULL"
         )
+        .bind(id)
         .fetch_one(pool)
         .await?;
 
-        Ok(result.count > 0)
+        Ok(result.0 > 0)
     }
 
     pub async fn find_by_organization(
@@ -350,8 +382,9 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id, parent_project_id, sort_order,
-                      created_at, updated_at
-               FROM projects WHERE organization_id = ? ORDER BY name ASC"#,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                      created_at, updated_at, deleted_at
+               FROM projects WHERE organization_id = ? AND deleted_at IS NULL ORDER BY name ASC"#,
         )
         .bind(organization_id)
         .fetch_all(pool)
@@ -366,12 +399,29 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id, parent_project_id, sort_order,
-                      created_at, updated_at
-               FROM projects WHERE client_id = ? ORDER BY name ASC"#,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                      created_at, updated_at, deleted_at
+               FROM projects WHERE client_id = ? AND deleted_at IS NULL ORDER BY name ASC"#,
         )
         .bind(client_id)
         .fetch_all(pool)
         .await
+    }
+
+    /// Register an Aptos wallet address for on-chain deposits
+    pub async fn set_aptos_wallet(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        aptos_address: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE projects SET aptos_address = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(aptos_address)
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 
     /// Set or clear the folder assignment for a project
@@ -399,8 +449,9 @@ impl Project {
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
                       organization_id, client_id, folder_id, parent_project_id, sort_order,
-                      created_at, updated_at
-               FROM projects WHERE parent_project_id = ? ORDER BY sort_order ASC, name ASC"#,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                      created_at, updated_at, deleted_at
+               FROM projects WHERE parent_project_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, name ASC"#,
         )
         .bind(parent_id)
         .fetch_all(pool)

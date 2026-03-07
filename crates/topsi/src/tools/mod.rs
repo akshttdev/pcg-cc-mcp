@@ -216,6 +216,43 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        // ==================== ORGANIZATION & CLIENT TOOLS ====================
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_organizations",
+                "description": "List all organizations on the platform. Use this to find an organization's ID when a user wants to assign a project to an org (e.g., 'this belongs to Sirak Studios').",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "update_project",
+                "description": "Update a project's metadata such as name, organization assignment, or client. Use this when a user wants to reassign a project to an organization or rename it.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {
+                            "type": "string",
+                            "description": "UUID of the project to update"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "New project name (optional)"
+                        },
+                        "organization_id": {
+                            "type": "string",
+                            "description": "Organization UUID to assign this project to (optional). Get from list_organizations."
+                        }
+                    },
+                    "required": ["project_id"]
+                }
+            }
+        }),
         // ==================== TASK & AGENT ORCHESTRATION TOOLS ====================
         json!({
             "type": "function",

@@ -37,6 +37,8 @@ pub mod edit_assembly;
 pub mod premiere_xml;
 pub mod premiere_prproj;
 pub mod artlist;
+pub mod epidemic;
+pub mod soundstripe;
 // visual_qc lives as a standalone module at services::services::visual_qc
 
 use std::path::{Path, PathBuf};
@@ -56,6 +58,8 @@ pub use proxy::{ProxyWorkflowManager, ProxyPreset, ProxySettings, ProxyFile};
 pub use scene_detection::{SceneDetectionEngine, Scene, SceneDetectionResult, DetectionMethod};
 pub use music::{MusicLibrary, MusicTrack, MusicSearchCriteria, MusicMood, MusicGenre, MusicRecommendation, AudioAnalysis, MusicPlatform};
 pub use artlist::{ArtlistClient, ArtlistConfig, ArtlistError};
+pub use epidemic::{EpidemicSoundClient, EpidemicSoundConfig, EpidemicSoundError};
+pub use soundstripe::{SoundstripeClient, SoundstripeConfig, SoundstripeError};
 pub use edit_assembly::{
     EditAssemblyEngine, AssembledEdit, FootageClip, MusicAnalysis as EditMusicAnalysis,
     MusicSection, SectionType, PacingStyle, TimelineClip, AudioClip, AssemblyConfig,
@@ -331,6 +335,25 @@ pub enum TextPosition {
     Custom { x: u32, y: u32 },
 }
 
+/// Load music platform configurations from environment variables
+pub fn load_music_platform_configs() -> (ArtlistConfig, EpidemicSoundConfig, SoundstripeConfig) {
+    let artlist = ArtlistConfig {
+        client_id: std::env::var("ARTLIST_CLIENT_ID").ok(),
+        client_secret: std::env::var("ARTLIST_CLIENT_SECRET").ok(),
+        enabled: std::env::var("ARTLIST_CLIENT_ID").is_ok(),
+    };
+    let epidemic = EpidemicSoundConfig {
+        access_key_id: std::env::var("ES_ACCESS_KEY_ID").ok(),
+        access_key_secret: std::env::var("ES_ACCESS_KEY_SECRET").ok(),
+        enabled: std::env::var("ES_ACCESS_KEY_ID").is_ok(),
+    };
+    let soundstripe = SoundstripeConfig {
+        api_key: std::env::var("SOUNDSTRIPE_API_KEY").ok(),
+        enabled: std::env::var("SOUNDSTRIPE_API_KEY").is_ok(),
+    };
+    (artlist, epidemic, soundstripe)
+}
+
 /// The main Editron service
 #[derive(Clone)]
 pub struct EditronService {
@@ -348,6 +371,8 @@ pub struct EditronService {
     music_library: Arc<RwLock<MusicLibrary>>,
     // Music platform clients
     artlist_client: Arc<RwLock<Option<ArtlistClient>>>,
+    epidemic_client: Arc<RwLock<Option<EpidemicSoundClient>>>,
+    soundstripe_client: Arc<RwLock<Option<SoundstripeClient>>>,
     // Visual QC engine (Spectra)
     visual_qc: Arc<VisualQcEngine>,
 }
@@ -409,6 +434,8 @@ impl EditronService {
             proxy_manager,
             music_library,
             artlist_client: Arc::new(RwLock::new(None)),
+            epidemic_client: Arc::new(RwLock::new(None)),
+            soundstripe_client: Arc::new(RwLock::new(None)),
             visual_qc,
         })
     }
@@ -692,10 +719,12 @@ impl EditronService {
         }
 
         // Apply combined filters
+        let video_filter_str = video_filters.join(",");
+        let audio_filter_str = audio_filters.join(",");
         self.ffmpeg.process_with_filters(
             input,
-            if video_filters.is_empty() { None } else { Some(video_filters.join(",").as_str()) },
-            if audio_filters.is_empty() { None } else { Some(audio_filters.join(",").as_str()) },
+            if video_filters.is_empty() { None } else { Some(video_filter_str.as_str()) },
+            if audio_filters.is_empty() { None } else { Some(audio_filter_str.as_str()) },
             output,
             export_preset,
         ).await
@@ -715,6 +744,7 @@ impl EditronService {
             proxies: vec![],
             scene_detection: None,
             scripts: vec![],
+            music_recommendations: None,
         };
 
         // Process each media file
@@ -878,7 +908,7 @@ impl EditronService {
                 filename,
                 source_in: clip.source_in,
                 duration: clip.timeline_out - clip.timeline_in,
-                label: Some(clip.label.clone().unwrap_or_default()),
+                label: None,
             }
         }).collect();
 
@@ -1146,6 +1176,170 @@ impl EditronService {
         format!("https://artlist.io/royalty-free-music{}", query_string)
     }
 
+    // ============ EPIDEMIC SOUND INTEGRATION ============
+
+    /// Configure Epidemic Sound client with credentials
+    pub async fn configure_epidemic(&self, config: &EpidemicSoundConfig) -> EditronResult<()> {
+        if !config.is_configured() {
+            let mut client_guard = self.epidemic_client.write().await;
+            *client_guard = None;
+            return Ok(());
+        }
+
+        let client = EpidemicSoundClient::from_config(config)?;
+        client.verify_credentials().await?;
+
+        let mut client_guard = self.epidemic_client.write().await;
+        *client_guard = Some(client);
+
+        Ok(())
+    }
+
+    /// Check if Epidemic Sound is configured and available
+    pub async fn epidemic_available(&self) -> bool {
+        self.epidemic_client.read().await.is_some()
+    }
+
+    /// Search Epidemic Sound music library
+    pub async fn search_epidemic(
+        &self,
+        criteria: &MusicSearchCriteria,
+        page: u32,
+        per_page: u32,
+    ) -> EditronResult<Vec<MusicTrack>> {
+        let client_guard = self.epidemic_client.read().await;
+        let client = client_guard
+            .as_ref()
+            .ok_or_else(|| EditronError::Process("Epidemic Sound not configured".to_string()))?;
+
+        let tracks = client.search_tracks(criteria, page, per_page).await?;
+        Ok(tracks)
+    }
+
+    /// Get a specific track from Epidemic Sound
+    pub async fn get_epidemic_track(&self, track_id: &str) -> EditronResult<MusicTrack> {
+        let client_guard = self.epidemic_client.read().await;
+        let client = client_guard
+            .as_ref()
+            .ok_or_else(|| EditronError::Process("Epidemic Sound not configured".to_string()))?;
+
+        let track = client.get_track(track_id).await?;
+        Ok(track)
+    }
+
+    /// Get download URL for an Epidemic Sound track
+    pub async fn get_epidemic_download_url(&self, track_id: &str) -> EditronResult<String> {
+        let client_guard = self.epidemic_client.read().await;
+        let client = client_guard
+            .as_ref()
+            .ok_or_else(|| EditronError::Process("Epidemic Sound not configured".to_string()))?;
+
+        let url = client.get_download_url(track_id, "mp3", "high").await?;
+        Ok(url)
+    }
+
+    /// Download an Epidemic Sound track to local storage
+    pub async fn download_epidemic_track(
+        &self,
+        track_id: &str,
+        filename: Option<&str>,
+    ) -> EditronResult<PathBuf> {
+        let download_url = self.get_epidemic_download_url(track_id).await?;
+        let track = self.get_epidemic_track(track_id).await?;
+
+        let music_dir = self.work_dir.join("music").join("epidemic");
+        tokio::fs::create_dir_all(&music_dir).await?;
+
+        let safe_filename = filename
+            .map(|f| f.to_string())
+            .unwrap_or_else(|| {
+                let safe_title = track.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+                let safe_artist = track.artist.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+                format!("{} - {}.mp3", safe_artist, safe_title)
+            });
+
+        let output_path = music_dir.join(&safe_filename);
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&download_url)
+            .send()
+            .await
+            .map_err(|e| EditronError::Process(format!("Download failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(EditronError::Process(format!(
+                "Download failed with status: {}",
+                response.status()
+            )));
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| EditronError::Process(format!("Failed to read download: {}", e)))?;
+
+        tokio::fs::write(&output_path, bytes).await?;
+
+        let mut local_track = track;
+        local_track.local_path = Some(output_path.clone());
+        local_track.license.download_date = Some(chrono::Utc::now());
+        self.register_music_track(local_track).await;
+
+        Ok(output_path)
+    }
+
+    // ============ SOUNDSTRIPE INTEGRATION ============
+
+    /// Configure Soundstripe client with credentials
+    pub async fn configure_soundstripe(&self, config: &SoundstripeConfig) -> EditronResult<()> {
+        if !config.is_configured() {
+            let mut client_guard = self.soundstripe_client.write().await;
+            *client_guard = None;
+            return Ok(());
+        }
+
+        let client = SoundstripeClient::from_config(config)?;
+        client.verify_credentials().await?;
+
+        let mut client_guard = self.soundstripe_client.write().await;
+        *client_guard = Some(client);
+
+        Ok(())
+    }
+
+    /// Check if Soundstripe is configured and available
+    pub async fn soundstripe_available(&self) -> bool {
+        self.soundstripe_client.read().await.is_some()
+    }
+
+    /// Search Soundstripe music library
+    pub async fn search_soundstripe(
+        &self,
+        criteria: &MusicSearchCriteria,
+        page: u32,
+        per_page: u32,
+    ) -> EditronResult<Vec<MusicTrack>> {
+        let client_guard = self.soundstripe_client.read().await;
+        let client = client_guard
+            .as_ref()
+            .ok_or_else(|| EditronError::Process("Soundstripe not configured".to_string()))?;
+
+        let tracks = client.search_tracks(criteria, page, per_page).await?;
+        Ok(tracks)
+    }
+
+    /// Get a specific track from Soundstripe
+    pub async fn get_soundstripe_track(&self, track_id: &str) -> EditronResult<MusicTrack> {
+        let client_guard = self.soundstripe_client.read().await;
+        let client = client_guard
+            .as_ref()
+            .ok_or_else(|| EditronError::Process("Soundstripe not configured".to_string()))?;
+
+        let track = client.get_track(track_id).await?;
+        Ok(track)
+    }
+
     /// Search across all configured music platforms
     pub async fn search_all_platforms(
         &self,
@@ -1167,6 +1361,26 @@ impl EditronService {
             }
         }
 
+        // Search Epidemic Sound if available
+        if self.epidemic_available().await {
+            match self.search_epidemic(criteria, 1, 20).await {
+                Ok(tracks) => all_tracks.extend(tracks),
+                Err(e) => {
+                    tracing::warn!("Epidemic Sound search failed: {}", e);
+                }
+            }
+        }
+
+        // Search Soundstripe if available
+        if self.soundstripe_available().await {
+            match self.search_soundstripe(criteria, 1, 20).await {
+                Ok(tracks) => all_tracks.extend(tracks),
+                Err(e) => {
+                    tracing::warn!("Soundstripe search failed: {}", e);
+                }
+            }
+        }
+
         Ok(all_tracks)
     }
 
@@ -1179,15 +1393,17 @@ impl EditronService {
         config: &VisualQcConfig,
     ) -> EditronResult<Vec<(f64, PathBuf)>> {
         self.visual_qc.extract_candidate_frames(clip_path, config).await
+            .map_err(|e| EditronError::Process(format!("Visual QC error: {}", e)))
     }
 
     /// Read a frame JPEG and return base64 for vision API
     pub async fn get_frame_base64(&self, path: &Path) -> EditronResult<String> {
         VisualQcEngine::frame_to_base64(path).await
+            .map_err(|e| EditronError::Process(format!("Visual QC error: {}", e)))
     }
 
-    /// Apply visual QC results to a set of footage clips
-    pub fn apply_visual_qc(&self, clips: &mut [FootageClip], qc_result: &VisualQcResult) {
+    /// Apply visual QC results to a set of QC footage clips
+    pub fn apply_visual_qc(&self, clips: &mut [super::visual_qc::QcFootageClip], qc_result: &VisualQcResult) {
         VisualQcEngine::apply_qc_to_clips(clips, qc_result);
     }
 

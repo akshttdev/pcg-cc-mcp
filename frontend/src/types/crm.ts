@@ -78,8 +78,6 @@ export interface UpdateCrmPipelineStage {
   is_won?: boolean;
 }
 
-export type CrmDealRecord = CrmDealWithContact;
-
 // Deal with contact info for Kanban display (matches backend CrmDealWithContact)
 export interface CrmDealWithContact {
   id: string;
@@ -112,6 +110,10 @@ export interface CrmDealWithContact {
   contact_email?: string;
   contact_company?: string;
   contact_avatar_url?: string;
+  project_name?: string;
+  task_total?: number;
+  task_done?: number;
+  deliverable_count?: number;
 }
 
 // Kanban board data structure
@@ -164,6 +166,9 @@ export interface MoveDealRequest {
   stage_id: string;
   position: number;
 }
+
+// Alias for deal record as returned by list APIs
+export type CrmDealRecord = CrmDealWithContact;
 
 // Create activity type for logging
 export interface CreateCrmActivity {

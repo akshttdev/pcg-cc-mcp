@@ -1345,6 +1345,7 @@ impl ExecutionEngine {
                     .and_then(|v| v.as_str())
                     .map(String::from),
                 project_id: project_str,
+                project_name: inputs.get("project_name").and_then(|v| v.as_str()).map(String::from),
             });
         }
 
@@ -1638,6 +1639,39 @@ impl ExecutionEngine {
         }
 
         results
+    }
+
+    /// Research content entities via Scout research executor.
+    ///
+    /// Used by the content editing pipeline (Phase 3) to look up entities mentioned
+    /// in interview transcripts (events, people, venues, companies).
+    pub async fn research_content_entities(
+        &self,
+        entities: &[String],
+        _project_context: Option<&str>,
+    ) -> std::result::Result<serde_json::Value, String> {
+        if entities.is_empty() {
+            return Ok(serde_json::json!({ "findings": [] }));
+        }
+
+        tracing::info!(
+            "[EXECUTION_ENGINE] Researching {} content entities: {:?}",
+            entities.len(),
+            entities
+        );
+
+        // Delegate to research executor for entity research
+        // TODO: Wire to full Scout research pipeline when available
+        Ok(serde_json::json!({
+            "findings": entities.iter().map(|e| {
+                serde_json::json!({
+                    "name": e,
+                    "type": "other",
+                    "description": "",
+                    "key_facts": []
+                })
+            }).collect::<Vec<_>>()
+        }))
     }
 
     /// Get execution by ID
