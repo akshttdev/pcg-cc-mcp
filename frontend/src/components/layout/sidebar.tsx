@@ -149,6 +149,64 @@ function HealthDot({ status }: { status?: string }) {
 }
 
 // ============================================================================
+// OrgCrmLinks — collapsible CRM section with Pipeline nested inside
+// ============================================================================
+
+function OrgCrmLinks({
+  orgId,
+  location,
+}: {
+  orgId: string;
+  location: ReturnType<typeof useLocation>;
+}) {
+  const isCrmActive =
+    location.pathname === `/organizations/${orgId}` &&
+    (location.search.includes('tab=contacts') || location.search.includes('tab=pipelines'));
+  const [open, setOpen] = useState(isCrmActive);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+            isCrmActive && 'text-accent-foreground'
+          )}
+        >
+          <Users className="h-3 w-3 shrink-0 text-blue-500" />
+          <span className="flex-1 text-left">CRM</span>
+          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-4 space-y-0.5 py-0.5">
+          <Link
+            to={`/organizations/${orgId}?tab=contacts`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+              location.search.includes('tab=contacts') && location.pathname === `/organizations/${orgId}` &&
+                'bg-accent text-accent-foreground'
+            )}
+          >
+            <Users className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span>Contacts</span>
+          </Link>
+          <Link
+            to={`/organizations/${orgId}?tab=pipelines`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+              location.search.includes('tab=pipelines') && location.pathname === `/organizations/${orgId}` &&
+                'bg-accent text-accent-foreground'
+            )}
+          >
+            <Target className="h-3 w-3 shrink-0 text-amber-500" />
+            <span>Pipeline</span>
+          </Link>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 // ============================================================================
 // ProjectFolder — existing component for rendering leaf-level project items
@@ -892,27 +950,36 @@ function OrgSection({
       {expanded && (
       <div className="pl-2">
         <div className="space-y-0.5">
-          {/* Org-level quick links — deep-link into detailed management tabs */}
+          {/* Org-level workspace links */}
           <div className="px-1 py-1 space-y-0.5">
-            {[
-              { label: 'Pipeline',      tab: 'pipelines', icon: Target,   color: 'text-amber-500'  },
-              { label: 'CRM',           tab: 'contacts',  icon: Users,    color: 'text-blue-500'   },
-              { label: 'Social',        tab: 'social',    icon: Megaphone,color: 'text-purple-500' },
-              { label: 'Intelligence',  tab: 'knowledge', icon: Brain,    color: 'text-emerald-500'},
-            ].map(({ label, tab, icon: Icon, color }) => (
-              <Link
-                key={tab}
-                to={`/organizations/${org.id}?tab=${tab}`}
-                className={cn(
-                  'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                  location.search.includes(`tab=${tab}`) && location.pathname === `/organizations/${org.id}` &&
-                    'bg-accent text-accent-foreground'
-                )}
-              >
-                <Icon className={cn('h-3 w-3 shrink-0', color)} />
-                <span>{label}</span>
-              </Link>
-            ))}
+            {/* CRM — expandable, Pipeline nested inside */}
+            <OrgCrmLinks orgId={org.id} location={location} />
+
+            {/* Social */}
+            <Link
+              to={`/organizations/${org.id}?tab=social`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                location.search.includes('tab=social') && location.pathname === `/organizations/${org.id}` &&
+                  'bg-accent text-accent-foreground'
+              )}
+            >
+              <Megaphone className="h-3 w-3 shrink-0 text-purple-500" />
+              <span>Social</span>
+            </Link>
+
+            {/* Intelligence */}
+            <Link
+              to={`/organizations/${org.id}?tab=knowledge`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                location.search.includes('tab=knowledge') && location.pathname === `/organizations/${org.id}` &&
+                  'bg-accent text-accent-foreground'
+              )}
+            >
+              <Brain className="h-3 w-3 shrink-0 text-emerald-500" />
+              <span>Intelligence</span>
+            </Link>
           </div>
 
           {/* Internal projects and folders (no client) */}
