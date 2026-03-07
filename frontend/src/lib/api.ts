@@ -4041,10 +4041,25 @@ export interface ProjectKnowledgeResponse {
   sources_by_type: Record<string, ProjectKnowledgeSource[]>;
 }
 
+export interface CreateKnowledgeSourceRequest {
+  source_type: string;
+  source_title: string;
+  source_summary?: string;
+  coverage_score?: number;
+}
+
 export const knowledgeApi = {
   getProjectKnowledge: async (projectId: string): Promise<ProjectKnowledgeResponse> => {
     const response = await makeRequest(`/api/projects/${projectId}/knowledge`);
     return handleApiResponse<ProjectKnowledgeResponse>(response);
+  },
+
+  createSource: async (projectId: string, data: CreateKnowledgeSourceRequest): Promise<ProjectKnowledgeSource> => {
+    const response = await makeRequest(`/api/projects/${projectId}/knowledge`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProjectKnowledgeSource>(response);
   },
 
   refreshSource: async (projectId: string, sourceId: string): Promise<void> => {
