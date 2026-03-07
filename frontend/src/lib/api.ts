@@ -4104,10 +4104,25 @@ export interface ProjectKnowledgeResponse {
   sources_by_type: Record<string, ProjectKnowledgeSource[]>;
 }
 
+export interface CreateKnowledgeSourceRequest {
+  source_type: string;
+  source_title: string;
+  source_summary?: string;
+  coverage_score?: number;
+}
+
 export const knowledgeApi = {
   getProjectKnowledge: async (projectId: string): Promise<ProjectKnowledgeResponse> => {
     const response = await makeRequest(`/api/projects/${projectId}/knowledge`);
     return handleApiResponse<ProjectKnowledgeResponse>(response);
+  },
+
+  createSource: async (projectId: string, data: CreateKnowledgeSourceRequest): Promise<ProjectKnowledgeSource> => {
+    const response = await makeRequest(`/api/projects/${projectId}/knowledge`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProjectKnowledgeSource>(response);
   },
 
   refreshSource: async (projectId: string, sourceId: string): Promise<void> => {
@@ -5339,5 +5354,163 @@ export const intelligenceApi = {
   getStatus: async (personId: string): Promise<IntelligenceStatus> => {
     const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
     return handleApiResponse<IntelligenceStatus>(response);
+  },
+};
+
+// ============================================================================
+// Data Sources API
+// ============================================================================
+
+export interface DataSourceRecord {
+  id: string;
+  organization_id?: string;
+  project_id?: string;
+  created_by?: string;
+  title: string;
+  description?: string;
+  data_type: string;
+  /** "file", "text", or "integration" */
+  source_type: string;
+  file_type?: string;
+  /** Raw text content (for source_type = "text") */
+  content?: string;
+  file_name?: string;
+  file_path?: string;
+  file_size_bytes?: number;
+  file_hash?: string;
+  metadata: string; // JSON string
+  status: string;
+  processing_error?: string;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface CreateDataSourceRequest {
+  organization_id?: string;
+  project_id?: string;
+  title: string;
+  description?: string;
+  data_type: string;
+  /** "file", "text", or "integration" */
+  source_type?: string;
+  file_type?: string;
+  /** Raw text content (for source_type = "text") */
+  content?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateDataSourceRequest {
+  title?: string;
+  description?: string;
+  data_type?: string;
+  source_type?: string;
+  content?: string;
+  metadata?: string;
+  status?: string;
+  processing_error?: string;
+}
+
+export const SOURCE_TYPE_OPTIONS = [
+  { value: 'text', label: 'Text (copy/paste)' },
+  { value: 'file', label: 'File Upload' },
+  { value: 'integration', label: 'Integration' },
+] as const;
+
+export const DATA_TYPE_OPTIONS = [
+  { value: 'conversation', label: 'Conversation' },
+  { value: 'document', label: 'Document' },
+  { value: 'transcript', label: 'Transcript' },
+  { value: 'report', label: 'Report' },
+  { value: 'dataset', label: 'Dataset' },
+  { value: 'media', label: 'Media' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+export const dataSourcesApi = {
+  listByOrganization: async (orgId: string): Promise<DataSourceRecord[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/data-sources`);
+    return handleApiResponse<DataSourceRecord[]>(response);
+  },
+
+  listByProject: async (projectId: string): Promise<DataSourceRecord[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/data-sources`);
+    return handleApiResponse<DataSourceRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<DataSourceRecord> => {
+    const response = await makeRequest(`/api/data-sources/${id}`);
+    return handleApiResponse<DataSourceRecord>(response);
+  },
+
+  create: async (data: CreateDataSourceRequest): Promise<DataSourceRecord> => {
+    const response = await makeRequest('/api/data-sources', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DataSourceRecord>(response);
+  },
+
+  upload: async (formData: FormData): Promise<DataSourceRecord> => {
+    const response = await fetch(resolveApiUrl('/api/data-sources/upload'), {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new ApiError(`Failed to upload data source: ${errorText}`, response.status, response);
+    }
+    const result = await response.json();
+    return result.data as DataSourceRecord;
+  },
+
+  update: async (id: string, data: UpdateDataSourceRequest): Promise<DataSourceRecord> => {
+    const response = await makeRequest(`/api/data-sources/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DataSourceRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/data-sources/${id}`, {
+      method: 'DELETE',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  getMetadataTemplate: async (dataType: string): Promise<Record<string, unknown>> => {
+    const response = await makeRequest(`/api/data-sources/metadata-template/${dataType}`);
+    return handleApiResponse<Record<string, unknown>>(response);
+  },
+
+  getWorkflows: async (dataSourceId: string) => {
+    const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows`);
+    return handleApiResponse<any>(response);
+  },
+
+  runWorkflow: async (dataSourceId: string, workflowId: string) => {
+    const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows/${workflowId}/run`, {
+      method: 'POST',
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  getArtifacts: async (dataSourceId: string) => {
+    const response = await makeRequest(`/api/data-sources/${dataSourceId}/artifacts`);
+    return handleApiResponse<any[]>(response);
+  },
+};
+
+export const workflowsApi = {
+  listDefinitions: async () => {
+    const response = await makeRequest('/api/workflows/definitions');
+    return handleApiResponse<any[]>(response);
+  },
+
+  listRecentArtifacts: async () => {
+    const response = await makeRequest('/api/artifacts/recent');
+    return handleApiResponse<ExecutionArtifact[]>(response);
   },
 };

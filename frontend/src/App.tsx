@@ -17,7 +17,7 @@ import { KeyboardShortcutsProvider } from '@/contexts/keyboard-shortcuts-context
 import { HotkeysProvider } from 'react-hotkeys-hook';
 import { ProjectProvider } from '@/contexts/project-context';
 import { OrganizationProvider } from '@/contexts/organization-context';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AdminRoute } from '@/components/auth/AdminRoute';
@@ -61,6 +61,7 @@ const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
+const DataSourceDetailPage = lazy(() => import('@/pages/data-source-detail').then(m => ({ default: m.DataSourceDetailPage })));
 const DiscordPage             = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
@@ -79,6 +80,16 @@ const WalletSettings    = lazy(() => import('@/pages/settings/WalletSettings').t
 const NetworkSettings   = lazy(() => import('@/pages/settings/NetworkSettings').then(m => ({ default: m.NetworkSettings })));
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
+
+/** Redirects authenticated users to their first organization, or falls back to /projects */
+function HomeRedirect() {
+  const { user } = useAuth();
+  const firstOrg = user?.organizations?.[0];
+  if (firstOrg) {
+    return <Navigate to={`/organizations/${firstOrg.id}`} replace />;
+  }
+  return <Projects />;
+}
 
 function App() {
   return (
@@ -118,7 +129,7 @@ function App() {
             </UserSystemProvider>
           </AuthProvider>
         }>
-          <Route path="/" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
+          <Route path="/" element={<ProtectedRoute><HomeRedirect /></ProtectedRoute>} />
           <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
           <Route path="/projects/:projectId" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
           <Route
@@ -181,6 +192,10 @@ function App() {
           <Route
             path="/organizations/:orgId/clients/:clientId"
             element={<ProtectedRoute><ClientOverview /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/data-sources/:dataSourceId"
+            element={<ProtectedRoute><DataSourceDetailPage /></ProtectedRoute>}
           />
           <Route path="/organizations/:orgId/crm/acquisition" element={<AcquisitionRedirect />} />
           <Route path="/organizations/:orgId/crm/lifecycle" element={<LifecycleRedirect />} />

@@ -2,7 +2,7 @@ import { ChevronRight, Home, ChevronsUpDown } from 'lucide-react';
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useProject } from '@/contexts/project-context';
 import { useQuery } from '@tanstack/react-query';
-import { tasksApi, organizationsApi } from '@/lib/api';
+import { tasksApi, organizationsApi, dataSourcesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
   Popover,
@@ -18,10 +18,11 @@ interface BreadcrumbItem {
 }
 
 export function BreadcrumbNav() {
-  const { projectId, taskId, orgId } = useParams<{
+  const { projectId, taskId, orgId, dataSourceId } = useParams<{
     projectId?: string;
     taskId?: string;
     orgId?: string;
+    dataSourceId?: string;
   }>();
   const { project } = useProject();
   const navigate = useNavigate();
@@ -43,6 +44,14 @@ export function BreadcrumbNav() {
       return tasks.find((t) => t.id === taskId) || null;
     },
     enabled: !!taskId && !!projectId,
+  });
+
+  // Fetch data source if dataSourceId is present
+  const { data: dataSource } = useQuery({
+    queryKey: ['dataSource', dataSourceId],
+    queryFn: () => dataSourcesApi.get(dataSourceId!),
+    enabled: !!dataSourceId,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Derive current org from project or route
@@ -96,6 +105,63 @@ export function BreadcrumbNav() {
       label: task.title.length > 50 ? `${task.title.substring(0, 50)}...` : task.title,
       href: `/projects/${projectId}/tasks/${taskId}`,
     });
+  }
+
+  // Project sub-pages (knowledge, crm, deliverables, etc.)
+  if (project && projectId && !taskId) {
+    if (location.pathname.includes('/knowledge')) {
+      items.push({ label: 'Knowledge', href: `/projects/${projectId}/knowledge` });
+    } else if (location.pathname.includes('/crm')) {
+      items.push({ label: 'CRM', href: `/projects/${projectId}/crm` });
+      if (location.pathname.includes('/crm/sales')) {
+        items.push({ label: 'Sales', href: `/projects/${projectId}/crm/sales` });
+      } else if (location.pathname.includes('/crm/delivery')) {
+        items.push({ label: 'Delivery', href: `/projects/${projectId}/crm/delivery` });
+      } else if (location.pathname.includes('/crm/clients')) {
+        items.push({ label: 'Clients', href: `/projects/${projectId}/crm/clients` });
+      } else if (location.pathname.includes('/crm/conferences')) {
+        items.push({ label: 'Conferences', href: `/projects/${projectId}/crm/conferences` });
+      } else if (location.pathname.includes('/crm/overview')) {
+        items.push({ label: 'Overview', href: `/projects/${projectId}/crm/overview` });
+      }
+    } else if (location.pathname.includes('/deliverables')) {
+      items.push({ label: 'Deliverables', href: `/projects/${projectId}/deliverables` });
+    } else if (location.pathname.includes('/control')) {
+      items.push({ label: 'Control', href: `/projects/${projectId}/control` });
+    } else if (location.pathname.includes('/pulse')) {
+      items.push({ label: 'Pulse', href: `/projects/${projectId}/pulse` });
+    }
+  }
+
+  // Organization sub-pages
+  if (currentOrg && orgId && !projectId) {
+    if (location.pathname.includes('/data-sources/')) {
+      items.push({
+        label: 'Intelligence',
+        href: `/organizations/${orgId}?tab=knowledge`,
+      });
+      items.push({
+        label: 'Data Sources',
+        href: `/organizations/${orgId}?tab=knowledge&view=datasources`,
+      });
+      if (dataSource) {
+        const title = dataSource.title.length > 50
+          ? `${dataSource.title.substring(0, 50)}...`
+          : dataSource.title;
+        items.push({
+          label: title,
+          href: `/organizations/${orgId}/data-sources/${dataSourceId}`,
+        });
+      }
+    } else if (location.pathname.includes('/crm/acquisition')) {
+      items.push({ label: 'CRM', href: `/organizations/${orgId}?tab=crm` });
+      items.push({ label: 'Acquisition', href: `/organizations/${orgId}/crm/acquisition` });
+    } else if (location.pathname.includes('/crm/lifecycle')) {
+      items.push({ label: 'CRM', href: `/organizations/${orgId}?tab=crm` });
+      items.push({ label: 'Lifecycle', href: `/organizations/${orgId}/crm/lifecycle` });
+    } else if (location.pathname.includes('/clients/')) {
+      items.push({ label: 'Clients', href: `/organizations/${orgId}?tab=clients` });
+    }
   }
 
   // Add page-level breadcrumb for routes without project context
