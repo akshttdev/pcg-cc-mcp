@@ -559,3 +559,66 @@
 [ 5502739ms] [ERROR] [API Error] {message: Request failed with status 502, status: 502, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-07T18:09:36.270Z} @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
 [ 5507096ms] [ERROR] Failed to load resource: the server responded with a status of 502 () @ https://dashboard.powerclubglobal.com/api/projects:0
 [ 5507097ms] [ERROR] [API Error] {message: Request failed with status 502, status: 502, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-07T18:09:40.628Z} @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5593276ms] [ERROR] Failed to load resource: the server responded with a status of 502 () @ https://dashboard.powerclubglobal.com/api/auth/login:0
+[ 5593356ms] [ERROR] Login failed: Error: Login failed
+    at lre (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:632:31046)
+    at async o (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:640:7674)
+    at async p (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:644:188723) @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5827354ms] [ERROR] Failed to fetch projects: Error: Failed to reach the PCG CC server at https://dashboard.powerclubglobal.com. Make sure the server process is running and reachable.
+    at L (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:631:11003)
+    at async Object.getAll (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:631:13480)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4715 @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5829104ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://dashboard.powerclubglobal.com/api/tasks?project_id=6861af57-610f-4646-b648-a62599d4cc1f:0
+[ 5829105ms] [ERROR] [API Error] {message: DatabaseError: error occurred while decoding colum…5: invalid utf-8 sequence of 1 bytes from index 0, status: 500, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/tasks?project_id=6861af57-610f-4646-b648-a62599d4cc1f, timestamp: 2026-03-07T18:15:02.635Z} @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5829105ms] [ERROR] Failed to load board data for project 6861af57-610f-4646-b648-a62599d4cc1f: ApiError: DatabaseError: error occurred while decoding column 15: invalid utf-8 sequence of 1 bytes from index 0
+    at F (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:631:11732)
+    at async Promise.all (index 1)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4368
+    at async Promise.all (index 4)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4319 @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5829399ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://dashboard.powerclubglobal.com/api/tasks?project_id=b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf:0
+[ 5829399ms] [ERROR] [API Error] {message: DatabaseError: error occurred while decoding colum…1: invalid utf-8 sequence of 1 bytes from index 0, status: 500, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/tasks?project_id=b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf, timestamp: 2026-03-07T18:15:02.930Z} @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5829399ms] [ERROR] Failed to load board data for project b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf: ApiError: DatabaseError: error occurred while decoding column 11: invalid utf-8 sequence of 1 bytes from index 0
+    at F (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:631:11732)
+    at async Promise.all (index 1)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4368
+    at async Promise.all (index 24)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4319 @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5830653ms] [ERROR] Failed to load resource: the server responded with a status of 429 () @ https://o4509603705192449.ingest.de.sentry.io/api/4509605576441937/envelope/?sentry_version=7&sentry_key=1065a1d276a581316999a07d5dffee26&sentry_client=sentry.javascript.react%2F9.46.0:0
+[ 5831749ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://dashboard.powerclubglobal.com/api/projects/5c1d5ea3-1d22-46c4-853d-ddf914678d52/assets:0
+[ 5831771ms] [ERROR] [API Error] {message: No assets found for the project, status: 404, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects/5c1d5ea3-1d22-46c4-853d-ddf914678d52/assets, timestamp: 2026-03-07T18:15:05.302Z} @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5831772ms] [ERROR] Failed to fetch project assets: ApiError: No assets found for the project
+    at F (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:631:11732)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:20188 @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5833457ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://dashboard.powerclubglobal.com/api/tasks?project_id=b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf:0
+[ 5833457ms] [ERROR] [API Error] {message: DatabaseError: error occurred while decoding colum…1: invalid utf-8 sequence of 1 bytes from index 0, status: 500, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/tasks?project_id=b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf, timestamp: 2026-03-07T18:15:06.987Z} @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5833457ms] [ERROR] Failed to load board data for project b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf: ApiError: DatabaseError: error occurred while decoding column 11: invalid utf-8 sequence of 1 bytes from index 0
+    at F (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:631:11732)
+    at async Promise.all (index 1)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4368
+    at async Promise.all (index 24)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4319 @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5833513ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://dashboard.powerclubglobal.com/api/tasks?project_id=6861af57-610f-4646-b648-a62599d4cc1f:0
+[ 5833513ms] [ERROR] [API Error] {message: DatabaseError: error occurred while decoding colum…5: invalid utf-8 sequence of 1 bytes from index 0, status: 500, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/tasks?project_id=6861af57-610f-4646-b648-a62599d4cc1f, timestamp: 2026-03-07T18:15:07.044Z} @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5833514ms] [ERROR] Failed to load board data for project 6861af57-610f-4646-b648-a62599d4cc1f: ApiError: DatabaseError: error occurred while decoding column 15: invalid utf-8 sequence of 1 bytes from index 0
+    at F (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:631:11732)
+    at async Promise.all (index 1)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4368
+    at async Promise.all (index 4)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4319 @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5853100ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://dashboard.powerclubglobal.com/api/tasks?project_id=6861af57-610f-4646-b648-a62599d4cc1f:0
+[ 5853111ms] [ERROR] [API Error] {message: DatabaseError: error occurred while decoding colum…5: invalid utf-8 sequence of 1 bytes from index 0, status: 500, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/tasks?project_id=6861af57-610f-4646-b648-a62599d4cc1f, timestamp: 2026-03-07T18:15:26.641Z} @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5853111ms] [ERROR] Failed to load board data for project 6861af57-610f-4646-b648-a62599d4cc1f: ApiError: DatabaseError: error occurred while decoding column 15: invalid utf-8 sequence of 1 bytes from index 0
+    at F (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:631:11732)
+    at async Promise.all (index 1)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4368
+    at async Promise.all (index 4)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4319 @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5853316ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://dashboard.powerclubglobal.com/api/tasks?project_id=b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf:0
+[ 5853316ms] [ERROR] [API Error] {message: DatabaseError: error occurred while decoding colum…1: invalid utf-8 sequence of 1 bytes from index 0, status: 500, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/tasks?project_id=b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf, timestamp: 2026-03-07T18:15:26.847Z} @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659
+[ 5853316ms] [ERROR] Failed to load board data for project b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf: ApiError: DatabaseError: error occurred while decoding column 11: invalid utf-8 sequence of 1 bytes from index 0
+    at F (https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:631:11732)
+    at async Promise.all (index 1)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4368
+    at async Promise.all (index 23)
+    at async https://dashboard.powerclubglobal.com/assets/projects-H8PaQP5M.js:31:4319 @ https://dashboard.powerclubglobal.com/assets/index-Ccq6DXzw.js:659

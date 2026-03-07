@@ -363,9 +363,9 @@ export function ProjectTasks() {
   const handleClosePanel = useCallback(() => {
     // setIsPanelOpen(false);
     // setSelectedTask(null);
-    // Remove task ID from URL when closing panel
-    navigate(`/projects/${projectId}/tasks`, { replace: true });
-  }, [projectId, navigate]);
+    // Remove task ID from URL when closing panel, but preserve board filter
+    navigate(`/projects/${projectId}/tasks${location.search}`, { replace: true });
+  }, [projectId, navigate, location.search]);
 
   const handleDeleteTask = useCallback(
     (taskId: string) => {
