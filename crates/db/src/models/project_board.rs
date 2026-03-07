@@ -4,7 +4,7 @@ use sqlx::{FromRow, SqlitePool, Type};
 use ts_rs::TS;
 use uuid::Uuid;
 
-/// Simplified board types - just Default (auto-created) and Custom (user-created)
+/// Board types for project boards
 #[derive(Debug, Clone, Copy, Type, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[sqlx(type_name = "project_board_type", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
@@ -13,6 +13,10 @@ pub enum ProjectBoardType {
     Default,
     /// User-created boards for specialized working groups
     Custom,
+    /// Brand asset tracking board
+    BrandAssets,
+    /// Executive-level asset tracking board
+    ExecutiveAssets,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]

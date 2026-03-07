@@ -31,4 +31,8 @@ pub use types::{
     EditDirective, EnergyLevel, LipSyncPoint, MediaAsset, MediaType, MusicBehavior,
     PipelineState, Resolution, SegmentType, SentenceBoundary, ShotCatalog, StoryArcBeat,
     StructuredTranscript, TranscriptSegment, VerifiedSoundbite,
+    // Deep analysis types
+    ClipSceneAnalysis, SceneContentType, SceneSegment,
+    ClipVisualQc, FrameAnalysis, VisualCropRegion,
+    MusicBeatAnalysis, BeatPoint, MusicStructureSection, MusicEnergyPoint,
 };

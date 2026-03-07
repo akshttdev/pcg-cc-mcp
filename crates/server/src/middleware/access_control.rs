@@ -119,94 +119,31 @@ impl AccessContext {
         Ok(())
     }
 
-    /// Check if user has access to a specific project
+    /// Check if user has access to a specific project.
+    /// Delegates to the hierarchical check (project_members → org → client).
     pub async fn check_project_access(
         &self,
         pool: &sqlx::SqlitePool,
         project_id: &str,
         required_role: ProjectRole,
     ) -> Result<ProjectRole, ApiError> {
-        // Admins have full access to all projects
-        if self.is_admin {
-            return Ok(ProjectRole::Owner);
-        }
-
-        // Convert project_id string to UUID bytes for BLOB comparison
-        let project_uuid = Uuid::parse_str(project_id)
-            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
-        let project_id_bytes = project_uuid.as_bytes().to_vec();
-
-        // Check project membership
-        let member: Option<ProjectMember> =
-            sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
-                .bind(&project_id_bytes)
-                .bind(self.user_id.as_bytes().to_vec())
-                .fetch_optional(pool)
-                .await
-                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
-
-        match member {
-            Some(m) => {
-                let role = m
-                    .role
-                    .parse::<ProjectRole>()
-                    .map_err(|e| ApiError::InternalError(e))?;
-
-                // Check if user has required permission level
-                let has_access = match required_role {
-                    ProjectRole::Viewer => role.can_read(),
-                    ProjectRole::Editor => role.can_write(),
-                    ProjectRole::Admin => role.can_manage_members(),
-                    ProjectRole::Owner => role.can_delete(),
-                };
-
-                if has_access {
-                    Ok(role)
-                } else {
-                    Err(ApiError::Forbidden(format!(
-                        "Insufficient permissions. Required: {:?}, Has: {:?}",
-                        required_role, role
-                    )))
-                }
-            }
-            None => Err(ApiError::Forbidden(
-                "You do not have access to this project".to_string(),
-            )),
-        }
+        self.check_project_access_hierarchical(pool, project_id, required_role)
+            .await
     }
 
-    /// Get user's role for a project (returns None if no access)
+    /// Get user's role for a project (returns None if no access).
+    /// Uses the hierarchical check (project_members → org → client).
     pub async fn get_project_role(
         &self,
         pool: &sqlx::SqlitePool,
         project_id: &str,
     ) -> Result<Option<ProjectRole>, ApiError> {
-        // Admins have owner access to all projects
-        if self.is_admin {
-            return Ok(Some(ProjectRole::Owner));
-        }
-
-        let project_uuid = Uuid::parse_str(project_id)
-            .map_err(|e| ApiError::InternalError(format!("Invalid project UUID: {}", e)))?;
-        let project_id_bytes = project_uuid.as_bytes().to_vec();
-
-        let member: Option<ProjectMember> =
-            sqlx::query_as("SELECT * FROM project_members WHERE project_id = ? AND user_id = ?")
-                .bind(&project_id_bytes)
-                .bind(self.user_id.as_bytes().to_vec())
-                .fetch_optional(pool)
-                .await
-                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
-
-        match member {
-            Some(m) => {
-                let role = m
-                    .role
-                    .parse::<ProjectRole>()
-                    .map_err(|e| ApiError::InternalError(e))?;
-                Ok(Some(role))
-            }
-            None => Ok(None),
+        match self
+            .check_project_access_hierarchical(pool, project_id, ProjectRole::Viewer)
+            .await
+        {
+            Ok(role) => Ok(Some(role)),
+            Err(_) => Ok(None),
         }
     }
 

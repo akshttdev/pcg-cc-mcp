@@ -14,19 +14,21 @@ use axum::{
 use chrono::{DateTime, Utc};
 use db::models::agent_conversation::{AgentConversation, AgentConversationMessage};
 use db::models::project::Project;
+use sqlx;
 use deployment::Deployment;
 use futures::stream::Stream;
 use cinematics::{CinematicsConfig, CinematicsService};
 use nora::{
     NoraAgent, NoraConfig, NoraError,
     agent::{NoraRequest, NoraRequestType, NoraResponse, RapidPlaybookRequest, RapidPlaybookResult, RequestPriority},
-    brain::LLMConfig,
+    brain::{LLMConfig, infer_provider_from_model},
+    LLMProvider,
     coordination::{AgentCoordinationState, CoordinationEvent, CoordinationStats},
     graph::{GraphNodeStatus, GraphPlan, GraphPlanSummary},
     memory::{BudgetStatus, ProjectContext, ProjectStatus},
     personality::PersonalityConfig,
     tools::{NoraExecutiveTool, ToolExecutionResult},
-    voice::{SpeechResponse, VoiceConfig, VoiceEngine, VoiceError, VoiceInteraction},
+    voice::{SpeechResponse, TTSConfig, VoiceConfig, VoiceEngine, VoiceError, VoiceInteraction},
 };
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -35,7 +37,11 @@ use tokio::sync::{broadcast, RwLock};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError, middleware::rate_limit::TokenBucket};
+use db::models::vibe_deposit::{VibeDeposit, VibeWithdrawal};
+use db::models::vibe_transaction::{VibeSourceType, VibeTransaction};
+use services::services::vibe_pricing::VibePricingService;
+
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext, middleware::rate_limit::TokenBucket};
 
 /// Global Nora agent instance
 static NORA_INSTANCE: tokio::sync::OnceCell<Arc<RwLock<Option<NoraAgent>>>> =
@@ -437,6 +443,8 @@ pub struct ChatRequest {
     pub priority: Option<RequestPriority>,
     pub context: Option<serde_json::Value>,
     pub stream: Option<bool>,
+    /// Project to bill VIBE usage against
+    pub project_id: Option<Uuid>,
 }
 
 /// Voice synthesis request
@@ -764,7 +772,10 @@ pub async fn initialize_nora_on_startup(state: &DeploymentImpl) -> Result<String
     let mut config = NoraConfig::default();
     apply_llm_overrides(&mut config);
 
-    // Load persisted voice configuration if available
+    // Auto-detect ElevenLabs before DB load (DB config wins if it exists)
+    config.voice.tts = TTSConfig::auto_detect();
+
+    // Load persisted voice configuration if available (overrides auto-detect)
     if let Ok(Some(persisted_config)) =
         db::models::nora_config::NoraVoiceConfig::get(&state.db().pool).await
     {
@@ -1050,7 +1061,8 @@ pub async fn clear_cache(
 
 /// Chat with Nora
 pub async fn chat_with_nora(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
     request_id: Option<axum::extract::Extension<crate::middleware::RequestId>>,
     Json(request): Json<ChatRequest>,
 ) -> Result<Json<NoraResponse>, ApiError> {
@@ -1066,6 +1078,41 @@ pub async fn chat_with_nora(
     }
 
     tracing::info!("Received chat request: {:?}", request.message);
+
+    let pool = state.db().pool.clone();
+
+    // Resolve project to bill against
+    let billing_project_id = match request.project_id {
+        Some(pid) => Some(pid),
+        None => {
+            // Fall back to user's home project
+            let home: Option<Vec<u8>> = sqlx::query_scalar(
+                "SELECT home_project_id FROM users WHERE id = ?",
+            )
+            .bind(access_ctx.user_id.as_bytes().as_slice())
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten();
+            home.and_then(|bytes| Uuid::from_slice(&bytes).ok())
+        }
+    };
+
+    // VIBE Balance Check — uses real deposit ledger
+    if let Some(project_id) = billing_project_id {
+        let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
+        let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
+        let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
+            .await
+            .map(|s| s.total_vibe)
+            .unwrap_or(0);
+        let balance = total_deposited - total_withdrawn - total_spent;
+        if balance <= 0 {
+            return Err(ApiError::PaymentRequired(
+                "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
+            ));
+        }
+    }
 
     // Get request ID from middleware or generate new one
     let req_id = request_id
@@ -1116,12 +1163,36 @@ pub async fn chat_with_nora(
 
     crate::nora_metrics::record_request("chat", priority_str);
     tracing::info!("Request processed successfully");
+
+    // Record VIBE cost
+    if let Some(project_id) = billing_project_id {
+        // Use actual tokens if available, otherwise estimate (2000 input, 500 output)
+        let input_tokens = response.input_tokens.unwrap_or(2000);
+        let output_tokens = response.output_tokens.unwrap_or(500);
+        if input_tokens > 0 || output_tokens > 0 {
+            let vibe_pricing = VibePricingService::new(pool.clone());
+            match vibe_pricing.record_llm_usage(
+                VibeSourceType::Project, project_id,
+                "claude-sonnet-4-20250514",
+                input_tokens, output_tokens,
+                None, None, None,
+            ).await {
+                Ok(tx) => {
+                    let _ = Project::adjust_vibe_spent(&pool, project_id, tx.amount_vibe).await;
+                    tracing::info!("[VIBE] Nora recorded {} VIBE for project {}", tx.amount_vibe, project_id);
+                }
+                Err(e) => tracing::error!("[VIBE] Failed to record Nora usage: {}", e),
+            }
+        }
+    }
+
     Ok(Json(response))
 }
 
 /// Chat with Nora using streaming (SSE)
 pub async fn chat_with_nora_stream(
-    State(_state): State<DeploymentImpl>,
+    State(state): State<DeploymentImpl>,
+    axum::Extension(access_ctx): axum::Extension<AccessContext>,
     request_id: Option<axum::extract::Extension<crate::middleware::RequestId>>,
     Json(request): Json<ChatRequest>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError> {
@@ -1139,6 +1210,40 @@ pub async fn chat_with_nora_stream(
     }
 
     tracing::info!("Received streaming chat request: {:?}", request.message);
+
+    let pool = state.db().pool.clone();
+
+    // Resolve project to bill against
+    let billing_project_id = match request.project_id {
+        Some(pid) => Some(pid),
+        None => {
+            let home: Option<Vec<u8>> = sqlx::query_scalar(
+                "SELECT home_project_id FROM users WHERE id = ?",
+            )
+            .bind(access_ctx.user_id.as_bytes().as_slice())
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten();
+            home.and_then(|bytes| Uuid::from_slice(&bytes).ok())
+        }
+    };
+
+    // VIBE Balance Check — uses real deposit ledger
+    if let Some(project_id) = billing_project_id {
+        let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
+        let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
+        let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
+            .await
+            .map(|s| s.total_vibe)
+            .unwrap_or(0);
+        let balance = total_deposited - total_withdrawn - total_spent;
+        if balance <= 0 {
+            return Err(ApiError::PaymentRequired(
+                "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
+            ));
+        }
+    }
 
     // Get request ID from middleware or generate new one
     let _req_id = request_id
@@ -1214,9 +1319,10 @@ pub async fn synthesize_speech(
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
 
     let start = std::time::Instant::now();
+    let clean_text = crate::routes::twilio::strip_markdown_for_tts(&request.text);
     let audio_data = nora
         .voice_engine
-        .synthesize_speech(&request.text)
+        .synthesize_speech(&clean_text)
         .await
         .map_err(|e| {
             tracing::error!("Speech synthesis error: {}", e);
@@ -1230,7 +1336,7 @@ pub async fn synthesize_speech(
     let processing_time_ms = (duration * 1000.0) as u64;
     let response = SpeechResponse {
         audio_data,
-        duration_ms: estimate_speech_duration(&request.text),
+        duration_ms: estimate_speech_duration(&clean_text),
         sample_rate: 22050, // Default for most TTS services
         format: nora::voice::AudioFormat::Mp3,
         processing_time_ms,
@@ -2262,7 +2368,21 @@ fn apply_llm_overrides(config: &mut NoraConfig) {
     }
 
     if let Ok(model) = std::env::var("NORA_LLM_MODEL") {
-        config.llm.get_or_insert_with(LLMConfig::default).model = model;
+        let llm = config.llm.get_or_insert_with(LLMConfig::default);
+        llm.model = model.clone();
+        // Auto-infer provider from model name
+        llm.provider = infer_provider_from_model(&model);
+        tracing::info!("Nora LLM model set to: {} (provider: {:?})", model, llm.provider);
+    }
+
+    // Explicit provider override (takes precedence over inference)
+    if let Ok(provider) = std::env::var("NORA_LLM_PROVIDER") {
+        let llm = config.llm.get_or_insert_with(LLMConfig::default);
+        llm.provider = match provider.to_lowercase().as_str() {
+            "anthropic" | "claude" => LLMProvider::Anthropic,
+            "openai" | "gpt" => LLMProvider::OpenAI,
+            _ => LLMProvider::Ollama,
+        };
     }
 
     if let Ok(endpoint) = std::env::var("NORA_LLM_ENDPOINT") {

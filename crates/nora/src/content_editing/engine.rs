@@ -39,6 +39,10 @@ pub struct ContentEditingConfig {
     pub enable_premiere_xml: bool,
     /// FFmpeg output bitrate in Mbps
     pub output_bitrate_mbps: u32,
+    /// Enable FFmpeg-based scene analysis during Phase 4
+    pub enable_scene_analysis: bool,
+    /// Enable beat analysis for music tracks during Phase 4
+    pub enable_beat_analysis: bool,
 }
 
 impl Default for ContentEditingConfig {
@@ -52,6 +56,8 @@ impl Default for ContentEditingConfig {
             enable_ffmpeg_render: true,
             enable_premiere_xml: true,
             output_bitrate_mbps: 18,
+            enable_scene_analysis: true,
+            enable_beat_analysis: true,
         }
     }
 }
@@ -90,7 +96,8 @@ impl ContentEditingEngine {
         Self {
             execution_engine,
             transcript_processor: TranscriptProcessor::new(config.whisper_endpoint.clone()),
-            media_cataloger: MediaCataloger::new(),
+            media_cataloger: MediaCataloger::new()
+                .with_analysis_flags(config.enable_scene_analysis, config.enable_beat_analysis),
             directive_generator: DirectiveGenerator::new(config.soundbite_match_threshold),
             assembly_processor: AssemblyProcessor::new(config.output_bitrate_mbps),
             config,
@@ -105,7 +112,8 @@ impl ContentEditingEngine {
         Self {
             execution_engine,
             transcript_processor: TranscriptProcessor::new(config.whisper_endpoint.clone()),
-            media_cataloger: MediaCataloger::new(),
+            media_cataloger: MediaCataloger::new()
+                .with_analysis_flags(config.enable_scene_analysis, config.enable_beat_analysis),
             directive_generator: DirectiveGenerator::new(config.soundbite_match_threshold),
             assembly_processor: AssemblyProcessor::new(config.output_bitrate_mbps),
             config,
@@ -564,6 +572,8 @@ mod tests {
         assert!((config.soundbite_match_threshold - 0.80).abs() < f64::EPSILON);
         assert!(config.enable_ffmpeg_render);
         assert!(config.enable_premiere_xml);
+        assert!(config.enable_scene_analysis);
+        assert!(config.enable_beat_analysis);
     }
 
     #[test]

@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use services::services::agent_channels::{AgentChannelService, ChannelOwner};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 use ts_rs::TS;
@@ -93,6 +94,8 @@ For complex requests like "build a website", break into phases:
 
 ### Project & Task tools
 - `create_project` - Create a new project
+- `update_project` - Update project name or organization assignment
+- `list_organizations` - List all organizations (to get IDs for update_project)
 - `create_task` - Create a task in a project
 - `list_tasks` - List tasks with filtering
 - `update_task` - Update task properties
@@ -105,14 +108,33 @@ For complex requests like "build a website", break into phases:
 ### Communication
 - `respond_to_user` - IMPORTANT: Use this to deliver your response. Write your complete answer in the message parameter.
 
+## When to Use Tools vs Respond Directly
+
+**Respond immediately with respond_to_user (NO tool calls needed):**
+- Greetings, casual chat, "what's the vibe?", "how are you?", "what can you do?"
+- Questions you can answer from general knowledge
+- Follow-up on something already discussed in this session
+- Anything where gathering live data would add no value
+
+**Gather data first, then respond:**
+- "How are my tasks going?" → list_tasks → respond_to_user
+- "What projects do I have?" → list_projects → respond_to_user
+- "Any issues?" → detect_issues → respond_to_user
+- Action requests → execute → respond_to_user
+
+**Golden rule:** If you already have enough to give a good answer, call respond_to_user NOW. Don't keep calling tools hoping for better data — one or two tool calls is almost always enough.
+
 ## How to Respond
 ALWAYS use the `respond_to_user` tool to communicate with users. In the message parameter, write YOUR complete response:
-- If asked "tell me a story" → write an actual story in the message
-- If asked "who are you?" → write your introduction in the message
-- If asked about the system → gather data with other tools, then use respond_to_user to explain
-- NEVER just echo the user's request back - always provide your actual response content
+- If asked "tell me a story" → respond_to_user immediately with the story
+- If asked "who are you?" → respond_to_user immediately with your intro
+- If asked about the system → ONE tool call to gather data, then respond_to_user
+- NEVER call the same tool twice in a row — if you got results, use them
 
 ## Example Interactions
+User: "What's the vibe today?" / "How's it going?" / casual greeting
+→ respond_to_user immediately: brief, energetic status from your knowledge
+
 User: "Build me a landing page for my new product"
 → create_task(agent_name="claude") → respond_to_user: "On it — Claude is building the landing page now."
 
@@ -120,7 +142,7 @@ User: "Research competitor activity with Scout"
 → create_task(agent_name="Scout") → respond_to_user: "Scout is researching competitor activity now. I'll update you when it's done."
 
 User: "How are my tasks going?"
-→ list_tasks → get_task_status for in-progress ones → respond_to_user: brief 2-3 line summary
+→ list_tasks → respond_to_user: brief 2-3 line summary (do NOT call list_tasks again)
 
 User: "What projects do I have?"
 → list_projects → respond_to_user: short list with names"#;
@@ -197,6 +219,8 @@ pub struct TopsiAgent {
     pub access_control: Arc<AccessControl>,
     /// Database connection
     pub db: Option<SqlitePool>,
+    /// Agent communication channels (email, future SMS/chat)
+    pub channel_service: Option<Arc<AgentChannelService>>,
     /// Project topologies (indexed by project_id)
     topologies: Arc<RwLock<indexmap::IndexMap<Uuid, TopologyGraph>>>,
     /// Initialization timestamp
@@ -266,6 +290,7 @@ impl TopsiAgent {
             config,
             access_control,
             db: None,
+            channel_service: None,
             topologies: Arc::new(RwLock::new(indexmap::IndexMap::new())),
             initialized_at: Utc::now(),
             active: Arc::new(RwLock::new(false)),
@@ -282,8 +307,15 @@ impl TopsiAgent {
         if let Err(e) = self.access_control.sync_from_database(&pool).await {
             tracing::error!("Failed to sync Topsi access control from database: {}", e);
         }
+        // Wire agent communication channels (Topsi's own agent-scoped email)
+        self.channel_service = Some(Arc::new(AgentChannelService::new(pool.clone())));
         self.db = Some(pool);
         self
+    }
+
+    /// Get the channel service with Topsi's agent identity as owner.
+    pub fn channel_owner(&self) -> ChannelOwner {
+        ChannelOwner::Agent(self.id)
     }
 
     /// Attach a task execution bridge for triggering agent execution
@@ -449,7 +481,17 @@ impl TopsiAgent {
             .await
             .map_err(|e| TopsiError::LLMError(format!("LLM request failed: {}", e)))?;
 
-        for iteration in 0..15 {
+        // Token budget guard: stop when cumulative tokens exceed this threshold.
+        const MAX_TOTAL_TOKENS: i64 = 200_000;
+        // Hard iteration cap — safety net only, system prompt should prevent loops
+        const MAX_ITERATIONS: u32 = 25;
+        // Repetition guard — if the exact same tools fire 4x in a row, something is stuck
+        const MAX_REPEAT_ROUNDS: usize = 4;
+
+        let mut iteration: u32 = 0;
+        let mut last_tool_batch: Option<Vec<String>> = None;
+        let mut repeat_count: usize = 0;
+        loop {
             match response {
                 LLMResponse::Text { content, usage } => {
                     // Final text answer — return to user
@@ -458,9 +500,11 @@ impl TopsiAgent {
                         total_output_tokens += u.output_tokens as i64;
                     }
                     tracing::info!(
-                        "[TOPSI] LLM returned text response after {} iterations ({} chars)",
+                        "[TOPSI] LLM returned text response after {} iterations ({} chars, {}+{} tokens)",
                         iteration,
-                        content.len()
+                        content.len(),
+                        total_input_tokens,
+                        total_output_tokens,
                     );
                     final_message = Some(content);
                     break;
@@ -471,9 +515,11 @@ impl TopsiAgent {
                         total_output_tokens += u.output_tokens as i64;
                     }
                     tracing::info!(
-                        "[TOPSI] Iteration {}: LLM requested {} tool calls",
+                        "[TOPSI] Iteration {}: LLM requested {} tool calls ({}+{} tokens cumulative)",
                         iteration,
-                        calls.len()
+                        calls.len(),
+                        total_input_tokens,
+                        total_output_tokens,
                     );
 
                     // Execute each tool call
@@ -513,6 +559,43 @@ impl TopsiAgent {
                         break;
                     }
 
+                    // Hard iteration cap
+                    if iteration >= MAX_ITERATIONS {
+                        tracing::warn!(
+                            "[TOPSI] Hit max iterations ({}) — forcing stop",
+                            MAX_ITERATIONS
+                        );
+                        break;
+                    }
+
+                    // Repetition guard — same tool batch called too many times in a row
+                    let this_batch: Vec<String> = calls.iter().map(|c| c.name.clone()).collect();
+                    if last_tool_batch.as_deref() == Some(this_batch.as_slice()) {
+                        repeat_count += 1;
+                        if repeat_count >= MAX_REPEAT_ROUNDS {
+                            tracing::warn!(
+                                "[TOPSI] Repetition guard triggered after {} identical rounds of {:?}",
+                                repeat_count, this_batch
+                            );
+                            break;
+                        }
+                    } else {
+                        repeat_count = 0;
+                        last_tool_batch = Some(this_batch);
+                    }
+
+                    // Token budget check — stop before the next LLM call would blow budget
+                    if total_input_tokens + total_output_tokens >= MAX_TOTAL_TOKENS {
+                        tracing::warn!(
+                            "[TOPSI] Token budget exhausted after {} iterations ({}+{} = {} tokens)",
+                            iteration,
+                            total_input_tokens,
+                            total_output_tokens,
+                            total_input_tokens + total_output_tokens,
+                        );
+                        break;
+                    }
+
                     // Feed results back to LLM for next reasoning step
                     response = llm
                         .continue_with_tool_results_and_history(
@@ -533,22 +616,32 @@ impl TopsiAgent {
                         })?;
                 }
             }
+            iteration += 1;
         }
 
-        // Resolve the final message
-        let final_msg = final_message.unwrap_or_else(|| {
-            // Max iterations reached — return what we have
-            tracing::warn!("[TOPSI] Agentic loop hit max iterations (15)");
-            all_tool_calls
-            .iter()
-            .find(|r| r.tool_name == "respond_to_user" && r.success)
-            .and_then(|r| r.result.get("response"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                "I've been working on your request but reached my reasoning limit. Here's what I've done so far — please let me know if you'd like me to continue.".to_string()
-            })
-        });
+        // Resolve the final message — make one last LLM call to synthesise if loop broke early
+        let final_msg = if let Some(msg) = final_message {
+            msg
+        } else {
+            tracing::warn!("[TOPSI] Loop ended early (iter={}, tokens={}+{}), synthesising answer",
+                iteration, total_input_tokens, total_output_tokens);
+
+            // Try one direct synthesis call (no tools) with what we've gathered
+            let gathered: String = all_tool_calls.iter()
+                .filter(|r| r.success)
+                .take(4)
+                .map(|r| format!("Tool '{}' returned: {}", r.tool_name, r.result))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let synthesis_context = format!(
+                "You gathered this information:\n{}\n\nNow give a direct, conversational answer.",
+                gathered
+            );
+            match llm.generate(TOPSI_SYSTEM_PROMPT, message, &synthesis_context).await {
+                Ok(content) => content,
+                Err(_) => "Something went sideways — try asking again with a bit more context.".to_string(),
+            }
+        };
 
         // Save assistant response to session history
         if let Some(sid) = session_id {
@@ -718,6 +811,8 @@ impl TopsiAgent {
             let result = match call.name.as_str() {
                 "list_projects" => self.tool_list_projects(&call.arguments, scope).await,
                 "create_project" => self.tool_create_project(&call.arguments, user_context).await,
+                "update_project" => self.tool_update_project(&call.arguments, user_context).await,
+                "list_organizations" => self.tool_list_organizations().await,
                 "list_nodes" => self.tool_list_nodes(&call.arguments, scope).await,
                 "list_edges" => self.tool_list_edges(&call.arguments, scope).await,
                 "find_path" => self.tool_find_path(&call.arguments, scope).await,
@@ -1206,7 +1301,7 @@ impl TopsiAgent {
                VALUES (?, ?, ?, ?, ?)"#
         )
         .bind(member_id.as_bytes().to_vec())
-        .bind(project.id.to_string()) // project_id is TEXT
+        .bind(project.id.as_bytes().to_vec())
         .bind(user_uuid.as_bytes().to_vec())
         .bind("owner")
         .bind(user_uuid.as_bytes().to_vec()) // granted_by is the user themselves
@@ -1226,6 +1321,106 @@ impl TopsiAgent {
                 project.name,
                 project.git_repo_path.display()
             )
+        }))
+    }
+
+    /// List all organizations
+    async fn tool_list_organizations(&self) -> std::result::Result<serde_json::Value, TopsiError> {
+        let pool = self.db.as_ref().ok_or_else(|| TopsiError::ToolError("DB not available".into()))?;
+        let rows = sqlx::query!(
+            r#"SELECT hex(id) as id, name, slug, description FROM organizations WHERE deleted_at IS NULL ORDER BY name"#
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| TopsiError::ToolError(format!("Failed to list organizations: {}", e)))?;
+
+        let orgs: Vec<serde_json::Value> = rows.iter().map(|r| serde_json::json!({
+            "id": r.id,
+            "name": r.name,
+            "slug": r.slug,
+            "description": r.description
+        })).collect();
+
+        Ok(serde_json::json!({ "organizations": orgs, "count": orgs.len() }))
+    }
+
+    /// Update project metadata (name, organization assignment)
+    async fn tool_update_project(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+    ) -> std::result::Result<serde_json::Value, TopsiError> {
+        let pool = self.db.as_ref().ok_or_else(|| TopsiError::ToolError("DB not available".into()))?;
+
+        let project_id_str = args["project_id"].as_str()
+            .ok_or_else(|| TopsiError::ToolError("project_id required".into()))?;
+        let project_uuid = uuid::Uuid::parse_str(project_id_str)
+            .map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
+
+        // Verify user has access to this project
+        let member_check = sqlx::query!(
+            r#"SELECT role FROM project_members WHERE project_id = ? AND user_id = ?"#,
+            project_uuid,
+            user_context.user_id
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| TopsiError::ToolError(format!("Access check failed: {}", e)))?;
+
+        if member_check.is_none() && !user_context.is_admin {
+            return Err(TopsiError::ToolError("Access denied: not a member of this project".into()));
+        }
+
+        // Build update dynamically based on provided fields
+        let new_name = args["name"].as_str();
+        let new_org_id = args["organization_id"].as_str();
+
+        if new_name.is_none() && new_org_id.is_none() {
+            return Err(TopsiError::ToolError("Provide at least one field to update: name or organization_id".into()));
+        }
+
+        // Parse org_id from hex string (Topsi returns hex from list_organizations)
+        let org_uuid: Option<uuid::Uuid> = if let Some(org_str) = new_org_id {
+            // Accept UUID format (with dashes) or raw hex string (32 chars, no dashes)
+            if let Ok(u) = uuid::Uuid::parse_str(org_str) {
+                Some(u)
+            } else if org_str.len() == 32 {
+                // Raw hex without dashes — insert dashes and parse
+                let with_dashes = format!("{}-{}-{}-{}-{}",
+                    &org_str[0..8], &org_str[8..12], &org_str[12..16],
+                    &org_str[16..20], &org_str[20..32]);
+                Some(uuid::Uuid::parse_str(&with_dashes)
+                    .map_err(|_| TopsiError::ToolError(format!("Invalid organization_id: {}", org_str)))?)
+            } else {
+                return Err(TopsiError::ToolError(format!("organization_id must be a UUID or 32-char hex string, got: {}", org_str)));
+            }
+        } else {
+            None
+        };
+
+        sqlx::query(r#"
+            UPDATE projects
+            SET name = COALESCE(?, name),
+                organization_id = CASE WHEN ? = 1 THEN ? ELSE organization_id END,
+                updated_at = datetime('now', 'subsec')
+            WHERE id = ?
+        "#)
+        .bind(new_name)
+        .bind(org_uuid.is_some() as i32)
+        .bind(org_uuid.map(|u| u.as_bytes().to_vec()))
+        .bind(project_uuid.as_bytes().to_vec())
+        .execute(pool)
+        .await
+        .map_err(|e| TopsiError::ToolError(format!("Failed to update project: {}", e)))?;
+
+        tracing::info!("Updated project {} — name={:?}, org={:?}", project_id_str, new_name, new_org_id);
+
+        Ok(serde_json::json!({
+            "success": true,
+            "project_id": project_id_str,
+            "updated_name": new_name,
+            "updated_organization_id": new_org_id,
+            "message": "Project updated successfully"
         }))
     }
 
@@ -1341,7 +1536,7 @@ impl TopsiAgent {
                                VALUES (?, ?, ?, ?, ?)"#
                         )
                         .bind(member_id.as_bytes().to_vec())
-                        .bind(project.id.to_string()) // project_id is TEXT
+                        .bind(project.id.as_bytes().to_vec())
                         .bind(auto_user_uuid.as_bytes().to_vec())
                         .bind("owner")
                         .bind(auto_user_uuid.as_bytes().to_vec())
@@ -1446,6 +1641,7 @@ impl TopsiAgent {
             custom_properties: None,
             scheduled_start: None,
             scheduled_end: None,
+            screenshot: None,
         };
 
         let task_id = uuid::Uuid::new_v4();

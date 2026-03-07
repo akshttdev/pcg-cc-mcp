@@ -1,0 +1,1 @@
+dev_assets_seed/artifacts/**/*.mp4 filter=lfs diff=lfs merge=lfs -text

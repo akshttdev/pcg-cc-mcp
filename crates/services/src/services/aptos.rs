@@ -422,6 +422,36 @@ impl AptosService {
         Ok(transactions)
     }
 
+    /// Get a single transaction by its hash
+    pub async fn get_transaction_by_hash(&self, tx_hash: &str) -> Result<Option<AptosTransaction>> {
+        let url = format!("{}/v1/transactions/by_hash/{}", self.node_url, tx_hash);
+        let response = self.client.get(&url).send().await?;
+
+        if response.status() == 404 {
+            return Ok(None);
+        }
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Failed to get transaction by hash: {}", error_text));
+        }
+
+        let tx: TransactionResponse = response.json().await?;
+
+        Ok(Some(AptosTransaction {
+            version: tx.version,
+            hash: tx.hash,
+            sender: tx.sender.unwrap_or_default(),
+            sequence_number: tx.sequence_number.unwrap_or_default(),
+            timestamp: tx.timestamp.unwrap_or_default(),
+            tx_type: tx.tx_type,
+            success: tx.success.unwrap_or(false),
+            gas_used: tx.gas_used.unwrap_or_default(),
+            gas_unit_price: tx.gas_unit_price.unwrap_or_default(),
+            payload_function: tx.payload.and_then(|p| p.function),
+        }))
+    }
+
     /// Check if account exists on chain
     pub async fn account_exists(&self, address: &str) -> Result<bool> {
         let address = Self::normalize_address(address);
@@ -577,7 +607,7 @@ impl AptosService {
         // VIBE has 8 decimals (same as APT)
         let vibe_balance = vibe_raw / 100_000_000; // Convert from smallest unit to whole VIBE
         let vibe_balance_human = vibe_raw as f64 / 100_000_000.0;
-        let usd_value = vibe_balance_human * 0.001; // 1 VIBE = $0.001
+        let usd_value = vibe_balance_human * 0.01; // 1 VIBE = $0.01
 
         // Calculate equivalent APT (for reference only)
         let equivalent_apt = vibe_balance_human / APT_TO_VIBE_RATE as f64;
@@ -793,7 +823,7 @@ impl AptosService {
 
     /// Get the VIBE to USD conversion rate
     pub fn vibe_usd_rate() -> f64 {
-        0.001 // 1 VIBE = $0.001
+        0.01 // 1 VIBE = $0.01
     }
 
     /// Get current ledger timestamp

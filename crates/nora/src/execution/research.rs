@@ -34,10 +34,16 @@ pub struct ResearchTools {
 
 impl ResearchTools {
     pub fn new() -> Self {
+        let exa_api_key = std::env::var("EXA_API_KEY").ok();
+        if exa_api_key.is_some() {
+            tracing::info!("[RESEARCH_TOOLS] Exa neural search enabled");
+        } else {
+            tracing::info!("[RESEARCH_TOOLS] Exa API key not found, will fall back to OpenAI web search");
+        }
         Self {
             http_client: Client::new(),
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
-            exa_api_key: std::env::var("EXA_API_KEY").ok(),
+            exa_api_key,
         }
     }
 
@@ -62,7 +68,10 @@ impl ResearchTools {
                 "query": query,
                 "num_results": num_results,
                 "use_autoprompt": true,
-                "type": "neural"
+                "type": "neural",
+                "contents": {
+                    "text": true
+                }
             }))
             .send()
             .await

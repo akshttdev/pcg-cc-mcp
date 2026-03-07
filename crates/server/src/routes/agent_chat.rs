@@ -17,7 +17,8 @@ use db::models::{
     agent_flow_event::AgentFlowEvent,
     agent_wallet::{AgentWallet, AgentWalletTransaction, CreateWalletTransaction},
     project::Project,
-    vibe_transaction::VibeSourceType,
+    vibe_deposit::{VibeDeposit, VibeWithdrawal},
+    vibe_transaction::{VibeSourceType, VibeTransaction},
 };
 use deployment::Deployment;
 use services::services::vibe_pricing::VibePricingService;
@@ -231,34 +232,18 @@ pub async fn agent_chat(
         pool,
     ).await;
 
-    // VIBE Balance Check (if project is specified)
+    // VIBE Balance Check — deposit ledger (if project is specified)
     let vibe_pricing = VibePricingService::new(pool.clone());
     if let Some(project_id) = request.project_id {
-        if let Ok(Some(project)) = Project::find_by_id(pool, project_id).await {
-            // Check if project has budget and hasn't exceeded it
-            if let Some(budget_limit) = project.vibe_budget_limit {
-                let spent = project.vibe_spent_amount;
-                // Estimate cost (rough: assume 2000 input tokens, 500 output for a typical chat)
-                let estimate = vibe_pricing.estimate_cost(
-                    agent.default_model.as_deref().unwrap_or("gpt-4o"),
-                    2000,  // Estimated input tokens
-                    500,   // Estimated output tokens
-                ).await.ok();
-
-                if let Some(est) = estimate {
-                    let remaining = budget_limit - spent;
-                    if remaining < est.cost_vibe {
-                        tracing::warn!(
-                            "[VIBE] Insufficient budget for project {}: remaining={}, estimated={}",
-                            project_id, remaining, est.cost_vibe
-                        );
-                        return Err(ApiError::PaymentRequired(format!(
-                            "Insufficient VIBE balance. Remaining: {} VIBE, Estimated cost: {} VIBE",
-                            remaining, est.cost_vibe
-                        )));
-                    }
-                }
-            }
+        let total_deposited = VibeDeposit::total_deposited(pool, project_id).await.unwrap_or(0);
+        let total_withdrawn = VibeWithdrawal::total_withdrawn(pool, project_id).await.unwrap_or(0);
+        let total_spent = VibeTransaction::sum_by_source(pool, VibeSourceType::Project, project_id, None)
+            .await.map(|s| s.total_vibe).unwrap_or(0);
+        let balance = total_deposited - total_withdrawn - total_spent;
+        if balance <= 0 {
+            return Err(ApiError::PaymentRequired(
+                "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
+            ));
         }
     }
 

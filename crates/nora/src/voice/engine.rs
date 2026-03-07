@@ -95,6 +95,44 @@ impl VoiceEngine {
         Ok(response.audio_data)
     }
 
+    /// Synthesize speech and return both the base64 audio data and the actual audio format.
+    /// Use this when the format needs to be preserved (e.g. for Twilio audio serving).
+    pub async fn synthesize_speech_with_format(
+        &self,
+        text: &str,
+    ) -> VoiceResult<(String, AudioFormat)> {
+        if !*self.is_initialized.read().await {
+            return Err(VoiceError::NotInitialized);
+        }
+
+        let voice_profile = Self::voice_id_to_profile(&self.config.tts.voice_id);
+
+        let request = SpeechRequest {
+            text: text.to_string(),
+            voice_profile,
+            speed: self.config.tts.speed,
+            volume: self.config.tts.volume,
+            format: AudioFormat::Wav,
+            british_accent: true,
+            executive_tone: true,
+        };
+
+        let start_time = std::time::Instant::now();
+        let processed_text = self.apply_british_executive_style(&request.text);
+        let mut modified_request = request;
+        modified_request.text = processed_text;
+
+        let response = self.tts.synthesize_speech(modified_request).await?;
+
+        let processing_time = start_time.elapsed().as_millis();
+        info!(
+            "Speech synthesis (with format) completed in {}ms, format: {:?}",
+            processing_time, response.format
+        );
+
+        Ok((response.audio_data, response.format))
+    }
+
     /// Transcribe speech to text with British dialect support
     pub async fn transcribe_speech(&self, audio_data: &str) -> VoiceResult<String> {
         if !*self.is_initialized.read().await {

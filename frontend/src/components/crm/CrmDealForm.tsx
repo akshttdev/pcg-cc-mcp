@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
@@ -47,10 +47,10 @@ export function CrmDealForm({
   const isEditing = !!deal;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const getInitialFormData = () => ({
     name: deal?.name ?? '',
     description: deal?.description ?? '',
-    amount: deal?.amount?.toString() ?? '',
+    amount: deal?.amount != null && Number.isFinite(deal.amount) ? deal.amount.toString() : '',
     currency: deal?.currency ?? 'USD',
     stageId: deal?.crm_stage_id ?? initialStageId ?? stages[0]?.id ?? '',
     contactId: deal?.crm_contact_id ?? '',
@@ -59,12 +59,28 @@ export function CrmDealForm({
       : '',
   });
 
+  const [formData, setFormData] = useState(getInitialFormData);
+
+  // Reset form when deal/dialog changes
+  useEffect(() => {
+    if (open) {
+      setFormData(getInitialFormData());
+    }
+  }, [open, deal?.id]);
+
   // Fetch contacts for the dropdown
   const { data: contacts = [] } = useQuery({
     queryKey: ['crm', 'contacts', projectId],
     queryFn: () => crmApi.listContacts(projectId, { limit: 100 }),
     enabled: open,
   });
+
+  const parseAmount = (value: string): number | undefined => {
+    if (!value) return undefined;
+    const num = parseFloat(value);
+    if (!Number.isFinite(num)) return undefined;
+    return num;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,7 +91,7 @@ export function CrmDealForm({
         const updateData: UpdateCrmDeal = {
           name: formData.name || undefined,
           description: formData.description || undefined,
-          amount: formData.amount ? parseFloat(formData.amount) : undefined,
+          amount: parseAmount(formData.amount),
           currency: formData.currency || undefined,
           crm_stage_id: formData.stageId || undefined,
           crm_contact_id: formData.contactId || undefined,
@@ -90,7 +106,7 @@ export function CrmDealForm({
           crm_contact_id: formData.contactId || undefined,
           name: formData.name,
           description: formData.description || undefined,
-          amount: formData.amount ? parseFloat(formData.amount) : undefined,
+          amount: parseAmount(formData.amount),
           currency: formData.currency || undefined,
           expected_close_date: formData.expectedCloseDate || undefined,
         };

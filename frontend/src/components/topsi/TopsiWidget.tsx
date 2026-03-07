@@ -67,6 +67,10 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const animationRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Silence detection refs (call mode only)
+  const isInCallRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasSpokenRef = useRef(false);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -241,6 +245,33 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     }
   };
 
+  // Start (or restart) the MediaRecorder on the existing call stream.
+  // Does NOT call getUserMedia — the stream stays open for the whole call.
+  const startCallRecorder = () => {
+    if (!streamRef.current || !isInCallRef.current) return;
+    audioChunksRef.current = [];
+    mediaRecorderRef.current = new MediaRecorder(streamRef.current);
+
+    mediaRecorderRef.current.ondataavailable = (event) => {
+      audioChunksRef.current.push(event.data);
+    };
+
+    mediaRecorderRef.current.onstop = async () => {
+      const blob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+      if (blob.size > 2000 && isInCallRef.current) {
+        // Meaningful audio — process it
+        await processVoiceInput(blob);
+      } else if (isInCallRef.current) {
+        // Too short or just noise — restart immediately
+        hasSpokenRef.current = false;
+        startCallRecorder();
+      }
+    };
+
+    mediaRecorderRef.current.start();
+    setIsRecording(true);
+  };
+
   const monitorAudioLevel = () => {
     if (!analyserRef.current) return;
 
@@ -248,11 +279,36 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     const dataArray = new Uint8Array(bufferLength);
 
     const updateLevel = () => {
-      if (!analyserRef.current || !isRecording) return;
+      // Stop loop only when analyser is gone (call/recording fully ended)
+      if (!analyserRef.current) return;
 
       analyserRef.current.getByteFrequencyData(dataArray);
       const average = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
-      setAudioLevel(average / 255);
+      // Only show audio level when actively recording
+      if (mediaRecorderRef.current?.state === 'recording') {
+        setAudioLevel(average / 255);
+      }
+
+      // Silence detection — only while the recorder is running in call mode
+      if (isInCallRef.current && mediaRecorderRef.current?.state === 'recording') {
+        if (average > 15) {
+          hasSpokenRef.current = true;
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = null;
+          }
+        } else if (hasSpokenRef.current && !silenceTimerRef.current) {
+          silenceTimerRef.current = setTimeout(() => {
+            silenceTimerRef.current = null;
+            hasSpokenRef.current = false;
+            if (mediaRecorderRef.current?.state === 'recording') {
+              mediaRecorderRef.current.stop(); // → onstop → processVoiceInput
+              setIsRecording(false);
+              setAudioLevel(0);
+            }
+          }, 1500);
+        }
+      }
 
       animationRef.current = requestAnimationFrame(updateLevel);
     };
@@ -297,8 +353,9 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         const hasAudio = responseData.audioResponse && responseData.audioResponse.length > 100;
         addMessage('assistant', responseText, hasAudio);
 
-        // Play audio response
-        if (hasAudio && isSpeakerOn) {
+        // Play audio response (push-to-talk / non-call mode only;
+        // call mode handles playback + recorder restart in the block below)
+        if (hasAudio && isSpeakerOn && !isInCallRef.current) {
           await playAudio(responseData.audioResponse);
         }
 
@@ -321,9 +378,20 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
           detail: { responseText, timestamp: new Date() }
         }));
 
-        // If in call mode, continue listening after response
-        if (isInCall && !isMuted) {
-          setTimeout(() => startRecording(), 500);
+        // In call mode: restart listening.
+        // If Topsi is speaking, restart AFTER the audio ends to avoid echo.
+        // If no audio, restart immediately.
+        if (isInCallRef.current && !isMuted) {
+          hasSpokenRef.current = false;
+          if (hasAudio && isSpeakerOn) {
+            await playAudio(responseData.audioResponse, () => {
+              if (isInCallRef.current && !isMuted) startCallRecorder();
+            });
+          } else {
+            setTimeout(() => {
+              if (isInCallRef.current && !isMuted) startCallRecorder();
+            }, 300);
+          }
         }
       }
     } catch (error) {
@@ -334,7 +402,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     }
   };
 
-  const playAudio = async (base64Audio: string) => {
+  const playAudio = async (base64Audio: string, onEnded?: () => void) => {
     try {
       const audioData = atob(base64Audio);
       const audioBuffer = new Uint8Array(audioData.length);
@@ -354,12 +422,13 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
       await audio.play();
 
-      // Cleanup after playing
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl);
+        onEnded?.();
       };
     } catch (error) {
       console.error('Failed to play audio:', error);
+      onEnded?.(); // Still restart listening even if audio fails to play
     }
   };
 
@@ -375,30 +444,88 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     });
   };
 
-  // Call mode
+  // Call mode — open the stream once for the whole call
   const startCall = async () => {
-    setIsInCall(true);
-    setWidgetState('call');
-    addMessage('assistant', "I'm listening. Speak when you're ready.");
-    await startRecording();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      // Set up audio analysis for the entire call duration (not torn down between utterances)
+      audioContextRef.current = new AudioContext();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 256;
+      source.connect(analyserRef.current);
+
+      isInCallRef.current = true;
+      hasSpokenRef.current = false;
+      setIsInCall(true);
+      setWidgetState('call');
+      addMessage('assistant', "I'm listening. Speak when you're ready.");
+      monitorAudioLevel(); // Loop runs for the entire call
+      startCallRecorder(); // Start first recording session
+    } catch (error) {
+      console.error('Failed to start call:', error);
+      toast.error('Could not access microphone');
+    }
   };
 
   const endCall = () => {
-    setIsInCall(false);
-    stopRecording();
+    isInCallRef.current = false;
+    hasSpokenRef.current = false;
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    // Stop recorder (discard pending audio — don't process an incomplete utterance)
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.onstop = null; // discard
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.stop();
+    }
+    // Full call stream teardown
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    analyserRef.current = null; // Stops the rAF loop on next tick
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
     }
+    setIsInCall(false);
+    setIsRecording(false);
+    setAudioLevel(0);
     addMessage('assistant', "Call ended. Feel free to start another call or type a message.");
   };
 
   const toggleMute = () => {
     if (isMuted) {
       setIsMuted(false);
-      if (isInCall) startRecording();
+      if (isInCallRef.current) {
+        hasSpokenRef.current = false;
+        startCallRecorder(); // Restart on existing stream — no getUserMedia gap
+      }
     } else {
       setIsMuted(true);
-      stopRecording();
+      if (isInCallRef.current) {
+        // Call mode: stop recorder only, keep stream alive
+        if (mediaRecorderRef.current?.state === 'recording') {
+          const rec = mediaRecorderRef.current;
+          rec.onstop = null; // discard the audio collected while muting
+          rec.ondataavailable = null;
+          rec.stop();
+          setIsRecording(false);
+        }
+      } else {
+        stopRecording(); // Push-to-talk: full teardown
+      }
     }
   };
 

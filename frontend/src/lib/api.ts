@@ -429,6 +429,11 @@ export const projectsApi = {
     return handleApiResponse<Project>(response);
   },
 
+  getByClientId: async (clientId: string): Promise<Project[]> => {
+    const response = await makeRequest(`/api/projects/by-client/${encodeURIComponent(clientId)}`);
+    return handleApiResponse<Project[]>(response);
+  },
+
   create: async (data: CreateProject): Promise<Project> => {
     const response = await makeRequest('/api/projects', {
       method: 'POST',
@@ -2491,6 +2496,38 @@ export const taskArtifactsApi = {
 };
 
 // ============================================
+// Artifact Content & Download API
+// ============================================
+
+export const artifactContentApi = {
+  getContentUrl: (artifactId: string): string =>
+    resolveApiUrl(`/api/artifacts/${artifactId}/content`),
+
+  getDownloadUrl: (artifactId: string): string =>
+    resolveApiUrl(`/api/artifacts/${artifactId}/download`),
+
+  getFileUrl: (artifactId: string, filename: string): string =>
+    resolveApiUrl(`/api/artifacts/${artifactId}/files/${encodeURIComponent(filename)}`),
+
+  getContent: async (artifactId: string): Promise<unknown> => {
+    const response = await makeRequest(`/api/artifacts/${artifactId}/content`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch artifact content: ${response.statusText}`);
+    }
+    return response.json();
+  },
+};
+
+// ============================================
+// Editron Export API
+// ============================================
+
+export const editronApi = {
+  getExportXmlUrl: (artifactId: string): string =>
+    resolveApiUrl(`/api/editron/export/${artifactId}?format=xml`),
+};
+
+// ============================================
 // Social Command APIs
 // ============================================
 
@@ -2737,14 +2774,18 @@ export const emailApi = {
   },
 
   initiateOAuth: async (
-    projectId: string,
+    projectId: string | null,
     provider: string,
-    redirectUri: string
+    redirectUri: string,
+    ownerType?: string,
+    ownerId?: string
   ): Promise<OAuthUrlResponse> => {
     const response = await makeRequest('/api/email/oauth/initiate', {
       method: 'POST',
       body: JSON.stringify({
-        project_id: projectId,
+        ...(projectId ? { project_id: projectId } : {}),
+        ...(ownerType ? { owner_type: ownerType } : {}),
+        ...(ownerId ? { owner_id: ownerId } : {}),
         provider,
         redirect_uri: redirectUri,
       }),
@@ -3258,6 +3299,76 @@ export const crmActivitiesApi = {
   },
 };
 
+// ── Workflow Templates ──
+
+export interface WorkflowTaskTemplate {
+  title: string;
+  description: string;
+  position: number;
+  task_type: 'agent' | 'human_review' | 'hybrid';
+  agent_role?: string;
+  requires_approval: boolean;
+  priority: string;
+  depends_on: number[];
+  knowledge_inputs: string[];
+  knowledge_outputs: string[];
+  tags: string[];
+}
+
+export interface WorkflowPhaseTemplate {
+  name: string;
+  description: string;
+  position: number;
+  is_recurring: boolean;
+  tasks: WorkflowTaskTemplate[];
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  client_type: 'foundation_build' | 'managed_growth' | 'custom';
+  is_recurring: boolean;
+  phases: WorkflowPhaseTemplate[];
+}
+
+export interface DealConversionResult {
+  project_id: string;
+  project_name: string;
+  boards_created: number;
+  tasks_created: number;
+  dependencies_created: number;
+  template_used: string;
+}
+
+export interface ConvertDealRequest {
+  template_id: string;
+  project_name?: string;
+  organization_id?: string;
+  client_id?: string;
+  git_repo_path?: string;
+}
+
+export const workflowTemplatesApi = {
+  list: async (): Promise<WorkflowTemplate[]> => {
+    const response = await makeRequest('/api/workflow-templates');
+    return handleApiResponse<WorkflowTemplate[]>(response);
+  },
+
+  get: async (id: string): Promise<WorkflowTemplate> => {
+    const response = await makeRequest(`/api/workflow-templates/${encodeURIComponent(id)}`);
+    return handleApiResponse<WorkflowTemplate>(response);
+  },
+
+  convertDeal: async (dealId: string, data: ConvertDealRequest): Promise<DealConversionResult> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/convert`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DealConversionResult>(response);
+  },
+};
+
 // Aptos Blockchain Types
 export interface AptosBalance {
   address: string;
@@ -3387,6 +3498,40 @@ export const aptosApi = {
       body: JSON.stringify(request),
     });
     return handleApiResponse<VibeTransferResponse>(response);
+  },
+};
+
+// ============================================
+// VIBE Token Economy API
+// ============================================
+
+export interface VibeDepositRecord {
+  id: string;
+  project_id: string;
+  tx_hash: string;
+  sender_address: string;
+  amount_vibe: number;
+  status: string;
+  payment_method: string;
+  credited_at: string | null;
+}
+
+export const vibeApi = {
+  getConfig: async (): Promise<{ revenue_address: string; network: string; vibe_token_address: string }> => {
+    const res = await fetch('/api/vibe/config');
+    const data = await res.json();
+    return data.data as { revenue_address: string; network: string; vibe_token_address: string };
+  },
+
+  verifyDeposit: async (projectId: string, txHash: string, amountVibe: number): Promise<VibeDepositRecord> => {
+    const res = await fetch('/api/vibe/deposit/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, tx_hash: txHash, amount_vibe: amountVibe }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error_data || 'Deposit verification failed');
+    return data.data as VibeDepositRecord;
   },
 };
 
@@ -3829,6 +3974,19 @@ export const organizationsApi = {
     });
     return handleApiResponse<void>(response);
   },
+
+  // Person-org junction (for context badges)
+  listPersonContacts: async (orgId: string): Promise<PersonOrgContact[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/person-contacts`);
+    return handleApiResponse<PersonOrgContact[]>(response);
+  },
+  addPersonContact: async (orgId: string, data: { person_id: string; context?: string }): Promise<PersonOrgContact> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/person-contacts`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonOrgContact>(response);
+  },
 };
 
 // ============================================================================
@@ -4240,5 +4398,822 @@ export const emailMessagesApi = {
   moveToTrash: async (id: string): Promise<void> => {
     const response = await makeRequest(`/api/email/messages/${id}/trash`, { method: 'POST' });
     return handleApiResponse<void>(response);
+  },
+};
+
+// ============================================================
+// Universal Persons API
+// ============================================================
+
+export interface PersonRecord {
+  id: string;
+  full_name: string;
+  email?: string;
+  phone?: string;
+  avatar_url?: string;
+  person_type: string;
+  financial_role: string;
+  client_profile?: string;
+  business_stage?: string;
+  lifecycle_stage: string;
+  lead_score: number;
+  company_name?: string;
+  job_title?: string;
+  website?: string;
+  user_id?: string;
+  crm_contact_id?: string;
+  organization_id?: string;
+  intelligence_summary?: string;
+  intelligence_raw?: string;
+  intelligence_last_run_at?: string;
+  intelligence_confidence: number;
+  intelligence_status?: 'idle' | 'queued' | 'running' | 'done' | 'failed';
+  intelligence_agent?: string;
+  notes?: string;
+  tags: string;
+  custom_fields: string;
+  /** How this person first engaged: 'email'|'instagram'|'whatsapp'|'linkedin'|'twitter'|'sms'|'phone'|'in_person' */
+  onboarding_channel?: string;
+  /** Preferred outbound contact channel */
+  preferred_contact?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PersonSocialProfile {
+  id: string;
+  person_id: string;
+  platform: string;
+  handle?: string;
+  profile_url?: string;
+  follower_count?: number;
+  following_count?: number;
+  bio?: string;
+  verified: number;
+  last_synced_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PersonCompanyRole {
+  id: string;
+  person_id: string;
+  company_id: string;
+  role: string;
+  title?: string;
+  is_primary: number;
+  start_date?: string;
+  end_date?: string;
+  notes?: string;
+  created_at: string;
+  company_name?: string;
+  company_slug?: string;
+}
+
+export interface PersonOrgContact {
+  id: string;
+  person_id: string;
+  organization_id: string;
+  context: string;
+  notes?: string;
+  added_at: string;
+  org_name?: string;
+}
+
+export interface CompanyContactMethod {
+  id: string;
+  company_id: string;
+  method_type: string;
+  label?: string;
+  value: string;
+  is_primary: number;
+  created_at: string;
+}
+
+export interface PersonWithSocials extends PersonRecord {
+  social_profiles: PersonSocialProfile[];
+  company_roles: PersonCompanyRole[];
+  org_contacts: PersonOrgContact[];
+}
+
+export interface InvoiceRecord {
+  id: string;
+  invoice_number: string;
+  person_id?: string;
+  organization_id?: string;
+  project_id?: string;
+  invoice_type: string;
+  status: string;
+  amount_usd: number;
+  amount_vibe: number;
+  currency: string;
+  title?: string;
+  description?: string;
+  line_items: string;
+  issue_date?: string;
+  due_date?: string;
+  paid_at?: string;
+  payment_method?: string;
+  payment_reference?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePersonInput {
+  full_name: string;
+  email?: string;
+  phone?: string;
+  person_type?: string;
+  financial_role?: string;
+  client_profile?: string;
+  business_stage?: string;
+  lifecycle_stage?: string;
+  company_name?: string;
+  job_title?: string;
+  website?: string;
+  notes?: string;
+  tags?: string[];
+}
+
+export interface UpdatePersonInput {
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  person_type?: string;
+  financial_role?: string;
+  client_profile?: string;
+  business_stage?: string;
+  lifecycle_stage?: string;
+  lead_score?: number;
+  company_name?: string;
+  job_title?: string;
+  website?: string;
+  notes?: string;
+  tags?: string[];
+  intelligence_summary?: string;
+  onboarding_channel?: string;
+  preferred_contact?: string;
+}
+
+export const personsApi = {
+  list: async (params?: {
+    person_type?: string;
+    financial_role?: string;
+    lifecycle_stage?: string;
+    organization_id?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<PersonRecord[]> => {
+    const qs = new URLSearchParams();
+    if (params?.person_type) qs.set('person_type', params.person_type);
+    if (params?.financial_role) qs.set('financial_role', params.financial_role);
+    if (params?.lifecycle_stage) qs.set('lifecycle_stage', params.lifecycle_stage);
+    if (params?.organization_id) qs.set('organization_id', params.organization_id);
+    if (params?.q) qs.set('q', params.q);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.offset) qs.set('offset', String(params.offset));
+    const response = await makeRequest(`/api/persons?${qs}`);
+    return handleApiResponse<PersonRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<PersonWithSocials> => {
+    const response = await makeRequest(`/api/persons/${id}`);
+    return handleApiResponse<PersonWithSocials>(response);
+  },
+
+  create: async (data: CreatePersonInput): Promise<PersonRecord> => {
+    const response = await makeRequest('/api/persons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonRecord>(response);
+  },
+
+  update: async (id: string, data: UpdatePersonInput): Promise<PersonRecord> => {
+    const response = await makeRequest(`/api/persons/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  listSocialProfiles: async (id: string): Promise<PersonSocialProfile[]> => {
+    const response = await makeRequest(`/api/persons/${id}/social-profiles`);
+    return handleApiResponse<PersonSocialProfile[]>(response);
+  },
+
+  upsertSocialProfile: async (
+    id: string,
+    data: {
+      platform: string;
+      handle?: string;
+      profile_url?: string;
+      follower_count?: number;
+      bio?: string;
+      verified?: boolean;
+    }
+  ): Promise<PersonSocialProfile> => {
+    const response = await makeRequest(`/api/persons/${id}/social-profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonSocialProfile>(response);
+  },
+
+  deleteSocialProfile: async (id: string, platform: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}/social-profiles/${platform}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  listInvoices: async (id: string): Promise<InvoiceRecord[]> => {
+    const response = await makeRequest(`/api/persons/${id}/invoices`);
+    return handleApiResponse<InvoiceRecord[]>(response);
+  },
+
+  // Company affiliations
+  listCompanies: async (id: string): Promise<PersonCompanyRole[]> => {
+    const response = await makeRequest(`/api/persons/${id}/companies`);
+    return handleApiResponse<PersonCompanyRole[]>(response);
+  },
+  addCompany: async (id: string, data: { company_id: string; role?: string; title?: string; is_primary?: boolean }): Promise<PersonCompanyRole> => {
+    const response = await makeRequest(`/api/persons/${id}/companies`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonCompanyRole>(response);
+  },
+  updateCompanyRole: async (id: string, company_id: string, data: { role?: string; title?: string; is_primary?: boolean }): Promise<PersonCompanyRole> => {
+    const response = await makeRequest(`/api/persons/${id}/companies/${company_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonCompanyRole>(response);
+  },
+  removeCompany: async (id: string, company_id: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}/companies/${company_id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  // Org affiliations
+  listOrgs: async (id: string): Promise<PersonOrgContact[]> => {
+    const response = await makeRequest(`/api/persons/${id}/organizations`);
+    return handleApiResponse<PersonOrgContact[]>(response);
+  },
+  addOrg: async (id: string, data: { organization_id: string; context?: string }): Promise<PersonOrgContact> => {
+    const response = await makeRequest(`/api/persons/${id}/organizations`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonOrgContact>(response);
+  },
+  removeOrg: async (id: string, org_id: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}/organizations/${org_id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ── Proposals ─────────────────────────────────────────────────────────────────
+
+export type ProposalStatus =
+  | 'drafted'
+  | 'pending_approval'
+  | 'approved'
+  | 'meeting_scheduled'
+  | 'sent'
+  | 'seen'
+  | 'verbal'
+  | 'contract_signed'
+  | 'declined'
+  | 'deferred';
+
+export type DealType = 'one-off' | 'retainer' | 'hybrid';
+
+export interface ProposalRecord {
+  id: string;
+  lead_id?: string;
+  organization_id?: string;
+  owner_id?: string;
+  project_id?: string;
+  company_id?: string;
+  contact_ids: string;
+  status: ProposalStatus;
+  title: string;
+  description: string;
+  quote_amount_vibe: number;
+  deal_type: DealType;
+  sent_at?: string;
+  seen_at?: string;
+  verbal_at?: string;
+  signed_at?: string;
+  declined_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateProposalInput {
+  title: string;
+  lead_id?: string;
+  organization_id?: string;
+  owner_id?: string;
+  project_id?: string;
+  company_id?: string;
+  description?: string;
+  quote_amount_vibe?: number;
+  deal_type?: DealType;
+}
+
+export interface UpdateProposalInput {
+  title?: string;
+  description?: string;
+  quote_amount_vibe?: number;
+  deal_type?: DealType;
+  lead_id?: string;
+  project_id?: string;
+  owner_id?: string;
+}
+
+export const proposalsApi = {
+  list: async (params?: {
+    status?: string;
+    lead_id?: string;
+    project_id?: string;
+    owner_id?: string;
+    limit?: number;
+  }): Promise<ProposalRecord[]> => {
+    const qs = params ? '?' + new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v != null)
+        .map(([k, v]) => [k, String(v)])
+    ) : '';
+    const response = await makeRequest(`/api/proposals${qs}`);
+    return handleApiResponse<ProposalRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<ProposalRecord> => {
+    const response = await makeRequest(`/api/proposals/${id}`);
+    return handleApiResponse<ProposalRecord>(response);
+  },
+
+  create: async (data: CreateProposalInput): Promise<ProposalRecord> => {
+    const response = await makeRequest('/api/proposals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProposalRecord>(response);
+  },
+
+  update: async (id: string, data: UpdateProposalInput): Promise<ProposalRecord> => {
+    const response = await makeRequest(`/api/proposals/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProposalRecord>(response);
+  },
+
+  moveStatus: async (id: string, status: ProposalStatus): Promise<ProposalRecord> => {
+    const response = await makeRequest(`/api/proposals/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return handleApiResponse<ProposalRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/proposals/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  scheduleMeeting: async (
+    id: string,
+    data: {
+      scheduled_at: string;
+      duration_min?: number;
+      location?: string;
+      agenda?: string;
+      channel?: string;
+      invitees: Array<{ person_id: string; channel?: string; channel_address?: string }>;
+    }
+  ): Promise<{ meeting: ScheduledMeetingRecord; dispatched: InviteDispatchResult[] }> => {
+    const response = await makeRequest(`/api/proposals/${id}/schedule-meeting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
+  },
+
+  listScheduledMeetings: async (id: string): Promise<ScheduledMeetingRecord[]> => {
+    const response = await makeRequest(`/api/proposals/${id}/scheduled-meetings`);
+    return handleApiResponse(response);
+  },
+};
+
+// ── Deliverables ──────────────────────────────────────────────────────────────
+
+export type DeliverableType = 'video' | 'audio' | 'graphic' | 'copy' | 'code' | 'document' | 'other';
+export type DeliverableStatus =
+  | 'working'
+  | 'internal_review'
+  | 'client_review'
+  | 'revision'
+  | 'client_revision'
+  | 'done';
+
+export interface DeliverableRecord {
+  id: string;
+  project_id: string;
+  proposal_id?: string;
+  deliverable_type: DeliverableType;
+  title: string;
+  description: string;
+  status: DeliverableStatus;
+  revision_rounds_allowed: number;
+  revision_rounds_used: number;
+  working_file_url?: string;
+  final_link?: string;
+  due_date?: string;
+  delivered_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateDeliverableInput {
+  project_id: string;
+  proposal_id?: string;
+  deliverable_type?: DeliverableType;
+  title: string;
+  description?: string;
+  revision_rounds_allowed?: number;
+  working_file_url?: string;
+  due_date?: string;
+}
+
+export const deliverablesApi = {
+  listForProject: async (projectId: string): Promise<DeliverableRecord[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/deliverables`);
+    return handleApiResponse<DeliverableRecord[]>(response);
+  },
+
+  create: async (data: CreateDeliverableInput): Promise<DeliverableRecord> => {
+    const response = await makeRequest(`/api/projects/${data.project_id}/deliverables`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DeliverableRecord>(response);
+  },
+
+  update: async (id: string, data: Partial<CreateDeliverableInput> & { final_link?: string }): Promise<DeliverableRecord> => {
+    const response = await makeRequest(`/api/deliverables/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DeliverableRecord>(response);
+  },
+
+  moveStatus: async (id: string, status: DeliverableStatus): Promise<DeliverableRecord> => {
+    const response = await makeRequest(`/api/deliverables/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return handleApiResponse<DeliverableRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/deliverables/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ── Command Center ────────────────────────────────────────────────────────────
+
+export interface CommandCenterSnapshot {
+  overdue_tasks: Array<{
+    id: string; title: string; project_name: string; due_date: string; assignee_name?: string;
+  }>;
+  deliverables_due_this_week: Array<{
+    id: string; title: string; deliverable_type: string; project_name: string;
+    status: string; due_date: string;
+  }>;
+  waiting_on_client_projects: Array<{
+    id: string; name: string; client_name?: string; updated_at: string;
+  }>;
+  follow_up_required: Array<{
+    id: string; full_name: string; email?: string;
+    follow_up_attempts: number; lifecycle_stage: string;
+  }>;
+  proposals_awaiting_approval: Array<{
+    id: string; title: string; lead_name?: string;
+    quote_amount_vibe: number; created_at: string;
+  }>;
+  closed_unpaid_projects: Array<{
+    id: string; name: string; client_name?: string; updated_at: string;
+  }>;
+}
+
+export const commandCenterApi = {
+  get: async (orgId?: string): Promise<CommandCenterSnapshot> => {
+    const qs = orgId ? `?org_id=${orgId}` : '';
+    const response = await makeRequest(`/api/command-center${qs}`);
+    return handleApiResponse<CommandCenterSnapshot>(response);
+  },
+};
+
+// ── Invoices ──────────────────────────────────────────────────────────────────
+
+export interface CreateInvoiceInput {
+  person_id?: string;
+  organization_id?: string;
+  project_id?: string;
+  invoice_type?: 'ar' | 'ap';
+  title?: string;
+  description?: string;
+  amount_usd?: number;
+  amount_vibe?: number;
+  currency?: string;
+  issue_date?: string;
+  due_date?: string;
+  notes?: string;
+}
+
+export const invoicesApi = {
+  list: async (params?: { invoice_type?: string; status?: string; person_id?: string; project_id?: string; limit?: number }): Promise<InvoiceRecord[]> => {
+    const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))).toString() : '';
+    const response = await makeRequest(`/api/invoices${qs}`);
+    return handleApiResponse<InvoiceRecord[]>(response);
+  },
+
+  create: async (data: CreateInvoiceInput): Promise<InvoiceRecord> => {
+    const response = await makeRequest('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<InvoiceRecord>(response);
+  },
+
+  get: async (id: string): Promise<InvoiceRecord> => {
+    const response = await makeRequest(`/api/invoices/${id}`);
+    return handleApiResponse<InvoiceRecord>(response);
+  },
+
+  update: async (id: string, data: Partial<CreateInvoiceInput>): Promise<InvoiceRecord> => {
+    const response = await makeRequest(`/api/invoices/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<InvoiceRecord>(response);
+  },
+
+  moveStatus: async (id: string, status: string): Promise<InvoiceRecord> => {
+    const response = await makeRequest(`/api/invoices/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return handleApiResponse<InvoiceRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/invoices/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ── Intelligence ──────────────────────────────────────────────────────────────
+
+export interface IntelligenceStatus {
+  person_id: string;
+  status: 'idle' | 'queued' | 'running' | 'done' | 'failed';
+  summary?: string;
+  confidence: number;
+  agent?: string;
+  last_run_at?: string;
+}
+
+// ============================================================
+// Companies API (knowledge-graph company entities)
+// ============================================================
+
+export interface CompanyRecord {
+  id: string;
+  name: string;
+  slug?: string | null;
+  website?: string | null;
+  industry?: string | null;
+  description?: string | null;
+  logo_url?: string | null;
+  cover_image_url?: string | null;
+  headquarters?: string | null;
+  address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  whatsapp?: string | null;
+  instagram_handle?: string | null;
+  linkedin_url?: string | null;
+  twitter_handle?: string | null;
+  facebook_url?: string | null;
+  founded_year?: number | null;
+  employee_count?: string | null;
+  tags?: string | null;
+  business_hours?: string | null;
+  notes?: string | null;
+  gmb_rating?: number | null;
+  gmb_review_count?: number | null;
+  gmb_place_id?: string | null;
+  intelligence_summary?: string | null;
+  intelligence_raw?: string | null;
+  intelligence_status: string;
+  intelligence_last_run_at?: string | null;
+  intelligence_confidence?: number | null;
+  intelligence_agent?: string | null;
+  organization_id?: string | null;
+  created_by_org_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const companiesApi = {
+  list: async (params?: { limit?: number; has_platform_org?: boolean }): Promise<CompanyRecord[]> => {
+    const qs = new URLSearchParams();
+    if (params?.limit != null) qs.set('limit', String(params.limit));
+    if (params?.has_platform_org != null) qs.set('has_platform_org', String(params.has_platform_org));
+    const response = await makeRequest(`/api/companies?${qs.toString()}`);
+    return handleApiResponse<CompanyRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<CompanyRecord> => {
+    const response = await makeRequest(`/api/companies/${id}`);
+    return handleApiResponse<CompanyRecord>(response);
+  },
+
+  create: async (data: { name: string; website?: string; industry?: string; description?: string }): Promise<CompanyRecord> => {
+    const response = await makeRequest('/api/companies', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CompanyRecord>(response);
+  },
+
+  update: async (id: string, data: Partial<CompanyRecord>): Promise<CompanyRecord> => {
+    const response = await makeRequest(`/api/companies/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CompanyRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/companies/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  listProposals: async (id: string): Promise<ProposalRecord[]> => {
+    const response = await makeRequest(`/api/companies/${id}/proposals`);
+    return handleApiResponse<ProposalRecord[]>(response);
+  },
+
+  listPersons: async (id: string): Promise<PersonRecord[]> => {
+    const response = await makeRequest(`/api/companies/${id}/persons`);
+    return handleApiResponse<PersonRecord[]>(response);
+  },
+
+  getIntelligenceStatus: async (id: string): Promise<{ status: string; summary?: string; confidence: number; agent?: string; last_run_at?: string }> => {
+    const company = await companiesApi.get(id);
+    return {
+      status: company.intelligence_status,
+      summary: company.intelligence_summary ?? undefined,
+      confidence: company.intelligence_confidence ?? 0,
+      agent: company.intelligence_agent ?? undefined,
+      last_run_at: company.intelligence_last_run_at ?? undefined,
+    };
+  },
+
+  research: async (id: string): Promise<{ status: string; message: string }> => {
+    const response = await makeRequest(`/api/companies/${id}/research`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    return handleApiResponse<{ status: string; message: string }>(response);
+  },
+
+  exportAnalysis: async (id: string, companyName?: string): Promise<void> => {
+    const response = await makeRequest(`/api/companies/${id}/export-analysis`);
+    if (!response.ok) throw new Error('Export failed');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = companyName ? `PCG_Analysis_${companyName.replace(/\s+/g, '_')}.md` : 'PCG_Analysis.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  listContactMethods: async (id: string): Promise<CompanyContactMethod[]> => {
+    const response = await makeRequest(`/api/companies/${id}/contact-methods`);
+    return handleApiResponse<CompanyContactMethod[]>(response);
+  },
+  addContactMethod: async (id: string, data: { method_type: string; label?: string; value: string; is_primary?: boolean }): Promise<CompanyContactMethod> => {
+    const response = await makeRequest(`/api/companies/${id}/contact-methods`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CompanyContactMethod>(response);
+  },
+  removeContactMethod: async (id: string, method_id: string): Promise<void> => {
+    const response = await makeRequest(`/api/companies/${id}/contact-methods/${method_id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ── Scheduled Meeting types ───────────────────────────────────────────────────
+
+export interface ScheduledMeetingInviteeRecord {
+  id: string;
+  scheduled_meeting_id: string;
+  person_id: string;
+  channel: string;
+  channel_address: string;
+  status: string;
+  sent_at?: string;
+  created_at: string;
+}
+
+export interface ScheduledMeetingRecord {
+  id: string;
+  proposal_id: string;
+  scheduled_at: string;
+  duration_min: number;
+  location?: string;
+  agenda?: string;
+  channel: string;
+  invite_status: string;
+  invite_sent_at?: string;
+  notes?: string;
+  invitees: ScheduledMeetingInviteeRecord[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InviteDispatchResult {
+  person_id: string;
+  channel: string;
+  status: string;
+  message: string;
+}
+
+export const meetingsApi = {
+  publish: async (
+    sessionId: string,
+    data: {
+      project_id: string;
+      company_id?: string;
+      proposal_id?: string;
+      attendee_person_ids?: string[];
+      source_title?: string;
+    }
+  ): Promise<{ session_id: string; knowledge_source_id: string; message: string }> => {
+    const response = await makeRequest(`/api/topsi/meeting/${sessionId}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
+  },
+};
+
+export const intelligenceApi = {
+  triggerResearch: async (personId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ person_id: string; status: string; message: string }> => {
+    const response = await makeRequest(`/api/persons/${personId}/research`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts ?? {}),
+    });
+    return handleApiResponse(response);
+  },
+
+  getStatus: async (personId: string): Promise<IntelligenceStatus> => {
+    const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
+    return handleApiResponse<IntelligenceStatus>(response);
   },
 };

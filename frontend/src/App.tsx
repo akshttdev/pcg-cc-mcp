@@ -32,9 +32,11 @@ const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ defa
 const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
 const CrmAcquisitionPage    = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmAcquisitionPage })));
 const CrmLifecyclePage      = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmLifecyclePage })));
+const OrganizationProfilePage  = lazy(() => import('@/pages/organization-profile').then(m => ({ default: m.OrganizationProfilePage })));
+const ClientOverview        = lazy(() => import('@/pages/client-overview').then(m => ({ default: m.ClientOverview })));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
 const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-environment').then(m => ({ default: m.EmbedVirtualEnvironmentPage })));
-const MeshPage              = lazy(() => import('@/pages/mesh'));
+// MeshPage merged into Settings > Network & Mesh
 const VibePage              = lazy(() => import('@/pages/vibe'));
 const PulsePage             = lazy(() => import('@/pages/pulse'));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
@@ -43,8 +45,14 @@ const CrmDeliveryPage       = lazy(() => import('@/pages/crm-delivery').then(m =
 const CrmConferencesPage    = lazy(() => import('@/pages/crm-conferences').then(m => ({ default: m.CrmConferencesPage })));
 const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').then(m => ({ default: m.CrmContactDetailPage })));
 const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
-const OrganizationOverview  = lazy(() => import('@/pages/organization-overview').then(m => ({ default: m.OrganizationOverview })));
-const ClientOverview        = lazy(() => import('@/pages/client-overview').then(m => ({ default: m.ClientOverview })));
+const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
+const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
+const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
+const CompaniesPage         = lazy(() => import('@/pages/companies').then(m => ({ default: m.CompaniesPage })));
+const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(m => ({ default: m.CompanyProfilePage })));
+const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
+const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
+const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -160,7 +168,7 @@ function App() {
           />
           <Route
             path="/organizations/:orgId"
-            element={<ProtectedRoute><OrganizationOverview /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/clients/:clientId"
@@ -180,7 +188,7 @@ function App() {
           />
           <Route path="/my-tasks" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
           <Route path="/nora" element={<AdminRoute><NoraPage /></AdminRoute>} />
-          <Route path="/topsi" element={<AdminRoute><TopsiPage /></AdminRoute>} />
+          <Route path="/topsi" element={<ProtectedRoute><TopsiPage /></ProtectedRoute>} />
           <Route path="/global-tasks" element={<AdminRoute><GlobalTasksPage /></AdminRoute>} />
           <Route path="/mission-control" element={<ProtectedRoute><MissionControlPage /></ProtectedRoute>} />
           <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
@@ -197,10 +205,42 @@ function App() {
             element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
           />
           <Route
+            path="/people"
+            element={<ProtectedRoute><PeoplePage /></ProtectedRoute>}
+          />
+          <Route
+            path="/people/:personId"
+            element={<ProtectedRoute><PersonDetailPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/proposals"
+            element={<ProtectedRoute><ProposalsPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/companies"
+            element={<ProtectedRoute><CompaniesPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/companies/:companyId"
+            element={<ProtectedRoute><CompanyProfilePage /></ProtectedRoute>}
+          />
+          <Route
+            path="/command-center"
+            element={<ProtectedRoute><CommandCenterPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/invoices"
+            element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/projects/:projectId/deliverables"
+            element={<ProtectedRoute><ProjectDeliverablesPage /></ProtectedRoute>}
+          />
+          <Route
             path="/virtual-environment"
             element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}
           />
-          <Route path="/mesh" element={<ProtectedRoute><MeshPage /></ProtectedRoute>} />
+          <Route path="/mesh" element={<Navigate to="/settings/network" replace />} />
           <Route path="/pulse" element={<ProtectedRoute><PulsePage /></ProtectedRoute>} />
           <Route
             path="/projects/:projectId/pulse"

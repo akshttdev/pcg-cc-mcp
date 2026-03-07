@@ -6,7 +6,16 @@ import { Button } from '@/components/ui/button';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
 import { useAuth } from '@/contexts/AuthContext';
 
-const settingsNavigation = [
+interface SettingsNavItem {
+  path: string;
+  icon: typeof Settings;
+  label: string;
+  description: string;
+  adminOnly?: boolean;
+  absolutePath?: string;
+}
+
+const settingsNavigation: SettingsNavItem[] = [
   {
     path: 'general',
     icon: Settings,
@@ -85,8 +94,15 @@ const settingsNavigation = [
   {
     path: 'network',
     icon: Network,
-    label: 'Network',
-    description: 'APN identity, Pythia, and capabilities',
+    label: 'Network & Mesh',
+    description: 'APN identity, mesh monitoring, and capabilities',
+  },
+  {
+    path: 'pulse',
+    icon: Activity,
+    label: 'Pulse Engine',
+    description: 'System health and performance metrics',
+    absolutePath: '/pulse',
   },
 ];
 
@@ -119,15 +135,15 @@ export function SettingsLayout() {
                 return (
                   <NavLink
                     key={item.path}
-                    to={item.path}
+                    to={item.absolutePath ?? item.path}
                     end
                     className={({ isActive }) =>
                       cn(
-                        'flex items-start gap-3 px-3 py-2 text-sm transition-colors',
-                        'hover:text-accent-foreground',
+                        'flex items-start gap-3 px-3 py-2 text-sm rounded-lg transition-colors',
+                        'hover:bg-accent/60 hover:text-accent-foreground',
                         isActive
-                          ? 'text-primary-foreground'
-                          : 'text-secondary-foreground'
+                          ? 'bg-primary/[0.08] text-foreground font-medium'
+                          : 'text-muted-foreground'
                       )
                     }
                   >

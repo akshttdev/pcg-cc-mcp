@@ -38,9 +38,11 @@ pub async fn get_projects(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
+    let pool = &deployment.db().pool;
+
     // If admin, return all projects
     if access_context.is_admin {
-        let projects = Project::find_all(&deployment.db().pool).await?;
+        let projects = Project::find_all(pool).await?;
         return Ok(ResponseJson(ApiResponse::success(projects)));
     }
 
@@ -57,7 +59,7 @@ pub async fn get_projects(
         id: Vec<u8>,
     }
 
-    let project_ids: Vec<Uuid> = sqlx::query_as::<_, ProjectRow>(
+    let project_rows: Vec<ProjectRow> = sqlx::query_as::<_, ProjectRow>(
         r#"
         SELECT DISTINCT id FROM (
             -- Direct project membership
@@ -66,12 +68,12 @@ pub async fn get_projects(
             -- Organization membership → org projects
             SELECT p.id FROM projects p
             INNER JOIN organization_members om ON om.organization_id = p.organization_id
-            WHERE om.user_id = ?1 AND p.organization_id IS NOT NULL
+            WHERE om.user_id = ?1 AND p.organization_id IS NOT NULL AND p.deleted_at IS NULL
             UNION
             -- Client membership → client projects
             SELECT p.id FROM projects p
             INNER JOIN client_members cm ON cm.client_id = p.client_id
-            WHERE cm.user_id = ?1 AND p.client_id IS NOT NULL
+            WHERE cm.user_id = ?1 AND p.client_id IS NOT NULL AND p.deleted_at IS NULL
             UNION
             -- Task assignment (no project membership, but assigned tasks)
             SELECT CAST(project_id AS BLOB) as id FROM tasks
@@ -84,23 +86,25 @@ pub async fn get_projects(
     .bind(&user_id_str)
     .fetch_all(&deployment.db().pool)
     .await
-    .map_err(|e| ApiError::InternalError(format!("Failed to fetch user projects: {}", e)))?
-    .into_iter()
-    .filter_map(|row| Uuid::from_slice(&row.id).ok())
-    .collect();
+    .map_err(|e| ApiError::InternalError(format!("Failed to fetch user projects: {}", e)))?;
 
-    if project_ids.is_empty() {
-        return Ok(ResponseJson(ApiResponse::success(vec![])));
-    }
-
-    // Fetch all accessible projects
+    // Fetch full project objects for the discovered IDs
     let mut projects = Vec::new();
-    for project_id in project_ids {
-        if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, project_id).await {
+    for uuid in project_rows.iter().filter_map(|r| Uuid::from_slice(&r.id).ok()) {
+        if let Ok(Some(project)) = Project::find_by_id(pool, uuid).await {
             projects.push(project);
         }
     }
 
+    Ok(ResponseJson(ApiResponse::success(projects)))
+}
+
+/// GET /api/projects/by-client/:client_id — projects for a given client
+pub async fn get_projects_by_client(
+    Path(client_id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<Project>>>, ApiError> {
+    let projects = Project::find_by_client(&deployment.db().pool, client_id).await?;
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
 
@@ -960,6 +964,34 @@ pub struct VibeBudgetResponse {
     pub vibe_remaining: Option<i64>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct RegisterWalletRequest {
+    pub aptos_address: String,
+}
+
+/// Register an Aptos wallet address for on-chain VIBE deposits
+pub async fn register_project_wallet(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<RegisterWalletRequest>,
+) -> Result<ResponseJson<ApiResponse<Project>>, ApiError> {
+    // Basic Aptos address validation: starts with 0x, 66 chars total
+    let addr = payload.aptos_address.trim();
+    if !addr.starts_with("0x") || addr.len() != 66 {
+        return Err(ApiError::BadRequest(
+            "Invalid Aptos address. Must start with 0x and be 66 characters total.".into(),
+        ));
+    }
+
+    Project::set_aptos_wallet(&deployment.db().pool, project.id, addr).await?;
+
+    let updated = Project::find_by_id(&deployment.db().pool, project.id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Project not found after update".into()))?;
+
+    Ok(ResponseJson(ApiResponse::success(updated)))
+}
+
 /// Get the VIBE budget status for a project
 pub async fn get_vibe_budget(
     Extension(project): Extension<Project>,
@@ -1096,6 +1128,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/parent", put(set_project_parent))
         .route("/reorder", put(reorder_project))
+        .route("/wallet", patch(register_project_wallet))
         .merge(crate::routes::project_boards::router(deployment))
         .merge(crate::routes::project_controllers::router(deployment))
         .layer(from_fn_with_state(
@@ -1105,6 +1138,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
     let projects_router = Router::new()
         .route("/", get(get_projects).post(create_project))
+        .route("/by-client/{client_id}", get(get_projects_by_client))
         .nest("/{id}", project_id_router)
         .layer(from_fn_with_state(
             deployment.clone(),

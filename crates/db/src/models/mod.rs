@@ -39,6 +39,7 @@ pub mod follow_up_draft;
 pub mod image;
 pub mod dropbox_source;
 pub mod media_batch;
+pub mod media_file_analysis;
 pub mod merge;
 pub mod nora_config;
 pub mod project;
@@ -62,6 +63,7 @@ pub mod social_post;
 pub mod social_mention;
 pub mod email_account;
 pub mod crm_activity;
+pub mod call_log;
 pub mod crm_contact;
 pub mod crm_deal;
 pub mod crm_pipeline;
@@ -78,13 +80,35 @@ pub mod pulse_content_item;
 pub mod pulse_source;
 pub mod pulse_tracking_config;
 pub mod project_knowledge_source;
-// pub mod workflow_template; // TODO: file not yet created
+// Topology modules: exist on disk but use sqlx::query! macros that require
+// DATABASE_URL or cached queries. The MCP TaskServer uses raw SQL for topology
+// queries. Re-enable these exports after running `cargo sqlx prepare`:
+// pub mod topology_node;
+// pub mod topology_edge;
+// pub mod topology_cluster;
+// pub mod topology_issue;
+// pub mod topology_route;
+pub mod workflow_template;
+pub mod person;
+pub mod person_association;
+pub mod invoice;
+pub mod proposal;
+pub mod deliverable;
+pub mod operator_rate;
 pub mod meeting_session;
 pub mod repo;
 pub mod scratch;
 pub mod session;
 pub mod tag;
 pub mod entity_conversion;
+pub mod scheduled_meeting;
+pub mod company;
+pub mod entity_graph;
+pub mod topology_node;
+pub mod topology_edge;
+pub mod topology_cluster;
+pub mod topology_issue;
+pub mod topology_route;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

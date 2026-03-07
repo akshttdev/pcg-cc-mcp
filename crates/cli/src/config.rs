@@ -122,7 +122,7 @@ pub struct AgentsConfig {
 }
 
 fn default_agent() -> String {
-    "nora".to_string()
+    "topsi".to_string()
 }
 
 impl Default for AgentsConfig {

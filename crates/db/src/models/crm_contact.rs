@@ -660,4 +660,19 @@ impl CrmContact {
         .fetch_all(pool)
         .await
     }
+
+    /// Find a CRM contact by phone number across all projects
+    pub async fn find_by_phone_global(
+        pool: &SqlitePool,
+        phone: &str,
+    ) -> Result<Option<Self>, CrmContactError> {
+        let normalized = phone.trim();
+        sqlx::query_as::<_, Self>(
+            "SELECT * FROM crm_contacts WHERE phone = ?1 OR mobile = ?1 LIMIT 1",
+        )
+        .bind(normalized)
+        .fetch_optional(pool)
+        .await
+        .map_err(CrmContactError::Database)
+    }
 }

@@ -118,7 +118,7 @@ export function useTasksCardData(taskIds: string[]) {
     data: allArtifacts,
     isLoading: artifactsLoading,
   } = useQuery({
-    queryKey: ['tasksArtifacts', taskIds.sort().join(',')],
+    queryKey: ['tasksArtifacts', [...taskIds].sort().join(',')],
     queryFn: async () => {
       if (taskIds.length === 0) return new Map<string, ExecutionArtifact[]>();
 
@@ -160,7 +160,7 @@ export function useTasksCardData(taskIds: string[]) {
     data: allWorkflowEvents,
     isLoading: workflowLoading,
   } = useQuery({
-    queryKey: ['tasksWorkflowEvents', taskIds.sort().join(',')],
+    queryKey: ['tasksWorkflowEvents', [...taskIds].sort().join(',')],
     queryFn: async () => {
       if (taskIds.length === 0) return new Map<string, AgentFlowEvent[]>();
 

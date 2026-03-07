@@ -319,4 +319,26 @@ impl CallLog {
         }
         Ok(())
     }
+
+    /// Find call logs for a CRM contact, newest first
+    pub async fn find_by_crm_contact(
+        pool: &SqlitePool,
+        crm_contact_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<Self>, CallLogError> {
+        let calls = sqlx::query_as::<_, CallLog>(
+            r#"
+            SELECT * FROM call_logs
+            WHERE crm_contact_id = ?1
+            ORDER BY created_at DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(crm_contact_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(calls)
+    }
 }

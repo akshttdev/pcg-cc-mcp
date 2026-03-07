@@ -42,6 +42,8 @@ pub struct VibeDeposit {
     #[ts(type = "Date | null")]
     pub credited_at: Option<DateTime<Utc>>,
     pub error_message: Option<String>,
+    /// Payment rail: 'aptos_vibe' | 'usdc' | 'usdt' | 'veritwin_bridge'
+    pub payment_method: String,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -55,6 +57,8 @@ pub struct CreateVibeDeposit {
     pub sender_address: String,
     pub amount_vibe: i64,
     pub block_height: Option<i64>,
+    /// Payment rail — defaults to 'aptos_vibe'
+    pub payment_method: Option<String>,
 }
 
 impl VibeDeposit {
@@ -62,10 +66,11 @@ impl VibeDeposit {
     pub async fn create(pool: &SqlitePool, data: CreateVibeDeposit) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
 
+        let payment_method = data.payment_method.as_deref().unwrap_or("aptos_vibe");
         sqlx::query(
             r#"INSERT INTO vibe_deposits (
-                id, project_id, tx_hash, sender_address, amount_vibe, status, block_height
-            ) VALUES (?, ?, ?, ?, ?, 'pending', ?)"#,
+                id, project_id, tx_hash, sender_address, amount_vibe, status, block_height, payment_method
+            ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)"#,
         )
         .bind(id)
         .bind(data.project_id)
@@ -73,6 +78,7 @@ impl VibeDeposit {
         .bind(&data.sender_address)
         .bind(data.amount_vibe)
         .bind(data.block_height)
+        .bind(payment_method)
         .execute(pool)
         .await?;
 
@@ -207,6 +213,8 @@ pub struct VibeWithdrawal {
     #[ts(type = "Date | null")]
     pub processed_at: Option<DateTime<Utc>>,
     pub error_message: Option<String>,
+    /// Payment rail: 'aptos_vibe' | 'usdc' | 'usdt' | 'veritwin_bridge'
+    pub payment_method: String,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -220,6 +228,8 @@ pub struct CreateVibeWithdrawal {
     pub destination_address: String,
     #[ts(type = "number")]
     pub amount_vibe: i64,
+    /// Payment rail — defaults to 'aptos_vibe'
+    pub payment_method: Option<String>,
 }
 
 impl VibeWithdrawal {
@@ -227,15 +237,17 @@ impl VibeWithdrawal {
     pub async fn create(pool: &SqlitePool, data: CreateVibeWithdrawal) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
 
+        let payment_method = data.payment_method.as_deref().unwrap_or("aptos_vibe");
         sqlx::query(
             r#"INSERT INTO vibe_withdrawals (
-                id, project_id, destination_address, amount_vibe, status
-            ) VALUES (?, ?, ?, ?, 'pending')"#,
+                id, project_id, destination_address, amount_vibe, status, payment_method
+            ) VALUES (?, ?, ?, ?, 'pending', ?)"#,
         )
         .bind(id)
         .bind(data.project_id)
         .bind(&data.destination_address)
         .bind(data.amount_vibe)
+        .bind(payment_method)
         .execute(pool)
         .await?;
 

@@ -11,6 +11,8 @@ use crate::{DeploymentImpl, middleware as app_middleware};
 
 pub mod activity;
 pub mod agent_flow_events;
+pub mod artifacts;
+pub mod editron_export;
 pub mod agent_flows;
 pub mod airtable;
 pub mod apn_data;
@@ -87,6 +89,18 @@ pub mod scratch;
 pub mod sessions;
 pub mod tags;
 pub mod notifications;
+pub mod workflow_templates;
+pub mod persons;
+pub mod proposals;
+pub mod deliverables;
+pub mod operator_rates;
+pub mod command_center;
+pub mod automations;
+pub mod feedback;
+pub mod intelligence;
+pub mod graph;
+pub mod invite_dispatch;
+pub mod companies;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -104,6 +118,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     let admin_routes =
         Router::new()
             .merge(users::router(&deployment))
+            .merge(operator_rates::router(&deployment))
             .layer(middleware::from_fn_with_state(
                 deployment.clone(),
                 app_middleware::require_admin,
@@ -150,6 +165,17 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(scratch::router(&deployment))
         .merge(repos::router(&deployment))
         .merge(notifications::router())
+        .merge(workflow_templates::router(&deployment))
+        .merge(persons::router(&deployment))
+        .merge(proposals::router(&deployment))
+        .merge(deliverables::router(&deployment))
+        .merge(command_center::router(&deployment))
+        .merge(intelligence::router(&deployment))
+        .merge(companies::router(&deployment))
+        .merge(graph::router(&deployment))
+        .merge(invite_dispatch::router(&deployment))
+        .merge(nora::nora_routes())
+        .merge(topsi::topsi_routes())
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -169,7 +195,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(filesystem::router())
         .merge(events::router(&deployment))
         .nest("/images", images::routes())
-        .merge(nora::nora_routes())
         .merge(cinematics::router(&deployment))
         .merge(twilio::twilio_routes())
         .merge(activity::router())
@@ -184,6 +209,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(wide_research::router(&deployment))
         .merge(artifact_reviews::router(&deployment))
         .merge(task_artifacts::router(&deployment))
+        .merge(artifacts::router(&deployment))
+        .merge(editron_export::router(&deployment))
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))
         .merge(event_stream::router(&deployment))
@@ -192,7 +219,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(cms::router(&deployment))
         .merge(tasks::global_router(&deployment))
         .merge(model_pricing::router(&deployment))
-        .merge(topsi::topsi_routes())
+        .merge(feedback::router(&deployment))
+        .merge(vibe_treasury::public_router(&deployment))
         .merge(orcha::orcha_routes())
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))

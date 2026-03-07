@@ -54,6 +54,11 @@ const ACTION_ICON_MAP: Record<string, typeof CheckCircle> = {
   'editron_analyze_completed': CheckCircle,
   'editron_edits_generated': CheckCircle,
   'editron_render_started': Clock,
+  'media_ingest': Zap,
+  'media_analysis': Cpu,
+  'video_edit': Layers,
+  'render_deliverable': CheckCircle,
+  'render_complete': CheckCircle,
 };
 
 interface StateChange {
@@ -154,6 +159,16 @@ function formatActionText(activity: ActivityLog): string {
       return 'generated video edits';
     case 'editron_render_started':
       return 'started render job';
+    case 'media_ingest':
+      return 'completed media ingest';
+    case 'media_analysis':
+      return 'completed scene analysis';
+    case 'video_edit':
+      return 'assembled video edits';
+    case 'render_deliverable':
+      return 'rendered deliverables';
+    case 'render_complete':
+      return 'completed render pipeline';
     default:
       return activity.action;
   }

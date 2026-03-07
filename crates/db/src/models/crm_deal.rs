@@ -98,6 +98,10 @@ pub struct CrmDealWithContact {
     pub contact_email: Option<String>,
     pub contact_company: Option<String>,
     pub contact_avatar_url: Option<String>,
+    pub project_name: Option<String>,
+    pub task_total: i64,
+    pub task_done: i64,
+    pub deliverable_count: i64,
 }
 
 /// Kanban board data structure - deals grouped by stage
@@ -440,6 +444,44 @@ impl CrmDeal {
         Ok(())
     }
 
+    /// Fetch project name + task/deliverable counts for a given project.
+    async fn fetch_project_stats(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> (Option<String>, i64, i64, i64) {
+        let project_name: Option<String> =
+            sqlx::query_scalar("SELECT name FROM projects WHERE id = ?")
+                .bind(project_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
+
+        let task_total: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE project_id = ?")
+                .bind(project_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+
+        let task_done: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'done'",
+        )
+        .bind(project_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+        let deliverable_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM deliverables WHERE project_id = ?")
+                .bind(project_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+
+        (project_name, task_total, task_done, deliverable_count)
+    }
+
     /// Get Kanban board data for a pipeline
     pub async fn get_kanban_data(
         pool: &SqlitePool,
@@ -471,11 +513,18 @@ impl CrmDeal {
                     None
                 };
 
+                let (project_name, task_total, task_done, deliverable_count) =
+                    Self::fetch_project_stats(pool, deal.project_id).await;
+
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
                     contact_company: contact_info.as_ref().and_then(|c| c.company_name.clone()),
                     contact_avatar_url: contact_info.as_ref().and_then(|c| c.avatar_url.clone()),
+                    project_name,
+                    task_total,
+                    task_done,
+                    deliverable_count,
                     deal,
                 });
             }
@@ -495,6 +544,110 @@ impl CrmDeal {
         Ok(KanbanBoardData {
             pipeline_id,
             pipeline_name: pipeline.name,
+            stages: kanban_stages,
+        })
+    }
+
+    /// Get aggregated Kanban board data across all org projects for a given pipeline type.
+    /// Merges stages from all matching pipelines and aggregates deals into a unified board.
+    pub async fn get_kanban_by_organization(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+        pipeline_id: Uuid,
+    ) -> Result<KanbanBoardData, CrmDealError> {
+        use super::crm_contact::CrmContact;
+        use super::crm_pipeline::{CrmPipeline, PipelineType};
+
+        // Get the reference pipeline (determines stages/layout)
+        let ref_pipeline = CrmPipeline::find_by_id(pool, pipeline_id)
+            .await
+            .map_err(|_| CrmDealError::NotFound)?;
+
+        let ref_type: PipelineType = ref_pipeline
+            .pipeline_type
+            .parse()
+            .unwrap_or(super::crm_pipeline::PipelineType::Custom);
+
+        // Find all pipelines of the same type across the org
+        let org_pipelines =
+            CrmPipeline::find_by_organization(pool, organization_id, Some(ref_type))
+                .await
+                .map_err(|_| CrmDealError::NotFound)?;
+
+        // Use the reference pipeline's stages as the canonical stage list
+        let stages = CrmPipelineStage::find_by_pipeline(pool, pipeline_id)
+            .await
+            .map_err(|_| CrmDealError::NotFound)?;
+
+        // Collect all deals from all matching pipelines
+        let mut all_deals: Vec<CrmDeal> = Vec::new();
+        for p in &org_pipelines {
+            let deals = Self::find_by_pipeline(pool, p.id).await?;
+            all_deals.extend(deals);
+        }
+
+        let mut kanban_stages = Vec::new();
+        for stage in &stages {
+            // Find deals that belong to this stage by stage_id directly,
+            // OR by matching stage name (for deals from other project pipelines)
+            let mut stage_deals: Vec<CrmDeal> = Vec::new();
+            for deal in &all_deals {
+                if deal.crm_stage_id == Some(stage.id) {
+                    stage_deals.push(deal.clone());
+                } else if let Some(deal_stage_id) = deal.crm_stage_id {
+                    // Check if this deal's stage has the same name as our reference stage
+                    if let Ok(deal_stage) =
+                        CrmPipelineStage::find_by_id(pool, deal_stage_id).await
+                    {
+                        if deal_stage.name == stage.name {
+                            stage_deals.push(deal.clone());
+                        }
+                    }
+                }
+            }
+
+            stage_deals.sort_by_key(|d| d.position.unwrap_or(0));
+
+            // Enrich with contact info
+            let mut deals_with_contacts = Vec::new();
+            for deal in stage_deals {
+                let contact_info = if let Some(contact_id) = deal.crm_contact_id {
+                    CrmContact::find_by_id(pool, contact_id).await.ok()
+                } else {
+                    None
+                };
+
+                let (project_name, task_total, task_done, deliverable_count) =
+                    Self::fetch_project_stats(pool, deal.project_id).await;
+
+                deals_with_contacts.push(CrmDealWithContact {
+                    contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
+                    contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
+                    contact_company: contact_info.as_ref().and_then(|c| c.company_name.clone()),
+                    contact_avatar_url: contact_info.as_ref().and_then(|c| c.avatar_url.clone()),
+                    project_name,
+                    task_total,
+                    task_done,
+                    deliverable_count,
+                    deal,
+                });
+            }
+
+            let total_amount: f64 = deals_with_contacts
+                .iter()
+                .filter_map(|d| d.deal.amount)
+                .sum();
+
+            kanban_stages.push(KanbanStageWithDeals {
+                stage: stage.clone(),
+                deals: deals_with_contacts,
+                total_amount,
+            });
+        }
+
+        Ok(KanbanBoardData {
+            pipeline_id,
+            pipeline_name: ref_pipeline.name,
             stages: kanban_stages,
         })
     }
