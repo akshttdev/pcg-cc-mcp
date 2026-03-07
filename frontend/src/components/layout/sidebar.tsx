@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   FolderOpen,
+  FolderClosed,
   Settings,
   BookOpen,
   MessageCircleQuestion,
@@ -33,7 +34,6 @@ import {
   FileText,
   LayoutDashboard,
   Receipt,
-  ExternalLink,
   Sparkles,
   LayoutGrid,
   Brain,
@@ -42,16 +42,40 @@ import {
   Calendar,
   Radio,
   MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Target,
+  Activity,
+  Globe,
 } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { projectsApi, organizationsApi, tasksApi } from '@/lib/api';
-import type { SidebarTree, SidebarOrg, SidebarClient as SidebarClientType, SidebarProject as SidebarProjectType } from '@/lib/api';
-import { showProjectForm } from '@/lib/modals';
-import type { Project, ProjectBoard, TaskWithAttemptStatus } from 'shared/types';
+import { projectsApi, organizationsApi } from '@/lib/api';
+import type {
+  SidebarTree,
+  SidebarOrg,
+  SidebarClient as SidebarClientType,
+  SidebarProject as SidebarProjectType,
+  SidebarSharedBoardGroup as SidebarSharedBoardGroupType,
+} from '@/lib/api';
+import type { Project, ProjectBoard } from 'shared/types';
 import { useCommandStore } from '@/stores/useCommandStore';
 import { useProjectOrderStore } from '@/stores/useProjectOrderStore';
+import { useViewStore } from '@/stores/useViewStore';
+import { useKeyToggleSidebar } from '@/keyboard/hooks';
+import { Scope } from '@/keyboard/registry';
 import NiceModal from '@ebay/nice-modal-react';
+import type { CreateNameDialogResult } from '@/components/dialogs';
+import type { ProjectFormDialogResult } from '@/components/dialogs';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   DndContext,
@@ -68,6 +92,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useDroppable } from '@dnd-kit/core';
 
 // Helper: count all projects recursively (including children)
 function countProjects(projects: SidebarProjectType[]): number {
@@ -93,26 +118,40 @@ interface NavItem {
   memberOnly?: boolean;
 }
 
-// Primary navigation - always visible (role-filtered)
-const PRIMARY_NAV_ITEMS: NavItem[] = [
+// Admin tools — separated visually at top
+const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: 'Nora Command', icon: Crown, to: '/nora', id: 'nora', adminOnly: true },
-  { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi' },
+  { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi', adminOnly: true },
+  { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse', adminOnly: true },
+  { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
+];
+
+// Primary navigation - workspace destinations
+const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
-  { label: 'Settings', icon: Settings, to: '/settings', id: 'settings' },
+];
+
+// Management nav — admin-only, collapsible
+const MANAGEMENT_NAV_ITEMS: NavItem[] = [
+  { label: 'People', icon: Users, to: '/people', id: 'people', adminOnly: true },
+  { label: 'Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
+  { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
+  { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
+  { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
 ];
 
 // Global views - admin only, collapsible
 const GLOBAL_VIEW_ITEMS: NavItem[] = [
   { label: 'All Tasks', icon: ListTodo, to: '/global-tasks', id: 'global-tasks', adminOnly: true },
-  { label: 'People', icon: Users, to: '/people', id: 'people', adminOnly: true },
-  { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
-  { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
-  { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
   { label: 'All CRM', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
   { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
-  { label: 'Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
+];
+
+// Utility nav — pinned to bottom above external links
+const UTILITY_NAV_ITEMS: NavItem[] = [
+  { label: 'Settings', icon: Settings, to: '/settings', id: 'settings' },
 ];
 
 const EXTERNAL_LINKS = [
@@ -175,7 +214,7 @@ function OrgCrmSection({
       <CollapsibleTrigger asChild>
         <button
           className={cn(
-            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
             isCrmActive && 'text-accent-foreground font-medium'
           )}
         >
@@ -197,8 +236,8 @@ function OrgCrmSection({
               key={label}
               to={to}
               className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                match && 'bg-accent text-accent-foreground'
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                match && 'bg-primary/8 text-foreground font-medium'
               )}
             >
               <Icon className={cn('h-3 w-3 shrink-0', color)} />
@@ -232,7 +271,7 @@ function OrgIntelligenceSection({
       <CollapsibleTrigger asChild>
         <button
           className={cn(
-            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
             isOnOrgIntel && 'text-accent-foreground font-medium'
           )}
         >
@@ -244,18 +283,18 @@ function OrgIntelligenceSection({
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',      icon: Brain,         color: 'text-emerald-500', to: `/organizations/${orgId}?tab=knowledge`,                           match: isOnOrgIntel && !location.search.includes('view=') },
-            { label: 'Conversations', icon: MessageSquare, color: 'text-blue-400',    to: `/organizations/${orgId}?tab=knowledge&view=conversations`,         match: isOnOrgIntel && location.search.includes('view=conversations') },
-            { label: 'Artifacts',     icon: FileText,      color: 'text-purple-400',  to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,             match: isOnOrgIntel && location.search.includes('view=artifacts') },
-            { label: 'Pulse',         icon: Radio,         color: 'text-orange-400',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,                 match: isOnOrgIntel && location.search.includes('view=pulse') },
-            { label: 'Topology',      icon: Network,       color: 'text-cyan-400',    to: `/organizations/${orgId}?tab=knowledge&view=topology`,              match: isOnOrgIntel && location.search.includes('view=topology') },
+            { label: 'Overview',      icon: Brain,         color: 'text-emerald-500', to: `/organizations/${orgId}?tab=knowledge`,                   match: isOnOrgIntel && !location.search.includes('view=') },
+            { label: 'Conversations', icon: MessageSquare, color: 'text-blue-400',    to: `/organizations/${orgId}?tab=knowledge&view=conversations`, match: isOnOrgIntel && location.search.includes('view=conversations') },
+            { label: 'Artifacts',     icon: FileText,      color: 'text-purple-400',  to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,     match: isOnOrgIntel && location.search.includes('view=artifacts') },
+            { label: 'Pulse',         icon: Radio,         color: 'text-orange-400',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,         match: isOnOrgIntel && location.search.includes('view=pulse') },
+            { label: 'Topology',      icon: Network,       color: 'text-cyan-400',    to: `/organizations/${orgId}?tab=knowledge&view=topology`,      match: isOnOrgIntel && location.search.includes('view=topology') },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
               to={to}
               className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                match && 'bg-accent text-accent-foreground'
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                match && 'bg-primary/8 text-foreground font-medium'
               )}
             >
               <Icon className={cn('h-3 w-3 shrink-0', color)} />
@@ -269,11 +308,7 @@ function OrgIntelligenceSection({
 }
 
 // ============================================================================
-// ProjectFolder — existing component for rendering leaf-level project items
-// ============================================================================
-
-// ============================================================================
-// CrmSidebarLinks — expandable CRM sub-navigation for a project
+// CrmSidebarLinks — project-level CRM links (collapsible)
 // ============================================================================
 
 function CrmSidebarLinks({
@@ -285,47 +320,47 @@ function CrmSidebarLinks({
   location: ReturnType<typeof useLocation>;
   indent?: string;
 }) {
-  const isCrmActive = location.pathname.startsWith(`/projects/${projectId}/crm`);
-  const [expanded, setExpanded] = useState(isCrmActive);
+  const crmLinks = useMemo(
+    () => [
+      { label: 'Overview',        to: `/projects/${projectId}/crm/overview`,     icon: BarChart3  },
+      { label: 'Sales Pipeline',  to: `/projects/${projectId}/crm/sales`,        icon: TrendingUp },
+      { label: 'Client Delivery', to: `/projects/${projectId}/crm/delivery`,     icon: Package    },
+      { label: 'Contacts',        to: `/projects/${projectId}/crm`,              icon: Users      },
+      { label: 'Conferences',     to: `/projects/${projectId}/crm/conferences`,  icon: Calendar   },
+    ],
+    [projectId]
+  );
 
-  const crmLinks = [
-    { label: 'Overview',       to: `/projects/${projectId}/crm/overview`,     icon: BarChart3  },
-    { label: 'Sales Pipeline', to: `/projects/${projectId}/crm/sales`,         icon: TrendingUp },
-    { label: 'Client Delivery',to: `/projects/${projectId}/crm/delivery`,      icon: Package    },
-    { label: 'Contacts',       to: `/projects/${projectId}/crm`,               icon: Users      },
-    { label: 'Conferences',    to: `/projects/${projectId}/crm/conferences`,   icon: Calendar   },
-  ];
+  const hasCrmActive = crmLinks.some((link) => location.pathname === link.to);
+  const [open, setOpen] = useState(hasCrmActive);
 
   return (
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
+    <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
         <button
           className={cn(
-            `flex items-center gap-2 ${indent} pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground w-full text-left`,
-            isCrmActive && 'text-accent-foreground'
+            'flex items-center gap-2 w-full pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+            indent,
+            hasCrmActive && 'text-foreground font-medium'
           )}
         >
-          <Users className="h-3 w-3 text-muted-foreground" />
-          <span className="flex-1">CRM</span>
-          {expanded ? (
-            <ChevronDown className="h-3 w-3" />
-          ) : (
-            <ChevronRight className="h-3 w-3" />
-          )}
+          <Users className="h-3 w-3 text-blue-500 shrink-0" />
+          <span className="flex-1 text-left">CRM</span>
+          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="space-y-0.5">
+        <div className="pl-4 space-y-0.5 py-0.5">
           {crmLinks.map((link) => {
-            const Icon = link.icon;
             const isActive = location.pathname === link.to;
+            const Icon = link.icon;
             return (
               <Link
                 key={link.to}
                 to={link.to}
                 className={cn(
-                  `flex items-center gap-2 ${indent} pl-7 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground`,
-                  isActive && 'bg-accent text-accent-foreground'
+                  'flex items-center gap-2 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                  isActive && 'bg-primary/8 text-foreground font-medium'
                 )}
               >
                 <Icon className="h-3 w-3 text-muted-foreground" />
@@ -340,57 +375,35 @@ function CrmSidebarLinks({
 }
 
 // ============================================================================
+// ProjectFolder — standalone project card (used in flat fallback list)
+// ============================================================================
 
-interface ProjectFolderProps {
+function ProjectFolder({
+  project,
+  isActive,
+  isExpanded,
+  onToggle,
+  isFavorite: isFav,
+  onToggleFavorite,
+}: {
   project: Project;
   isActive: boolean;
   isExpanded: boolean;
   onToggle: () => void;
   isFavorite: boolean;
   onToggleFavorite: () => void;
-}
-
-function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, onToggleFavorite }: ProjectFolderProps) {
+}) {
   const location = useLocation();
-  const shouldFetchTasks =
-    isExpanded || location.pathname.includes(`/projects/${project.id}`);
-  const shouldFetchBoards = shouldFetchTasks;
-
-  const {
-    data: tasksData = [],
-    isLoading: isTasksLoading,
-    error: tasksError,
-  } = useQuery<TaskWithAttemptStatus[], Error>({
-    queryKey: ['projectTasksSidebar', project.id],
-    queryFn: () => tasksApi.getAll(project.id),
-    enabled: shouldFetchTasks,
-    staleTime: 60 * 1000,
-  });
 
   const {
     data: boardsData = [],
     isLoading: isBoardsLoading,
-    error: boardsError,
   } = useQuery<ProjectBoard[], Error>({
     queryKey: ['projectBoardsSidebar', project.id],
     queryFn: () => projectsApi.listBoards(project.id),
-    enabled: shouldFetchBoards,
+    enabled: isExpanded,
     staleTime: 5 * 60 * 1000,
   });
-
-  const tasksByBoard = useMemo(() => {
-    const map = new Map<string, TaskWithAttemptStatus[]>();
-    tasksData.forEach((task) => {
-      const key = task.board_id ?? 'unassigned';
-      if (!map.has(key)) {
-        map.set(key, []);
-      }
-      map.get(key)!.push(task);
-    });
-    return map;
-  }, [tasksData]);
-
-  const unassignedTasks = tasksByBoard.get('unassigned') ?? [];
 
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggle}>
@@ -399,7 +412,7 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
           variant="ghost"
           className={cn(
             "w-full justify-between px-2 py-1.5 h-auto font-normal group",
-            isActive && "bg-accent text-accent-foreground"
+            isActive && "bg-primary/8 text-foreground"
           )}
         >
           <div className="flex items-center gap-2 text-left flex-1 min-w-0">
@@ -417,7 +430,7 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
               <Star
                 className={cn(
                   "h-3 w-3",
-                  isFavorite ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"
+                  isFav ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"
                 )}
               />
             </span>
@@ -431,24 +444,15 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
       </CollapsibleTrigger>
       <CollapsibleContent className="pl-6">
         <div className="space-y-0.5 py-1">
-          {isBoardsLoading && shouldFetchBoards && (
-            <div className="pl-7 pr-2 py-1 text-xs text-muted-foreground flex items-center gap-2">
+          {isBoardsLoading ? (
+            <div className="pl-2 pr-2 py-1 text-xs text-muted-foreground flex items-center gap-2">
               <Loader2 className="h-3 w-3 animate-spin" />
               Loading boards...
             </div>
-          )}
-
-          {boardsError && shouldFetchBoards && !isBoardsLoading && (
-            <div className="pl-7 pr-2 py-1 text-xs text-destructive">
-              Failed to load boards
-            </div>
-          )}
-
-          {!isBoardsLoading && !boardsError &&
-            (boardsData ?? []).map((board) => {
-              const boardTasks = tasksByBoard.get(board.id) ?? [];
+          ) : (
+            boardsData.map((board) => {
               const params = new URLSearchParams({ board: board.id });
-              const isActive =
+              const isBoardActive =
                 location.pathname === `/projects/${project.id}/tasks` &&
                 location.search.includes(`board=${board.id}`);
               return (
@@ -459,52 +463,24 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
                     search: params.toString(),
                   }}
                   className={cn(
-                    'block pl-7 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                    isActive && 'bg-accent text-accent-foreground'
+                    'block pl-2 pr-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                    isBoardActive && 'bg-primary/8 text-foreground font-medium'
                   )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate" title={board.name}>
-                      {board.name}
-                    </span>
-                    <span className="text-[10px] uppercase text-muted-foreground">
-                      {boardTasks.length}
-                    </span>
-                  </div>
+                  <span className="truncate" title={board.name}>
+                    {board.name}
+                  </span>
                 </Link>
               );
-            })}
-
-          {!isTasksLoading && !tasksError && unassignedTasks.length > 0 && (
-            <Link
-              to={{
-                pathname: `/projects/${project.id}/tasks`,
-                search: 'board=unassigned',
-              }}
-              className={cn(
-                'block pl-7 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === `/projects/${project.id}/tasks` &&
-                  location.search.includes('board=unassigned') &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate" title="Unassigned">
-                  Unassigned
-                </span>
-                <span className="text-[10px] uppercase text-muted-foreground">
-                  {unassignedTasks.length}
-                </span>
-              </div>
-            </Link>
+            })
           )}
 
           {/* Controller */}
           <Link
             to={`/projects/${project.id}/control`}
             className={cn(
-              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-2 border-t pt-2',
-              location.pathname === `/projects/${project.id}/control` && 'bg-accent text-accent-foreground'
+              'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground mt-1 border-t pt-2 transition-colors',
+              location.pathname === `/projects/${project.id}/control` && 'bg-primary/8 text-foreground font-medium'
             )}
           >
             <Bot className="h-3 w-3 text-purple-500" />
@@ -512,14 +488,14 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
           </Link>
 
           {/* CRM */}
-          <CrmSidebarLinks projectId={project.id} location={location} indent="pl-5" />
+          <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
 
           {/* Social */}
           <Link
             to={`/projects/${project.id}/social`}
             className={cn(
-              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-              location.pathname === `/projects/${project.id}/social` && 'bg-accent text-accent-foreground'
+              'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/projects/${project.id}/social` && 'bg-primary/8 text-foreground font-medium'
             )}
           >
             <Share2 className="h-3 w-3 text-muted-foreground" />
@@ -530,14 +506,13 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
           <Link
             to={`/projects/${project.id}/knowledge`}
             className={cn(
-              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-              location.pathname === `/projects/${project.id}/knowledge` && 'bg-accent text-accent-foreground'
+              'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/projects/${project.id}/knowledge` && 'bg-primary/8 text-foreground font-medium'
             )}
           >
             <BookOpen className="h-3 w-3 text-muted-foreground" />
             <span>Knowledge</span>
           </Link>
-
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -545,7 +520,7 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
 }
 
 // ============================================================================
-// SortableSidebarProjectFolder — drag-sortable expandable project with boards
+// SortableSidebarProjectFolder — draggable project item in the org tree
 // ============================================================================
 
 function SortableSidebarProjectFolder({
@@ -553,16 +528,38 @@ function SortableSidebarProjectFolder({
   projectId,
   isExpanded,
   onToggle,
-  queryClient: _queryClient,
+  expandedProjects,
+  onToggleProject,
+  queryClient,
 }: {
   project: SidebarProjectType;
   projectId?: string;
   isExpanded: boolean;
   onToggle: () => void;
+  expandedProjects: Set<string>;
+  onToggleProject: (id: string) => void;
   queryClient?: QueryClient;
 }) {
   const location = useLocation();
   const isActive = project.id === projectId || location.pathname.includes(`/projects/${project.id}`);
+
+  // Container projects (empty git_repo_path) show children instead of boards
+  const isContainer = project.is_container;
+  const hasChildren = project.children && project.children.length > 0;
+
+  const shouldFetchBoards =
+    !isContainer && (isExpanded || location.pathname.includes(`/projects/${project.id}`));
+
+  const {
+    data: boardsData = [],
+    isLoading: isBoardsLoading,
+    error: boardsError,
+  } = useQuery<ProjectBoard[], Error>({
+    queryKey: ['projectBoardsSidebar', project.id],
+    queryFn: () => projectsApi.listBoards(project.id),
+    enabled: shouldFetchBoards,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const {
     attributes,
@@ -578,27 +575,49 @@ function SortableSidebarProjectFolder({
     transition,
   };
 
-  const shouldFetchBoards =
-    isExpanded || location.pathname.includes(`/projects/${project.id}`);
-
-  const {
-    data: boardsData = [],
-    isLoading: isBoardsLoading,
-    error: boardsError,
-  } = useQuery<ProjectBoard[], Error>({
-    queryKey: ['projectBoardsSidebar', project.id],
-    queryFn: () => projectsApi.listBoards(project.id),
-    enabled: shouldFetchBoards,
-    staleTime: 5 * 60 * 1000,
+  // Make container projects droppable targets for reparenting
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `container:${project.id}`,
+    disabled: !isContainer,
   });
+
+  const handleRename = async () => {
+    try {
+      const result = await NiceModal.show('create-name', {
+        title: 'Rename Project Group',
+        label: 'Group Name',
+        placeholder: 'Enter new name...',
+        submitText: 'Rename',
+      }) as CreateNameDialogResult;
+      if (result.name === project.name) return;
+      await projectsApi.update(project.id, { name: result.name });
+      queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
+    } catch {
+      // dialog dismissed
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete "${project.name}"? ${hasChildren ? 'Child projects will be ungrouped.' : ''}`)) return;
+    try {
+      await projectsApi.delete(project.id);
+      queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+    }
+  };
 
   return (
     <div
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        if (isContainer) setDropRef(node);
+      }}
       style={style}
       className={cn(
         'group/sortable rounded-sm',
-        isDragging && 'opacity-50 z-50'
+        isDragging && 'opacity-50 z-50',
+        isOver && isContainer && 'bg-amber-100/60 dark:bg-amber-950/40 ring-1 ring-amber-400/50'
       )}
     >
       <Collapsible open={isExpanded} onOpenChange={onToggle}>
@@ -611,108 +630,182 @@ function SortableSidebarProjectFolder({
           >
             <GripVertical className="h-3 w-3 text-muted-foreground" />
           </button>
+          <Link
+            to={`/projects/${project.id}`}
+            className={cn(
+              'flex items-center gap-1.5 px-1.5 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground flex-1 min-w-0 text-left transition-colors',
+              isActive && 'bg-primary/8 text-foreground font-medium'
+            )}
+          >
+            <HealthDot status={project.health_status} />
+            {isContainer ? (
+              isExpanded ? (
+                <FolderOpen className="h-3 w-3 text-amber-500 shrink-0" />
+              ) : (
+                <FolderClosed className="h-3 w-3 text-amber-500 shrink-0" />
+              )
+            ) : (
+              <Folder className="h-3 w-3 text-muted-foreground shrink-0" />
+            )}
+            <span className="truncate flex-1">{project.name}</span>
+            {project.active_issues_count != null && project.active_issues_count > 0 && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 shrink-0">
+                {project.active_issues_count}
+              </span>
+            )}
+            {isContainer && (
+              <span className="text-[10px] text-muted-foreground">
+                {project.children?.length || 0}
+              </span>
+            )}
+          </Link>
+          {isContainer && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="p-0.5 opacity-0 group-hover/sortable:opacity-100 transition-opacity shrink-0 mr-1 rounded hover:bg-accent"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreHorizontal className="h-3 w-3 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36">
+                <DropdownMenuItem onClick={handleRename}>
+                  <Pencil className="h-3 w-3 mr-2" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+                  <Trash2 className="h-3 w-3 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <CollapsibleTrigger asChild>
             <button
-              className={cn(
-                'flex items-center gap-1.5 px-1.5 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground flex-1 min-w-0 text-left',
-                isActive && 'bg-accent text-accent-foreground'
-              )}
+              className="p-0.5 hover:bg-accent rounded-sm shrink-0 mr-0.5"
+              onClick={(e) => e.stopPropagation()}
             >
-              <HealthDot status={project.health_status} />
-              <Folder className="h-3 w-3 text-muted-foreground shrink-0" />
-              <span className="truncate flex-1">{project.name}</span>
-              {project.active_issues_count != null && project.active_issues_count > 0 && (
-                <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 shrink-0">
-                  {project.active_issues_count}
-                </span>
-              )}
               {isExpanded ? (
-                <ChevronDown className="h-3 w-3 shrink-0" />
+                <ChevronDown className="h-3 w-3" />
               ) : (
-                <ChevronRight className="h-3 w-3 shrink-0" />
+                <ChevronRight className="h-3 w-3" />
               )}
             </button>
           </CollapsibleTrigger>
         </div>
         <CollapsibleContent className="pl-6">
           <div className="space-y-0.5 py-1">
-            {isBoardsLoading && shouldFetchBoards && (
-              <div className="pl-2 pr-2 py-1 text-xs text-muted-foreground flex items-center gap-2">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Loading boards...
-              </div>
+            {/* Container projects: show nested children */}
+            {isContainer && hasChildren && (
+              <SortableProjectList
+                scopeKey={`container:${project.id}`}
+                projects={project.children}
+                projectId={projectId}
+                expandedProjects={expandedProjects}
+                onToggleProject={onToggleProject}
+                queryClient={queryClient}
+              />
             )}
 
-            {boardsError && shouldFetchBoards && !isBoardsLoading && (
-              <div className="pl-2 pr-2 py-1 text-xs text-destructive">
-                Failed to load boards
-              </div>
+            {/* Regular projects: show boards + sections */}
+            {!isContainer && (
+              <>
+                {isBoardsLoading && shouldFetchBoards && (
+                  <div className="pl-2 pr-2 py-1 text-xs text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading boards...
+                  </div>
+                )}
+
+                {boardsError && shouldFetchBoards && !isBoardsLoading && (
+                  <div className="pl-2 pr-2 py-1 text-xs text-destructive">
+                    Failed to load boards
+                  </div>
+                )}
+
+                {!isBoardsLoading && !boardsError &&
+                  boardsData.map((board) => {
+                    const params = new URLSearchParams({ board: board.id });
+                    const isBoardActive =
+                      location.pathname === `/projects/${project.id}/tasks` &&
+                      location.search.includes(`board=${board.id}`);
+                    return (
+                      <Link
+                        key={board.id}
+                        to={{
+                          pathname: `/projects/${project.id}/tasks`,
+                          search: params.toString(),
+                        }}
+                        className={cn(
+                          'block pl-2 pr-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                          isBoardActive && 'bg-primary/8 text-foreground font-medium'
+                        )}
+                      >
+                        <span className="truncate" title={board.name}>
+                          {board.name}
+                        </span>
+                      </Link>
+                    );
+                  })}
+
+                {/* Tasks link */}
+                <Link
+                  to={`/projects/${project.id}/tasks`}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                    location.pathname === `/projects/${project.id}/tasks` &&
+                      !location.search &&
+                      'bg-primary/8 text-foreground font-medium'
+                  )}
+                >
+                  <ListTodo className="h-3 w-3 text-muted-foreground" />
+                  <span>Tasks</span>
+                </Link>
+
+                {/* Controller */}
+                <Link
+                  to={`/projects/${project.id}/control`}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground mt-1 border-t pt-2 transition-colors',
+                    location.pathname === `/projects/${project.id}/control` &&
+                      'bg-primary/8 text-foreground font-medium'
+                  )}
+                >
+                  <Bot className="h-3 w-3 text-purple-500" />
+                  <span className="font-medium">Controller</span>
+                </Link>
+
+                {/* CRM Section */}
+                <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
+
+                {/* Social Media Link */}
+                <Link
+                  to={`/projects/${project.id}/social`}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                    location.pathname === `/projects/${project.id}/social` &&
+                      'bg-primary/8 text-foreground font-medium'
+                  )}
+                >
+                  <Share2 className="h-3 w-3 text-muted-foreground" />
+                  <span>Social</span>
+                </Link>
+
+                {/* Knowledge */}
+                <Link
+                  to={`/projects/${project.id}/knowledge`}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                    location.pathname === `/projects/${project.id}/knowledge` &&
+                      'bg-primary/8 text-foreground font-medium'
+                  )}
+                >
+                  <BookOpen className="h-3 w-3 text-muted-foreground" />
+                  <span>Knowledge</span>
+                </Link>
+              </>
             )}
-
-            {!isBoardsLoading && !boardsError &&
-              boardsData.map((board) => {
-                const params = new URLSearchParams({ board: board.id });
-                const isBoardActive =
-                  location.pathname === `/projects/${project.id}/tasks` &&
-                  location.search.includes(`board=${board.id}`);
-                return (
-                  <Link
-                    key={board.id}
-                    to={{
-                      pathname: `/projects/${project.id}/tasks`,
-                      search: params.toString(),
-                    }}
-                    className={cn(
-                      'block pl-2 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                      isBoardActive && 'bg-accent text-accent-foreground'
-                    )}
-                  >
-                    <span className="truncate" title={board.name}>
-                      {board.name}
-                    </span>
-                  </Link>
-                );
-              })}
-
-            {/* Controller */}
-            <Link
-              to={`/projects/${project.id}/control`}
-              className={cn(
-                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-1 border-t pt-2',
-                location.pathname === `/projects/${project.id}/control` && 'bg-accent text-accent-foreground'
-              )}
-            >
-              <Bot className="h-3 w-3 text-purple-500" />
-              <span className="font-medium">Controller</span>
-            </Link>
-
-            {/* CRM */}
-            <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
-
-            {/* Social */}
-            <Link
-              to={`/projects/${project.id}/social`}
-              className={cn(
-                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === `/projects/${project.id}/social` && 'bg-accent text-accent-foreground'
-              )}
-            >
-              <Share2 className="h-3 w-3 text-muted-foreground" />
-              <span>Social</span>
-            </Link>
-
-            {/* Knowledge */}
-            <Link
-              to={`/projects/${project.id}/knowledge`}
-              className={cn(
-                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === `/projects/${project.id}/knowledge` && 'bg-accent text-accent-foreground'
-              )}
-            >
-              <BookOpen className="h-3 w-3 text-muted-foreground" />
-              <span>Knowledge</span>
-            </Link>
-
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -759,7 +852,22 @@ function SortableProjectList({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    // Reorder within the list
+    const overId = String(over.id);
+
+    // Check if dropped onto a container project
+    if (overId.startsWith('container:')) {
+      const parentId = overId.replace('container:', '');
+      const projectDragId = String(active.id);
+      try {
+        await projectsApi.setParent(projectDragId, parentId);
+        queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
+      } catch (err) {
+        console.error('Failed to reparent project:', err);
+      }
+      return;
+    }
+
+    // Otherwise, it's a reorder within the list
     const oldIndex = orderedProjects.findIndex((p) => p.id === active.id);
     const newIndex = orderedProjects.findIndex((p) => p.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
@@ -785,6 +893,8 @@ function SortableProjectList({
             projectId={projectId}
             isExpanded={expandedProjects.has(project.id)}
             onToggle={() => onToggleProject(project.id)}
+            expandedProjects={expandedProjects}
+            onToggleProject={onToggleProject}
             queryClient={queryClient}
           />
         ))}
@@ -799,14 +909,14 @@ function SortableProjectList({
 
 function ClientGroup({
   client,
-  orgId,
+  organizationId,
   projectId,
   expandedProjects,
   onToggleProject,
   queryClient,
 }: {
   client: SidebarClientType;
-  orgId: string;
+  organizationId: string;
   projectId?: string;
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
@@ -814,6 +924,7 @@ function ClientGroup({
 }) {
   const hasActiveProject = isProjectInTree(client.projects, projectId || '');
   const [expanded, setExpanded] = useState(hasActiveProject);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (hasActiveProject && !expanded) {
@@ -823,23 +934,18 @@ function ClientGroup({
 
   return (
     <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <CollapsibleTrigger asChild>
+      <div className="flex items-center group/client">
         <Button
           variant="ghost"
-          className="w-full justify-between px-2 py-1 h-auto font-normal text-xs"
+          className="flex-1 justify-between px-2 py-1 h-auto font-normal text-xs min-w-0"
+          onClick={() => {
+            if (organizationId && client.id) navigate(`/organizations/${organizationId}/clients/${client.id}`);
+          }}
         >
-          <div className="flex items-center gap-1.5 min-w-0 group/client">
+          <div className="flex items-center gap-1.5 min-w-0">
             <HealthDot status={client.health_status} />
             <UserCircle className="h-3.5 w-3.5 text-blue-500 shrink-0" />
             <span className="truncate">{client.name}</span>
-            <Link
-              to={`/organizations/${orgId}?tab=projects&client=${client.id}`}
-              onClick={(e) => e.stopPropagation()}
-              className="opacity-0 group-hover/client:opacity-100 ml-0.5 shrink-0 text-muted-foreground hover:text-foreground"
-              title={`${client.name} in org profile`}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Link>
           </div>
           <div className="flex items-center gap-1">
             {client.active_issues_count != null && client.active_issues_count > 0 && (
@@ -850,14 +956,40 @@ function ClientGroup({
             <span className="text-[10px] text-muted-foreground">
               {countProjects(client.projects)}
             </span>
+          </div>
+        </Button>
+        <CollapsibleTrigger asChild>
+          <button className="p-0.5 hover:bg-accent rounded-sm shrink-0 mr-0.5">
             {expanded ? (
               <ChevronDown className="h-3 w-3" />
             ) : (
               <ChevronRight className="h-3 w-3" />
             )}
-          </div>
+          </button>
+        </CollapsibleTrigger>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 w-5 p-0 hover:bg-accent opacity-0 group-hover/client:opacity-100 transition-opacity shrink-0 mr-1"
+          title="Add project to client"
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const result = await NiceModal.show('project-form', {
+                organization_id: organizationId,
+                client_id: client.id,
+              }) as ProjectFormDialogResult;
+              if (result === 'saved') {
+                queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
+              }
+            } catch {
+              // dialog dismissed
+            }
+          }}
+        >
+          <Plus className="h-3 w-3" />
         </Button>
-      </CollapsibleTrigger>
+      </div>
       <CollapsibleContent className="pl-4">
         <div className="space-y-0.5 py-0.5">
           <SortableProjectList
@@ -875,12 +1007,91 @@ function ClientGroup({
 }
 
 // ============================================================================
+// SharedBoardGroup — renders boards shared TO this org from a source org
+// ============================================================================
+
+function SharedBoardGroup({
+  group,
+  projectId: _projectId,
+}: {
+  group: SidebarSharedBoardGroupType;
+  projectId?: string;
+}) {
+  const location = useLocation();
+  const [expanded, setExpanded] = useState(false);
+
+  const shareLabel = group.share_type === 'joint_venture'
+    ? 'Joint Venture'
+    : group.share_type === 'review'
+    ? 'Review'
+    : 'Collaboration';
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="ghost"
+          className="w-full justify-between px-2 py-1 h-auto font-normal text-xs"
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Share2 className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+            <span className="truncate">{group.source_org_name}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] px-1 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300">
+              {shareLabel}
+            </span>
+            {expanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </div>
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pl-4">
+        <div className="space-y-0.5 py-0.5">
+          {group.boards.map((board) => {
+            const params = new URLSearchParams({ board: board.board_id });
+            const isActive =
+              location.pathname === `/projects/${board.project_id}/tasks` &&
+              location.search.includes(`board=${board.board_id}`);
+
+            return (
+              <Link
+                key={board.board_id}
+                to={{
+                  pathname: `/projects/${board.project_id}/tasks`,
+                  search: params.toString(),
+                }}
+                className={cn(
+                  'block px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground truncate transition-colors',
+                  isActive && 'bg-primary/8 text-foreground font-medium'
+                )}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Folder className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <span className="truncate">
+                    {board.project_name} &rarr; {board.board_name}
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ============================================================================
 // OrgSection — renders org name as section header with internal projects + clients
 // ============================================================================
 
 function OrgSection({
   org,
   projectId,
+  activeOrgId,
   isAdmin,
   expandedProjects,
   onToggleProject,
@@ -888,74 +1099,130 @@ function OrgSection({
 }: {
   org: SidebarOrg;
   projectId?: string;
+  activeOrgId?: string;
   isAdmin: boolean;
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
   queryClient: QueryClient;
 }) {
+  const navigate = useNavigate();
   const location = useLocation();
-  const hasActiveProject =
-    isProjectInTree(org.internal_projects, projectId || '') ||
-    org.clients.some((c) => isProjectInTree(c.projects, projectId || ''));
-  const [expanded, setExpanded] = useState(hasActiveProject || org.role === 'admin');
+  const [internalExpanded, setInternalExpanded] = useState(true);
+  const [clientsExpanded, setClientsExpanded] = useState(true);
 
-  useEffect(() => {
-    if (hasActiveProject && !expanded) {
-      setExpanded(true);
-    }
-  }, [hasActiveProject]);
+  const findInTree = (projects: SidebarProjectType[], id: string): boolean =>
+    projects.some((p) => p.id === id || findInTree(p.children || [], id));
+  const hasActiveProject = projectId ? (
+    findInTree(org.internal_projects, projectId) ||
+    org.clients.some((c) => findInTree(c.projects, projectId))
+  ) : false;
+  const isActiveOrg = activeOrgId === org.id || hasActiveProject;
 
   return (
-    <div>
-      <div className="flex items-center px-2 py-1.5">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="shrink-0 mr-1 text-muted-foreground hover:text-foreground"
-        >
-          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-        </button>
-        <Link
-          to={`/organizations/${org.id}`}
+    <div className="space-y-0.5">
+      {/* Org header */}
+      <div className={cn(
+        "flex items-center rounded-sm",
+        isActiveOrg && "bg-primary/8"
+      )}>
+        <Button
+          variant="ghost"
           className={cn(
-            'flex items-center gap-1.5 min-w-0 font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors',
-            location.pathname === `/organizations/${org.id}` && 'text-foreground'
+            "flex-1 justify-start px-2 py-1.5 h-auto font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground min-w-0",
+            isActiveOrg && "text-foreground"
           )}
-          title={`${org.name} overview`}
+          onClick={() => {
+            if (org.id) navigate(`/organizations/${org.id}`);
+          }}
         >
-          <HealthDot status={org.health_status} />
-          <Building2 className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{org.name}</span>
-        </Link>
-      </div>
-      {expanded && (
-      <div className="pl-2">
-        <div className="space-y-0.5">
-          {/* Org-level workspace links: CRM (expandable), Social, Intelligence */}
-          <div className="px-1 py-1 space-y-0.5">
-            <OrgCrmSection orgId={org.id} location={location} />
-
-            <Link
-              to={`/social-command`}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === '/social-command' && 'bg-accent text-accent-foreground'
-              )}
-            >
-              <Megaphone className="h-3 w-3 shrink-0 text-purple-500" />
-              <span>Social</span>
-            </Link>
-
-            <OrgIntelligenceSection orgId={org.id} location={location} />
+          <div className="flex items-center gap-1.5 min-w-0">
+            <HealthDot status={org.health_status} />
+            <Building2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{org.name}</span>
           </div>
+        </Button>
+      </div>
 
-          {/* Internal projects (no client) */}
-          {org.internal_projects.length > 0 && (
-            <div className="space-y-0.5 py-0.5">
-              {org.clients.length > 0 && (
-                <div className="px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Internal
-                </div>
-              )}
+      {/* Org content */}
+      <div className="pl-2 space-y-0.5">
+        {/* Org-level workspace links: CRM, Social, Intelligence */}
+        <div className="px-1 py-1 space-y-0.5">
+          <OrgCrmSection orgId={org.id} location={location} />
+
+          <Link
+            to={`/social-command`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === '/social-command' && 'bg-primary/8 text-foreground font-medium'
+            )}
+          >
+            <Megaphone className="h-3 w-3 shrink-0 text-purple-500" />
+            <span>Social</span>
+          </Link>
+
+          <OrgIntelligenceSection orgId={org.id} location={location} />
+        </div>
+
+        {/* Org-level CRM pipeline quick links */}
+        <div className="flex gap-1 px-1 py-1">
+          <Link
+            to={`/organizations/${org.id}/crm/acquisition`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground flex-1 transition-colors',
+              location.pathname === `/organizations/${org.id}/crm/acquisition` &&
+                'bg-primary/8 text-foreground font-medium'
+            )}
+          >
+            <Target className="h-3 w-3 text-amber-500 shrink-0" />
+            <span>Acquisition</span>
+          </Link>
+          <Link
+            to={`/organizations/${org.id}/crm/lifecycle`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground flex-1 transition-colors',
+              location.pathname === `/organizations/${org.id}/crm/lifecycle` &&
+                'bg-primary/8 text-foreground font-medium'
+            )}
+          >
+            <TrendingUp className="h-3 w-3 text-emerald-500 shrink-0" />
+            <span>Lifecycle</span>
+          </Link>
+        </div>
+
+        {/* Internal projects — collapsible */}
+        <Collapsible open={internalExpanded} onOpenChange={setInternalExpanded}>
+          <div className="px-2 py-0.5 flex items-center justify-between">
+            <CollapsibleTrigger asChild>
+              <button className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+                {internalExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+                Internal Projects
+              </button>
+            </CollapsibleTrigger>
+            {isAdmin && org.role === 'admin' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 p-0 hover:bg-accent"
+                title="New Project"
+                onClick={async () => {
+                  try {
+                    const result = await NiceModal.show('project-form', {
+                      organization_id: org.id,
+                    }) as ProjectFormDialogResult;
+                    if (result === 'saved') {
+                      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                    }
+                  } catch {
+                    // dialog dismissed
+                  }
+                }}
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+          <CollapsibleContent>
+            {org.internal_projects.length > 0 && (
               <SortableProjectList
                 scopeKey={`org:${org.id}:internal`}
                 projects={org.internal_projects}
@@ -964,39 +1231,223 @@ function OrgSection({
                 onToggleProject={onToggleProject}
                 queryClient={queryClient}
               />
-            </div>
-          )}
+            )}
+          </CollapsibleContent>
+        </Collapsible>
 
-          {/* Client groups */}
-          {org.clients.map((client) => (
-            <ClientGroup
-              key={client.id}
-              client={client}
-              orgId={org.id}
-              projectId={projectId}
-              expandedProjects={expandedProjects}
-              onToggleProject={onToggleProject}
-              queryClient={queryClient}
-            />
-          ))}
-
-          {/* New Client button (org admin only) */}
-          {isAdmin && org.role === 'admin' && (
+        {/* Client groups — collapsible */}
+        <Collapsible open={clientsExpanded} onOpenChange={setClientsExpanded}>
+          <div className="px-2 py-0.5 flex items-center justify-between">
+            <CollapsibleTrigger asChild>
+              <button className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+                {clientsExpanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+                Clients
+              </button>
+            </CollapsibleTrigger>
+            {isAdmin && org.role === 'admin' && (
               <Button
                 variant="ghost"
-                className="w-full justify-start px-2 py-1 h-auto text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  // TODO: Open client creation dialog
+                size="sm"
+                className="h-5 w-5 p-0 hover:bg-accent"
+                title="New Client"
+                onClick={async () => {
+                  try {
+                    const result = await NiceModal.show('create-name', {
+                      title: 'New Client',
+                      label: 'Client Name',
+                      placeholder: 'Enter client name...',
+                      submitText: 'Create Client',
+                    }) as CreateNameDialogResult;
+                    const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                    await organizationsApi.createClient(org.id, { name: result.name, slug });
+                    queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                  } catch {
+                    // dialog dismissed
+                  }
                 }}
               >
-                <Plus className="h-3 w-3 mr-1.5" />
-                New Client
+                <Plus className="h-3 w-3" />
               </Button>
-          )}
-        </div>
+            )}
+          </div>
+          <CollapsibleContent>
+            {org.clients.map((client) => (
+              <ClientGroup
+                key={client.id}
+                client={client}
+                organizationId={org.id}
+                projectId={projectId}
+                expandedProjects={expandedProjects}
+                onToggleProject={onToggleProject}
+                queryClient={queryClient}
+              />
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+
+        {/* Shared boards from other orgs */}
+        {org.shared_boards && org.shared_boards.length > 0 && (
+          <div className="space-y-0.5 py-0.5">
+            <div className="px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Shared with You
+            </div>
+            {org.shared_boards.map((group) => (
+              <SharedBoardGroup
+                key={group.source_org_id}
+                group={group}
+                projectId={projectId}
+              />
+            ))}
+          </div>
+        )}
       </div>
-      )}
     </div>
+  );
+}
+
+// ============================================================================
+// SidebarOrgGroups — separates orgs into active (has content) vs empty
+// ============================================================================
+
+function orgHasContent(org: SidebarOrg): boolean {
+  return (
+    org.internal_projects.length > 0 ||
+    org.clients.some((c) => c.projects.length > 0) ||
+    (org.shared_boards || []).length > 0
+  );
+}
+
+function SidebarOrgGroups({
+  sidebarTree,
+  projectId,
+  orgId,
+  isAdmin,
+  expandedProjects,
+  onToggleProject,
+  queryClient,
+}: {
+  sidebarTree: SidebarTree;
+  projectId?: string;
+  orgId?: string;
+  isAdmin: boolean;
+  expandedProjects: Set<string>;
+  onToggleProject: (id: string) => void;
+  queryClient: QueryClient;
+}) {
+  const [showEmptyOrgs, setShowEmptyOrgs] = useState(false);
+
+  // Derive activeOrgId: from URL orgId, or from which org contains the active project
+  const allOrgs = [...sidebarTree.owned_orgs, ...sidebarTree.member_orgs];
+  const activeOrgId = useMemo(() => {
+    if (orgId) return orgId;
+    if (!projectId) return undefined;
+    for (const org of allOrgs) {
+      if (isProjectInTree(org.internal_projects, projectId)) return org.id;
+      for (const client of org.clients) {
+        if (isProjectInTree(client.projects, projectId)) return org.id;
+      }
+    }
+    return undefined;
+  }, [orgId, projectId, allOrgs]);
+
+  // Split owned orgs into "active" (has projects/clients) and "empty"
+  const activeOrgs = sidebarTree.owned_orgs.filter(orgHasContent);
+  const otherOrgs = sidebarTree.owned_orgs.filter((o) => !orgHasContent(o));
+  const otherMemberOrgs = sidebarTree.member_orgs.filter((o) => !orgHasContent(o));
+  const activeMemberOrgs = sidebarTree.member_orgs.filter(orgHasContent);
+
+  return (
+    <>
+      {/* Active owned orgs (with projects/clients) */}
+      {activeOrgs.map((org) => (
+        <OrgSection
+          key={org.id || org.slug}
+          org={org}
+          projectId={projectId}
+          activeOrgId={activeOrgId}
+          isAdmin={isAdmin}
+          expandedProjects={expandedProjects}
+          onToggleProject={onToggleProject}
+          queryClient={queryClient}
+        />
+      ))}
+
+      {/* Active guest/member orgs */}
+      {activeMemberOrgs.length > 0 && activeMemberOrgs.map((org) => (
+        <OrgSection
+          key={org.id || org.slug}
+          org={org}
+          projectId={projectId}
+          activeOrgId={activeOrgId}
+          isAdmin={isAdmin}
+          expandedProjects={expandedProjects}
+          onToggleProject={onToggleProject}
+          queryClient={queryClient}
+        />
+      ))}
+
+      {/* Other owned organizations — collapsed name-only list */}
+      {otherOrgs.length > 0 && (
+        <Collapsible open={showEmptyOrgs} onOpenChange={setShowEmptyOrgs}>
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              className="w-full justify-between px-2 py-1.5 h-auto text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground"
+            >
+              <span>Other Organizations ({otherOrgs.length})</span>
+              {showEmptyOrgs ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pl-2">
+            <div className="space-y-0.5 py-0.5">
+              {otherOrgs.map((org) => (
+                <Link
+                  key={org.id || org.slug}
+                  to={org.id ? `/organizations/${org.id}` : '#'}
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors"
+                >
+                  <Building2 className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <span className="truncate">{org.name}</span>
+                </Link>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Guest access organizations — name-only links */}
+      {otherMemberOrgs.length > 0 && (
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              className="w-full justify-between px-2 py-1.5 h-auto text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground"
+            >
+              <span>Guest Access ({otherMemberOrgs.length})</span>
+              <ChevronRight className="h-3 w-3" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pl-2">
+            <div className="space-y-0.5 py-0.5">
+              {otherMemberOrgs.map((org) => (
+                <Link
+                  key={org.id || org.slug}
+                  to={org.id ? `/organizations/${org.id}` : '#'}
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors"
+                >
+                  <Building2 className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <span className="truncate">{org.name}</span>
+                </Link>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </>
   );
 }
 
@@ -1010,6 +1461,11 @@ export function Sidebar({ className }: SidebarProps) {
   const { user } = useAuth();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useCommandStore();
   const queryClient = useQueryClient();
+
+  // Extract orgId from location since sidebar is outside org route tree
+  const orgIdFromPath = location.pathname.match(/\/organizations\/([^/]+)/)?.[1];
+
+  const { sidebarCollapsed, toggleSidebar } = useViewStore();
 
   // Fetch sidebar tree (hierarchical)
   const {
@@ -1026,7 +1482,6 @@ export function Sidebar({ className }: SidebarProps) {
     data: projects = [],
     isLoading: isProjectsLoading,
     error: projectsError,
-    refetch: refetchProjects,
   } = useQuery<Project[], Error>({
     queryKey: ['projects'],
     queryFn: projectsApi.getAll,
@@ -1046,112 +1501,192 @@ export function Sidebar({ className }: SidebarProps) {
 
   useEffect(() => {
     if (!projectId) return;
-    setExpandedProjects((prev) => {
-      if (prev.has(projectId)) {
-        return prev;
-      }
-      const next = new Set(prev);
-      next.add(projectId);
-      return next;
-    });
+    // Only keep the active project expanded
+    setExpandedProjects(new Set([projectId]));
   }, [projectId]);
 
   const toggleProject = (id: string) => {
     setExpandedProjects(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
+      if (prev.has(id)) {
+        // Collapsing the currently expanded project
+        const newSet = new Set(prev);
         newSet.delete(id);
+        return newSet;
       } else {
-        newSet.add(id);
+        // Expand only this project, collapse all others
+        return new Set([id]);
       }
-      return newSet;
     });
   };
 
-  const handleCreateProject = async () => {
-    const existingIds = new Set(projects.map((project) => project.id));
-
-    try {
-      const result = await showProjectForm();
-      if (result === 'saved') {
-        const { data: updatedProjects } = await refetchProjects();
-
-        if (updatedProjects && updatedProjects.length > 0) {
-          const newProject = updatedProjects.find(
-            (project) => !existingIds.has(project.id)
-          );
-
-          if (newProject) {
-            setExpandedProjects((prev) => {
-              const next = new Set(prev);
-              next.add(newProject.id);
-              return next;
-            });
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to create project from sidebar:', error);
-    }
-  };
-
   const [globalViewsExpanded, setGlobalViewsExpanded] = useState(false);
+  const [adminPlatformsExpanded, setAdminPlatformsExpanded] = useState(false);
+  const [managementExpanded, setManagementExpanded] = useState(false);
+
+  // Keyboard shortcut: Cmd+B / Ctrl+B to toggle sidebar
+  useKeyToggleSidebar(() => toggleSidebar(), { scope: Scope.GLOBAL });
 
   // Filter navigation items based on user role
+  const filteredAdminNav = ADMIN_NAV_ITEMS.filter((item) => {
+    if (item.adminOnly && !isAdmin) return false;
+    return true;
+  });
   const filteredPrimaryNav = PRIMARY_NAV_ITEMS.filter((item) => {
     if (item.adminOnly && !isAdmin) return false;
     if (item.memberOnly && isAdmin) return false;
     return true;
   });
 
-  return (
-    <div className={cn("flex flex-col h-full sidebar-container", className)}>
-      {/* Primary Navigation */}
-      <div className="p-3 border-b border-border/40">
-        <div className="space-y-0.5">
-          {filteredPrimaryNav.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname.startsWith(item.to);
+  // Helper: determine if a nav item is active
+  const isNavActive = (item: NavItem) => {
+    if (item.to === '/projects') return location.pathname === '/projects';
+    return location.pathname.startsWith(item.to);
+  };
 
-            return (
-              <Link key={item.id} to={item.to}>
-                <div
-                  className={cn(
-                    "sidebar-nav-item",
-                    isActive && "sidebar-nav-item-active",
-                    item.id === 'nora' && !isActive && "bg-purple-50/50 hover:bg-purple-100/50 dark:bg-purple-950/20 dark:hover:bg-purple-950/40",
-                    item.id === 'topsi' && !isActive && "bg-cyan-50/50 hover:bg-cyan-100/50 dark:bg-cyan-950/20 dark:hover:bg-cyan-950/40"
-                  )}
-                >
-                  <Icon className={cn(
-                    "h-4 w-4",
-                    item.id === 'nora' && "text-purple-600",
-                    item.id === 'topsi' && "text-cyan-600"
-                  )} />
-                  <span className="flex-1">{item.label}</span>
-                  {item.id === 'nora' && (
-                    <span className="text-[10px] bg-purple-600 text-white px-1.5 py-0.5 rounded">
-                      ADMIN
-                    </span>
-                  )}
-                  {item.id === 'topsi' && (
-                    <span className="text-[10px] bg-cyan-600 text-white px-1.5 py-0.5 rounded">
-                      ADMIN
-                    </span>
+  // Render a single nav item (collapsed or expanded)
+  const renderNavItem = (item: NavItem, active: boolean) => {
+    const Icon = item.icon;
+    const isAdminTool = item.id === 'nora' || item.id === 'topsi';
+    const adminBg = item.id === 'nora'
+      ? 'bg-purple-50/50 hover:bg-purple-100/50 dark:bg-purple-950/20 dark:hover:bg-purple-950/40'
+      : item.id === 'topsi'
+        ? 'bg-cyan-50/50 hover:bg-cyan-100/50 dark:bg-cyan-950/20 dark:hover:bg-cyan-950/40'
+        : '';
+    const adminIconColor = item.id === 'nora' ? 'text-purple-600 dark:text-purple-400' : item.id === 'topsi' ? 'text-cyan-600 dark:text-cyan-400' : '';
+    const adminBadgeBg = item.id === 'nora' ? 'bg-purple-600' : item.id === 'topsi' ? 'bg-cyan-600' : '';
+
+    if (sidebarCollapsed) {
+      return (
+        <Tooltip key={item.id}>
+          <TooltipTrigger asChild>
+            <Link to={item.to}>
+              <Button
+                variant="ghost"
+                className={cn(
+                  "w-full justify-center p-2 h-auto",
+                  active && "sidebar-nav-item-active",
+                  !active && adminBg
+                )}
+              >
+                <Icon className={cn("h-4 w-4", adminIconColor)} />
+              </Button>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right">{item.label}</TooltipContent>
+        </Tooltip>
+      );
+    }
+
+    return (
+      <Link key={item.id} to={item.to}>
+        <div
+          className={cn(
+            "sidebar-nav-item",
+            active && "sidebar-nav-item-active",
+            !active && adminBg
+          )}
+        >
+          <Icon className={cn("h-4 w-4", adminIconColor)} />
+          <span className="flex-1">{item.label}</span>
+          {isAdminTool && (
+            <span className={cn("text-[10px] text-white px-1.5 py-0.5 rounded", adminBadgeBg)}>
+              ADMIN
+            </span>
+          )}
+        </div>
+      </Link>
+    );
+  };
+
+  return (
+    <TooltipProvider delayDuration={0}>
+    <div className={cn(
+      "flex flex-col h-full sidebar-container transition-all duration-200 overflow-hidden",
+      sidebarCollapsed ? "w-14" : "w-64",
+      className
+    )}>
+      {/* Admin Platforms (collapsible, only shown for admins) */}
+      {filteredAdminNav.length > 0 && (
+        <div className={cn("border-b border-border/40", sidebarCollapsed ? "p-1.5" : "p-2 px-3")}>
+          {sidebarCollapsed ? (
+            <div className="space-y-1">
+              {filteredAdminNav.map((item) => renderNavItem(item, isNavActive(item)))}
+            </div>
+          ) : (
+            <Collapsible open={adminPlatformsExpanded} onOpenChange={setAdminPlatformsExpanded}>
+              <CollapsibleTrigger asChild>
+                <div className="sidebar-nav-item justify-between cursor-pointer">
+                  <div className="flex items-center gap-2.5">
+                    <Crown className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <span>Admin Platforms</span>
+                  </div>
+                  {adminPlatformsExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
                   )}
                 </div>
-              </Link>
-            );
-          })}
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2 mt-1">
+                  {filteredAdminNav.map((item) => renderNavItem(item, isNavActive(item)))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+        </div>
+      )}
+
+      {/* Primary Navigation */}
+      <div className={cn("border-b border-border/40", sidebarCollapsed ? "p-1.5" : "p-2 px-3")}>
+        <div className="space-y-0.5">
+          {filteredPrimaryNav.map((item) => renderNavItem(item, isNavActive(item)))}
         </div>
       </div>
 
-      {/* Global Views - Admin Only */}
-      {isAdmin && (
+      {/* Management + Global Views - Admin Only (collapsed into sections) */}
+      {isAdmin && !sidebarCollapsed && (
         <div className="border-b border-border/40">
+          {/* Management section */}
+          <Collapsible open={managementExpanded} onOpenChange={setManagementExpanded}>
+            <CollapsibleTrigger asChild>
+              <div className="sidebar-nav-item mx-3 my-1.5 justify-between cursor-pointer">
+                <div className="flex items-center gap-2.5">
+                  <LayoutDashboard className="h-4 w-4" />
+                  <span>Management</span>
+                </div>
+                {managementExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-3 pb-1">
+              <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
+                {MANAGEMENT_NAV_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  const active = location.pathname === item.to;
+                  return (
+                    <Link key={item.id} to={item.to}>
+                      <div className={cn(
+                        "sidebar-nav-item text-xs py-1",
+                        active && "sidebar-nav-item-active"
+                      )}>
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* Global Views section */}
           <Collapsible open={globalViewsExpanded} onOpenChange={setGlobalViewsExpanded}>
             <CollapsibleTrigger asChild>
-              <div className="sidebar-nav-item mx-3 my-1.5 justify-between">
+              <div className="sidebar-nav-item mx-3 my-1.5 justify-between cursor-pointer">
                 <div className="flex items-center gap-2.5">
                   <BarChart3 className="h-4 w-4" />
                   <span>Global Views</span>
@@ -1167,16 +1702,13 @@ export function Sidebar({ className }: SidebarProps) {
               <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
                 {GLOBAL_VIEW_ITEMS.map((item) => {
                   const Icon = item.icon;
-                  const isActive = location.pathname === item.to;
-
+                  const active = location.pathname === item.to;
                   return (
                     <Link key={item.id} to={item.to}>
-                      <div
-                        className={cn(
-                          "sidebar-nav-item text-xs py-1",
-                          isActive && "sidebar-nav-item-active"
-                        )}
-                      >
+                      <div className={cn(
+                        "sidebar-nav-item text-xs py-1",
+                        active && "sidebar-nav-item-active"
+                      )}>
                         <Icon className="h-3.5 w-3.5" />
                         {item.label}
                       </div>
@@ -1190,7 +1722,7 @@ export function Sidebar({ className }: SidebarProps) {
       )}
 
       {/* Favorites Section */}
-      {favorites.length > 0 && (
+      {favorites.length > 0 && !sidebarCollapsed && (
         <div className="border-b border-border/40">
           <div className="px-3 py-2">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -1208,7 +1740,7 @@ export function Sidebar({ className }: SidebarProps) {
                     variant="ghost"
                     className={cn(
                       "w-full justify-start px-2 py-1.5 h-auto font-normal",
-                      projectId === proj.id && "bg-accent text-accent-foreground"
+                      projectId === proj.id && "bg-primary/8 text-foreground font-medium"
                     )}
                   >
                     <Star className="h-4 w-4 mr-2 text-yellow-500 fill-yellow-500" />
@@ -1222,18 +1754,33 @@ export function Sidebar({ className }: SidebarProps) {
       )}
 
       {/* Organizations & Projects Section (Hierarchical) */}
-      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+      {!sidebarCollapsed && <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="px-3 py-2 flex items-center justify-between flex-shrink-0">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Projects
+            Organizations
           </span>
           {isAdmin && (
             <Button
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 hover:bg-accent"
-              onClick={handleCreateProject}
-              >
+              title="New Organization"
+              onClick={async () => {
+                try {
+                  const result = await NiceModal.show('create-name', {
+                    title: 'New Organization',
+                    label: 'Organization Name',
+                    placeholder: 'Enter organization name...',
+                    submitText: 'Create Organization',
+                  }) as CreateNameDialogResult;
+                  const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                  await organizationsApi.create({ name: result.name, slug });
+                  queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                } catch {
+                  // dialog dismissed
+                }
+              }}
+            >
               <Plus className="h-4 w-4" />
             </Button>
           )}
@@ -1247,42 +1794,15 @@ export function Sidebar({ className }: SidebarProps) {
                 Loading projects...
               </div>
             ) : hasTree ? (
-              <>
-                {/* Owned organizations */}
-                {sidebarTree!.owned_orgs.map((org) => (
-                  <OrgSection
-                    key={org.id || org.slug}
-                    org={org}
-                    projectId={projectId}
-                    isAdmin={isAdmin}
-                    expandedProjects={expandedProjects}
-                    onToggleProject={toggleProject}
-                    queryClient={queryClient}
-                  />
-                ))}
-
-                {/* Guest access organizations */}
-                {sidebarTree!.member_orgs.length > 0 && (
-                  <>
-                    <div className="px-2 pt-3 pb-1">
-                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                        Guest Access
-                      </span>
-                    </div>
-                    {sidebarTree!.member_orgs.map((org) => (
-                      <OrgSection
-                        key={org.id || org.slug}
-                        org={org}
-                        projectId={projectId}
-                        isAdmin={isAdmin}
-                        expandedProjects={expandedProjects}
-                        onToggleProject={toggleProject}
-                        queryClient={queryClient}
-                      />
-                    ))}
-                  </>
-                )}
-              </>
+              <SidebarOrgGroups
+                sidebarTree={sidebarTree!}
+                projectId={projectId}
+                orgId={orgIdFromPath}
+                isAdmin={isAdmin}
+                expandedProjects={expandedProjects}
+                onToggleProject={toggleProject}
+                queryClient={queryClient}
+              />
             ) : useFlatFallback ? (
               // Fallback: flat project list
               isProjectsLoading ? (
@@ -1320,13 +1840,54 @@ export function Sidebar({ className }: SidebarProps) {
             ) : null}
           </div>
         </ScrollArea>
-      </div>
+      </div>}
 
-      {/* External Links */}
-      <div className="p-3 border-t">
+      {/* Spacer when collapsed */}
+      {sidebarCollapsed && <div className="flex-1" />}
+
+      {/* Bottom section: Settings + External Links + Collapse Toggle */}
+      <div className={cn("border-t border-border/40", sidebarCollapsed ? "p-1.5" : "p-2 px-3")}>
         <div className="space-y-1">
+          {/* Settings (utility — pinned to bottom) */}
+          {UTILITY_NAV_ITEMS.map((item) => renderNavItem(item, isNavActive(item)))}
+
+          {/* Subtle separator */}
+          <div className={cn("border-t border-border/40 my-1", sidebarCollapsed ? "mx-1" : "mx-0")} />
+
+          {/* External Links */}
           {EXTERNAL_LINKS.map((item) => {
             const Icon = item.icon;
+
+            if (sidebarCollapsed) {
+              if (item.external) {
+                return (
+                  <Tooltip key={item.href}>
+                    <TooltipTrigger asChild>
+                      <a href={item.href} target="_blank" rel="noopener noreferrer" className="block">
+                        <Button variant="ghost" className="w-full justify-center p-2 h-auto text-muted-foreground hover:text-foreground">
+                          <Icon className="h-4 w-4" />
+                        </Button>
+                      </a>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{item.label}</TooltipContent>
+                  </Tooltip>
+                );
+              }
+              return (
+                <Tooltip key={item.label}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-center p-2 h-auto text-muted-foreground hover:text-foreground"
+                      onClick={() => { if (item.action) NiceModal.show(item.action); }}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{item.label}</TooltipContent>
+                </Tooltip>
+              );
+            }
 
             if (item.external) {
               return (
@@ -1365,8 +1926,38 @@ export function Sidebar({ className }: SidebarProps) {
               </Button>
             );
           })}
+
+          {/* Subtle separator */}
+          <div className={cn("border-t border-border/40 my-1", sidebarCollapsed ? "mx-1" : "mx-0")} />
+
+          {/* Collapse Toggle — at the very bottom */}
+          {sidebarCollapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-center p-2 h-auto text-muted-foreground hover:text-foreground"
+                  onClick={toggleSidebar}
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Expand sidebar <kbd className="ml-1 text-[10px] opacity-60">&#8984;B</kbd></TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button
+              variant="ghost"
+              className="w-full justify-start px-3 py-2 h-auto text-muted-foreground hover:text-foreground"
+              onClick={toggleSidebar}
+            >
+              <PanelLeftClose className="h-4 w-4 mr-3" />
+              <span className="text-sm">Collapse</span>
+              <kbd className="ml-auto text-[10px] text-muted-foreground/60 font-sans">&#8984;B</kbd>
+            </Button>
+          )}
         </div>
       </div>
     </div>
+    </TooltipProvider>
   );
 }
