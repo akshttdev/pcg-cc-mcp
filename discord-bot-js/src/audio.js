@@ -160,12 +160,12 @@ export function detectWakeWord(text, agentName) {
 export async function callAgent(serverPort, agentName, message, projectId, sessionId, participantCtx = '') {
   const endpoint = agentName.toLowerCase() === 'topsi' ? 'topsi' : 'nora';
   const identities = {
-    nora: `You are Nora, PowerClub Global's Executive AI Agent. You are speaking via Discord voice.`,
+    nora: `You are Nora, PowerClub Global's Executive AI Agent. You are speaking via Discord voice. British English.`,
     topsi: `You are Topsi, PowerClub Global's technical AI agent. You are speaking via Discord voice.`,
   };
   const identity = identities[agentName.toLowerCase()] ?? `You are ${agentName}, a PowerClub Global AI agent.`;
   const contextPart = participantCtx ? ` ${participantCtx}` : '';
-  const prefix = `[DISCORD VOICE CALL — ${identity}${contextPart} Voice only. 1-3 sentences max. No markdown. British English.]`;
+  const prefix = `[DISCORD VOICE CALL — ${identity}${contextPart} Voice only. 1-3 sentences max. No markdown.]`;
 
   const res = await fetch(`http://127.0.0.1:${serverPort}/api/internal/${endpoint}/chat`, {
     method: 'POST',
@@ -204,7 +204,8 @@ const CHATTERBOX_URL = process.env.CHATTERBOX_URL ?? 'http://localhost:8102';
 export async function synthesizeTts(text, agentName = 'nora') {
   const agent = agentName.toLowerCase();
 
-  // ── Topsi: Chatterbox local TTS ───────────────────────────────────────────
+  // ── Topsi: Piper TTS (en_GB-semaine-medium, prudence speaker) ────────────
+  // Matches the dashboard voice: computer-sounding semaine female voice
   if (agent === 'topsi') {
     try {
       const res = await fetch(`${CHATTERBOX_URL.replace(/\/$/, '')}/tts`, {
@@ -212,21 +213,20 @@ export async function synthesizeTts(text, agentName = 'nora') {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text,
-          voice: 'british_female',
+          speaker_id: 'prudence',
           speed: 1.0,
-          exaggeration: 0.4,
         }),
         signal: AbortSignal.timeout(30_000),
       });
       if (res.ok) {
-        console.log('[TTS] Chatterbox (Topsi)');
+        console.log('[TTS] Piper semaine/prudence (Topsi)');
         return Buffer.from(await res.arrayBuffer());
       }
-      console.warn(`[TTS] Chatterbox returned ${res.status}`);
+      console.warn(`[TTS] Piper returned ${res.status}`);
     } catch (e) {
-      console.warn('[TTS] Chatterbox failed:', e.message);
+      console.warn('[TTS] Piper failed:', e.message);
     }
-    throw new Error('Chatterbox TTS unavailable for Topsi — is it running on port 8102?');
+    throw new Error('Piper TTS unavailable for Topsi — is it running on port 8102?');
   }
 
   // ── Nora: ElevenLabs (Mia Moore) ─────────────────────────────────────────
