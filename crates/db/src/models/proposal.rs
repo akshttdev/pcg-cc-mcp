@@ -132,6 +132,21 @@ impl Proposal {
         qb.build_query_as::<Self>().fetch_all(pool).await
     }
 
+    pub async fn list_by_company(
+        pool: &SqlitePool,
+        company_id: Uuid,
+        limit: Option<i64>,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(
+            "SELECT * FROM proposals WHERE company_id = ? \
+             ORDER BY created_at DESC LIMIT ?",
+        )
+        .bind(company_id)
+        .bind(limit.unwrap_or(200))
+        .fetch_all(pool)
+        .await
+    }
+
     pub async fn update(
         pool: &SqlitePool,
         id: Uuid,

@@ -3942,6 +3942,19 @@ export const organizationsApi = {
     });
     return handleApiResponse<void>(response);
   },
+
+  // Person-org junction (for context badges)
+  listPersonContacts: async (orgId: string): Promise<PersonOrgContact[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/person-contacts`);
+    return handleApiResponse<PersonOrgContact[]>(response);
+  },
+  addPersonContact: async (orgId: string, data: { person_id: string; context?: string }): Promise<PersonOrgContact> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/person-contacts`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonOrgContact>(response);
+  },
 };
 
 // ============================================================================
@@ -4429,8 +4442,45 @@ export interface PersonSocialProfile {
   updated_at: string;
 }
 
+export interface PersonCompanyRole {
+  id: string;
+  person_id: string;
+  company_id: string;
+  role: string;
+  title?: string;
+  is_primary: number;
+  start_date?: string;
+  end_date?: string;
+  notes?: string;
+  created_at: string;
+  company_name?: string;
+  company_slug?: string;
+}
+
+export interface PersonOrgContact {
+  id: string;
+  person_id: string;
+  organization_id: string;
+  context: string;
+  notes?: string;
+  added_at: string;
+  org_name?: string;
+}
+
+export interface CompanyContactMethod {
+  id: string;
+  company_id: string;
+  method_type: string;
+  label?: string;
+  value: string;
+  is_primary: number;
+  created_at: string;
+}
+
 export interface PersonWithSocials extends PersonRecord {
   social_profiles: PersonSocialProfile[];
+  company_roles: PersonCompanyRole[];
+  org_contacts: PersonOrgContact[];
 }
 
 export interface InvoiceRecord {
@@ -4577,6 +4627,47 @@ export const personsApi = {
   listInvoices: async (id: string): Promise<InvoiceRecord[]> => {
     const response = await makeRequest(`/api/persons/${id}/invoices`);
     return handleApiResponse<InvoiceRecord[]>(response);
+  },
+
+  // Company affiliations
+  listCompanies: async (id: string): Promise<PersonCompanyRole[]> => {
+    const response = await makeRequest(`/api/persons/${id}/companies`);
+    return handleApiResponse<PersonCompanyRole[]>(response);
+  },
+  addCompany: async (id: string, data: { company_id: string; role?: string; title?: string; is_primary?: boolean }): Promise<PersonCompanyRole> => {
+    const response = await makeRequest(`/api/persons/${id}/companies`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonCompanyRole>(response);
+  },
+  updateCompanyRole: async (id: string, company_id: string, data: { role?: string; title?: string; is_primary?: boolean }): Promise<PersonCompanyRole> => {
+    const response = await makeRequest(`/api/persons/${id}/companies/${company_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonCompanyRole>(response);
+  },
+  removeCompany: async (id: string, company_id: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}/companies/${company_id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  // Org affiliations
+  listOrgs: async (id: string): Promise<PersonOrgContact[]> => {
+    const response = await makeRequest(`/api/persons/${id}/organizations`);
+    return handleApiResponse<PersonOrgContact[]>(response);
+  },
+  addOrg: async (id: string, data: { organization_id: string; context?: string }): Promise<PersonOrgContact> => {
+    const response = await makeRequest(`/api/persons/${id}/organizations`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonOrgContact>(response);
+  },
+  removeOrg: async (id: string, org_id: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}/organizations/${org_id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
   },
 };
 
@@ -5004,6 +5095,22 @@ export const companiesApi = {
     a.download = companyName ? `PCG_Analysis_${companyName.replace(/\s+/g, '_')}.md` : 'PCG_Analysis.md';
     a.click();
     URL.revokeObjectURL(url);
+  },
+
+  listContactMethods: async (id: string): Promise<CompanyContactMethod[]> => {
+    const response = await makeRequest(`/api/companies/${id}/contact-methods`);
+    return handleApiResponse<CompanyContactMethod[]>(response);
+  },
+  addContactMethod: async (id: string, data: { method_type: string; label?: string; value: string; is_primary?: boolean }): Promise<CompanyContactMethod> => {
+    const response = await makeRequest(`/api/companies/${id}/contact-methods`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CompanyContactMethod>(response);
+  },
+  removeContactMethod: async (id: string, method_id: string): Promise<void> => {
+    const response = await makeRequest(`/api/companies/${id}/contact-methods/${method_id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
   },
 };
 

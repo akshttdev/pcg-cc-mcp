@@ -1203,10 +1203,40 @@ impl NoraAgent {
     }
 
     async fn generate_voice_response(&self, content: &str) -> Result<String> {
+        let clean = Self::strip_markdown(content);
         self.voice_engine
-            .synthesize_speech(content)
+            .synthesize_speech(&clean)
             .await
             .map_err(NoraError::VoiceEngineError)
+    }
+
+    fn strip_markdown(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '*' | '_' | '`' | '#' => {
+                    // Skip consecutive runs of the same symbol
+                    while chars.peek() == Some(&c) {
+                        chars.next();
+                    }
+                }
+                '[' => {
+                    // [label](url) → label
+                    let label: String = chars.by_ref().take_while(|&ch| ch != ']').collect();
+                    out.push_str(&label);
+                    // Consume (url) if present
+                    if chars.peek() == Some(&'(') {
+                        chars.next();
+                        while let Some(ch) = chars.next() {
+                            if ch == ')' { break; }
+                        }
+                    }
+                }
+                other => out.push(other),
+            }
+        }
+        out
     }
 
     async fn generate_follow_up_suggestions(

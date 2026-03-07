@@ -138,6 +138,16 @@ pub enum NoraExecutiveTool {
     GetProjectDetails {
         project_name: String,
     },
+    /// Delete a project by name (permanently removes the project and all its tasks)
+    DeleteProject {
+        project_name: String,
+    },
+    /// Update a project's name or description
+    UpdateProject {
+        project_name: String,
+        new_name: Option<String>,
+        new_description: Option<String>,
+    },
     CreateTaskOnBoard {
         project_id: String,
         board_id: String,
@@ -1014,6 +1024,48 @@ impl ExecutiveTools {
                             "project_name": {
                                 "type": "string",
                                 "description": "The name of the project to get details for"
+                            }
+                        },
+                        "required": ["project_name"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "delete_project",
+                    "description": "Permanently delete a project and all its tasks. Use when the user explicitly asks to delete or remove a project.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_name": {
+                                "type": "string",
+                                "description": "Exact name of the project to delete"
+                            }
+                        },
+                        "required": ["project_name"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "update_project",
+                    "description": "Update a project's name or description.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_name": {
+                                "type": "string",
+                                "description": "Current name of the project to update"
+                            },
+                            "new_name": {
+                                "type": "string",
+                                "description": "New name for the project (optional)"
+                            },
+                            "new_description": {
+                                "type": "string",
+                                "description": "New description for the project (optional)"
                             }
                         },
                         "required": ["project_name"]
@@ -2124,6 +2176,16 @@ impl ExecutiveTools {
                     project_name,
                 })
             }
+            "delete_project" => {
+                let project_name = arguments.get("project_name")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::DeleteProject { project_name })
+            }
+            "update_project" => {
+                let project_name = arguments.get("project_name")?.as_str()?.to_string();
+                let new_name = arguments.get("new_name").and_then(|v| v.as_str()).map(String::from);
+                let new_description = arguments.get("new_description").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::UpdateProject { project_name, new_name, new_description })
+            }
             "execute_workflow" => {
                 let agent_id = arguments.get("agent_id")?.as_str()?.to_string();
                 let workflow_id = arguments.get("workflow_id")?.as_str()?.to_string();
@@ -3179,6 +3241,8 @@ impl ExecutiveTools {
             NoraExecutiveTool::CreateTaskInProject { .. } => "create_task".to_string(),
             NoraExecutiveTool::GetProjectTasks { .. } => "get_project_tasks".to_string(),
             NoraExecutiveTool::GetProjectDetails { .. } => "get_project_details".to_string(),
+            NoraExecutiveTool::DeleteProject { .. } => "delete_project".to_string(),
+            NoraExecutiveTool::UpdateProject { .. } => "update_project".to_string(),
             NoraExecutiveTool::CreateTaskOnBoard { .. } => "create_task_on_board".to_string(),
             NoraExecutiveTool::AddTaskToBoard { .. } => "add_task_to_board".to_string(),
             NoraExecutiveTool::ExecuteWorkflow { .. } => "execute_workflow".to_string(),
@@ -3460,6 +3524,82 @@ impl ExecutiveTools {
                         "success": false,
                         "error": "Task executor not available"
                     }))
+                }
+            }
+            NoraExecutiveTool::DeleteProject { project_name } => {
+                if let Some(executor) = &self.task_executor {
+                    let pool = executor.pool();
+                    match sqlx::query_scalar::<_, Vec<u8>>(
+                        "SELECT id FROM projects WHERE name = ? LIMIT 1"
+                    )
+                    .bind(&project_name)
+                    .fetch_optional(pool)
+                    .await {
+                        Ok(Some(id_bytes)) => {
+                            match sqlx::query("DELETE FROM projects WHERE id = ?")
+                                .bind(&id_bytes)
+                                .execute(pool)
+                                .await
+                            {
+                                Ok(_) => Ok(serde_json::json!({
+                                    "success": true,
+                                    "message": format!("Project '{}' deleted successfully.", project_name),
+                                })),
+                                Err(e) => Ok(serde_json::json!({
+                                    "success": false,
+                                    "error": format!("Failed to delete project: {}", e),
+                                })),
+                            }
+                        }
+                        Ok(None) => Ok(serde_json::json!({
+                            "success": false,
+                            "error": format!("Project '{}' not found.", project_name),
+                        })),
+                        Err(e) => Ok(serde_json::json!({
+                            "success": false,
+                            "error": format!("DB error: {}", e),
+                        })),
+                    }
+                } else {
+                    Ok(serde_json::json!({"success": false, "error": "Task executor not available"}))
+                }
+            }
+            NoraExecutiveTool::UpdateProject { project_name, new_name, new_description } => {
+                if let Some(executor) = &self.task_executor {
+                    let pool = executor.pool();
+                    let mut updated = false;
+                    if let Some(ref name) = new_name {
+                        if let Err(e) = sqlx::query(
+                            "UPDATE projects SET name = ?, updated_at = datetime('now','subsec') WHERE name = ?"
+                        )
+                        .bind(name)
+                        .bind(&project_name)
+                        .execute(pool)
+                        .await {
+                            return Ok(serde_json::json!({"success": false, "error": format!("Failed to update name: {}", e)}));
+                        }
+                        updated = true;
+                    }
+                    if let Some(ref desc) = new_description {
+                        let target = new_name.as_deref().unwrap_or(&project_name);
+                        if let Err(e) = sqlx::query(
+                            "UPDATE projects SET git_repo_path = ?, updated_at = datetime('now','subsec') WHERE name = ?"
+                        )
+                        .bind(desc)
+                        .bind(target)
+                        .execute(pool)
+                        .await {
+                            return Ok(serde_json::json!({"success": false, "error": format!("Failed to update description: {}", e)}));
+                        }
+                        updated = true;
+                    }
+                    if updated {
+                        Ok(serde_json::json!({"success": true, "message": format!("Project '{}' updated.", project_name)}))
+                    } else {
+                        Ok(serde_json::json!({"success": false, "error": "No fields to update provided."}))
+                    }
+                } else {
+                    Ok(serde_json::json!({"success": false, "error": "Task executor not available"}))
                 }
             }
             NoraExecutiveTool::DelegateTask {

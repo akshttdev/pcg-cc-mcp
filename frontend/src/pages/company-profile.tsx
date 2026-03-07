@@ -17,11 +17,23 @@ import {
   FileText,
   Download,
   Plus,
+  Mail,
+  Phone,
+  X,
+  Link2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -29,6 +41,7 @@ import {
   type CompanyRecord,
   type ProposalRecord,
   type PersonRecord,
+  type CompanyContactMethod,
 } from '@/lib/api';
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
@@ -70,18 +83,148 @@ function ProposalStatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Contact Methods Card ───────────────────────────────────────────────────────
+
+const METHOD_ICONS: Record<string, React.FC<{ className?: string }>> = {
+  email:     Mail,
+  phone:     Phone,
+  whatsapp:  Phone,
+  linkedin:  Link2,
+  instagram: Globe,
+  twitter:   Globe,
+  website:   Globe,
+};
+
+function ContactMethodsCard({
+  methods,
+  onAdd,
+  onRemove,
+}: {
+  methods: CompanyContactMethod[];
+  onAdd: (data: { method_type: string; label?: string; value: string; is_primary?: boolean }) => Promise<void>;
+  onRemove: (id: string) => Promise<void>;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [methodType, setMethodType] = useState('email');
+  const [label, setLabel] = useState('');
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleAdd = async () => {
+    if (!value.trim()) return;
+    setSaving(true);
+    try {
+      await onAdd({ method_type: methodType, label: label || undefined, value: value.trim() });
+      setShowForm(false);
+      setLabel('');
+      setValue('');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium flex items-center justify-between">
+          <span>Contact Methods</span>
+          {!showForm && (
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              onClick={() => setShowForm(true)}
+            >
+              <Plus className="h-3 w-3" />
+              Add
+            </button>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {methods.map((m) => {
+          const Icon = METHOD_ICONS[m.method_type] ?? Globe;
+          return (
+            <div key={m.id} className="flex items-center justify-between text-sm group">
+              <div className="flex items-center gap-2 min-w-0">
+                <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="min-w-0">
+                  <span className="truncate">{m.value}</span>
+                  {m.label && (
+                    <span className="text-xs text-muted-foreground ml-1">({m.label})</span>
+                  )}
+                </div>
+                {m.is_primary === 1 && (
+                  <Badge className="text-[10px] px-1 py-0 border-0 bg-blue-50 text-blue-600">Primary</Badge>
+                )}
+              </div>
+              <button
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
+                onClick={() => onRemove(m.id)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          );
+        })}
+        {methods.length === 0 && !showForm && (
+          <p className="text-xs text-muted-foreground">No contact methods yet.</p>
+        )}
+        {showForm && (
+          <div className="space-y-2 p-2 rounded-md border bg-muted/40">
+            <Select value={methodType} onValueChange={setMethodType}>
+              <SelectTrigger className="h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {['email','phone','whatsapp','linkedin','instagram','twitter','website'].map(t => (
+                  <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              className="h-7 text-xs"
+              placeholder="Value (email, phone number, URL…)"
+              value={value}
+              onChange={e => setValue(e.target.value)}
+            />
+            <Input
+              className="h-7 text-xs"
+              placeholder="Label (General, PR, Sales…)"
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+            />
+            <div className="flex gap-1.5">
+              <Button size="sm" className="h-7 text-xs flex-1" onClick={handleAdd} disabled={!value.trim() || saving}>
+                {saving ? 'Saving…' : 'Add'}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowForm(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Tab: Overview ─────────────────────────────────────────────────────────────
 
 function OverviewTab({
   company,
   proposalCount,
   contactCount,
+  contactMethods,
   onNavigate,
+  onAddMethod,
+  onRemoveMethod,
 }: {
   company: CompanyRecord;
   proposalCount: number;
   contactCount: number;
+  contactMethods: CompanyContactMethod[];
   onNavigate: (tab: Tab) => void;
+  onAddMethod: (data: { method_type: string; label?: string; value: string; is_primary?: boolean }) => Promise<void>;
+  onRemoveMethod: (id: string) => Promise<void>;
 }) {
   return (
     <div className="space-y-4">
@@ -160,6 +303,13 @@ function OverviewTab({
           )}
         </CardContent>
       </Card>
+
+      {/* Contact Methods */}
+      <ContactMethodsCard
+        methods={contactMethods}
+        onAdd={onAddMethod}
+        onRemove={onRemoveMethod}
+      />
     </div>
   );
 }
@@ -365,6 +515,24 @@ export function CompanyProfilePage() {
     queryFn: () => companiesApi.getIntelligenceStatus(companyId!),
     enabled: !!companyId,
   });
+
+  const { data: contactMethods = [], refetch: refetchMethods } = useQuery({
+    queryKey: ['company-contact-methods', companyId],
+    queryFn: () => companiesApi.listContactMethods(companyId!),
+    enabled: !!companyId,
+  });
+
+  async function handleAddMethod(data: { method_type: string; label?: string; value: string; is_primary?: boolean }) {
+    if (!companyId) return;
+    await companiesApi.addContactMethod(companyId, data);
+    refetchMethods();
+  }
+
+  async function handleRemoveMethod(methodId: string) {
+    if (!companyId) return;
+    await companiesApi.removeContactMethod(companyId, methodId);
+    refetchMethods();
+  }
 
   function setTab(tab: Tab) {
     setSearchParams({ tab });
@@ -573,7 +741,10 @@ export function CompanyProfilePage() {
             company={company}
             proposalCount={proposals.length}
             contactCount={contacts.length}
+            contactMethods={contactMethods}
             onNavigate={setTab}
+            onAddMethod={handleAddMethod}
+            onRemoveMethod={handleRemoveMethod}
           />
         )}
         {activeTab === 'proposals' && <ProposalsTab proposals={proposals} />}

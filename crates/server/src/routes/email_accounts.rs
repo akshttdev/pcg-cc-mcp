@@ -308,11 +308,10 @@ async fn gmail_oauth_callback(
 
     // Parse owner from state
     let (owner_type, owner_id) = parse_state_owner(&query.state);
-    // For backward compat, project_id still required on CreateEmailAccount — use nil if non-project
-    let project_id: Uuid = if owner_type == "project" {
-        owner_id.parse().unwrap_or(Uuid::nil())
+    let project_id: Option<Uuid> = if owner_type == "project" {
+        owner_id.parse().ok()
     } else {
-        Uuid::nil()
+        None
     };
 
     // Calculate token expiry
@@ -456,10 +455,10 @@ async fn zoho_oauth_callback(
 
     // Parse owner from state
     let (owner_type, owner_id) = parse_state_owner(&query.state);
-    let project_id: Uuid = if owner_type == "project" {
-        owner_id.parse().unwrap_or(Uuid::nil())
+    let project_id: Option<Uuid> = if owner_type == "project" {
+        owner_id.parse().ok()
     } else {
-        Uuid::nil()
+        None
     };
 
     // Calculate token expiry
@@ -471,6 +470,26 @@ async fn zoho_oauth_callback(
         EmailAccount::zoho_mail_scopes(),
         EmailAccount::zoho_crm_scopes(),
     ].concat().iter().map(|s| s.to_string()).collect();
+
+    // Remove any existing account for this owner+provider+email so we can upsert cleanly
+    sqlx::query(
+        "DELETE FROM email_accounts WHERE provider = 'zoho' AND email_address = ? AND owner_type = ? AND owner_id = ?"
+    )
+    .bind(&primary_email)
+    .bind(&owner_type)
+    .bind(&owner_id)
+    .execute(pool)
+    .await
+    .ok();
+
+    // Also clean up any legacy row keyed by nil project_id
+    sqlx::query(
+        "DELETE FROM email_accounts WHERE provider = 'zoho' AND email_address = ? AND project_id = x'00000000000000000000000000000000'"
+    )
+    .bind(&primary_email)
+    .execute(pool)
+    .await
+    .ok();
 
     // Create the email account
     let account = EmailAccount::create(pool, CreateEmailAccount {
