@@ -84,6 +84,7 @@ pub mod repo;
 pub mod scratch;
 pub mod session;
 pub mod tag;
+pub mod entity_conversion;
 
 #[cfg(test)]
 pub(crate) mod test_utils;
