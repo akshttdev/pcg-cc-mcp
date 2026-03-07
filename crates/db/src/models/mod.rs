@@ -95,6 +95,7 @@ pub mod proposal;
 pub mod deliverable;
 pub mod operator_rate;
 pub mod meeting_session;
+pub mod scheduled_meeting;
 pub mod company;
 pub mod entity_graph;
 pub mod topology_node;

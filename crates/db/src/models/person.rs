@@ -52,6 +52,13 @@ pub struct Person {
     pub tags: String,
     pub custom_fields: String,
 
+    /// How this person first engaged with PCG.
+    /// 'email'|'instagram'|'whatsapp'|'linkedin'|'twitter'|'sms'|'phone'|'in_person'
+    pub onboarding_channel: Option<String>,
+
+    /// Preferred channel for outbound communication (may differ from onboarding).
+    pub preferred_contact: Option<String>,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -110,6 +117,8 @@ pub struct CreatePerson {
     pub notes: Option<String>,
     pub tags: Option<Vec<String>>,
     pub custom_fields: Option<serde_json::Value>,
+    pub onboarding_channel: Option<String>,
+    pub preferred_contact: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, TS)]
@@ -135,6 +144,8 @@ pub struct UpdatePerson {
     pub notes: Option<String>,
     pub tags: Option<Vec<String>>,
     pub custom_fields: Option<serde_json::Value>,
+    pub onboarding_channel: Option<String>,
+    pub preferred_contact: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -247,8 +258,9 @@ impl Person {
             r#"INSERT INTO persons
                (id, full_name, email, phone, avatar_url, person_type, financial_role,
                 client_profile, business_stage, lifecycle_stage, lead_score,
-                company_name, job_title, website, organization_id, notes, tags, custom_fields)
-               VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)"#,
+                company_name, job_title, website, organization_id, notes, tags, custom_fields,
+                onboarding_channel, preferred_contact)
+               VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)"#,
         )
         .bind(id.as_bytes().as_slice())
         .bind(&data.full_name)
@@ -268,6 +280,8 @@ impl Person {
         .bind(&data.notes)
         .bind(&tags)
         .bind(&custom_fields)
+        .bind(&data.onboarding_channel)
+        .bind(&data.preferred_contact)
         .execute(pool)
         .await?;
 
@@ -302,7 +316,7 @@ impl Person {
                lifecycle_stage=?10, lead_score=?11, company_name=?12, job_title=?13,
                website=?14, organization_id=?15, intelligence_summary=?16,
                intelligence_raw=?17, intelligence_confidence=?18, notes=?19,
-               tags=?20, custom_fields=?21,
+               tags=?20, custom_fields=?21, onboarding_channel=?22, preferred_contact=?23,
                updated_at=datetime('now','subsec')
                WHERE id=?1"#,
         )
@@ -327,6 +341,8 @@ impl Person {
         .bind(data.notes.or(existing.notes))
         .bind(&tags)
         .bind(&custom_fields)
+        .bind(data.onboarding_channel.or(existing.onboarding_channel))
+        .bind(data.preferred_contact.or(existing.preferred_contact))
         .execute(pool)
         .await?;
 
