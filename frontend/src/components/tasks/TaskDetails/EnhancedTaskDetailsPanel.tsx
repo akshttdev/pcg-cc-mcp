@@ -602,6 +602,19 @@ export function EnhancedTaskDetailsPanel({
         <TabsContent value="overview" className="flex-1 m-0 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="p-4 space-y-6">
+              {/* Screenshot - for bug reports */}
+              {task.screenshot && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Screenshot</h3>
+                  <img
+                    src={task.screenshot}
+                    alt="Task screenshot"
+                    className="max-h-64 rounded-md border object-contain w-full bg-muted cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => window.open(task.screenshot!, '_blank')}
+                  />
+                </div>
+              )}
+
               {/* Description */}
               {task.description && (
                 <div>

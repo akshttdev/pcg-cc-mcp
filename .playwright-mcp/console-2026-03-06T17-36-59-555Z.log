@@ -1,0 +1,65 @@
+[    1685ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=eb1b6e59:4392
+[    1686ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=eb1b6e59:4392
+[    1793ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/info:0
+[    1797ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/info, timestamp: 2026-03-06T17:37:01.350Z} @ http://localhost:3000/src/lib/api.ts:98
+[    1797ms] [ERROR] Error loading user system: ApiError: Internal Server Error
+    at handleApiResponse (http://localhost:3000/src/lib/api.ts:106:11) @ http://localhost:3000/src/components/config-provider.tsx:54
+[    1798ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/auth/me:0
+[    1798ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/info:0
+[    1798ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/info, timestamp: 2026-03-06T17:37:01.353Z} @ http://localhost:3000/src/lib/api.ts:98
+[    1798ms] [ERROR] Error loading user system: ApiError: Internal Server Error
+    at handleApiResponse (http://localhost:3000/src/lib/api.ts:106:11) @ http://localhost:3000/src/components/config-provider.tsx:54
+[    1798ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/auth/me:0
+[    1874ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/sidebar/tree:0
+[    1874ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:37:01.428Z} @ http://localhost:3000/src/lib/api.ts:98
+[    1874ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/topsi/status:0
+[    1874ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/projects:0
+[    1874ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:37:01.429Z} @ http://localhost:3000/src/lib/api.ts:98
+[    1875ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/auth/github/check:0
+[    1875ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/auth/github/check, timestamp: 2026-03-06T17:37:01.429Z} @ http://localhost:3000/src/lib/api.ts:98
+[    1894ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/topsi/status:0
+[    2115ms] ApiError: Internal Server Error
+    at handleApiResponse (http://localhost:3000/src/lib/api.ts:106:11)
+[    2887ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/sidebar/tree:0
+[    2887ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:37:02.442Z} @ http://localhost:3000/src/lib/api.ts:98
+[    2889ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/projects:0
+[    2889ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:37:02.443Z} @ http://localhost:3000/src/lib/api.ts:98
+[    4894ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/sidebar/tree:0
+[    4894ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:37:04.449Z} @ http://localhost:3000/src/lib/api.ts:98
+[    4895ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/projects:0
+[    4895ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:37:04.449Z} @ http://localhost:3000/src/lib/api.ts:98
+[    8931ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/projects:0
+[    8935ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:37:08.490Z} @ http://localhost:3000/src/lib/api.ts:98
+[    8944ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/sidebar/tree:0
+[    8944ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:37:08.499Z} @ http://localhost:3000/src/lib/api.ts:98
+[    8968ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/projects:0
+[    8969ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:37:08.523Z} @ http://localhost:3000/src/lib/api.ts:98
+[    9981ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/projects:0
+[    9981ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:37:09.536Z} @ http://localhost:3000/src/lib/api.ts:98
+[   11986ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/projects:0
+[   11986ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:37:11.540Z} @ http://localhost:3000/src/lib/api.ts:98
+[   16096ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/projects:0
+[   16098ms] [ERROR] [API Error] {message: Internal Server Error, status: 500, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:37:15.651Z} @ http://localhost:3000/src/lib/api.ts:98
+[   88985ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/:0
+[   89989ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/:0
+[   90992ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/:0
+[   91996ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/:0
+[   93000ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/:0
+[   98154ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=eb1b6e59:4392
+[   98155ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=eb1b6e59:4392
+[   98277ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/auth/me:0
+[   98280ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/auth/me:0
+[   98333ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/sidebar/tree:0
+[   98334ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:38:37.888Z} @ http://localhost:3000/src/lib/api.ts:98
+[   98334ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[   98334ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:37.889Z} @ http://localhost:3000/src/lib/api.ts:98
+[   98335ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/topsi/status:0
+[   98344ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/topsi/status:0
+[   99341ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/sidebar/tree:0
+[   99342ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:38:38.896Z} @ http://localhost:3000/src/lib/api.ts:98
+[   99342ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[   99342ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:38.896Z} @ http://localhost:3000/src/lib/api.ts:98
+[  101349ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/sidebar/tree:0
+[  101349ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:38:40.904Z} @ http://localhost:3000/src/lib/api.ts:98
+[  101350ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[  101350ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:40.905Z} @ http://localhost:3000/src/lib/api.ts:98
