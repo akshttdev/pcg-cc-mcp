@@ -59,6 +59,7 @@ pub struct User {
     pub avatar_url: Option<String>,
     pub is_active: i32,
     pub is_admin: i32,
+    pub home_organization_id: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,6 +72,7 @@ pub struct UserProfile {
     pub is_admin: bool,
     pub organizations: Vec<UserOrganization>,
     pub platform_roles: Vec<String>,
+    pub home_organization_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -92,7 +94,7 @@ pub async fn login(
 
     // Find user by username
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin
+        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin, home_organization_id
          FROM users
          WHERE username = ? COLLATE NOCASE AND is_active = 1",
     )
@@ -207,6 +209,7 @@ pub async fn login(
         is_admin: effective_admin,
         organizations,
         platform_roles,
+        home_organization_id: user.home_organization_id.and_then(|b| uuid::Uuid::from_slice(&b).ok()).map(|id| id.to_string()),
     };
 
     let response = LoginResponse {
@@ -286,7 +289,7 @@ pub async fn get_current_user(
 
     // Get user
     let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin 
+        "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin, home_organization_id
          FROM users WHERE id = ?",
     )
     .bind(session.user_id.as_bytes().as_slice())
@@ -338,6 +341,7 @@ pub async fn get_current_user(
         is_admin: effective_admin,
         organizations,
         platform_roles,
+        home_organization_id: user.home_organization_id.and_then(|b| uuid::Uuid::from_slice(&b).ok()).map(|id| id.to_string()),
     };
 
     // Wrap in ApiResponse

@@ -399,12 +399,32 @@ export function VirtualEnvironmentPage() {
   const [noraLine, setNoraLine] = useState('Command Center online. Syncing with Dashboard...');
   const [noraStatusVersion, setNoraStatusVersion] = useState(1);
 
-  // Unified global world spawn: admin → command center floor, everyone else → global ground
-  // There are no building interiors — all spaces exist in the same shared world.
+  // Spawn position: admin → command center floor; others → near their home org zone
   const spawnPosition = useMemo<[number, number, number]>(() => {
     if (isAdmin) return SPAWN_ADMIN;
+    // Map home org slug to a zone index in STATIC_ZONES, spawn near that zone
+    const homeOrgSlug = user?.organizations?.[0]?.slug;
+    const homeOrg = user?.home_organization_id
+      ? user.organizations?.find(o => o.id === user.home_organization_id)
+      : null;
+    const slug = homeOrg?.slug ?? homeOrgSlug;
+    const zoneSlugMap: Record<string, string> = {
+      'media-monsters': 'Media Monsters HQ',
+      'sirak-studios': 'Sirak Studios',
+      'jungleverse': 'Jungleverse',
+      'veratwin': 'Veritwin',
+    };
+    const targetZoneName = slug ? zoneSlugMap[slug] : null;
+    if (targetZoneName) {
+      const idx = STATIC_ZONES.findIndex(z => z.space_name === targetZoneName);
+      if (idx !== -1) {
+        const total = STATIC_ZONES.length;
+        const [zx, zz] = zonePosition(idx, total, ZONE_RING_RADIUS * 0.85);
+        return [zx, 1, zz];
+      }
+    }
     return SPAWN_USER;
-  }, [isAdmin]);
+  }, [isAdmin, user]);
 
   const [userPosition, setUserPosition] = useState<[number, number, number]>(spawnPosition);
   // activeZone = the zone beacon the user has entered (null = in global world)
