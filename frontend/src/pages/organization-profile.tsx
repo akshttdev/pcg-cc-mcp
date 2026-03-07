@@ -315,7 +315,7 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
 // ── Contacts Tab ──────────────────────────────────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
-  const { contacts, isLoading, projectCount, loadedCount } = useOrgContacts(orgId);
+  const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
 
@@ -325,8 +325,7 @@ function ContactsTab({ orgId }: { orgId: string }) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         c =>
-          (c.first_name && c.first_name.toLowerCase().includes(q)) ||
-          (c.last_name && c.last_name.toLowerCase().includes(q)) ||
+          (c.full_name && c.full_name.toLowerCase().includes(q)) ||
           (c.email && c.email.toLowerCase().includes(q)) ||
           (c.company_name && c.company_name.toLowerCase().includes(q))
       );
@@ -362,9 +361,7 @@ function ContactsTab({ orgId }: { orgId: string }) {
           ))}
         </select>
         {isLoading && (
-          <span className="text-xs text-muted-foreground">
-            Loading {loadedCount}/{projectCount} projects...
-          </span>
+          <span className="text-xs text-muted-foreground">Loading contacts…</span>
         )}
       </div>
 
@@ -386,18 +383,22 @@ function ContactsTab({ orgId }: { orgId: string }) {
 
 function ContactCard({ contact }: { contact: OrgContact }) {
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
-  const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unnamed';
 
   return (
     <Link
-      to={`/projects/${contact._sourceProjectId}/crm/contacts/${contact.id}`}
+      to={`/people/${contact.id}`}
       className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate group-hover:text-foreground">{name}</p>
+          <p className="text-sm font-medium truncate group-hover:text-foreground">
+            {contact.full_name || 'Unnamed'}
+          </p>
+          {contact.job_title && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.job_title}</p>
+          )}
           {contact.email && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.email}</p>
+            <p className="text-xs text-muted-foreground truncate">{contact.email}</p>
           )}
           {contact.company_name && (
             <p className="text-xs text-muted-foreground truncate">{contact.company_name}</p>
@@ -419,9 +420,9 @@ function ContactCard({ contact }: { contact: OrgContact }) {
             {stageInfo.label}
           </Badge>
         )}
-        <Badge variant="outline" className="text-[10px]">
-          {contact._sourceProjectName}
-        </Badge>
+        {contact.person_type && (
+          <Badge variant="outline" className="text-[10px] capitalize">{contact.person_type}</Badge>
+        )}
       </div>
     </Link>
   );
