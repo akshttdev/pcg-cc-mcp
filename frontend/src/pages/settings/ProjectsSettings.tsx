@@ -46,8 +46,7 @@ import type { Project } from 'shared/types';
 
 // Extended project type that includes org/client fields returned by the API
 interface ProjectWithOrg extends Project {
-  organization_id?: string;
-  client_id?: string;
+  client_id: string | null;
 }
 
 interface VibeBudgetResponse {

@@ -212,6 +212,8 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     () => ({
       default: 'Main Board',
       custom: 'Custom',
+      brand_assets: 'Brand Assets',
+      executive_assets: 'Executive Assets',
     }),
     []
   );
@@ -253,6 +255,32 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
           'Name the focus and success criteria',
           'Link supporting assets and rituals',
           'Assign owners and recurring cadences',
+        ],
+      },
+      brand_assets: {
+        icon: Palette,
+        accentBorder: 'border-pink-300/60',
+        accentBackground: 'bg-gradient-to-br from-pink-200/30 via-pink-100/10 to-transparent',
+        iconBg: 'bg-pink-100',
+        iconColor: 'text-pink-600',
+        tagline: 'Manage brand guidelines, logos, and creative assets.',
+        prompts: [
+          'Upload brand guidelines and logos',
+          'Define colour palette and typography',
+          'Organise creative asset library',
+        ],
+      },
+      executive_assets: {
+        icon: Code2,
+        accentBorder: 'border-purple-300/60',
+        accentBackground: 'bg-gradient-to-br from-purple-200/30 via-purple-100/10 to-transparent',
+        iconBg: 'bg-purple-100',
+        iconColor: 'text-purple-600',
+        tagline: 'Executive-level deliverables, reports, and strategic assets.',
+        prompts: [
+          'Track executive reports and presentations',
+          'Manage strategic planning documents',
+          'Organise board-level communications',
         ],
       },
     }),

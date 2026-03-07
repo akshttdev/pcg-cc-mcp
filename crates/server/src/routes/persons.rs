@@ -21,6 +21,10 @@ use db::models::person::{
     UpdatePerson, UpsertPersonSocialProfile,
 };
 use db::models::invoice::{CreateInvoice, Invoice, UpdateInvoice};
+use db::models::person_association::{
+    PersonCompanyRole, PersonOrgContact, UpsertPersonCompanyRole, PatchPersonCompanyRole,
+    UpsertPersonOrgContact,
+};
 
 const VIBE_PER_USD: f64 = 100.0; // 1 USD = 100 VIBE (1 VIBE = $0.01)
 
@@ -88,10 +92,14 @@ async fn get_person(
         .ok_or_else(|| ApiError::NotFound(format!("Person {} not found", id)))?;
 
     let social_profiles = PersonSocialProfile::list_for_person(pool, id).await?;
+    let company_roles = PersonCompanyRole::list_for_person(pool, id).await?;
+    let org_contacts = PersonOrgContact::list_for_person(pool, id).await?;
 
     Ok(Json(ApiResponse::success(PersonWithSocials {
         person,
         social_profiles,
+        company_roles,
+        org_contacts,
     })))
 }
 
@@ -295,6 +303,101 @@ async fn delete_invoice(
 }
 
 // ---------------------------------------------------------------------------
+// Company associations
+// ---------------------------------------------------------------------------
+
+/// GET /api/persons/:id/companies
+async fn list_person_companies(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<PersonCompanyRole>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let roles = PersonCompanyRole::list_for_person(pool, id).await?;
+    Ok(Json(ApiResponse::success(roles)))
+}
+
+/// POST /api/persons/:id/companies
+async fn add_person_company(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Json(data): Json<UpsertPersonCompanyRole>,
+) -> Result<Json<ApiResponse<PersonCompanyRole>>, ApiError> {
+    let pool = &deployment.db().pool;
+    if Person::find_by_id(pool, id).await?.is_none() {
+        return Err(ApiError::NotFound(format!("Person {} not found", id)));
+    }
+    let role = PersonCompanyRole::upsert(pool, id, data).await?;
+    Ok(Json(ApiResponse::success(role)))
+}
+
+/// PATCH /api/persons/:id/companies/:company_id
+async fn patch_person_company(
+    State(deployment): State<DeploymentImpl>,
+    Path((id, company_id)): Path<(Uuid, Uuid)>,
+    Json(data): Json<PatchPersonCompanyRole>,
+) -> Result<Json<ApiResponse<PersonCompanyRole>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let role = PersonCompanyRole::patch(pool, id, company_id, data)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Association not found".into()))?;
+    Ok(Json(ApiResponse::success(role)))
+}
+
+/// DELETE /api/persons/:id/companies/:company_id
+async fn delete_person_company(
+    State(deployment): State<DeploymentImpl>,
+    Path((id, company_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deleted = PersonCompanyRole::delete(pool, id, company_id).await?;
+    if !deleted {
+        return Err(ApiError::NotFound("Association not found".into()));
+    }
+    Ok(Json(ApiResponse::success(())))
+}
+
+// ---------------------------------------------------------------------------
+// Organization associations
+// ---------------------------------------------------------------------------
+
+/// GET /api/persons/:id/organizations
+async fn list_person_orgs(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<PersonOrgContact>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let orgs = PersonOrgContact::list_for_person(pool, id).await?;
+    Ok(Json(ApiResponse::success(orgs)))
+}
+
+/// POST /api/persons/:id/organizations
+async fn add_person_org(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Json(data): Json<UpsertPersonOrgContact>,
+) -> Result<Json<ApiResponse<PersonOrgContact>>, ApiError> {
+    let pool = &deployment.db().pool;
+    if Person::find_by_id(pool, id).await?.is_none() {
+        return Err(ApiError::NotFound(format!("Person {} not found", id)));
+    }
+    let org = PersonOrgContact::upsert(pool, id, data).await?;
+    Ok(Json(ApiResponse::success(org)))
+}
+
+/// DELETE /api/persons/:id/organizations/:org_id
+async fn delete_person_org(
+    State(deployment): State<DeploymentImpl>,
+    Path((id, org_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deleted = PersonOrgContact::delete(pool, id, org_id).await?;
+    if !deleted {
+        return Err(ApiError::NotFound("Association not found".into()));
+    }
+    Ok(Json(ApiResponse::success(())))
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -315,6 +418,15 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/persons/{id}/social-profiles/{platform}",
             delete(delete_social_profile),
         )
+        // Company associations
+        .route("/persons/{id}/companies", get(list_person_companies).post(add_person_company))
+        .route(
+            "/persons/{id}/companies/{company_id}",
+            patch(patch_person_company).delete(delete_person_company),
+        )
+        // Org associations
+        .route("/persons/{id}/organizations", get(list_person_orgs).post(add_person_org))
+        .route("/persons/{id}/organizations/{org_id}", delete(delete_person_org))
         // Person invoices
         .route("/persons/{id}/invoices", get(list_person_invoices))
         // Invoice CRUD

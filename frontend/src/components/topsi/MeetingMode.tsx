@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { resolveApiUrl, projectsApi } from '@/lib/api';
+import { resolveApiUrl, projectsApi, meetingsApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -131,6 +131,10 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
   // Collaborative chat / link sharing
   const [chatInput, setChatInput] = useState('');
   const [isSendingChat, setIsSendingChat] = useState(false);
+
+  // Knowledge graph publish
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishedKgId, setPublishedKgId] = useState<string | null>(null);
 
   // Screen share
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -639,7 +643,28 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
     setMeetingTitle('');
     setParticipants([]);
     setIsScreenSharing(false);
+    setPublishedKgId(null);
     seenSegmentIndicesRef.current = new Set();
+  };
+
+  const publishToKnowledgeGraph = async () => {
+    if (!sessionId || !activeProjectId) {
+      toast.error('No session or project to publish');
+      return;
+    }
+    setIsPublishing(true);
+    try {
+      const result = await meetingsApi.publish(sessionId, {
+        project_id: activeProjectId,
+        source_title: meetingTitle || `Meeting ${new Date().toLocaleDateString()}`,
+      });
+      setPublishedKgId(result.knowledge_source_id);
+      toast.success('Meeting notes published to knowledge graph');
+    } catch {
+      toast.error('Failed to publish meeting notes');
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   // ── Collaborative chat / link sharing ───────────────────────────────────────
@@ -1151,7 +1176,27 @@ export function MeetingMode({ projectId: propProjectId, onClose, className }: Me
               </div>
             )}
 
-            <div className="flex items-center justify-center gap-2 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              {notes && !publishedKgId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={publishToKnowledgeGraph}
+                  disabled={isPublishing}
+                >
+                  {isPublishing ? (
+                    <><RefreshCw className="h-3.5 w-3.5 mr-1 animate-spin" />Publishing…</>
+                  ) : (
+                    <><Network className="h-3.5 w-3.5 mr-1" />Publish to Knowledge Graph</>
+                  )}
+                </Button>
+              )}
+              {publishedKgId && (
+                <span className="text-xs text-green-600 flex items-center gap-1">
+                  <Network className="h-3.5 w-3.5" />
+                  Published to KG
+                </span>
+              )}
               <Button variant="outline" size="sm" onClick={resetMeeting}>New Meeting</Button>
               {onClose && <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>}
             </div>

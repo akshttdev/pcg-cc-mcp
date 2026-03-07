@@ -8,6 +8,7 @@ use db::models::{
     task::{Priority, TaskStatus},
 };
 use serde::{Deserialize, Serialize};
+use services::services::agent_channels::{AgentChannelService, ChannelOwner};
 use services::services::media_pipeline::{
     EditSessionRequest, MediaBatchAnalysisRequest, MediaBatchIngestRequest, MediaPipelineService,
     MediaStorageTier, RenderJobRequest, VideoRenderPriority as PipelineRenderPriority,
@@ -28,6 +29,10 @@ pub struct ExecutiveTools {
     email_service: Option<EmailService>,
     discord_service: Option<DiscordService>,
     calendar_service: Option<CalendarService>,
+    // Agent communication channels (OAuth-based, DB-backed)
+    agent_channel_service: Option<Arc<AgentChannelService>>,
+    /// The agent identity to use as sender for channel operations
+    agent_owner: Option<ChannelOwner>,
     // Task execution
     task_executor: Option<Arc<TaskExecutor>>,
     media_pipeline: Option<MediaPipelineService>,
@@ -132,6 +137,16 @@ pub enum NoraExecutiveTool {
     /// Get detailed information about a specific project
     GetProjectDetails {
         project_name: String,
+    },
+    /// Delete a project by name (permanently removes the project and all its tasks)
+    DeleteProject {
+        project_name: String,
+    },
+    /// Update a project's name or description
+    UpdateProject {
+        project_name: String,
+        new_name: Option<String>,
+        new_description: Option<String>,
     },
     CreateTaskOnBoard {
         project_id: String,
@@ -350,6 +365,19 @@ pub enum NoraExecutiveTool {
         subject: String,
         body: String,
         priority: EmailPriority,
+    },
+    /// Read Nora's inbox (or an org/project inbox when owner is specified)
+    ReadInbox {
+        limit: usize,
+        /// Optional: "agent", "organization", "project" — defaults to Nora's own account
+        owner_type: Option<String>,
+        /// Optional: UUID of the owner (required when owner_type is set)
+        owner_id: Option<String>,
+    },
+    /// Send an SMS from Nora's Twilio number
+    SendSms {
+        to: String,
+        message: String,
     },
     SendDiscordMessage {
         channel: String,
@@ -841,6 +869,8 @@ impl ExecutiveTools {
             email_service: EmailService::from_env().ok(),
             discord_service: DiscordService::from_env().ok(),
             calendar_service: CalendarService::from_env().ok(),
+            agent_channel_service: None,
+            agent_owner: None,
             task_executor: None,
             media_pipeline: None,
             workflow_orchestrator: None,
@@ -867,6 +897,13 @@ impl ExecutiveTools {
     /// Set the unified execution engine (new architecture)
     pub fn set_execution_engine(&mut self, engine: Arc<crate::execution::ExecutionEngine>) {
         self.execution_engine = Some(engine);
+    }
+
+    /// Wire the agent communication channel service.
+    /// Call this from `NoraAgent::with_database` once the pool is available.
+    pub fn set_agent_channels(&mut self, service: Arc<AgentChannelService>, owner: ChannelOwner) {
+        self.agent_channel_service = Some(service);
+        self.agent_owner = Some(owner);
     }
 
     /// Generate OpenAI-compatible function schemas for available tools
@@ -996,6 +1033,48 @@ impl ExecutiveTools {
             serde_json::json!({
                 "type": "function",
                 "function": {
+                    "name": "delete_project",
+                    "description": "Permanently delete a project and all its tasks. Use when the user explicitly asks to delete or remove a project.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_name": {
+                                "type": "string",
+                                "description": "Exact name of the project to delete"
+                            }
+                        },
+                        "required": ["project_name"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "update_project",
+                    "description": "Update a project's name or description.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "project_name": {
+                                "type": "string",
+                                "description": "Current name of the project to update"
+                            },
+                            "new_name": {
+                                "type": "string",
+                                "description": "New name for the project (optional)"
+                            },
+                            "new_description": {
+                                "type": "string",
+                                "description": "New description for the project (optional)"
+                            }
+                        },
+                        "required": ["project_name"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
                     "name": "execute_workflow",
                     "description": "Execute a multi-stage agent workflow. Use this when the user requests a complex operation that involves multiple coordinated steps. IMPORTANT: For research agents (scout-research, oracle-strategy), you MUST include the user's original request/topic in the inputs.request field so the agent knows what to research.",
                     "parameters": {
@@ -1101,6 +1180,54 @@ impl ExecutiveTools {
                             }
                         },
                         "required": ["to", "subject", "body"]
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "read_inbox",
+                    "description": "Read email messages from Nora's inbox (nora@powerclubglobal.com) or, if specified, an organisation/project inbox. Use this when asked to check, read, or summarise emails.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {
+                                "type": "integer",
+                                "description": "Number of messages to retrieve (default 10, max 50)",
+                                "default": 10
+                            },
+                            "owner_type": {
+                                "type": "string",
+                                "enum": ["agent", "organization", "project", "user"],
+                                "description": "Whose inbox to read. Omit to default to Nora's own inbox."
+                            },
+                            "owner_id": {
+                                "type": "string",
+                                "description": "UUID of the owner (required when owner_type is set)"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "send_sms",
+                    "description": "Send an SMS text message from Nora's phone number (+14053008311). Use this when asked to text, SMS, or send a message to a phone number.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "to": {
+                                "type": "string",
+                                "description": "Recipient phone number in E.164 format (e.g. +14155551234)"
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "The SMS message text (keep under 1600 characters)"
+                            }
+                        },
+                        "required": ["to", "message"]
                     }
                 }
             }),
@@ -2049,6 +2176,16 @@ impl ExecutiveTools {
                     project_name,
                 })
             }
+            "delete_project" => {
+                let project_name = arguments.get("project_name")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::DeleteProject { project_name })
+            }
+            "update_project" => {
+                let project_name = arguments.get("project_name")?.as_str()?.to_string();
+                let new_name = arguments.get("new_name").and_then(|v| v.as_str()).map(String::from);
+                let new_description = arguments.get("new_description").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::UpdateProject { project_name, new_name, new_description })
+            }
             "execute_workflow" => {
                 let agent_id = arguments.get("agent_id")?.as_str()?.to_string();
                 let workflow_id = arguments.get("workflow_id")?.as_str()?.to_string();
@@ -2100,6 +2237,21 @@ impl ExecutiveTools {
                     body,
                     priority: EmailPriority::Normal,
                 })
+            }
+            "read_inbox" => {
+                let limit = arguments
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v.min(50) as usize)
+                    .unwrap_or(10);
+                let owner_type = arguments.get("owner_type").and_then(|v| v.as_str()).map(String::from);
+                let owner_id = arguments.get("owner_id").and_then(|v| v.as_str()).map(String::from);
+                Some(NoraExecutiveTool::ReadInbox { limit, owner_type, owner_id })
+            }
+            "send_sms" => {
+                let to = arguments.get("to")?.as_str()?.to_string();
+                let message = arguments.get("message")?.as_str()?.to_string();
+                Some(NoraExecutiveTool::SendSms { to, message })
             }
             "send_discord_message" => {
                 let message = arguments.get("message")?.as_str()?.to_string();
@@ -3089,6 +3241,8 @@ impl ExecutiveTools {
             NoraExecutiveTool::CreateTaskInProject { .. } => "create_task".to_string(),
             NoraExecutiveTool::GetProjectTasks { .. } => "get_project_tasks".to_string(),
             NoraExecutiveTool::GetProjectDetails { .. } => "get_project_details".to_string(),
+            NoraExecutiveTool::DeleteProject { .. } => "delete_project".to_string(),
+            NoraExecutiveTool::UpdateProject { .. } => "update_project".to_string(),
             NoraExecutiveTool::CreateTaskOnBoard { .. } => "create_task_on_board".to_string(),
             NoraExecutiveTool::AddTaskToBoard { .. } => "add_task_to_board".to_string(),
             NoraExecutiveTool::ExecuteWorkflow { .. } => "execute_workflow".to_string(),
@@ -3370,6 +3524,82 @@ impl ExecutiveTools {
                         "success": false,
                         "error": "Task executor not available"
                     }))
+                }
+            }
+            NoraExecutiveTool::DeleteProject { project_name } => {
+                if let Some(executor) = &self.task_executor {
+                    let pool = executor.pool();
+                    match sqlx::query_scalar::<_, Vec<u8>>(
+                        "SELECT id FROM projects WHERE name = ? LIMIT 1"
+                    )
+                    .bind(&project_name)
+                    .fetch_optional(pool)
+                    .await {
+                        Ok(Some(id_bytes)) => {
+                            match sqlx::query("DELETE FROM projects WHERE id = ?")
+                                .bind(&id_bytes)
+                                .execute(pool)
+                                .await
+                            {
+                                Ok(_) => Ok(serde_json::json!({
+                                    "success": true,
+                                    "message": format!("Project '{}' deleted successfully.", project_name),
+                                })),
+                                Err(e) => Ok(serde_json::json!({
+                                    "success": false,
+                                    "error": format!("Failed to delete project: {}", e),
+                                })),
+                            }
+                        }
+                        Ok(None) => Ok(serde_json::json!({
+                            "success": false,
+                            "error": format!("Project '{}' not found.", project_name),
+                        })),
+                        Err(e) => Ok(serde_json::json!({
+                            "success": false,
+                            "error": format!("DB error: {}", e),
+                        })),
+                    }
+                } else {
+                    Ok(serde_json::json!({"success": false, "error": "Task executor not available"}))
+                }
+            }
+            NoraExecutiveTool::UpdateProject { project_name, new_name, new_description } => {
+                if let Some(executor) = &self.task_executor {
+                    let pool = executor.pool();
+                    let mut updated = false;
+                    if let Some(ref name) = new_name {
+                        if let Err(e) = sqlx::query(
+                            "UPDATE projects SET name = ?, updated_at = datetime('now','subsec') WHERE name = ?"
+                        )
+                        .bind(name)
+                        .bind(&project_name)
+                        .execute(pool)
+                        .await {
+                            return Ok(serde_json::json!({"success": false, "error": format!("Failed to update name: {}", e)}));
+                        }
+                        updated = true;
+                    }
+                    if let Some(ref desc) = new_description {
+                        let target = new_name.as_deref().unwrap_or(&project_name);
+                        if let Err(e) = sqlx::query(
+                            "UPDATE projects SET git_repo_path = ?, updated_at = datetime('now','subsec') WHERE name = ?"
+                        )
+                        .bind(desc)
+                        .bind(target)
+                        .execute(pool)
+                        .await {
+                            return Ok(serde_json::json!({"success": false, "error": format!("Failed to update description: {}", e)}));
+                        }
+                        updated = true;
+                    }
+                    if updated {
+                        Ok(serde_json::json!({"success": true, "message": format!("Project '{}' updated.", project_name)}))
+                    } else {
+                        Ok(serde_json::json!({"success": false, "error": "No fields to update provided."}))
+                    }
+                } else {
+                    Ok(serde_json::json!({"success": false, "error": "Task executor not available"}))
                 }
             }
             NoraExecutiveTool::DelegateTask {
@@ -5585,6 +5815,34 @@ impl ExecutiveTools {
                 self.execute_send_email(&recipients, &subject, &body, &priority)
                     .await
             }
+            NoraExecutiveTool::ReadInbox {
+                limit,
+                owner_type,
+                owner_id,
+            } => {
+                // Build optional override owner from params
+                let override_owner = match (owner_type.as_deref(), owner_id.as_deref()) {
+                    (Some("organization"), Some(id)) => id
+                        .parse::<uuid::Uuid>()
+                        .ok()
+                        .map(ChannelOwner::Organization),
+                    (Some("project"), Some(id)) => id
+                        .parse::<uuid::Uuid>()
+                        .ok()
+                        .map(ChannelOwner::Project),
+                    (Some("user"), Some(id)) => {
+                        id.parse::<uuid::Uuid>().ok().map(ChannelOwner::User)
+                    }
+                    (Some("agent"), Some(id)) => {
+                        id.parse::<uuid::Uuid>().ok().map(ChannelOwner::Agent)
+                    }
+                    _ => None,
+                };
+                self.execute_read_inbox(limit, override_owner).await
+            }
+            NoraExecutiveTool::SendSms { to, message } => {
+                self.execute_send_sms(&to, &message).await
+            }
             NoraExecutiveTool::SendDiscordMessage {
                 channel,
                 message,
@@ -5963,15 +6221,14 @@ impl ExecutiveTools {
         body: &str,
         priority: &EmailPriority,
     ) -> crate::Result<serde_json::Value> {
-        // Try to use real SMTP service if configured
-        if let Some(ref email_service) = self.email_service {
-            match email_service
-                .send_email(recipients, subject, body, false)
-                .await
-            {
+        // Prefer OAuth channel service (Nora's connected Zoho account)
+        if let (Some(ref svc), Some(ref owner)) =
+            (&self.agent_channel_service, &self.agent_owner)
+        {
+            match svc.send_email(owner, recipients, subject, body).await {
                 Ok(message_id) => {
                     tracing::info!(
-                        "Email sent successfully to {:?} with ID: {}",
+                        "Email sent via AgentChannelService to {:?} (id={})",
                         recipients,
                         message_id
                     );
@@ -5981,24 +6238,110 @@ impl ExecutiveTools {
                         "subject": subject,
                         "priority": format!("{:?}", priority),
                         "message_id": message_id,
-                        "sent_via": "SMTP"
+                        "sent_via": "zoho_oauth"
                     }));
                 }
                 Err(e) => {
-                    tracing::warn!("SMTP send failed, logging only: {}", e);
+                    tracing::warn!("AgentChannelService send failed, trying SMTP: {}", e);
                 }
             }
         }
 
-        // Fallback: Log only
-        tracing::info!("Email would be sent to {:?}: {}", recipients, subject);
+        // Fallback: SMTP (legacy env-var config)
+        if let Some(ref email_service) = self.email_service {
+            match email_service
+                .send_email(recipients, subject, body, false)
+                .await
+            {
+                Ok(message_id) => {
+                    tracing::info!(
+                        "Email sent via SMTP to {:?} (id={})",
+                        recipients,
+                        message_id
+                    );
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "recipients": recipients,
+                        "subject": subject,
+                        "priority": format!("{:?}", priority),
+                        "message_id": message_id,
+                        "sent_via": "smtp"
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("SMTP send failed: {}", e);
+                }
+            }
+        }
+
+        // Final fallback: log only
+        tracing::warn!("No email transport configured — email logged only: {:?} / {}", recipients, subject);
         Ok(serde_json::json!({
-            "success": true,
+            "success": false,
             "recipients": recipients,
             "subject": subject,
             "priority": format!("{:?}", priority),
-            "message_id": uuid::Uuid::new_v4().to_string(),
-            "note": "SMTP not configured - email logged only. Set SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM_EMAIL env vars to enable."
+            "note": "No email account connected. Connect Nora's Zoho account via Settings → Integrations."
+        }))
+    }
+
+    async fn execute_read_inbox(
+        &self,
+        limit: usize,
+        owner_override: Option<ChannelOwner>,
+    ) -> crate::Result<serde_json::Value> {
+        let svc = self
+            .agent_channel_service
+            .as_ref()
+            .ok_or_else(|| NoraError::ToolsError("No channel service configured".into()))?;
+
+        let owner = owner_override
+            .as_ref()
+            .or(self.agent_owner.as_ref())
+            .ok_or_else(|| NoraError::ToolsError("No agent owner configured".into()))?;
+
+        match svc.read_inbox(owner, limit).await {
+            Ok(messages) => Ok(serde_json::json!({
+                "success": true,
+                "count": messages.len(),
+                "messages": messages
+            })),
+            Err(e) => Ok(serde_json::json!({
+                "success": false,
+                "error": e.to_string()
+            })),
+        }
+    }
+
+    async fn execute_send_sms(
+        &self,
+        to: &str,
+        message: &str,
+    ) -> crate::Result<serde_json::Value> {
+        if let Some(ref svc) = self.agent_channel_service {
+            match svc.send_sms(to, message).await {
+                Ok(sid) => {
+                    tracing::info!("SMS sent to {} (sid={})", to, sid);
+                    return Ok(serde_json::json!({
+                        "success": true,
+                        "to": to,
+                        "message_sid": sid,
+                        "sent_via": "twilio"
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("SMS send failed: {}", e);
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "error": e.to_string()
+                    }));
+                }
+            }
+        }
+
+        Ok(serde_json::json!({
+            "success": false,
+            "note": "Twilio not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER env vars."
         }))
     }
 

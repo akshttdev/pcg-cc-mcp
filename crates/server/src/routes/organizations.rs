@@ -1,11 +1,12 @@
 use axum::{
     Extension, Json, Router,
     extract::{Path, State},
-    routing::{delete, get, put},
+    routing::{delete, get, post, put},
 };
 use db::models::user::{
     CreateOrganization, Organization, OrganizationMember, UpdateOrganization,
 };
+use db::models::person_association::{PersonOrgContact, UpsertPersonOrgContact};
 use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
@@ -185,6 +186,39 @@ pub async fn remove_member(
     Ok(Json(ApiResponse::success(())))
 }
 
+/// GET /organizations/:id/person-contacts — junction table entries (for context badges)
+async fn list_org_person_contacts(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<PersonOrgContact>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let contacts = PersonOrgContact::list_for_org(pool, id).await?;
+    Ok(Json(ApiResponse::success(contacts)))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct AddOrgPersonContactBody {
+    person_id: Uuid,
+    context: Option<String>,
+    notes: Option<String>,
+}
+
+/// POST /organizations/:id/person-contacts — link an existing person to this org
+async fn add_org_person_contact(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Json(data): Json<AddOrgPersonContactBody>,
+) -> Result<Json<ApiResponse<PersonOrgContact>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let upsert_data = UpsertPersonOrgContact {
+        organization_id: id,
+        context: data.context,
+        notes: data.notes,
+    };
+    let contact = PersonOrgContact::upsert(pool, data.person_id, upsert_data).await?;
+    Ok(Json(ApiResponse::success(contact)))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/organizations", get(list_organizations).post(create_organization))
@@ -200,5 +234,9 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/organizations/{id}/members/{uid}",
             delete(remove_member),
+        )
+        .route(
+            "/organizations/{id}/person-contacts",
+            get(list_org_person_contacts).post(add_org_person_contact),
         )
 }

@@ -90,11 +90,20 @@ pub mod project_knowledge_source;
 // pub mod topology_route;
 pub mod workflow_template;
 pub mod person;
+pub mod person_association;
 pub mod invoice;
 pub mod proposal;
 pub mod deliverable;
 pub mod operator_rate;
 pub mod meeting_session;
+pub mod scheduled_meeting;
+pub mod company;
+pub mod entity_graph;
+pub mod topology_node;
+pub mod topology_edge;
+pub mod topology_cluster;
+pub mod topology_issue;
+pub mod topology_route;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

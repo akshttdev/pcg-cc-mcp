@@ -1319,9 +1319,10 @@ pub async fn synthesize_speech(
         .ok_or_else(|| ApiError::NotFound("Nora not initialized".to_string()))?;
 
     let start = std::time::Instant::now();
+    let clean_text = crate::routes::twilio::strip_markdown_for_tts(&request.text);
     let audio_data = nora
         .voice_engine
-        .synthesize_speech(&request.text)
+        .synthesize_speech(&clean_text)
         .await
         .map_err(|e| {
             tracing::error!("Speech synthesis error: {}", e);
@@ -1335,7 +1336,7 @@ pub async fn synthesize_speech(
     let processing_time_ms = (duration * 1000.0) as u64;
     let response = SpeechResponse {
         audio_data,
-        duration_ms: estimate_speech_duration(&request.text),
+        duration_ms: estimate_speech_duration(&clean_text),
         sample_rate: 22050, // Default for most TTS services
         format: nora::voice::AudioFormat::Mp3,
         processing_time_ms,
