@@ -19,6 +19,7 @@ export enum Action {
   SHOW_HELP = 'show_help',
   TOGGLE_FULLSCREEN = 'toggle_fullscreen',
   DELETE_TASK = 'delete_task',
+  TOGGLE_SIDEBAR = 'toggle_sidebar',
 }
 
 export interface KeyBinding {
@@ -147,6 +148,15 @@ export const keyBindings: KeyBinding[] = [
     scopes: [Scope.KANBAN],
     description: 'Delete selected task',
     group: 'Task Details',
+  },
+
+  // Layout actions
+  {
+    action: Action.TOGGLE_SIDEBAR,
+    keys: ['meta+b', 'ctrl+b'],
+    scopes: [Scope.GLOBAL],
+    description: 'Toggle sidebar',
+    group: 'Navigation',
   },
 ];
 

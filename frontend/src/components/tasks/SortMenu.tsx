@@ -3,10 +3,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ArrowDownAZ, ArrowUpDown, Check } from 'lucide-react';
+import { ArrowUpDown, Check } from 'lucide-react';
 import { useViewStore, type SortField, type SortDirection } from '@/stores/useViewStore';
 
 const sortOptions: { field: SortField; label: string; defaultDir: SortDirection }[] = [

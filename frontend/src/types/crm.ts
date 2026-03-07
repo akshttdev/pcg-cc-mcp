@@ -57,6 +57,29 @@ export interface UpdateCrmPipeline {
   color?: string;
 }
 
+export interface CreateCrmPipelineStage {
+  pipeline_id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  position: number;
+  probability?: number;
+  is_closed?: boolean;
+  is_won?: boolean;
+}
+
+export interface UpdateCrmPipelineStage {
+  name?: string;
+  description?: string;
+  color?: string;
+  position?: number;
+  probability?: number;
+  is_closed?: boolean;
+  is_won?: boolean;
+}
+
+export type CrmDealRecord = CrmDealWithContact;
+
 // Deal with contact info for Kanban display (matches backend CrmDealWithContact)
 export interface CrmDealWithContact {
   id: string;

@@ -153,7 +153,7 @@ export function AppShell() {
               {showNavbar && <BreadcrumbNav />}
 
               <div className="flex-1 flex min-h-0">
-                <Sidebar className="w-64 shrink-0" />
+                <Sidebar className="shrink-0" />
 
                 <div className="flex-1 overflow-y-auto">
                   <Suspense fallback={<PageLoader />}>
