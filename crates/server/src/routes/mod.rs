@@ -80,6 +80,7 @@ pub mod organizations;
 pub mod clients;
 pub mod project_folders;
 pub mod sidebar;
+pub mod entity_conversion;
 pub mod knowledge;
 pub mod repos;
 pub mod scratch;
@@ -139,9 +140,10 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(pulse::router(&deployment))
         .merge(organizations::router(&deployment))
         .merge(clients::router(&deployment))
-        .merge(project_folders::router(&deployment))
+        // project_folders routes deprecated — projects now use parent_project_id nesting
         .merge(board_shares::router(&deployment))
         .merge(sidebar::router(&deployment))
+        .merge(entity_conversion::router(&deployment))
         .merge(knowledge::router(&deployment))
         .merge(sessions::router(&deployment))
         .merge(tags::router(&deployment))
