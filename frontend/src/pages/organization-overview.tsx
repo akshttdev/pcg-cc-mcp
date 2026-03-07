@@ -1,7 +1,7 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { organizationsApi } from '@/lib/api';
-import { Building2, Users, FolderKanban, ArrowRight } from 'lucide-react';
+import { Building2, Users, FolderKanban, ArrowRight, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader } from '@/components/ui/loader';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import '@/components/dialogs/shared/ConvertEntityDialog';
 export function OrganizationOverview() {
   const { orgId } = useParams<{ orgId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['organization', orgId],
@@ -79,19 +80,39 @@ export function OrganizationOverview() {
             )}
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            NiceModal.show('convert-entity', {
-              sourceType: 'organization',
-              sourceId: org.id,
-              sourceName: org.name,
-            })
-          }
-        >
-          Convert to...
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              NiceModal.show('convert-entity', {
+                sourceType: 'organization',
+                sourceId: org.id,
+                sourceName: org.name,
+              })
+            }
+          >
+            Convert to...
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={async () => {
+              if (!window.confirm(`Delete "${org.name}"? This will deactivate the organization and hide it from the sidebar.`)) return;
+              try {
+                await organizationsApi.delete(org.id);
+                queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                navigate('/');
+              } catch (err) {
+                console.error('Failed to delete organization:', err);
+              }
+            }}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

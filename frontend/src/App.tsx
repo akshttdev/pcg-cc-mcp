@@ -52,6 +52,7 @@ const GeneralSettings   = lazy(() => import('@/pages/settings/GeneralSettings').
 const ProfileSettings   = lazy(() => import('@/pages/settings/ProfileSettings').then(m => ({ default: m.ProfileSettings })));
 const UsersSettings     = lazy(() => import('@/pages/settings/UsersSettings').then(m => ({ default: m.UsersSettings })));
 const ProjectsSettings  = lazy(() => import('@/pages/settings/ProjectsSettings').then(m => ({ default: m.ProjectsSettings })));
+const OrganizationsSettings = lazy(() => import('@/pages/settings/OrganizationsSettings').then(m => ({ default: m.OrganizationsSettings })));
 const PrivacySettings   = lazy(() => import('@/pages/settings/PrivacySettings').then(m => ({ default: m.PrivacySettings })));
 const ActivitySettings  = lazy(() => import('@/pages/settings/ActivitySettings').then(m => ({ default: m.ActivitySettings })));
 const AgentSettings     = lazy(() => import('@/pages/settings/AgentSettings').then(m => ({ default: m.AgentSettings })));
@@ -216,6 +217,7 @@ function App() {
             <Route path="wallet" element={<WalletSettings />} />
             <Route path="profile" element={<ProfileSettings />} />
             <Route path="users" element={<AdminRoute><UsersSettings /></AdminRoute>} />
+            <Route path="organizations" element={<AdminRoute><OrganizationsSettings /></AdminRoute>} />
             <Route path="projects" element={<AdminRoute><ProjectsSettings /></AdminRoute>} />
             <Route path="privacy" element={<PrivacySettings />} />
             <Route path="activity" element={<ActivitySettings />} />

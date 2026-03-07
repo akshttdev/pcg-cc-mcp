@@ -1,7 +1,7 @@
 use axum::{
     Extension, Json, Router,
     extract::{Path, State},
-    routing::{delete, get, put},
+    routing::{delete, get, patch, put},
 };
 use db::models::user::{
     CreateOrganization, Organization, OrganizationMember, UpdateOrganization,
@@ -23,7 +23,7 @@ pub async fn list_organizations(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<Organization>>>, ApiError> {
     let orgs = if access_context.is_admin {
-        Organization::find_all_active(&deployment.db().pool).await?
+        Organization::find_all(&deployment.db().pool).await?
     } else {
         Organization::find_by_user(&deployment.db().pool, access_context.user_id).await?
     };
@@ -185,10 +185,56 @@ pub async fn remove_member(
     Ok(Json(ApiResponse::success(())))
 }
 
+/// PATCH /api/organizations/:id/activate — reactivate
+pub async fn activate_organization(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    if !access_context.is_admin {
+        return Err(ApiError::Forbidden("Only system admins can activate organizations".into()));
+    }
+    Organization::activate(&deployment.db().pool, id).await?;
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// PATCH /api/organizations/:id/deactivate — deactivate (hide from sidebar)
+pub async fn deactivate_organization(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    if !access_context.is_admin {
+        return Err(ApiError::Forbidden("Only system admins can deactivate organizations".into()));
+    }
+    Organization::deactivate(&deployment.db().pool, id).await?;
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// DELETE /api/organizations/:id — soft-delete (deactivate)
+pub async fn delete_organization(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    if !access_context.is_admin {
+        let role = Organization::get_user_role(&deployment.db().pool, id, access_context.user_id).await?;
+        match role.as_deref() {
+            Some("admin") => {}
+            _ => return Err(ApiError::Forbidden("Only org admins can delete organizations".into())),
+        }
+    }
+
+    Organization::deactivate(&deployment.db().pool, id).await?;
+    Ok(Json(ApiResponse::success(())))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/organizations", get(list_organizations).post(create_organization))
-        .route("/organizations/{id}", get(get_organization).put(update_organization))
+        .route("/organizations/{id}", get(get_organization).put(update_organization).delete(delete_organization))
+        .route("/organizations/{id}/activate", patch(activate_organization))
+        .route("/organizations/{id}/deactivate", patch(deactivate_organization))
         .route(
             "/organizations/{id}/members",
             get(list_members).post(add_member),
