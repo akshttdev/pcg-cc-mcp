@@ -20,17 +20,12 @@ import {
   Clock,
   Zap,
   History,
+  Microscope,
+  Film,
+  Calendar,
 } from 'lucide-react';
-import { agentFlowsApi } from '@/lib/api';
-
-interface AgentFlow {
-  id: string;
-  flow_type: string;
-  status: string;
-  current_phase: string;
-  created_at: string;
-  task_id?: string;
-}
+import { agentFlowsApi, wideResearchApi, resolveApiUrl } from '@/lib/api';
+import type { AgentFlow, WideResearchSession } from '@/lib/api';
 
 interface AutomationDefinition {
   id: string;
@@ -41,11 +36,33 @@ interface AutomationDefinition {
   schedule: string;
 }
 
+interface ConferenceWorkflow {
+  id: string;
+  conferenceName: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  location: string | null;
+  createdAt: string;
+}
+
+interface CinematicBrief {
+  id: string;
+  project_id: string;
+  title: string;
+  status: string;
+  created_at: string;
+}
+
 export function WorkflowsPage() {
   const [selectedExecution, setSelectedExecution] = useState<ActiveExecution | null>(null);
   const [activeTab, setActiveTab] = useState('active');
+
   const [agentFlows, setAgentFlows] = useState<AgentFlow[]>([]);
   const [automations, setAutomations] = useState<AutomationDefinition[]>([]);
+  const [conferences, setConferences] = useState<ConferenceWorkflow[]>([]);
+  const [researchSessions, setResearchSessions] = useState<WideResearchSession[]>([]);
+  const [cinematicBriefs, setCinematicBriefs] = useState<CinematicBrief[]>([]);
 
   const {
     activeExecutions,
@@ -59,9 +76,23 @@ export function WorkflowsPage() {
       if (Array.isArray(flows)) setAgentFlows(flows);
     }).catch(() => {});
 
-    fetch('/api/automations', { credentials: 'include' })
+    wideResearchApi.list().then((sessions) => {
+      if (Array.isArray(sessions)) setResearchSessions(sessions);
+    }).catch(() => {});
+
+    fetch(resolveApiUrl('/api/automations'), { credentials: 'include' })
       .then((r) => r.json())
       .then((res) => { if (res?.data) setAutomations(res.data); })
+      .catch(() => {});
+
+    fetch(resolveApiUrl('/api/nora/workflows'), { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data: ConferenceWorkflow[]) => { if (Array.isArray(data)) setConferences(data); })
+      .catch(() => {});
+
+    fetch(resolveApiUrl('/api/nora/cinematics/briefs'), { credentials: 'include' })
+      .then((r) => r.json())
+      .then((res) => { if (Array.isArray(res?.data ?? res)) setCinematicBriefs(res?.data ?? res); })
       .catch(() => {});
   }, []);
 
@@ -69,6 +100,19 @@ export function WorkflowsPage() {
     active: activeExecutions.length,
     completed: completedExecutions.filter((e) => e.status === 'completed').length,
     failed: completedExecutions.filter((e) => e.status === 'failed').length,
+  };
+
+  const statusColor = (status: string) => {
+    if (status === 'completed' || status === 'done' || status === 'ready') return 'border-l-green-500';
+    if (status === 'failed' || status === 'error') return 'border-l-red-500';
+    if (status === 'running' || status === 'active' || status === 'processing') return 'border-l-yellow-500';
+    return 'border-l-blue-500';
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === 'completed' || status === 'done' || status === 'ready') return 'default';
+    if (status === 'failed' || status === 'error') return 'destructive';
+    return 'outline';
   };
 
   const formatDuration = (ms?: number) => {
@@ -98,14 +142,13 @@ export function WorkflowsPage() {
               <GitBranch className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="page-title">Agent Workflows</h1>
+              <h1 className="page-title">Workflows</h1>
               <p className="page-description">
-                Monitor agent execution pipelines in real-time
+                All platform workflow systems — live executions, agent flows, research, conference, and Editron pipelines
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            {/* Connection status */}
             {connected ? (
               <Badge variant="success" className="gap-1.5">
                 <div className="status-dot status-dot-online" />
@@ -117,7 +160,6 @@ export function WorkflowsPage() {
                 Disconnected
               </Badge>
             )}
-            {/* Stats badges */}
             <div className="flex items-center gap-1.5">
               <Badge variant="warning" className="gap-1">
                 <Play className="h-3 w-3" />
@@ -140,48 +182,69 @@ export function WorkflowsPage() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden">
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="h-full flex flex-col"
-        >
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="border-b px-4 sm:px-6">
-            <TabsList className="sm:w-fit grid grid-cols-4 sm:grid-cols-4 gap-1">
+            <TabsList className="tab-grid-7">
               <TabsTrigger value="active">
                 Active
                 {activeExecutions.length > 0 && (
-                  <Badge variant="secondary" className="ml-2 animate-pulse">
+                  <Badge variant="secondary" className="ml-1.5 animate-pulse text-xs">
                     {activeExecutions.length}
                   </Badge>
                 )}
               </TabsTrigger>
               <TabsTrigger value="recent">
                 Recent
-                <Badge variant="secondary" className="ml-2">
-                  {completedExecutions.length}
-                </Badge>
+                {completedExecutions.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs">{completedExecutions.length}</Badge>
+                )}
               </TabsTrigger>
               <TabsTrigger value="flows">
-                <History className="h-3.5 w-3.5 mr-1.5" />
+                <History className="h-3.5 w-3.5 mr-1" />
                 Agent Flows
-                <Badge variant="secondary" className="ml-2">{agentFlows.length}</Badge>
+                {agentFlows.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs">{agentFlows.length}</Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="research">
+                <Microscope className="h-3.5 w-3.5 mr-1" />
+                Research
+                {researchSessions.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs">{researchSessions.length}</Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="conference">
+                <Calendar className="h-3.5 w-3.5 mr-1" />
+                Conference
+                {conferences.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs">{conferences.length}</Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="editron">
+                <Film className="h-3.5 w-3.5 mr-1" />
+                Editron
+                {cinematicBriefs.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs">{cinematicBriefs.length}</Badge>
+                )}
               </TabsTrigger>
               <TabsTrigger value="automations">
-                <Zap className="h-3.5 w-3.5 mr-1.5" />
+                <Zap className="h-3.5 w-3.5 mr-1" />
                 Automations
-                <Badge variant="secondary" className="ml-2">{automations.length}</Badge>
+                {automations.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5 text-xs">{automations.length}</Badge>
+                )}
               </TabsTrigger>
             </TabsList>
           </div>
 
+          {/* Active */}
           <TabsContent value="active" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {activeExecutions.length === 0 ? (
               <div className="empty-state h-full">
                 <GitBranch className="empty-state-icon" />
                 <p className="empty-state-title">No Active Workflows</p>
                 <p className="empty-state-description">
-                  Workflows will appear here when agents execute tasks.
-                  Try asking Nora to run a workflow.
+                  Workflows appear here when agents execute tasks. Try asking Nora to run a workflow.
                 </p>
               </div>
             ) : (
@@ -209,17 +272,11 @@ export function WorkflowsPage() {
                           <span>{exec.stageName}</span>
                         </div>
                         <Progress
-                          value={
-                            exec.totalStages > 0
-                              ? (exec.currentStage / exec.totalStages) * 100
-                              : 0
-                          }
+                          value={exec.totalStages > 0 ? (exec.currentStage / exec.totalStages) * 100 : 0}
                           className="h-1.5"
                         />
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>
-                            Stage {exec.currentStage} of {exec.totalStages || '?'}
-                          </span>
+                          <span>Stage {exec.currentStage} of {exec.totalStages || '?'}</span>
                           <span>Started: {formatTime(exec.startedAt)}</span>
                         </div>
                       </div>
@@ -230,33 +287,26 @@ export function WorkflowsPage() {
             )}
           </TabsContent>
 
+          {/* Recent */}
           <TabsContent value="recent" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {completedExecutions.length === 0 ? (
               <div className="empty-state h-full">
                 <Clock className="empty-state-icon" />
                 <p className="empty-state-title">No Recent Workflows</p>
-                <p className="empty-state-description">
-                  Completed workflows will appear here
-                </p>
+                <p className="empty-state-description">Completed workflows will appear here</p>
               </div>
             ) : (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
                 {completedExecutions.map((exec) => (
                   <Card
                     key={exec.executionId}
-                    className={`card-interactive border-l-4 ${
-                      exec.status === 'completed'
-                        ? 'border-l-green-500'
-                        : 'border-l-red-500'
-                    }`}
+                    className={`card-interactive border-l-4 ${exec.status === 'completed' ? 'border-l-green-500' : 'border-l-red-500'}`}
                     onClick={() => setSelectedExecution(exec)}
                   >
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-base">{exec.agentCodename}</CardTitle>
-                        <Badge
-                          variant={exec.status === 'completed' ? 'default' : 'destructive'}
-                        >
+                        <Badge variant={exec.status === 'completed' ? 'default' : 'destructive'}>
                           {exec.status === 'completed' ? 'Completed' : 'Failed'}
                         </Badge>
                       </div>
@@ -276,9 +326,7 @@ export function WorkflowsPage() {
                             </div>
                           </>
                         ) : (
-                          <div className="text-sm text-destructive">
-                            {exec.error || 'Execution failed'}
-                          </div>
+                          <div className="text-sm text-destructive">{exec.error || 'Execution failed'}</div>
                         )}
                         <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/30">
                           <span>Duration: {formatDuration(exec.durationMs)}</span>
@@ -292,35 +340,22 @@ export function WorkflowsPage() {
             )}
           </TabsContent>
 
-          {/* Agent Flows tab */}
+          {/* Agent Flows */}
           <TabsContent value="flows" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {agentFlows.length === 0 ? (
               <div className="empty-state h-full">
                 <History className="empty-state-icon" />
                 <p className="empty-state-title">No Agent Flows</p>
-                <p className="empty-state-description">Agent execution flows will appear here</p>
+                <p className="empty-state-description">Historical agent execution flows appear here</p>
               </div>
             ) : (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
                 {agentFlows.map((flow) => (
-                  <Card
-                    key={flow.id}
-                    className={`border-l-4 ${
-                      flow.status === 'completed' ? 'border-l-green-500' :
-                      flow.status === 'failed' ? 'border-l-red-500' :
-                      'border-l-yellow-500'
-                    }`}
-                  >
+                  <Card key={flow.id} className={`border-l-4 ${statusColor(flow.status)}`}>
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-sm capitalize">{flow.flow_type} flow</CardTitle>
-                        <Badge
-                          variant={
-                            flow.status === 'completed' ? 'default' :
-                            flow.status === 'failed' ? 'destructive' : 'outline'
-                          }
-                          className="text-xs capitalize"
-                        >
+                        <Badge variant={statusBadge(flow.status)} className="text-xs capitalize">
                           {flow.status}
                         </Badge>
                       </div>
@@ -335,8 +370,52 @@ export function WorkflowsPage() {
                           <span className="text-muted-foreground">Started</span>
                           <span>{formatDate(flow.created_at)}</span>
                         </div>
-                        <div className="text-xs text-muted-foreground pt-1 truncate">
-                          {flow.id}
+                        <div className="text-xs text-muted-foreground pt-1 truncate font-mono">{flow.id}</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Research */}
+          <TabsContent value="research" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            {researchSessions.length === 0 ? (
+              <div className="empty-state h-full">
+                <Microscope className="empty-state-icon" />
+                <p className="empty-state-title">No Research Sessions</p>
+                <p className="empty-state-description">
+                  Wide research sessions (multi-agent parallel research) appear here
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+                {researchSessions.map((session) => (
+                  <Card key={session.id} className={`border-l-4 ${statusColor(session.status)}`}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm line-clamp-1">{session.task_description}</CardTitle>
+                        <Badge variant={statusBadge(session.status)} className="text-xs capitalize ml-2 shrink-0">
+                          {session.status}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 text-sm">
+                        <Progress
+                          value={session.total_subagents > 0 ? (session.completed_count / session.total_subagents) * 100 : 0}
+                          className="h-1.5"
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{session.completed_count} / {session.total_subagents} subagents</span>
+                          {session.failed_count > 0 && (
+                            <span className="text-destructive">{session.failed_count} failed</span>
+                          )}
+                        </div>
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Parallelism: {session.parallelism_limit}</span>
+                          <span>{formatDate(session.created_at)}</span>
                         </div>
                       </div>
                     </CardContent>
@@ -346,7 +425,84 @@ export function WorkflowsPage() {
             )}
           </TabsContent>
 
-          {/* Automations tab */}
+          {/* Conference */}
+          <TabsContent value="conference" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            {conferences.length === 0 ? (
+              <div className="empty-state h-full">
+                <Calendar className="empty-state-icon" />
+                <p className="empty-state-title">No Conference Workflows</p>
+                <p className="empty-state-description">
+                  Conference research, content, and social publishing pipelines appear here
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+                {conferences.map((conf) => (
+                  <Card key={conf.id} className={`border-l-4 ${statusColor(conf.status)}`}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm">{conf.conferenceName}</CardTitle>
+                        <Badge variant={statusBadge(conf.status)} className="text-xs capitalize">
+                          {conf.status}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-1 text-sm">
+                        {conf.location && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Location</span>
+                            <span>{conf.location}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Dates</span>
+                          <span>{formatDate(conf.startDate)} – {formatDate(conf.endDate)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Created</span>
+                          <span>{formatDate(conf.createdAt)}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Editron */}
+          <TabsContent value="editron" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            {cinematicBriefs.length === 0 ? (
+              <div className="empty-state h-full">
+                <Film className="empty-state-icon" />
+                <p className="empty-state-title">No Editron Briefs</p>
+                <p className="empty-state-description">
+                  Cinematic briefs and render pipelines from Editron Pro appear here
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 animate-stagger">
+                {cinematicBriefs.map((brief) => (
+                  <Card key={brief.id} className={`border-l-4 ${statusColor(brief.status)}`}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm">{brief.title}</CardTitle>
+                        <Badge variant={statusBadge(brief.status)} className="text-xs capitalize">
+                          {brief.status}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-xs text-muted-foreground">{formatDate(brief.created_at)}</div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Automations */}
           <TabsContent value="automations" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             {automations.length === 0 ? (
               <div className="empty-state h-full">
@@ -361,7 +517,7 @@ export function WorkflowsPage() {
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-sm">{automation.name}</CardTitle>
-                        <Badge variant="outline" className="text-xs gap-1">
+                        <Badge variant="outline" className="text-xs gap-1 shrink-0 ml-2">
                           <Clock className="h-3 w-3" />
                           {automation.schedule}
                         </Badge>
@@ -393,9 +549,7 @@ export function WorkflowsPage() {
         <SheetContent className="w-[500px] sm:max-w-[600px]">
           <SheetHeader>
             <SheetTitle>{selectedExecution?.agentCodename} Execution</SheetTitle>
-            <SheetDescription>
-              {selectedExecution?.workflowName}
-            </SheetDescription>
+            <SheetDescription>{selectedExecution?.workflowName}</SheetDescription>
           </SheetHeader>
           {selectedExecution && (
             <div className="mt-6 space-y-4">
@@ -406,9 +560,7 @@ export function WorkflowsPage() {
                 </div>
                 <div className="stat-card">
                   <div className="stat-card-label">Duration</div>
-                  <div className="font-medium">
-                    {formatDuration(selectedExecution.durationMs)}
-                  </div>
+                  <div className="font-medium">{formatDuration(selectedExecution.durationMs)}</div>
                 </div>
                 <div className="stat-card">
                   <div className="stat-card-label">Tasks Created</div>
@@ -419,19 +571,16 @@ export function WorkflowsPage() {
                   <div className="font-medium">{selectedExecution.artifactsCount || 0}</div>
                 </div>
               </div>
-
               <div className="card-inset p-3">
                 <div className="text-xs text-muted-foreground mb-1">Execution ID</div>
                 <code className="text-xs">{selectedExecution.executionId}</code>
               </div>
-
               {selectedExecution.error && (
                 <div className="p-3 border border-destructive/30 rounded-lg bg-destructive/5">
                   <div className="text-xs text-destructive mb-1">Error</div>
                   <div className="text-sm">{selectedExecution.error}</div>
                 </div>
               )}
-
               <div className="card-inset p-3">
                 <div className="text-xs text-muted-foreground mb-2">Timeline</div>
                 <div className="space-y-2 text-sm">
