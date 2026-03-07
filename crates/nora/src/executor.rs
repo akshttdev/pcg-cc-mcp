@@ -461,6 +461,7 @@ impl TaskExecutor {
             organization_id: None,
             client_id: None,
             folder_id: None,
+            parent_project_id: None,
         };
 
         let project = Project::create(&self.pool, &create_project, project_id)

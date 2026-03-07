@@ -16,11 +16,31 @@ vibe_budget_limit: number | null,
 /**
  * VIBE spent amount
  */
-vibe_spent_amount: number, created_at: Date, updated_at: Date, };
+vibe_spent_amount: number, 
+/**
+ * Organization this project belongs to
+ */
+organization_id: string | null, 
+/**
+ * Client this project is for (within the organization)
+ */
+client_id: string | null, 
+/**
+ * Folder this project is grouped under (deprecated — use parent_project_id)
+ */
+folder_id: string | null, 
+/**
+ * Parent project for nesting (max 3 levels deep). None = top-level.
+ */
+parent_project_id: string | null, 
+/**
+ * Sort order among siblings
+ */
+sort_order: number, created_at: Date, updated_at: Date, };
 
-export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, };
+export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, organization_id: string | null, client_id: string | null, folder_id: string | null, parent_project_id: string | null, };
 
-export type UpdateProject = { name: string | null, git_repo_path: string | null, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, };
+export type UpdateProject = { name?: string, git_repo_path?: string, setup_script?: string, dev_script?: string, cleanup_script?: string, copy_files?: string, organization_id?: string, client_id?: string, };
 
 export type ProjectPod = { id: string, project_id: string, title: string, description: string, status: string, lead: string | null, created_at: Date, updated_at: Date, };
 
@@ -116,7 +136,7 @@ vibe_cost: bigint | null,
 /**
  * Model used for the most recent vibe transaction on this task
  */
-vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, };
+vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, archived_at?: string | null, };
 
 export type TaskRelationships = { parent_task: Task | null, current_attempt: TaskAttempt, children: Array<Task>, };
 
@@ -342,7 +362,7 @@ conflicted_files: Array<string>, };
 
 export type ConflictOp = "rebase" | "merge" | "cherry_pick" | "revert";
 
-export type TaskAttempt = { id: string, task_id: string, container_ref: string | null, branch: string | null, base_branch: string, executor: string, worktree_deleted: boolean, setup_completed_at: string | null, created_at: string, updated_at: string, };
+export type TaskAttempt = { id: string, task_id: string, container_ref: string | null, branch: string | null, base_branch: string, executor: string, worktree_deleted: boolean, setup_completed_at: string | null, archived: boolean, pinned: boolean, name: string | null, seen_at: string | null, created_at: string, updated_at: string, };
 
 export type ExecutionProcess = { id: string, task_attempt_id: string, run_reason: ExecutionProcessRunReason, executor_action: ExecutorAction, 
 /**
@@ -380,7 +400,7 @@ export type ExecutionSummaryBrief = { files_modified: number, files_created: num
 
 export type TaskCollaborator = { actor_id: string, actor_type: string, last_action: string, last_action_at: string, };
 
-export type Agent = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: string | null, voice_style: string | null, avatar_url: string | null, capabilities: string | null, tools: string | null, functions: string | null, default_model: string | null, fallback_models: string | null, model_config: string | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, total_execution_time_ms: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, created_by: string | null, parent_agent_id: string | null, team_id: string | null, };
+export type Agent = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: string | null, voice_style: string | null, avatar_url: string | null, capabilities: string | null, tools: string | null, functions: string | null, default_model: string | null, fallback_models: string | null, model_config: string | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, total_execution_time_ms: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, created_by: string | null, parent_agent_id: string | null, team_id: string | null, owner_id: string | null, agent_tier: string | null, };
 
 export type AgentStatus = "active" | "inactive" | "maintenance" | "training";
 
@@ -420,9 +440,9 @@ emotional_baseline: string, };
 
 export type AgentFunction = { name: string, description: string, parameters: JsonValue, required_tools: Array<string>, example_usage: string | null, };
 
-export type AgentWithParsedFields = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, };
+export type AgentWithParsedFields = { id: string, wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus, autonomy_level: AutonomyLevel, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, tasks_completed: bigint | null, tasks_failed: bigint | null, average_rating: number | null, version: string | null, created_at: string, updated_at: string, owner_id: string | null, agent_tier: string | null, };
 
-export type CreateAgent = { wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus | null, autonomy_level: AutonomyLevel | null, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, parent_agent_id: string | null, team_id: string | null, created_by: string | null, };
+export type CreateAgent = { wallet_address: string | null, short_name: string, designation: string, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus | null, autonomy_level: AutonomyLevel | null, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, parent_agent_id: string | null, team_id: string | null, created_by: string | null, owner_id: string | null, agent_tier: string | null, };
 
 export type UpdateAgent = { wallet_address: string | null, short_name: string | null, designation: string | null, description: string | null, personality: AgentPersonality | null, voice_style: string | null, avatar_url: string | null, capabilities: Array<string> | null, tools: Array<string> | null, functions: Array<AgentFunction> | null, default_model: string | null, fallback_models: Array<string> | null, model_config: JsonValue | null, status: AgentStatus | null, autonomy_level: AutonomyLevel | null, max_concurrent_tasks: bigint | null, priority_weight: bigint | null, };
 
@@ -498,7 +518,11 @@ export type AddProjectMemberRequest = { user_id: string, role: string, };
 
 export type UpdateMemberRoleRequest = { role: string, };
 
-export type ProjectAccessResponse = { has_access: boolean, role: string | null, can_read: boolean, can_write: boolean, can_manage_members: boolean, can_delete: boolean, };
+export type ProjectAccessResponse = { has_access: boolean, role: string | null, can_read: boolean, can_write: boolean, can_manage_members: boolean, can_delete: boolean, 
+/**
+ * "full" = sees all tasks, "assigned_only" = sees only their assigned tasks
+ */
+access_scope: string, platform_roles: Array<string>, };
 
 export type MyProjectItem = { project_id: string, project_name: string, role: string, granted_at: string, };
 
@@ -704,7 +728,15 @@ context: JsonValue | null,
 /**
  * Enable streaming response
  */
-stream: boolean, };
+stream: boolean, 
+/**
+ * Optional model override (e.g. "llama3.2:3b", "gpt-4o", "claude-sonnet-4")
+ */
+model?: string | null,
+/**
+ * Optional provider override ("ollama", "openai", "anthropic")
+ */
+provider?: string | null, };
 
 export type AgentChatResponse = { 
 /**
@@ -733,3 +765,31 @@ model: string | null, provider: string | null,
 latencyMs: bigint, };
 
 export type ConversationSummary = { id: string, title: string | null, status: string, messageCount: bigint, lastMessageAt: string | null, createdAt: string, };
+
+export type KnowledgeSourceType = "conversation" | "artifact" | "pulse_content" | "context_injection" | "entity" | "topology_snapshot";
+
+export type ProjectKnowledgeSource = { id: string, project_id: string, source_type: string, source_id: string, source_title: string, source_summary: string | null, coverage_score: number, is_active: boolean, is_stale: boolean, auto_registered: boolean, last_refreshed_at: string, created_at: string, updated_at: string, };
+
+export type ProjectKnowledgeCompleteness = { project_id: string, total_sources: bigint, fresh_sources: bigint, avg_coverage: number, type_count: bigint, knowledge_completeness: number, };
+
+export type HealthStatus = "healthy" | "warning" | "critical" | "unknown";
+
+export type ProjectHealthSummary = { project_id: string, health_status: string, active_issues_count: bigint, critical_issues: bigint, warning_issues: bigint, knowledge_completeness: number, last_activity_at: string | null, };
+
+export type ProjectKnowledgeResponse = { project_id: string, completeness: ProjectKnowledgeCompleteness | null, total_sources: number, stale_count: number, sources_by_type: { [key in string]?: Array<ProjectKnowledgeSource> }, };
+
+export type SidebarTree = { owned_orgs: Array<SidebarOrg>, member_orgs: Array<SidebarOrg>, };
+
+export type SidebarOrg = { id: string, name: string, slug: string, role: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, internal_projects: Array<SidebarProject>, clients: Array<SidebarClient>, shared_boards: Array<SidebarSharedBoardGroup>, };
+
+export type SidebarClient = { id: string, name: string, slug: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, projects: Array<SidebarProject>, };
+
+export type SidebarProject = { id: string, name: string, is_container: boolean, children: Array<SidebarProject>, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, };
+
+export type SidebarSharedBoardGroup = { source_org_id: string, source_org_name: string, share_type: string, boards: Array<SidebarSharedBoard>, };
+
+export type SidebarSharedBoard = { board_id: string, board_name: string, project_id: string, project_name: string, permission: string, share_type: string, };
+
+export type ConvertEntityRequest = { source_type: string, source_id: string, target_type: string, target_parent_id: string | null, };
+
+export type ConvertEntityResponse = { new_id: string, new_type: string, };

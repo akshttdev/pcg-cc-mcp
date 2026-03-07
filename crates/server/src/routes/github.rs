@@ -171,6 +171,7 @@ pub async fn create_project_from_github(
         organization_id: None,
         client_id: None,
         folder_id: None,
+        parent_project_id: None,
     };
 
     let project_id = Uuid::new_v4();
