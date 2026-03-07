@@ -177,10 +177,10 @@ function HealthDot({ status }: { status?: string }) {
   if (!status) return null;
   const color =
     status === 'critical'
-      ? 'bg-red-500'
+      ? 'bg-destructive'
       : status === 'warning'
-        ? 'bg-yellow-500'
-        : 'bg-green-500';
+        ? 'bg-[hsl(var(--warning))]'
+        : 'bg-[hsl(var(--success))]';
   return (
     <span
       className={cn('inline-block w-1.5 h-1.5 rounded-full shrink-0', color)}
@@ -218,7 +218,7 @@ function OrgCrmSection({
             isCrmActive && 'text-accent-foreground font-medium'
           )}
         >
-          <Users className="h-3 w-3 shrink-0 text-blue-500" />
+          <Users className="h-3 w-3 shrink-0 text-primary" />
           <span className="flex-1 text-left">CRM</span>
           {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
@@ -226,18 +226,18 @@ function OrgCrmSection({
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',     to: `/organizations/${orgId}`,                 icon: LayoutGrid, color: 'text-muted-foreground', match: isOnOrg && !location.search },
-            { label: 'Contacts',     to: `/organizations/${orgId}?tab=contacts`,    icon: Users,      color: 'text-blue-400',          match: isOnOrg && location.search.includes('tab=contacts') },
-            { label: 'Pipeline',     to: `/organizations/${orgId}?tab=pipelines`,   icon: TrendingUp, color: 'text-amber-500',         match: isOnOrg && location.search.includes('tab=pipelines') },
-            { label: 'Deliverables', to: `/organizations/${orgId}?tab=deliverables`,icon: Package,    color: 'text-green-500',         match: isOnOrg && location.search.includes('tab=deliverables') },
-            { label: 'Experiences',  to: `/organizations/${orgId}?tab=social`,      icon: Sparkles,   color: 'text-pink-500',          match: isOnOrg && location.search.includes('tab=social') },
+            { label: 'Overview',     to: `/organizations/${orgId}`,                 icon: LayoutGrid, color: 'text-muted-foreground',        match: isOnOrg && !location.search },
+            { label: 'Contacts',     to: `/organizations/${orgId}?tab=contacts`,    icon: Users,      color: 'text-primary',                 match: isOnOrg && location.search.includes('tab=contacts') },
+            { label: 'Pipeline',     to: `/organizations/${orgId}?tab=pipelines`,   icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: isOnOrg && location.search.includes('tab=pipelines') },
+            { label: 'Deliverables', to: `/organizations/${orgId}?tab=deliverables`,icon: Package,    color: 'text-[hsl(var(--success))]',   match: isOnOrg && location.search.includes('tab=deliverables') },
+            { label: 'Experiences',  to: `/organizations/${orgId}?tab=social`,      icon: Sparkles,   color: 'text-[hsl(var(--brand))]',     match: isOnOrg && location.search.includes('tab=social') },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
               to={to}
               className={cn(
                 'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-                match && 'bg-primary/8 text-foreground font-medium'
+                match && 'bg-primary/10 text-foreground font-medium'
               )}
             >
               <Icon className={cn('h-3 w-3 shrink-0', color)} />
@@ -275,7 +275,7 @@ function OrgIntelligenceSection({
             isOnOrgIntel && 'text-accent-foreground font-medium'
           )}
         >
-          <Brain className="h-3 w-3 shrink-0 text-emerald-500" />
+          <Brain className="h-3 w-3 shrink-0 text-[hsl(var(--success))]" />
           <span className="flex-1 text-left">Intelligence</span>
           {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
@@ -283,18 +283,18 @@ function OrgIntelligenceSection({
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',      icon: Brain,         color: 'text-emerald-500', to: `/organizations/${orgId}?tab=knowledge`,                   match: isOnOrgIntel && !location.search.includes('view=') },
-            { label: 'Conversations', icon: MessageSquare, color: 'text-blue-400',    to: `/organizations/${orgId}?tab=knowledge&view=conversations`, match: isOnOrgIntel && location.search.includes('view=conversations') },
-            { label: 'Artifacts',     icon: FileText,      color: 'text-purple-400',  to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,     match: isOnOrgIntel && location.search.includes('view=artifacts') },
-            { label: 'Pulse',         icon: Radio,         color: 'text-orange-400',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,         match: isOnOrgIntel && location.search.includes('view=pulse') },
-            { label: 'Topology',      icon: Network,       color: 'text-cyan-400',    to: `/organizations/${orgId}?tab=knowledge&view=topology`,      match: isOnOrgIntel && location.search.includes('view=topology') },
+            { label: 'Overview',      icon: Brain,         color: 'text-[hsl(var(--success))]', to: `/organizations/${orgId}?tab=knowledge`,                   match: isOnOrgIntel && !location.search.includes('view=') },
+            { label: 'Conversations', icon: MessageSquare, color: 'text-primary',                to: `/organizations/${orgId}?tab=knowledge&view=conversations`, match: isOnOrgIntel && location.search.includes('view=conversations') },
+            { label: 'Artifacts',     icon: FileText,      color: 'text-[hsl(var(--brand))]',    to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,     match: isOnOrgIntel && location.search.includes('view=artifacts') },
+            { label: 'Pulse',         icon: Radio,         color: 'text-[hsl(var(--warning))]',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,         match: isOnOrgIntel && location.search.includes('view=pulse') },
+            { label: 'Topology',      icon: Network,       color: 'text-[hsl(var(--info))]',     to: `/organizations/${orgId}?tab=knowledge&view=topology`,      match: isOnOrgIntel && location.search.includes('view=topology') },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
               to={to}
               className={cn(
                 'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-                match && 'bg-primary/8 text-foreground font-medium'
+                match && 'bg-primary/10 text-foreground font-medium'
               )}
             >
               <Icon className={cn('h-3 w-3 shrink-0', color)} />
@@ -344,7 +344,7 @@ function CrmSidebarLinks({
             hasCrmActive && 'text-foreground font-medium'
           )}
         >
-          <Users className="h-3 w-3 text-blue-500 shrink-0" />
+          <Users className="h-3 w-3 text-primary shrink-0" />
           <span className="flex-1 text-left">CRM</span>
           {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
@@ -360,7 +360,7 @@ function CrmSidebarLinks({
                 to={link.to}
                 className={cn(
                   'flex items-center gap-2 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-                  isActive && 'bg-primary/8 text-foreground font-medium'
+                  isActive && 'bg-primary/10 text-foreground font-medium'
                 )}
               >
                 <Icon className="h-3 w-3 text-muted-foreground" />
@@ -412,7 +412,7 @@ function ProjectFolder({
           variant="ghost"
           className={cn(
             "w-full justify-between px-2 py-1.5 h-auto font-normal group",
-            isActive && "bg-primary/8 text-foreground"
+            isActive && "bg-primary/10 text-foreground"
           )}
         >
           <div className="flex items-center gap-2 text-left flex-1 min-w-0">
@@ -430,7 +430,7 @@ function ProjectFolder({
               <Star
                 className={cn(
                   "h-3 w-3",
-                  isFav ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"
+                  isFav ? "text-[hsl(var(--warning))] fill-[hsl(var(--warning))]" : "text-muted-foreground"
                 )}
               />
             </span>
@@ -464,7 +464,7 @@ function ProjectFolder({
                   }}
                   className={cn(
                     'block pl-2 pr-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-                    isBoardActive && 'bg-primary/8 text-foreground font-medium'
+                    isBoardActive && 'bg-primary/10 text-foreground font-medium'
                   )}
                 >
                   <span className="truncate" title={board.name}>
@@ -480,10 +480,10 @@ function ProjectFolder({
             to={`/projects/${project.id}/control`}
             className={cn(
               'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground mt-1 border-t pt-2 transition-colors',
-              location.pathname === `/projects/${project.id}/control` && 'bg-primary/8 text-foreground font-medium'
+              location.pathname === `/projects/${project.id}/control` && 'bg-primary/10 text-foreground font-medium'
             )}
           >
-            <Bot className="h-3 w-3 text-purple-500" />
+            <Bot className="h-3 w-3 text-[hsl(var(--brand))]" />
             <span className="font-medium">Controller</span>
           </Link>
 
@@ -495,7 +495,7 @@ function ProjectFolder({
             to={`/projects/${project.id}/social`}
             className={cn(
               'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-              location.pathname === `/projects/${project.id}/social` && 'bg-primary/8 text-foreground font-medium'
+              location.pathname === `/projects/${project.id}/social` && 'bg-primary/10 text-foreground font-medium'
             )}
           >
             <Share2 className="h-3 w-3 text-muted-foreground" />
@@ -507,7 +507,7 @@ function ProjectFolder({
             to={`/projects/${project.id}/knowledge`}
             className={cn(
               'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-              location.pathname === `/projects/${project.id}/knowledge` && 'bg-primary/8 text-foreground font-medium'
+              location.pathname === `/projects/${project.id}/knowledge` && 'bg-primary/10 text-foreground font-medium'
             )}
           >
             <BookOpen className="h-3 w-3 text-muted-foreground" />
@@ -617,7 +617,7 @@ function SortableSidebarProjectFolder({
       className={cn(
         'group/sortable rounded-sm',
         isDragging && 'opacity-50 z-50',
-        isOver && isContainer && 'bg-amber-100/60 dark:bg-amber-950/40 ring-1 ring-amber-400/50'
+        isOver && isContainer && 'bg-accent/60 ring-1 ring-primary/50'
       )}
     >
       <Collapsible open={isExpanded} onOpenChange={onToggle}>
@@ -634,22 +634,22 @@ function SortableSidebarProjectFolder({
             to={`/projects/${project.id}`}
             className={cn(
               'flex items-center gap-1.5 px-1.5 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground flex-1 min-w-0 text-left transition-colors',
-              isActive && 'bg-primary/8 text-foreground font-medium'
+              isActive && 'bg-primary/10 text-foreground font-medium'
             )}
           >
             <HealthDot status={project.health_status} />
             {isContainer ? (
               isExpanded ? (
-                <FolderOpen className="h-3 w-3 text-amber-500 shrink-0" />
+                <FolderOpen className="h-3 w-3 text-[hsl(var(--warning))] shrink-0" />
               ) : (
-                <FolderClosed className="h-3 w-3 text-amber-500 shrink-0" />
+                <FolderClosed className="h-3 w-3 text-[hsl(var(--warning))] shrink-0" />
               )
             ) : (
               <Folder className="h-3 w-3 text-muted-foreground shrink-0" />
             )}
             <span className="truncate flex-1">{project.name}</span>
             {project.active_issues_count != null && project.active_issues_count > 0 && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 shrink-0">
+              <span className="text-[9px] px-1 py-0.5 rounded bg-destructive/10 text-destructive shrink-0">
                 {project.active_issues_count}
               </span>
             )}
@@ -739,7 +739,7 @@ function SortableSidebarProjectFolder({
                         }}
                         className={cn(
                           'block pl-2 pr-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-                          isBoardActive && 'bg-primary/8 text-foreground font-medium'
+                          isBoardActive && 'bg-primary/10 text-foreground font-medium'
                         )}
                       >
                         <span className="truncate" title={board.name}>
@@ -756,7 +756,7 @@ function SortableSidebarProjectFolder({
                     'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
                     location.pathname === `/projects/${project.id}/tasks` &&
                       !location.search &&
-                      'bg-primary/8 text-foreground font-medium'
+                      'bg-primary/10 text-foreground font-medium'
                   )}
                 >
                   <ListTodo className="h-3 w-3 text-muted-foreground" />
@@ -769,10 +769,10 @@ function SortableSidebarProjectFolder({
                   className={cn(
                     'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground mt-1 border-t pt-2 transition-colors',
                     location.pathname === `/projects/${project.id}/control` &&
-                      'bg-primary/8 text-foreground font-medium'
+                      'bg-primary/10 text-foreground font-medium'
                   )}
                 >
-                  <Bot className="h-3 w-3 text-purple-500" />
+                  <Bot className="h-3 w-3 text-[hsl(var(--brand))]" />
                   <span className="font-medium">Controller</span>
                 </Link>
 
@@ -785,7 +785,7 @@ function SortableSidebarProjectFolder({
                   className={cn(
                     'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
                     location.pathname === `/projects/${project.id}/social` &&
-                      'bg-primary/8 text-foreground font-medium'
+                      'bg-primary/10 text-foreground font-medium'
                   )}
                 >
                   <Share2 className="h-3 w-3 text-muted-foreground" />
@@ -798,7 +798,7 @@ function SortableSidebarProjectFolder({
                   className={cn(
                     'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
                     location.pathname === `/projects/${project.id}/knowledge` &&
-                      'bg-primary/8 text-foreground font-medium'
+                      'bg-primary/10 text-foreground font-medium'
                   )}
                 >
                   <BookOpen className="h-3 w-3 text-muted-foreground" />
@@ -944,12 +944,12 @@ function ClientGroup({
         >
           <div className="flex items-center gap-1.5 min-w-0">
             <HealthDot status={client.health_status} />
-            <UserCircle className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+            <UserCircle className="h-3.5 w-3.5 text-primary shrink-0" />
             <span className="truncate">{client.name}</span>
           </div>
           <div className="flex items-center gap-1">
             {client.active_issues_count != null && client.active_issues_count > 0 && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">
+              <span className="text-[9px] px-1 py-0.5 rounded bg-destructive/10 text-destructive">
                 {client.active_issues_count}
               </span>
             )}
@@ -1034,11 +1034,11 @@ function SharedBoardGroup({
           className="w-full justify-between px-2 py-1 h-auto font-normal text-xs"
         >
           <div className="flex items-center gap-1.5 min-w-0">
-            <Share2 className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+            <Share2 className="h-3.5 w-3.5 text-[hsl(var(--warning))] shrink-0" />
             <span className="truncate">{group.source_org_name}</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-[9px] px-1 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300">
+            <span className="text-[9px] px-1 py-0.5 rounded bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))]">
               {shareLabel}
             </span>
             {expanded ? (
@@ -1066,7 +1066,7 @@ function SharedBoardGroup({
                 }}
                 className={cn(
                   'block px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground truncate transition-colors',
-                  isActive && 'bg-primary/8 text-foreground font-medium'
+                  isActive && 'bg-primary/10 text-foreground font-medium'
                 )}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -1122,14 +1122,14 @@ function OrgSection({
     <div className="space-y-0.5">
       {/* Org header */}
       <div className={cn(
-        "flex items-center rounded-sm",
-        isActiveOrg && "bg-primary/8"
+        "flex items-center rounded-sm transition-colors",
+        isActiveOrg && "bg-primary/10 dark:bg-primary/15 shadow-[inset_3px_0_0_hsl(var(--brand))]"
       )}>
         <Button
           variant="ghost"
           className={cn(
             "flex-1 justify-start px-2 py-1.5 h-auto font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground min-w-0",
-            isActiveOrg && "text-foreground"
+            isActiveOrg && "text-foreground font-semibold"
           )}
           onClick={() => {
             if (org.id) navigate(`/organizations/${org.id}`);
@@ -1153,10 +1153,10 @@ function OrgSection({
             to={`/social-command`}
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-              location.pathname === '/social-command' && 'bg-primary/8 text-foreground font-medium'
+              location.pathname === '/social-command' && 'bg-primary/10 text-foreground font-medium'
             )}
           >
-            <Megaphone className="h-3 w-3 shrink-0 text-purple-500" />
+            <Megaphone className="h-3 w-3 shrink-0 text-[hsl(var(--brand))]" />
             <span>Social</span>
           </Link>
 
@@ -1170,10 +1170,10 @@ function OrgSection({
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground flex-1 transition-colors',
               location.pathname === `/organizations/${org.id}/crm/acquisition` &&
-                'bg-primary/8 text-foreground font-medium'
+                'bg-primary/10 text-foreground font-medium'
             )}
           >
-            <Target className="h-3 w-3 text-amber-500 shrink-0" />
+            <Target className="h-3 w-3 text-[hsl(var(--warning))] shrink-0" />
             <span>Acquisition</span>
           </Link>
           <Link
@@ -1181,10 +1181,10 @@ function OrgSection({
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground flex-1 transition-colors',
               location.pathname === `/organizations/${org.id}/crm/lifecycle` &&
-                'bg-primary/8 text-foreground font-medium'
+                'bg-primary/10 text-foreground font-medium'
             )}
           >
-            <TrendingUp className="h-3 w-3 text-emerald-500 shrink-0" />
+            <TrendingUp className="h-3 w-3 text-[hsl(var(--success))] shrink-0" />
             <span>Lifecycle</span>
           </Link>
         </div>
@@ -1309,14 +1309,6 @@ function OrgSection({
 // SidebarOrgGroups — separates orgs into active (has content) vs empty
 // ============================================================================
 
-function orgHasContent(org: SidebarOrg): boolean {
-  return (
-    org.internal_projects.length > 0 ||
-    org.clients.some((c) => c.projects.length > 0) ||
-    (org.shared_boards || []).length > 0
-  );
-}
-
 function SidebarOrgGroups({
   sidebarTree,
   projectId,
@@ -1334,7 +1326,7 @@ function SidebarOrgGroups({
   onToggleProject: (id: string) => void;
   queryClient: QueryClient;
 }) {
-  const [showEmptyOrgs, setShowEmptyOrgs] = useState(false);
+  const [showOtherOrgs, setShowOtherOrgs] = useState(false);
 
   // Derive activeOrgId: from URL orgId, or from which org contains the active project
   const allOrgs = [...sidebarTree.owned_orgs, ...sidebarTree.member_orgs];
@@ -1350,19 +1342,17 @@ function SidebarOrgGroups({
     return undefined;
   }, [orgId, projectId, allOrgs]);
 
-  // Split owned orgs into "active" (has projects/clients) and "empty"
-  const activeOrgs = sidebarTree.owned_orgs.filter(orgHasContent);
-  const otherOrgs = sidebarTree.owned_orgs.filter((o) => !orgHasContent(o));
-  const otherMemberOrgs = sidebarTree.member_orgs.filter((o) => !orgHasContent(o));
-  const activeMemberOrgs = sidebarTree.member_orgs.filter(orgHasContent);
+  // Only show the active org expanded; all others go into "Other Organizations"
+  const activeOrg = activeOrgId ? allOrgs.find((o) => o.id === activeOrgId) : undefined;
+  const otherOrgs = allOrgs.filter((o) => o.id !== activeOrgId);
 
   return (
     <>
-      {/* Active owned orgs (with projects/clients) */}
-      {activeOrgs.map((org) => (
+      {/* Active organization — fully expanded */}
+      {activeOrg && (
         <OrgSection
-          key={org.id || org.slug}
-          org={org}
+          key={activeOrg.id || activeOrg.slug}
+          org={activeOrg}
           projectId={projectId}
           activeOrgId={activeOrgId}
           isAdmin={isAdmin}
@@ -1370,32 +1360,18 @@ function SidebarOrgGroups({
           onToggleProject={onToggleProject}
           queryClient={queryClient}
         />
-      ))}
+      )}
 
-      {/* Active guest/member orgs */}
-      {activeMemberOrgs.length > 0 && activeMemberOrgs.map((org) => (
-        <OrgSection
-          key={org.id || org.slug}
-          org={org}
-          projectId={projectId}
-          activeOrgId={activeOrgId}
-          isAdmin={isAdmin}
-          expandedProjects={expandedProjects}
-          onToggleProject={onToggleProject}
-          queryClient={queryClient}
-        />
-      ))}
-
-      {/* Other owned organizations — collapsed name-only list */}
+      {/* Other organizations — collapsed name-only list */}
       {otherOrgs.length > 0 && (
-        <Collapsible open={showEmptyOrgs} onOpenChange={setShowEmptyOrgs}>
+        <Collapsible open={showOtherOrgs} onOpenChange={setShowOtherOrgs}>
           <CollapsibleTrigger asChild>
             <Button
               variant="ghost"
               className="w-full justify-between px-2 py-1.5 h-auto text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground"
             >
               <span>Other Organizations ({otherOrgs.length})</span>
-              {showEmptyOrgs ? (
+              {showOtherOrgs ? (
                 <ChevronDown className="h-3 w-3" />
               ) : (
                 <ChevronRight className="h-3 w-3" />
@@ -1405,35 +1381,6 @@ function SidebarOrgGroups({
           <CollapsibleContent className="pl-2">
             <div className="space-y-0.5 py-0.5">
               {otherOrgs.map((org) => (
-                <Link
-                  key={org.id || org.slug}
-                  to={org.id ? `/organizations/${org.id}` : '#'}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors"
-                >
-                  <Building2 className="h-3 w-3 text-muted-foreground shrink-0" />
-                  <span className="truncate">{org.name}</span>
-                </Link>
-              ))}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-
-      {/* Guest access organizations — name-only links */}
-      {otherMemberOrgs.length > 0 && (
-        <Collapsible>
-          <CollapsibleTrigger asChild>
-            <Button
-              variant="ghost"
-              className="w-full justify-between px-2 py-1.5 h-auto text-[10px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground"
-            >
-              <span>Guest Access ({otherMemberOrgs.length})</span>
-              <ChevronRight className="h-3 w-3" />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pl-2">
-            <div className="space-y-0.5 py-0.5">
-              {otherMemberOrgs.map((org) => (
                 <Link
                   key={org.id || org.slug}
                   to={org.id ? `/organizations/${org.id}` : '#'}
@@ -1548,12 +1495,12 @@ export function Sidebar({ className }: SidebarProps) {
     const Icon = item.icon;
     const isAdminTool = item.id === 'nora' || item.id === 'topsi';
     const adminBg = item.id === 'nora'
-      ? 'bg-purple-50/50 hover:bg-purple-100/50 dark:bg-purple-950/20 dark:hover:bg-purple-950/40'
+      ? 'bg-primary/5 hover:bg-primary/10'
       : item.id === 'topsi'
-        ? 'bg-cyan-50/50 hover:bg-cyan-100/50 dark:bg-cyan-950/20 dark:hover:bg-cyan-950/40'
+        ? 'bg-[hsl(var(--info)/0.05)] hover:bg-[hsl(var(--info)/0.1)]'
         : '';
-    const adminIconColor = item.id === 'nora' ? 'text-purple-600 dark:text-purple-400' : item.id === 'topsi' ? 'text-cyan-600 dark:text-cyan-400' : '';
-    const adminBadgeBg = item.id === 'nora' ? 'bg-purple-600' : item.id === 'topsi' ? 'bg-cyan-600' : '';
+    const adminIconColor = item.id === 'nora' ? 'text-primary' : item.id === 'topsi' ? 'text-[hsl(var(--info))]' : '';
+    const adminBadgeBg = item.id === 'nora' ? 'bg-primary' : item.id === 'topsi' ? 'bg-[hsl(var(--info))]' : '';
 
     if (sidebarCollapsed) {
       return (
@@ -1617,7 +1564,7 @@ export function Sidebar({ className }: SidebarProps) {
               <CollapsibleTrigger asChild>
                 <div className="sidebar-nav-item justify-between cursor-pointer">
                   <div className="flex items-center gap-2.5">
-                    <Crown className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <Crown className="h-4 w-4 text-primary" />
                     <span>Admin Platforms</span>
                   </div>
                   {adminPlatformsExpanded ? (
@@ -1740,10 +1687,10 @@ export function Sidebar({ className }: SidebarProps) {
                     variant="ghost"
                     className={cn(
                       "w-full justify-start px-2 py-1.5 h-auto font-normal",
-                      projectId === proj.id && "bg-primary/8 text-foreground font-medium"
+                      projectId === proj.id && "bg-primary/10 text-foreground font-medium"
                     )}
                   >
-                    <Star className="h-4 w-4 mr-2 text-yellow-500 fill-yellow-500" />
+                    <Star className="h-4 w-4 mr-2 text-[hsl(var(--warning))] fill-[hsl(var(--warning))]" />
                     <span className="text-sm truncate">{proj.name}</span>
                   </Button>
                 </Link>
