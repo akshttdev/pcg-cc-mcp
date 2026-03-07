@@ -68,6 +68,11 @@ export {
 // Shared/Generic dialogs
 export { ConfirmDialog, type ConfirmDialogProps } from './shared/ConfirmDialog';
 export {
+  CreateNameDialog,
+  type CreateNameDialogProps,
+  type CreateNameDialogResult,
+} from './shared/CreateNameDialog';
+export {
   FolderPickerDialog,
   type FolderPickerDialogProps,
 } from './shared/FolderPickerDialog';

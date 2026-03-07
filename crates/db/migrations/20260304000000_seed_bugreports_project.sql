@@ -24,7 +24,7 @@ SELECT
     X'00000000000000000000000000000001',
     'Bug Reports',
     'bug-reports',
-    'default',
+    'custom',
     'Track bugs and issues reported by dashboard users',
     datetime('now', 'subsec'),
     datetime('now', 'subsec')

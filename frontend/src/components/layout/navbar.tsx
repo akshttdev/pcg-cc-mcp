@@ -16,6 +16,7 @@ import { useProject } from '@/contexts/project-context';
 import { showProjectForm } from '@/lib/modals';
 import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 import { useCommandStore } from '@/stores/useCommandStore';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
@@ -151,6 +152,7 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
               </>
             )}
 
+            <NotificationCenter />
             <ProfileSection />
           </div>
         </div>

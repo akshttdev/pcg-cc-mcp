@@ -1278,6 +1278,7 @@ impl TopsiAgent {
             organization_id: None,
             client_id: None,
             folder_id: None,
+            parent_project_id: None,
         };
 
         let project = Project::create(pool, &create_project, project_id)
@@ -1519,6 +1520,7 @@ impl TopsiAgent {
                     organization_id: None,
                     client_id: None,
                     folder_id: None,
+                    parent_project_id: None,
                 };
 
                 let new_project_id = uuid::Uuid::new_v4();

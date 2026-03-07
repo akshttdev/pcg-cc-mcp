@@ -1187,13 +1187,11 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
   const allProjects = useMemo(() => {
     if (!sidebarOrg) return [];
+    const collectProjects = (projects: any[]): any[] =>
+      projects.flatMap((p: any) => [p, ...collectProjects(p.children || [])]);
     return [
-      ...(sidebarOrg.internal_projects || []),
-      ...(sidebarOrg.internal_folders || []).flatMap((f: any) => f.projects),
-      ...(sidebarOrg.clients || []).flatMap((c: any) => [
-        ...(c.projects || []),
-        ...(c.folders || []).flatMap((f: any) => f.projects),
-      ]),
+      ...collectProjects(sidebarOrg.internal_projects || []),
+      ...(sidebarOrg.clients || []).flatMap((c: any) => collectProjects(c.projects || [])),
     ];
   }, [sidebarOrg]);
 

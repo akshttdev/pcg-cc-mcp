@@ -617,6 +617,23 @@ export const projectsApi = {
     );
     return handleApiResponse<BrandProfile>(response);
   },
+
+  // Project hierarchy APIs
+  setParent: async (projectId: string, parentProjectId: string | null): Promise<void> => {
+    const response = await makeRequest(`/api/projects/${projectId}/parent`, {
+      method: 'PUT',
+      body: JSON.stringify({ parent_project_id: parentProjectId }),
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  reorder: async (projectId: string, sortOrder: number): Promise<void> => {
+    const response = await makeRequest(`/api/projects/${projectId}/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ sort_order: sortOrder }),
+    });
+    return handleApiResponse<void>(response);
+  },
 };
 
 // Project Controller Types
@@ -3736,16 +3753,12 @@ export const pulseApi = {
 export interface SidebarProject {
   id: string;
   name: string;
+  is_container: boolean;
+  children: SidebarProject[];
   health_status?: string;
   active_issues_count?: number;
   knowledge_completeness?: number;
   last_activity_at?: string;
-}
-
-export interface SidebarProjectFolder {
-  id: string;
-  name: string;
-  projects: SidebarProject[];
 }
 
 export interface SidebarClient {
@@ -3757,7 +3770,6 @@ export interface SidebarClient {
   knowledge_completeness?: number;
   last_activity_at?: string;
   projects: SidebarProject[];
-  folders: SidebarProjectFolder[];
 }
 
 export interface SidebarSharedBoard {
@@ -3786,7 +3798,6 @@ export interface SidebarOrg {
   knowledge_completeness?: number;
   last_activity_at?: string;
   internal_projects: SidebarProject[];
-  internal_folders: SidebarProjectFolder[];
   clients: SidebarClient[];
   shared_boards: SidebarSharedBoardGroup[];
 }
@@ -3857,6 +3868,27 @@ export const organizationsApi = {
       body: JSON.stringify(data),
     });
     return handleApiResponse<OrganizationData>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${id}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  activate: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${id}/activate`, {
+      method: 'PATCH',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  deactivate: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${id}/deactivate`, {
+      method: 'PATCH',
+    });
+    return handleApiResponse<void>(response);
   },
 
   // Members
@@ -4030,52 +4062,33 @@ export const knowledgeApi = {
   },
 };
 
-export const projectFoldersApi = {
-  list: async (orgId: string): Promise<ProjectFolderData[]> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/project-folders`);
-    return handleApiResponse<ProjectFolderData[]>(response);
-  },
+// projectFoldersApi removed — projects now use parent_project_id nesting via projectsApi.setParent()
 
-  create: async (orgId: string, data: { name: string; client_id?: string }): Promise<ProjectFolderData> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/project-folders`, {
+// ============================================================================
+// Entity Conversion API
+// ============================================================================
+
+export type EntityType = 'organization' | 'client' | 'project';
+
+export interface ConvertEntityRequest {
+  source_type: EntityType;
+  source_id: string;
+  target_type: EntityType;
+  target_parent_id?: string;
+}
+
+export interface ConvertEntityResponse {
+  new_id: string;
+  new_type: EntityType;
+}
+
+export const entityConversionApi = {
+  convert: async (data: ConvertEntityRequest): Promise<ConvertEntityResponse> => {
+    const response = await makeRequest('/api/entities/convert', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    return handleApiResponse<ProjectFolderData>(response);
-  },
-
-  get: async (folderId: string): Promise<ProjectFolderData> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}`);
-    return handleApiResponse<ProjectFolderData>(response);
-  },
-
-  update: async (folderId: string, data: { name?: string; sort_order?: number; is_active?: boolean }): Promise<ProjectFolderData> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-    return handleApiResponse<ProjectFolderData>(response);
-  },
-
-  delete: async (folderId: string): Promise<void> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}`, {
-      method: 'DELETE',
-    });
-    return handleApiResponse<void>(response);
-  },
-
-  addProject: async (folderId: string, projectId: string): Promise<void> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}/projects/${projectId}`, {
-      method: 'PUT',
-    });
-    return handleApiResponse<void>(response);
-  },
-
-  removeProject: async (folderId: string, projectId: string): Promise<void> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}/projects/${projectId}`, {
-      method: 'DELETE',
-    });
-    return handleApiResponse<void>(response);
+    return handleApiResponse<ConvertEntityResponse>(response);
   },
 };
 

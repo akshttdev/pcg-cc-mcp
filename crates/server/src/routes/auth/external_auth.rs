@@ -184,14 +184,18 @@ pub async fn validate_external_token(
         })
         .collect();
 
+    let platform_roles = super::auth_sqlite::load_platform_roles_pub(pool, user.id.as_bytes().as_slice()).await;
+    let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
+
     let profile = UserProfile {
         id: user.id.to_string(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,
         avatar_url: user.avatar_url,
-        is_admin: user.is_admin == 1,
+        is_admin: effective_admin,
         organizations,
+        platform_roles,
     };
 
     let response = ValidateTokenResponse {

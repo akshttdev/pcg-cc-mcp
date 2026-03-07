@@ -245,6 +245,14 @@ impl Organization {
         .await
     }
 
+    pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Organization>(
+            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at FROM organizations ORDER BY name ASC"
+        )
+        .fetch_all(pool)
+        .await
+    }
+
     pub async fn find_all_active(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
             "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at FROM organizations WHERE is_active = 1 ORDER BY name ASC"
@@ -313,6 +321,22 @@ impl Organization {
         .bind(id)
         .fetch_one(pool)
         .await
+    }
+
+    pub async fn deactivate(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE organizations SET is_active = 0, updated_at = datetime('now') WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn activate(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE organizations SET is_active = 1, updated_at = datetime('now') WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn add_member(
