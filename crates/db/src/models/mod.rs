@@ -104,6 +104,7 @@ pub mod entity_conversion;
 pub mod data_source;
 pub mod scheduled_meeting;
 pub mod company;
+pub mod quickbooks_account;
 pub mod entity_graph;
 // Topology modules need SQLX prepared queries — commented out for offline builds
 // pub mod topology_node;

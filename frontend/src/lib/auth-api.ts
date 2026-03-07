@@ -25,6 +25,7 @@ export interface UserProfile {
   is_admin: boolean;
   organizations: UserOrganization[];
   platform_roles: PlatformRole[];
+  home_organization_id?: string | null;
 }
 
 export interface LoginResponse {

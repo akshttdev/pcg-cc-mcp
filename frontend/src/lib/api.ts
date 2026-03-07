@@ -2729,10 +2729,12 @@ export interface OAuthUrlResponse {
 }
 
 export const emailApi = {
-  listAccounts: async (projectId?: string, provider?: string): Promise<EmailAccountRecord[]> => {
+  listAccounts: async (projectId?: string, provider?: string, ownerType?: string, ownerId?: string): Promise<EmailAccountRecord[]> => {
     const searchParams = new URLSearchParams();
     if (projectId) searchParams.set('project_id', projectId);
     if (provider) searchParams.set('provider', provider);
+    if (ownerType) searchParams.set('owner_type', ownerType);
+    if (ownerId) searchParams.set('owner_id', ownerId);
     const query = searchParams.toString();
     const response = await makeRequest(`/api/email/accounts${query ? `?${query}` : ''}`);
     return handleApiResponse<EmailAccountRecord[]>(response);
@@ -2906,6 +2908,67 @@ export interface CrmContactStats {
   avg_lead_score: number;
   needs_follow_up: number;
 }
+
+// =============================================================================
+// QuickBooks API
+// =============================================================================
+
+export interface QuickBooksAccountRecord {
+  id: string;
+  organization_id: string;
+  realm_id: string;
+  company_name?: string;
+  environment: string;
+  sync_enabled: number;
+  sync_frequency_minutes: number;
+  last_sync_at?: string;
+  sync_invoices: number;
+  sync_customers: number;
+  sync_payments: number;
+  sync_expenses: number;
+  sync_time_tracking: number;
+  status: string;
+  last_error?: string;
+  metadata?: string;
+  connected_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QBConnectionStatus {
+  connected: boolean;
+  account?: QuickBooksAccountRecord;
+  needs_reauth: boolean;
+}
+
+export const quickbooksApi = {
+  getStatus: async (organizationId: string): Promise<QBConnectionStatus> => {
+    const response = await makeRequest(`/api/quickbooks/status?organization_id=${organizationId}`);
+    return handleApiResponse<QBConnectionStatus>(response);
+  },
+
+  getConnectUrl: (organizationId: string): string => {
+    return `/api/quickbooks/connect?organization_id=${organizationId}`;
+  },
+
+  disconnect: async (accountId: string): Promise<void> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  refreshToken: async (accountId: string): Promise<void> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/refresh`, { method: 'POST' });
+    return handleApiResponse<void>(response);
+  },
+
+  triggerSync: async (accountId: string): Promise<void> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/sync`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    return handleApiResponse<void>(response);
+  },
+};
 
 export const crmApi = {
   listContacts: async (
@@ -5212,6 +5275,67 @@ export const meetingsApi = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
+  },
+};
+
+// ── Discord Voice ─────────────────────────────────────────────────────────────
+
+export interface DiscordSessionSummary {
+  meeting_session_id: string;
+  guild_id: string;
+  channel_id: string;
+  channel_name: string;
+  project_id: string;
+  agent: string;
+  started_at: string;
+  elapsed_seconds: number;
+  segment_count: number;
+  participant_count: number;
+}
+
+export interface DiscordSegment {
+  id: string;
+  segment_index: number;
+  speaker_label?: string;
+  text: string;
+  confidence?: number;
+  start_time_ms: number;
+  end_time_ms: number;
+  is_topsi_addressed: boolean;
+  metadata?: string;
+  created_at: string;
+}
+
+export interface DiscordTranscript {
+  meeting_session_id: string;
+  segment_count: number;
+  segments: DiscordSegment[];
+}
+
+export const discordApi = {
+  activeSessions: async (): Promise<DiscordSessionSummary[]> => {
+    const response = await makeRequest('/api/discord/sessions');
+    return handleApiResponse<DiscordSessionSummary[]>(response);
+  },
+
+  archivedSessions: async (params?: { limit?: number; offset?: number }): Promise<any[]> => {
+    const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))).toString() : '';
+    const response = await makeRequest(`/api/discord/archive${qs}`);
+    return handleApiResponse<any[]>(response);
+  },
+
+  getTranscript: async (sessionId: string): Promise<DiscordTranscript> => {
+    const response = await makeRequest(`/api/discord/sessions/${sessionId}/transcript`);
+    return handleApiResponse<DiscordTranscript>(response);
+  },
+
+  leave: async (guildId: string): Promise<{ success: boolean; meeting_session_id: string }> => {
+    const response = await makeRequest('/api/discord/leave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guild_id: guildId }),
     });
     return handleApiResponse(response);
   },
