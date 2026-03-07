@@ -33,14 +33,12 @@ import {
   Pencil,
   Trash2,
   FolderMinus,
-  Target,
   TrendingUp,
   Package,
   FileText,
   LayoutDashboard,
   Receipt,
   ExternalLink,
-  Brain,
   Sparkles,
   LayoutGrid,
 } from 'lucide-react';
@@ -145,66 +143,6 @@ function HealthDot({ status }: { status?: string }) {
       className={cn('inline-block w-1.5 h-1.5 rounded-full shrink-0', color)}
       title={`Health: ${status}`}
     />
-  );
-}
-
-// ============================================================================
-// OrgCrmLinks — collapsible CRM section with Pipeline nested inside
-// ============================================================================
-
-function OrgCrmLinks({
-  orgId,
-  location,
-}: {
-  orgId: string;
-  location: ReturnType<typeof useLocation>;
-}) {
-  const isCrmActive =
-    location.pathname === `/organizations/${orgId}` &&
-    (location.search.includes('tab=contacts') || location.search.includes('tab=pipelines'));
-  const [open, setOpen] = useState(isCrmActive);
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button
-          className={cn(
-            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-            isCrmActive && 'text-accent-foreground'
-          )}
-        >
-          <Users className="h-3 w-3 shrink-0 text-blue-500" />
-          <span className="flex-1 text-left">CRM</span>
-          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="pl-4 space-y-0.5 py-0.5">
-          <Link
-            to={`/organizations/${orgId}?tab=contacts`}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-              location.search.includes('tab=contacts') && location.pathname === `/organizations/${orgId}` &&
-                'bg-accent text-accent-foreground'
-            )}
-          >
-            <Users className="h-3 w-3 shrink-0 text-muted-foreground" />
-            <span>Contacts</span>
-          </Link>
-          <Link
-            to={`/organizations/${orgId}?tab=pipelines`}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-              location.search.includes('tab=pipelines') && location.pathname === `/organizations/${orgId}` &&
-                'bg-accent text-accent-foreground'
-            )}
-          >
-            <Target className="h-3 w-3 shrink-0 text-amber-500" />
-            <span>Pipeline</span>
-          </Link>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
   );
 }
 
@@ -370,28 +308,6 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
             </Link>
           )}
 
-          {/* Project quick-nav: Overview · Contacts · Pipeline · Deliverables · Experiences */}
-          <div className="mt-1 border-t pt-1 space-y-0.5">
-            {[
-              { label: 'Overview',     to: `/projects/${project.id}/tasks`,        icon: LayoutGrid,      color: 'text-muted-foreground' },
-              { label: 'Contacts',     to: `/projects/${project.id}/crm`,           icon: Users,           color: 'text-blue-500' },
-              { label: 'Pipeline',     to: `/projects/${project.id}/crm/sales`,     icon: TrendingUp,      color: 'text-amber-500' },
-              { label: 'Deliverables', to: `/projects/${project.id}/deliverables`,  icon: Package,         color: 'text-green-500' },
-              { label: 'Experiences',  to: `/projects/${project.id}/social`,        icon: Sparkles,        color: 'text-pink-500' },
-            ].map(({ label, to, icon: Icon, color }) => (
-              <Link
-                key={to}
-                to={to}
-                className={cn(
-                  'flex items-center gap-2 pl-5 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                  location.pathname === to && 'bg-accent text-accent-foreground'
-                )}
-              >
-                <Icon className={cn('h-3 w-3 shrink-0', color)} />
-                <span>{label}</span>
-              </Link>
-            ))}
-          </div>
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -549,28 +465,6 @@ function SortableSidebarProjectFolder({
                 );
               })}
 
-            {/* Project quick-nav: Overview · Contacts · Pipeline · Deliverables · Experiences */}
-            <div className="mt-1 border-t pt-1 space-y-0.5">
-              {[
-                { label: 'Overview',     to: `/projects/${project.id}/tasks`,        icon: LayoutGrid,  color: 'text-muted-foreground' },
-                { label: 'Contacts',     to: `/projects/${project.id}/crm`,           icon: Users,       color: 'text-blue-500' },
-                { label: 'Pipeline',     to: `/projects/${project.id}/crm/sales`,     icon: TrendingUp,  color: 'text-amber-500' },
-                { label: 'Deliverables', to: `/projects/${project.id}/deliverables`,  icon: Package,     color: 'text-green-500' },
-                { label: 'Experiences',  to: `/projects/${project.id}/social`,        icon: Sparkles,    color: 'text-pink-500' },
-              ].map(({ label, to, icon: Icon, color }) => (
-                <Link
-                  key={to}
-                  to={to}
-                  className={cn(
-                    'flex items-center gap-2 pl-2 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                    location.pathname === to && 'bg-accent text-accent-foreground'
-                  )}
-                >
-                  <Icon className={cn('h-3 w-3 shrink-0', color)} />
-                  <span>{label}</span>
-                </Link>
-              ))}
-            </div>
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -952,34 +846,25 @@ function OrgSection({
         <div className="space-y-0.5">
           {/* Org-level workspace links */}
           <div className="px-1 py-1 space-y-0.5">
-            {/* CRM — expandable, Pipeline nested inside */}
-            <OrgCrmLinks orgId={org.id} location={location} />
-
-            {/* Social */}
-            <Link
-              to={`/organizations/${org.id}?tab=social`}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.search.includes('tab=social') && location.pathname === `/organizations/${org.id}` &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <Megaphone className="h-3 w-3 shrink-0 text-purple-500" />
-              <span>Social</span>
-            </Link>
-
-            {/* Intelligence */}
-            <Link
-              to={`/organizations/${org.id}?tab=knowledge`}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.search.includes('tab=knowledge') && location.pathname === `/organizations/${org.id}` &&
-                  'bg-accent text-accent-foreground'
-              )}
-            >
-              <Brain className="h-3 w-3 shrink-0 text-emerald-500" />
-              <span>Intelligence</span>
-            </Link>
+            {[
+              { label: 'Overview',     to: `/organizations/${org.id}`,                    icon: LayoutGrid, color: 'text-muted-foreground', match: location.pathname === `/organizations/${org.id}` && !location.search },
+              { label: 'Contacts',     to: `/organizations/${org.id}?tab=contacts`,        icon: Users,      color: 'text-blue-500',          match: location.search.includes('tab=contacts') },
+              { label: 'Pipeline',     to: `/organizations/${org.id}?tab=pipelines`,       icon: TrendingUp, color: 'text-amber-500',         match: location.search.includes('tab=pipelines') },
+              { label: 'Deliverables', to: `/organizations/${org.id}?tab=deliverables`,    icon: Package,    color: 'text-green-500',         match: location.search.includes('tab=deliverables') },
+              { label: 'Experiences',  to: `/organizations/${org.id}?tab=social`,          icon: Sparkles,   color: 'text-pink-500',          match: location.search.includes('tab=social') },
+            ].map(({ label, to, icon: Icon, color, match }) => (
+              <Link
+                key={label}
+                to={to}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                  location.pathname === `/organizations/${org.id}` && match && 'bg-accent text-accent-foreground'
+                )}
+              >
+                <Icon className={cn('h-3 w-3 shrink-0', color)} />
+                <span>{label}</span>
+              </Link>
+            ))}
           </div>
 
           {/* Internal projects and folders (no client) */}
