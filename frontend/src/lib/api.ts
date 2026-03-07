@@ -5503,10 +5503,81 @@ export const dataSourcesApi = {
   },
 };
 
+// ── Workflow types ──────────────────────────────────────────────────────────
+
+export interface WorkflowNodePosition {
+  x: number;
+  y: number;
+}
+
+export interface WorkflowNode {
+  id: string;
+  name: string;
+  type: string;
+  parameters: Record<string, any>;
+  position: WorkflowNodePosition;
+}
+
+export interface WorkflowConnection {
+  source: string;
+  target: string;
+  source_output?: number;
+  target_input?: number;
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection[];
+  is_system: boolean;
+}
+
+export interface CreateWorkflowRequest {
+  id: string;
+  name: string;
+  description?: string;
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection[];
+}
+
+export interface UpdateWorkflowRequest {
+  name?: string;
+  description?: string;
+  nodes?: WorkflowNode[];
+  connections?: WorkflowConnection[];
+}
+
 export const workflowsApi = {
-  listDefinitions: async () => {
+  listDefinitions: async (): Promise<WorkflowDefinition[]> => {
     const response = await makeRequest('/api/workflows/definitions');
-    return handleApiResponse<any[]>(response);
+    return handleApiResponse<WorkflowDefinition[]>(response);
+  },
+
+  createDefinition: async (data: CreateWorkflowRequest): Promise<WorkflowDefinition> => {
+    const response = await makeRequest('/api/workflows/definitions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowDefinition>(response);
+  },
+
+  updateDefinition: async (id: string, data: UpdateWorkflowRequest): Promise<WorkflowDefinition> => {
+    const response = await makeRequest(`/api/workflows/definitions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowDefinition>(response);
+  },
+
+  deleteDefinition: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/workflows/definitions/${id}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
   },
 
   listRecentArtifacts: async () => {

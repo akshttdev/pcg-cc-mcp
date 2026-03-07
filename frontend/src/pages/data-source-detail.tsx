@@ -451,22 +451,29 @@ export function DataSourceDetailPage() {
                     <div className="space-y-3">
                       <p className="text-sm text-muted-foreground">
                         <span className="font-medium text-foreground">{selectedWf.name}</span>
-                        {' '}&mdash; {selectedWf.steps?.length ?? 0} steps
+                        {' '}&mdash; {selectedWf.nodes?.length ?? 0} node{(selectedWf.nodes?.length ?? 0) !== 1 ? 's' : ''}
                       </p>
                       <div className="space-y-1.5">
-                        {(selectedWf.steps ?? []).map((step: any, idx: number) => (
-                          <div key={step.id} className="flex items-center gap-2">
+                        {(selectedWf.nodes ?? []).map((node: any, idx: number) => {
+                          const inputs = (selectedWf.connections ?? []).filter((c: any) => c.target === node.id);
+                          const inputNames = inputs.map((c: any) => {
+                            const src = (selectedWf.nodes ?? []).find((n: any) => n.id === c.source);
+                            return src?.name ?? c.source;
+                          });
+                          return (
+                          <div key={node.id} className="flex items-center gap-2">
                             <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground shrink-0">
                               {idx + 1}
                             </div>
-                            <span className="text-sm">{step.name}</span>
-                            {step.depends_on?.length > 0 && (
+                            <span className="text-sm">{node.name}</span>
+                            {inputNames.length > 0 && (
                               <span className="text-xs text-muted-foreground">
-                                (after: {step.depends_on.join(', ')})
+                                (from: {inputNames.join(', ')})
                               </span>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );

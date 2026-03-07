@@ -122,6 +122,8 @@ import {
   type EmailAccountRecord,
 } from '@/lib/api';
 import { useUserSystem } from '@/components/config-provider';
+import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
+import type { WorkflowDefinition } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
 import { useOrgContacts, type OrgContact } from '@/hooks/useOrgContacts';
@@ -1384,6 +1386,171 @@ function PipelineNodeCard({ node, isLast }: { node: PipelineNode; isLast: boolea
   );
 }
 
+function EditableWorkflowsView({ orgId: _orgId }: { orgId: string }) {
+  const queryClient = useQueryClient();
+  const { data: workflows = [], isLoading } = useQuery({
+    queryKey: ['workflowDefinitions'],
+    queryFn: () => workflowsApi.listDefinitions(),
+  });
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingWorkflow, setEditingWorkflow] = useState<WorkflowDefinition | null>(null);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: { id: string; name: string; description?: string; nodes: any[]; connections: any[] }) => {
+      if (editingWorkflow) {
+        return workflowsApi.updateDefinition(data.id, {
+          name: data.name,
+          description: data.description,
+          nodes: data.nodes,
+          connections: data.connections,
+        });
+      } else {
+        return workflowsApi.createDefinition(data);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+      setEditorOpen(false);
+      setEditingWorkflow(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => workflowsApi.deleteDefinition(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+    },
+  });
+
+  const openNew = () => {
+    setEditingWorkflow(null);
+    setEditorOpen(true);
+  };
+
+  const openEdit = (wf: WorkflowDefinition) => {
+    setEditingWorkflow(wf);
+    setEditorOpen(true);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading workflows...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <GitBranch className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Workflows</h2>
+          <Badge variant="secondary">{workflows.length}</Badge>
+        </div>
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={openNew}>
+          <Plus className="h-3.5 w-3.5" />
+          New Workflow
+        </Button>
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        Workflows are data processing pipelines that extract structured information from data sources.
+        Run them from any data source detail page.
+      </p>
+
+      {workflows.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No workflows defined yet.</p>
+          <Button size="sm" variant="outline" className="mt-3 gap-1.5" onClick={openNew}>
+            <Plus className="h-3.5 w-3.5" />
+            Create your first workflow
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {workflows.map((wf: WorkflowDefinition) => {
+            const nodeCount = wf.nodes?.length ?? 0;
+            return (
+              <Card
+                key={wf.id}
+                className="bg-card/80 border-border/50 hover:border-primary/30 transition-colors cursor-pointer"
+                onClick={() => openEdit(wf)}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <GitBranch className="h-4 w-4 text-purple-500" />
+                      <CardTitle className="text-base">{wf.name}</CardTitle>
+                      {wf.is_system && (
+                        <Badge variant="secondary" className="text-[10px]">System</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{nodeCount} node{nodeCount !== 1 ? 's' : ''}</Badge>
+                      {!wf.is_system && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete workflow "${wf.name}"?`)) {
+                              deleteMutation.mutate(wf.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {wf.description && (
+                    <CardDescription className="text-xs">{wf.description}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {(wf.nodes ?? []).map((node: any, idx: number) => {
+                      const inputs = (wf.connections ?? []).filter((c: any) => c.target === node.id);
+                      return (
+                        <div
+                          key={node.id}
+                          className="flex items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-xs"
+                        >
+                          <div className="w-4 h-4 rounded bg-primary/20 flex items-center justify-center text-[9px] font-bold">
+                            {idx + 1}
+                          </div>
+                          <span>{node.name}</span>
+                          {inputs.length > 0 && (
+                            <span className="text-muted-foreground">
+                              ({inputs.length} input{inputs.length !== 1 ? 's' : ''})
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <WorkflowEditorComponent
+        open={editorOpen}
+        onOpenChange={(v) => { setEditorOpen(v); if (!v) setEditingWorkflow(null); }}
+        workflow={editingWorkflow}
+        onSave={(data) => saveMutation.mutate(data)}
+        isSaving={saveMutation.isPending}
+      />
+    </div>
+  );
+}
+
 function PipelineView({ pipeline }: { pipeline: PipelineBlueprint }) {
   return (
     <div className="space-y-3">
@@ -1481,7 +1648,7 @@ function TemplatePipelineView({ template }: { template: any }) {
   );
 }
 
-function WorkflowsView({ orgId: _orgId }: { orgId: string }) {
+function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
   const [selected, setSelected] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery({
@@ -1630,7 +1797,22 @@ function KnowledgeTab({
     }
 
     if (view === 'workflows') {
-      return <WorkflowsView orgId={orgId} />;
+      return (
+        <div className="space-y-8">
+          <EditableWorkflowsView orgId={orgId} />
+          <div className="border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Network className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Pipeline Blueprints</h2>
+              <Badge variant="secondary" className="text-[10px]">Legacy</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Agent-based pipeline templates for client engagements and production workflows. These are read-only blueprints — use the workflow editor above to build custom pipelines.
+            </p>
+            <LegacyPipelinesView orgId={orgId} />
+          </div>
+        </div>
+      );
     }
 
     const typeKey =

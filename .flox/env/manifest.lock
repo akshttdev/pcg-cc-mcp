@@ -9,8 +9,17 @@
       "cargo-watch": {
         "pkg-path": "cargo-watch"
       },
+      "cmake": {
+        "pkg-path": "cmake"
+      },
+      "libopus": {
+        "pkg-path": "libopus"
+      },
       "nodejs": {
         "pkg-path": "nodejs"
+      },
+      "pkg-config": {
+        "pkg-path": "pkg-config"
       },
       "pnpm": {
         "pkg-path": "pnpm"
@@ -22,8 +31,15 @@
         "pkg-path": "sqlx-cli"
       }
     },
+    "vars": {
+      "ORCHA_USERNAME": "Sirak",
+      "PCG_SERVER_URL": "http://localhost:3000",
+      "SQLX_OFFLINE": "true"
+    },
     "hook": {},
-    "profile": {},
+    "profile": {
+      "common": "  export PATH=\"$FLOX_ENV_PROJECT/target/release:$PATH\"\n  alias orcha=\"$FLOX_ENV_PROJECT/target/release/orcha\"\n  echo \"ORCHA CLI available — run: orcha status\"\n"
+    },
     "options": {}
   },
   "packages": [
@@ -34,13 +50,13 @@
       "description": "Downloads your Rust project's dependencies and builds your project",
       "install_id": "cargo",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "cargo-1.91.1",
       "pname": "cargo",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T03:20:15.291555Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:27:53.742592Z",
       "stabilities": [
         "unstable"
       ],
@@ -63,13 +79,13 @@
       "description": "Downloads your Rust project's dependencies and builds your project",
       "install_id": "cargo",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "cargo-1.91.1",
       "pname": "cargo",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T03:59:48.344672Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:02:19.093063Z",
       "stabilities": [
         "unstable"
       ],
@@ -92,13 +108,13 @@
       "description": "Downloads your Rust project's dependencies and builds your project",
       "install_id": "cargo",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "cargo-1.91.1",
       "pname": "cargo",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:36:58.747854Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:34:05.574072Z",
       "stabilities": [
         "unstable"
       ],
@@ -121,13 +137,13 @@
       "description": "Downloads your Rust project's dependencies and builds your project",
       "install_id": "cargo",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "cargo-1.91.1",
       "pname": "cargo",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T05:18:17.482920Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:20:19.403970Z",
       "stabilities": [
         "unstable"
       ],
@@ -150,13 +166,13 @@
       "description": "Cargo subcommand for watching over Cargo project's source",
       "install_id": "cargo-watch",
       "license": "CC0-1.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "cargo-watch-8.5.3",
       "pname": "cargo-watch",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T03:20:15.308898Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:27:53.759942Z",
       "stabilities": [
         "unstable"
       ],
@@ -179,13 +195,13 @@
       "description": "Cargo subcommand for watching over Cargo project's source",
       "install_id": "cargo-watch",
       "license": "CC0-1.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "cargo-watch-8.5.3",
       "pname": "cargo-watch",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T03:59:48.365537Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:02:19.113570Z",
       "stabilities": [
         "unstable"
       ],
@@ -208,13 +224,13 @@
       "description": "Cargo subcommand for watching over Cargo project's source",
       "install_id": "cargo-watch",
       "license": "CC0-1.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "cargo-watch-8.5.3",
       "pname": "cargo-watch",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:36:58.765619Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:34:05.591386Z",
       "stabilities": [
         "unstable"
       ],
@@ -237,13 +253,13 @@
       "description": "Cargo subcommand for watching over Cargo project's source",
       "install_id": "cargo-watch",
       "license": "CC0-1.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "cargo-watch-8.5.3",
       "pname": "cargo-watch",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T05:18:17.504919Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:20:19.426288Z",
       "stabilities": [
         "unstable"
       ],
@@ -260,19 +276,259 @@
       "priority": 5
     },
     {
+      "attr_path": "cmake",
+      "broken": false,
+      "derivation": "/nix/store/a1hmmbbkdsz6b1rzkhlxphx547d36pn2-cmake-4.1.2.drv",
+      "description": "Cross-platform, open-source build system generator",
+      "install_id": "cmake",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "cmake-4.1.2",
+      "pname": "cmake",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:27:53.933353Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.1.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/syg57akx2cvcc8kamsravsxf1gypwvlv-cmake-4.1.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "cmake",
+      "broken": false,
+      "derivation": "/nix/store/2knwrmdrdx8hjhllygb16w848ff4q5a6-cmake-4.1.2.drv",
+      "description": "Cross-platform, open-source build system generator",
+      "install_id": "cmake",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "cmake-4.1.2",
+      "pname": "cmake",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:02:19.333243Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.1.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/r44b7qrcjqkqixc2cf67javx5km99lm4-cmake-4.1.2-debug",
+        "out": "/nix/store/8jx75ip66hz2m7rjs6x969v7nm86xvrx-cmake-4.1.2"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "cmake",
+      "broken": false,
+      "derivation": "/nix/store/zahlplanjzw7y7v8vs51j4iwmdacp1wd-cmake-4.1.2.drv",
+      "description": "Cross-platform, open-source build system generator",
+      "install_id": "cmake",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "cmake-4.1.2",
+      "pname": "cmake",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:34:05.763987Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.1.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/zn5d8gi074jvlj2b05afp7cp0f3b1cj1-cmake-4.1.2"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "cmake",
+      "broken": false,
+      "derivation": "/nix/store/fjmbhmy4glqkwyzdi9ky6s6nqs0szhkg-cmake-4.1.2.drv",
+      "description": "Cross-platform, open-source build system generator",
+      "install_id": "cmake",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "cmake-4.1.2",
+      "pname": "cmake",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:20:19.664257Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.1.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/pfrhpz9dcfg0m9ymrlr8gf93wddsw6ry-cmake-4.1.2-debug",
+        "out": "/nix/store/wmb16s8hw1vd25vvidwnncpzq126lcz3-cmake-4.1.2"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "libopus",
+      "broken": false,
+      "derivation": "/nix/store/p5wf38yycy3wxzqjl5xxf0cxwwr0bwv6-libopus-1.5.2.drv",
+      "description": "Open, royalty-free, highly versatile audio codec",
+      "install_id": "libopus",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "libopus-1.5.2",
+      "pname": "libopus",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:28:11.271442Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/fcmcm1lvlbv59yv0jq21j04i6iwn3clk-libopus-1.5.2-dev",
+        "out": "/nix/store/py7j2j2ilpz9bwxr3zsc1pgwpc2scxi5-libopus-1.5.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "libopus",
+      "broken": false,
+      "derivation": "/nix/store/8cv31yxr2i5x131m2nifgzymb4j59a3b-libopus-1.5.2.drv",
+      "description": "Open, royalty-free, highly versatile audio codec",
+      "install_id": "libopus",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "libopus-1.5.2",
+      "pname": "libopus",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:02:42.162161Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.2",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/x5vlpfpwc9mq8y299lw96dkg48j3nn6f-libopus-1.5.2-dev",
+        "out": "/nix/store/n2hdpa0f315a3fv53lqb97rb4m60kma2-libopus-1.5.2"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "libopus",
+      "broken": false,
+      "derivation": "/nix/store/j8f0d1g4vimkp52i22hmhpfvybfk2sb5-libopus-1.5.2.drv",
+      "description": "Open, royalty-free, highly versatile audio codec",
+      "install_id": "libopus",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "libopus-1.5.2",
+      "pname": "libopus",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:34:22.785958Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/a7hij0jgvm0mqp9xwzd1s4isphmc1hky-libopus-1.5.2-dev",
+        "out": "/nix/store/9nj0f4w8ym41x7qr9n4qbasl2m1vd9yd-libopus-1.5.2"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "libopus",
+      "broken": false,
+      "derivation": "/nix/store/hdc08bg951nnw1i728k0i4vgdvkg8sp6-libopus-1.5.2.drv",
+      "description": "Open, royalty-free, highly versatile audio codec",
+      "install_id": "libopus",
+      "license": "BSD-3-Clause",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "libopus-1.5.2",
+      "pname": "libopus",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:20:44.496054Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.5.2",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "dev": "/nix/store/gm97p7wl4w3x5fdljyjpvjsjk7m5lfij-libopus-1.5.2-dev",
+        "out": "/nix/store/y8y7k8apygqxbdylmznqkjzh7a9y3bj5-libopus-1.5.2"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "nodejs",
       "broken": false,
       "derivation": "/nix/store/y7zlj0ac5s8brygxmapc95fb5m75b7z3-nodejs-24.12.0.drv",
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "nodejs-24.12.0",
       "pname": "nodejs",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T03:20:39.107088Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:28:17.343754Z",
       "stabilities": [
         "unstable"
       ],
@@ -297,13 +553,13 @@
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "nodejs-24.12.0",
       "pname": "nodejs",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:00:28.254360Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:02:54.615485Z",
       "stabilities": [
         "unstable"
       ],
@@ -328,13 +584,13 @@
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "nodejs-24.12.0",
       "pname": "nodejs",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:37:22.661372Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:34:28.639675Z",
       "stabilities": [
         "unstable"
       ],
@@ -359,13 +615,13 @@
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "nodejs-24.12.0",
       "pname": "nodejs",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T05:18:57.729878Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:20:59.665044Z",
       "stabilities": [
         "unstable"
       ],
@@ -384,19 +640,149 @@
       "priority": 5
     },
     {
+      "attr_path": "pkg-config",
+      "broken": false,
+      "derivation": "/nix/store/0zhsvrkrjdl2m8qj5hnki2qnw5pwy5qr-pkg-config-wrapper-0.29.2.drv",
+      "description": "Tool that allows packages to find out information about other packages (wrapper script)",
+      "install_id": "pkg-config",
+      "license": "GPL-2.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "pkg-config-wrapper-0.29.2",
+      "pname": "pkg-config",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:28:30.946444Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.29.2",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/y9kszi2xg21ffapbpksfl2p7g78hglxv-pkg-config-wrapper-0.29.2-doc",
+        "man": "/nix/store/6il1kjgyvl6vc8sxv4gl99maz2ahbrgv-pkg-config-wrapper-0.29.2-man",
+        "out": "/nix/store/54qzx9v4jrrhrz7dm93sdb2bqzvbgijg-pkg-config-wrapper-0.29.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "pkg-config",
+      "broken": false,
+      "derivation": "/nix/store/l0yypnfajn1rrnp34c518hykxwm8adqw-pkg-config-wrapper-0.29.2.drv",
+      "description": "Tool that allows packages to find out information about other packages (wrapper script)",
+      "install_id": "pkg-config",
+      "license": "GPL-2.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "pkg-config-wrapper-0.29.2",
+      "pname": "pkg-config",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:03:11.957074Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.29.2",
+      "outputs_to_install": [
+        "man",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/xbjzl5ydc7h3j09j9gs6ii7z3hxfk0ym-pkg-config-wrapper-0.29.2-doc",
+        "man": "/nix/store/v0i7wz2v865vvl5rw7b2zw8f5srvp2f3-pkg-config-wrapper-0.29.2-man",
+        "out": "/nix/store/ssdnxda3ydqffhwrmalw81crpafz8fm0-pkg-config-wrapper-0.29.2"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "pkg-config",
+      "broken": false,
+      "derivation": "/nix/store/cib1fanhdxjv2k172yr4s57589js963f-pkg-config-wrapper-0.29.2.drv",
+      "description": "Tool that allows packages to find out information about other packages (wrapper script)",
+      "install_id": "pkg-config",
+      "license": "GPL-2.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "pkg-config-wrapper-0.29.2",
+      "pname": "pkg-config",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:34:41.402268Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.29.2",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/dj8ri1s06mazbwd7gci34f14q9lwpzhw-pkg-config-wrapper-0.29.2-doc",
+        "man": "/nix/store/m0zlngn7f3kz3vwlrn89s648qws9nd44-pkg-config-wrapper-0.29.2-man",
+        "out": "/nix/store/kc1h0p3np0kcz1yqd605cds0yhb2gf1j-pkg-config-wrapper-0.29.2"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "pkg-config",
+      "broken": false,
+      "derivation": "/nix/store/8mcsnv7isj69m42gmfwppcxqc6s7m4fx-pkg-config-wrapper-0.29.2.drv",
+      "description": "Tool that allows packages to find out information about other packages (wrapper script)",
+      "install_id": "pkg-config",
+      "license": "GPL-2.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "name": "pkg-config-wrapper-0.29.2",
+      "pname": "pkg-config",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:21:20.060749Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.29.2",
+      "outputs_to_install": [
+        "man",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/nn2cbd9zx1sqg04vadjq5ql1vh20bjnx-pkg-config-wrapper-0.29.2-doc",
+        "man": "/nix/store/1dvdcggbcn4azw96a6z42d6w8xvd1azk-pkg-config-wrapper-0.29.2-man",
+        "out": "/nix/store/hxn2qrz1zmk5q01wsb7n3d58brzrsizb-pkg-config-wrapper-0.29.2"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "pnpm",
       "broken": false,
       "derivation": "/nix/store/gl8q38mwb1hs0wp7f0wgk959vdgl19j6-pnpm-10.28.0.drv",
       "description": "Fast, disk space efficient package manager for JavaScript",
       "install_id": "pnpm",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "pnpm-10.28.0",
       "pname": "pnpm",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T03:20:53.208985Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:28:31.430860Z",
       "stabilities": [
         "unstable"
       ],
@@ -419,13 +805,13 @@
       "description": "Fast, disk space efficient package manager for JavaScript",
       "install_id": "pnpm",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "pnpm-10.28.0",
       "pname": "pnpm",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:00:47.248132Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:03:12.677423Z",
       "stabilities": [
         "unstable"
       ],
@@ -448,13 +834,13 @@
       "description": "Fast, disk space efficient package manager for JavaScript",
       "install_id": "pnpm",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "pnpm-10.28.0",
       "pname": "pnpm",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:37:36.230047Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:34:41.852393Z",
       "stabilities": [
         "unstable"
       ],
@@ -477,13 +863,13 @@
       "description": "Fast, disk space efficient package manager for JavaScript",
       "install_id": "pnpm",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "pnpm-10.28.0",
       "pname": "pnpm",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T05:19:17.529162Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:21:20.891619Z",
       "stabilities": [
         "unstable"
       ],
@@ -506,13 +892,13 @@
       "description": "Safe, concurrent, practical language (wrapper script)",
       "install_id": "rustc",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "rustc-wrapper-1.91.1",
       "pname": "rustc",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T03:21:46.985334Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:29:25.337975Z",
       "stabilities": [
         "unstable"
       ],
@@ -538,13 +924,13 @@
       "description": "Safe, concurrent, practical language (wrapper script)",
       "install_id": "rustc",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "rustc-wrapper-1.91.1",
       "pname": "rustc",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:01:50.946842Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:04:15.115625Z",
       "stabilities": [
         "unstable"
       ],
@@ -570,13 +956,13 @@
       "description": "Safe, concurrent, practical language (wrapper script)",
       "install_id": "rustc",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "rustc-wrapper-1.91.1",
       "pname": "rustc",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:38:27.014039Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:35:31.646616Z",
       "stabilities": [
         "unstable"
       ],
@@ -602,13 +988,13 @@
       "description": "Safe, concurrent, practical language (wrapper script)",
       "install_id": "rustc",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "rustc-wrapper-1.91.1",
       "pname": "rustc",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T05:20:23.457392Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:22:30.106850Z",
       "stabilities": [
         "unstable"
       ],
@@ -634,13 +1020,13 @@
       "description": "CLI for managing databases, migrations, and enabling offline mode with `sqlx::query!()` and friends",
       "install_id": "sqlx-cli",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "sqlx-cli-0.8.6",
       "pname": "sqlx-cli",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T03:22:04.120458Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T04:29:42.573203Z",
       "stabilities": [
         "unstable"
       ],
@@ -663,13 +1049,13 @@
       "description": "CLI for managing databases, migrations, and enabling offline mode with `sqlx::query!()` and friends",
       "install_id": "sqlx-cli",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "sqlx-cli-0.8.6",
       "pname": "sqlx-cli",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:02:10.683933Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:04:34.490096Z",
       "stabilities": [
         "unstable"
       ],
@@ -692,13 +1078,13 @@
       "description": "CLI for managing databases, migrations, and enabling offline mode with `sqlx::query!()` and friends",
       "install_id": "sqlx-cli",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "sqlx-cli-0.8.6",
       "pname": "sqlx-cli",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T04:38:43.106427Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T05:35:47.679478Z",
       "stabilities": [
         "unstable"
       ],
@@ -721,13 +1107,13 @@
       "description": "CLI for managing databases, migrations, and enabling offline mode with `sqlx::query!()` and friends",
       "install_id": "sqlx-cli",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
       "name": "sqlx-cli-0.8.6",
       "pname": "sqlx-cli",
-      "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
-      "rev_count": 928726,
-      "rev_date": "2026-01-16T12:01:49Z",
-      "scrape_date": "2026-01-17T05:20:43.953435Z",
+      "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+      "rev_count": 930839,
+      "rev_date": "2026-01-20T05:17:20Z",
+      "scrape_date": "2026-01-22T06:22:51.959288Z",
       "stabilities": [
         "unstable"
       ],
