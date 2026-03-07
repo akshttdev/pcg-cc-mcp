@@ -89,6 +89,10 @@ export interface CrmDealWithContact {
   contact_email?: string;
   contact_company?: string;
   contact_avatar_url?: string;
+  project_name?: string;
+  task_total?: number;
+  task_done?: number;
+  deliverable_count?: number;
 }
 
 // Kanban board data structure

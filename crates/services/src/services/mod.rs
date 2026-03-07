@@ -1,3 +1,4 @@
+pub mod agent_channels;
 pub mod agent_registry;
 pub mod airtable_service;
 pub mod analytics;

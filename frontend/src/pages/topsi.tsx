@@ -25,11 +25,13 @@ import {
   MicOff,
   Volume2,
   Users,
+  Plug,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { MeetingMode } from '@/components/topsi/MeetingMode';
 import { MeetingHistory } from '@/components/topsi/MeetingHistory';
+import { AgentIntegrationsTab } from '@/components/email';
 
 // Types for Topsi responses
 interface TopsiStatusResponse {
@@ -538,7 +540,7 @@ export function TopsiPage() {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <TabsList className="tab-grid-5 mb-4 sm:mb-6">
+            <TabsList className="tab-grid-6 mb-4 sm:mb-6">
               <TabsTrigger value="chat" className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" />
                 Chat
@@ -563,6 +565,10 @@ export function TopsiPage() {
                     {issues.length}
                   </Badge>
                 )}
+              </TabsTrigger>
+              <TabsTrigger value="integrations" className="flex items-center gap-2">
+                <Plug className="w-4 h-4" />
+                Integrations
               </TabsTrigger>
             </TabsList>
 
@@ -982,6 +988,25 @@ export function TopsiPage() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+            {/* Integrations Tab */}
+            <TabsContent value="integrations" className="flex-1 overflow-auto">
+              <div className="max-w-3xl">
+                <AgentIntegrationsTab
+                  ownerType="agent"
+                  ownerId="f8237e4b6b324fada8192e13b808e96a"
+                  agentName="Topsi"
+                  channels={[
+                    {
+                      id: 'email',
+                      label: 'Email',
+                      address: 'topsi@powerclubglobal.com',
+                      provider: 'zoho',
+                      description: "Topsi's platform notification email",
+                    },
+                  ]}
+                />
+              </div>
             </TabsContent>
           </Tabs>
         )}

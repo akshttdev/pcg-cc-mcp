@@ -3,7 +3,6 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -25,6 +24,7 @@ import {
   X,
   Search,
   BookOpen,
+  Brain,
   Share2,
   MessageSquare,
   FileText,
@@ -32,7 +32,6 @@ import {
   Pencil,
   Boxes,
   Network,
-  RefreshCw,
   AlertTriangle,
   Linkedin,
   Instagram,
@@ -50,13 +49,12 @@ import {
   tasksApi,
   type OrganizationData,
   type ClientData,
-  type CrmContactRecord,
   type CrmActivityRecord,
   type ProjectKnowledgeResponse,
   type ProjectKnowledgeSource,
   type SocialAccountRecord,
   type SocialMentionRecord,
-  type TaskWithAttemptStatus,
+  type PersonOrgContact,
 } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
@@ -94,11 +92,11 @@ function formatCurrency(amount: number) {
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({
-  orgId,
+  orgId: _orgId,
   projectEntries,
   projectCount,
-  clientCount,
-  memberCount,
+  clientCount: _clientCount,
+  memberCount: _memberCount,
   totalDealValue,
   totalDeals,
   contactCount,
@@ -208,7 +206,7 @@ function OverviewTab({
           { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
           { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
           { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
-          { label: 'Knowledge', icon: BookOpen, tab: 'knowledge', color: 'text-orange-500' },
+          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
           { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
         ].map(({ label, icon: Icon, tab, color }) => (
           <button
@@ -319,9 +317,22 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
 // ── Contacts Tab ──────────────────────────────────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
-  const { contacts, isLoading, projectCount, loadedCount } = useOrgContacts(orgId);
+  const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
+
+  const { data: personContacts = [] } = useQuery<PersonOrgContact[]>({
+    queryKey: ['org-person-contacts', orgId],
+    queryFn: () => organizationsApi.listPersonContacts(orgId),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
+  // Build a lookup map: person_id → context
+  const contextMap = useMemo(
+    () => Object.fromEntries(personContacts.map(pc => [pc.person_id, pc.context])),
+    [personContacts]
+  );
 
   const filtered = useMemo(() => {
     let result = contacts;
@@ -329,8 +340,7 @@ function ContactsTab({ orgId }: { orgId: string }) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         c =>
-          (c.first_name && c.first_name.toLowerCase().includes(q)) ||
-          (c.last_name && c.last_name.toLowerCase().includes(q)) ||
+          (c.full_name && c.full_name.toLowerCase().includes(q)) ||
           (c.email && c.email.toLowerCase().includes(q)) ||
           (c.company_name && c.company_name.toLowerCase().includes(q))
       );
@@ -366,9 +376,7 @@ function ContactsTab({ orgId }: { orgId: string }) {
           ))}
         </select>
         {isLoading && (
-          <span className="text-xs text-muted-foreground">
-            Loading {loadedCount}/{projectCount} projects...
-          </span>
+          <span className="text-xs text-muted-foreground">Loading contacts…</span>
         )}
       </div>
 
@@ -380,7 +388,7 @@ function ContactsTab({ orgId }: { orgId: string }) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} />
+            <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
           ))}
         </div>
       )}
@@ -388,20 +396,32 @@ function ContactsTab({ orgId }: { orgId: string }) {
   );
 }
 
-function ContactCard({ contact }: { contact: OrgContact }) {
+const CONTEXT_COLORS: Record<string, string> = {
+  client:  'bg-green-100 text-green-700',
+  vendor:  'bg-orange-100 text-orange-700',
+  partner: 'bg-purple-100 text-purple-700',
+  prospect:'bg-blue-100 text-blue-700',
+  contact: 'bg-gray-100 text-gray-600',
+};
+
+function ContactCard({ contact, context }: { contact: OrgContact; context?: string }) {
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
-  const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unnamed';
 
   return (
     <Link
-      to={`/projects/${contact._sourceProjectId}/crm/contacts/${contact.id}`}
+      to={`/people/${contact.id}`}
       className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate group-hover:text-foreground">{name}</p>
+          <p className="text-sm font-medium truncate group-hover:text-foreground">
+            {contact.full_name || 'Unnamed'}
+          </p>
+          {contact.job_title && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.job_title}</p>
+          )}
           {contact.email && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.email}</p>
+            <p className="text-xs text-muted-foreground truncate">{contact.email}</p>
           )}
           {contact.company_name && (
             <p className="text-xs text-muted-foreground truncate">{contact.company_name}</p>
@@ -423,9 +443,14 @@ function ContactCard({ contact }: { contact: OrgContact }) {
             {stageInfo.label}
           </Badge>
         )}
-        <Badge variant="outline" className="text-[10px]">
-          {contact._sourceProjectName}
-        </Badge>
+        {contact.person_type && (
+          <Badge variant="outline" className="text-[10px] capitalize">{contact.person_type}</Badge>
+        )}
+        {context && context !== 'contact' && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded capitalize font-medium ${CONTEXT_COLORS[context] ?? CONTEXT_COLORS.contact}`}>
+            {context}
+          </span>
+        )}
       </div>
     </Link>
   );
@@ -434,7 +459,7 @@ function ContactCard({ contact }: { contact: OrgContact }) {
 // ── Projects Tab ──────────────────────────────────────────────────────────────
 
 function ProjectsTab({
-  orgId,
+  orgId: _orgId,
   sidebarOrg,
   clientFilter,
   onClearClientFilter,
@@ -560,13 +585,18 @@ const SOURCE_TYPE_META: Record<string, { label: string; icon: typeof BookOpen }>
   topology_snapshot: { label: 'Topology Snapshots', icon: Network },
 };
 
-function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+function KnowledgeTab({
+  projectEntries,
+  view,
+}: {
+  projectEntries: { id: string; name: string }[];
+  view?: string | null;
+}) {
   const knowledgeQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['projectKnowledge', entry.id],
       queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
       staleTime: 60_000,
-      enabled: projectEntries.length > 0,
     })),
   });
 
@@ -580,6 +610,7 @@ function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: 
     let totalCoverage = 0;
     let coverageCount = 0;
     const sourcesByProject: { projectName: string; projectId: string; data: ProjectKnowledgeResponse }[] = [];
+    const byType: Record<string, { source: ProjectKnowledgeSource; projectName: string; projectId: string }[]> = {};
 
     knowledgeQueries.forEach((q, i) => {
       if (!q.data) return;
@@ -593,12 +624,84 @@ function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: 
       if (q.data.total_sources > 0) {
         sourcesByProject.push({ projectName: entry.name, projectId: entry.id, data: q.data });
       }
+      Object.entries(q.data.sources_by_type).forEach(([type, sources]) => {
+        if (!byType[type]) byType[type] = [];
+        sources.forEach(s => byType[type].push({ source: s, projectName: entry.name, projectId: entry.id }));
+      });
     });
 
     const avgCompleteness = coverageCount > 0 ? Math.round((totalCoverage / coverageCount) * 100) : 0;
-    return { totalSources, staleSources, avgCompleteness, sourcesByProject };
+    return { totalSources, staleSources, avgCompleteness, sourcesByProject, byType };
   }, [knowledgeQueries, projectEntries]);
 
+  // Deep view — show all sources of a specific type across projects
+  if (view && view !== 'overview') {
+    const typeKey =
+      view === 'conversations' ? 'conversation'
+      : view === 'artifacts'  ? 'artifact'
+      : view === 'pulse'      ? 'pulse_content'
+      : view === 'topology'   ? 'topology_snapshot'
+      : null;
+    const items = typeKey ? (aggregated.byType[typeKey] || []) : [];
+    const meta = typeKey ? SOURCE_TYPE_META[typeKey] : null;
+    const Icon = meta?.icon ?? BookOpen;
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Icon className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">{meta?.label ?? view}</h2>
+          <Badge variant="secondary">{items.length}</Badge>
+          {isLoading && (
+            <span className="text-xs text-muted-foreground ml-2">
+              Loading {loadedCount}/{projectEntries.length} projects…
+            </span>
+          )}
+        </div>
+        {items.length === 0 && !isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Icon className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>No {meta?.label.toLowerCase() ?? view} indexed yet</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {items.map(({ source, projectName, projectId }) => (
+              <Card key={source.id} className="bg-card/80 backdrop-blur-sm border-border/50">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{source.source_title}</p>
+                      {source.source_summary && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.source_summary}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <Link
+                          to={`/projects/${projectId}/knowledge`}
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                          {projectName}
+                        </Link>
+                        {source.is_stale && (
+                          <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">stale</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <Progress value={Math.round(source.coverage_score * 100)} className="w-16 h-1.5 mb-1" />
+                      <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}%</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Overview (default)
   return (
     <div className="space-y-6">
       {/* Summary cards */}
@@ -621,7 +724,9 @@ function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: 
           <CardContent>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold">{aggregated.totalSources}</span>
-              <span className="text-sm text-muted-foreground">across {projectEntries.length} projects</span>
+              <span className="text-sm text-muted-foreground">
+                across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -637,6 +742,28 @@ function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: 
         </Card>
       </div>
 
+      {/* Source type breakdown pills */}
+      {aggregated.totalSources > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {Object.entries(SOURCE_TYPE_META).map(([type, meta]) => {
+            const count = (aggregated.byType[type] || []).length;
+            if (count === 0) return null;
+            const Icon = meta.icon;
+            return (
+              <Card key={type} className="bg-card/80 backdrop-blur-sm border-border/50">
+                <CardContent className="p-3 flex items-center gap-3">
+                  <Icon className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="font-semibold text-sm">{count}</p>
+                    <p className="text-xs text-muted-foreground">{meta.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {isLoading && (
         <p className="text-xs text-muted-foreground">Loading {loadedCount}/{projectEntries.length} projects...</p>
       )}
@@ -645,7 +772,14 @@ function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: 
       {aggregated.sourcesByProject.length === 0 && !isLoading ? (
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>No knowledge sources indexed yet</p>
+          <p>
+            {projectEntries.length === 0
+              ? 'No projects loaded — navigate to a project to index knowledge'
+              : 'No knowledge sources indexed yet'}
+          </p>
+          <p className="text-xs mt-1 opacity-70">
+            Use the sidebar Intelligence links to browse by category
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -653,7 +787,6 @@ function KnowledgeTab({ projectEntries }: { projectEntries: { id: string; name: 
             const completeness = data.completeness
               ? Math.round(data.completeness.knowledge_completeness * 100)
               : 0;
-            const allSources = Object.values(data.sources_by_type).flat();
             return (
               <Card key={projectId} className="bg-card/80 backdrop-blur-sm border-border/50">
                 <CardHeader className="pb-3">
@@ -998,12 +1131,14 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
   const tabFromUrl = searchParams.get('tab') || defaultTab || 'overview';
   const pipelineFromUrl = searchParams.get('pipeline') || defaultPipeline;
   const clientFilter = searchParams.get('client');
+  const viewFromUrl = searchParams.get('view');
 
   const setTab = (tab: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('tab', tab);
     if (tab !== 'pipelines') params.delete('pipeline');
     if (tab !== 'projects') params.delete('client');
+    if (tab !== 'knowledge') params.delete('view');
     setSearchParams(params, { replace: true });
   };
 
@@ -1144,8 +1279,8 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 Social
               </TabsTrigger>
               <TabsTrigger value="knowledge">
-                <BookOpen className="h-4 w-4 mr-2" />
-                Knowledge
+                <Brain className="h-4 w-4 mr-2" />
+                Intelligence
               </TabsTrigger>
               <TabsTrigger value="members">
                 <Users className="h-4 w-4 mr-2" />
@@ -1189,7 +1324,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
             </TabsContent>
 
             <TabsContent value="knowledge">
-              <KnowledgeTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
+              <KnowledgeTab
+                projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
+                view={viewFromUrl}
+              />
             </TabsContent>
 
             <TabsContent value="members">

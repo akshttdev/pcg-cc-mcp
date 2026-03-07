@@ -21,15 +21,11 @@ import {
   Crown,
   Star,
   Box,
-  Share2,
   Megaphone,
   Users,
   ListTodo,
   BarChart3,
-  Bot,
   Network,
-  Globe,
-  Activity,
   Building2,
   UserCircle,
   GripVertical,
@@ -37,14 +33,20 @@ import {
   Pencil,
   Trash2,
   FolderMinus,
-  Target,
   TrendingUp,
   Package,
-  Calendar,
   FileText,
   LayoutDashboard,
   Receipt,
   ExternalLink,
+  Sparkles,
+  LayoutGrid,
+  Brain,
+  Bot,
+  Share2,
+  Calendar,
+  Radio,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -112,6 +114,7 @@ const GLOBAL_VIEW_ITEMS: NavItem[] = [
   { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
   { label: 'All CRM', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
   { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
+  { label: 'Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
 ];
 
 const EXTERNAL_LINKS = [
@@ -150,6 +153,128 @@ function HealthDot({ status }: { status?: string }) {
 }
 
 // ============================================================================
+// OrgCrmSection — collapsible CRM with Overview/Contacts/Pipeline/Deliverables/Experiences
+// ============================================================================
+
+function OrgCrmSection({
+  orgId,
+  location,
+}: {
+  orgId: string;
+  location: ReturnType<typeof useLocation>;
+}) {
+  const isOnOrg = location.pathname === `/organizations/${orgId}`;
+  const isCrmActive =
+    isOnOrg &&
+    (location.search.includes('tab=contacts') ||
+      location.search.includes('tab=pipelines') ||
+      location.search.includes('tab=deliverables') ||
+      !location.search);
+  const [open, setOpen] = useState(isCrmActive);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+            isCrmActive && 'text-accent-foreground font-medium'
+          )}
+        >
+          <Users className="h-3 w-3 shrink-0 text-blue-500" />
+          <span className="flex-1 text-left">CRM</span>
+          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-4 space-y-0.5 py-0.5">
+          {[
+            { label: 'Overview',     to: `/organizations/${orgId}`,                 icon: LayoutGrid, color: 'text-muted-foreground', match: isOnOrg && !location.search },
+            { label: 'Contacts',     to: `/organizations/${orgId}?tab=contacts`,    icon: Users,      color: 'text-blue-400',          match: isOnOrg && location.search.includes('tab=contacts') },
+            { label: 'Pipeline',     to: `/organizations/${orgId}?tab=pipelines`,   icon: TrendingUp, color: 'text-amber-500',         match: isOnOrg && location.search.includes('tab=pipelines') },
+            { label: 'Deliverables', to: `/organizations/${orgId}?tab=deliverables`,icon: Package,    color: 'text-green-500',         match: isOnOrg && location.search.includes('tab=deliverables') },
+            { label: 'Experiences',  to: `/organizations/${orgId}?tab=social`,      icon: Sparkles,   color: 'text-pink-500',          match: isOnOrg && location.search.includes('tab=social') },
+          ].map(({ label, to, icon: Icon, color, match }) => (
+            <Link
+              key={label}
+              to={to}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                match && 'bg-accent text-accent-foreground'
+              )}
+            >
+              <Icon className={cn('h-3 w-3 shrink-0', color)} />
+              <span>{label}</span>
+            </Link>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ============================================================================
+// OrgIntelligenceSection — collapsible Intelligence sub-navigation for an org
+// ============================================================================
+
+function OrgIntelligenceSection({
+  orgId,
+  location,
+}: {
+  orgId: string;
+  location: ReturnType<typeof useLocation>;
+}) {
+  const isOnOrgIntel =
+    location.pathname === `/organizations/${orgId}` &&
+    location.search.includes('tab=knowledge');
+  const [open, setOpen] = useState(isOnOrgIntel);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+            isOnOrgIntel && 'text-accent-foreground font-medium'
+          )}
+        >
+          <Brain className="h-3 w-3 shrink-0 text-emerald-500" />
+          <span className="flex-1 text-left">Intelligence</span>
+          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-4 space-y-0.5 py-0.5">
+          {[
+            { label: 'Overview',      icon: Brain,         color: 'text-emerald-500', to: `/organizations/${orgId}?tab=knowledge`,                           match: isOnOrgIntel && !location.search.includes('view=') },
+            { label: 'Conversations', icon: MessageSquare, color: 'text-blue-400',    to: `/organizations/${orgId}?tab=knowledge&view=conversations`,         match: isOnOrgIntel && location.search.includes('view=conversations') },
+            { label: 'Artifacts',     icon: FileText,      color: 'text-purple-400',  to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,             match: isOnOrgIntel && location.search.includes('view=artifacts') },
+            { label: 'Pulse',         icon: Radio,         color: 'text-orange-400',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,                 match: isOnOrgIntel && location.search.includes('view=pulse') },
+            { label: 'Topology',      icon: Network,       color: 'text-cyan-400',    to: `/organizations/${orgId}?tab=knowledge&view=topology`,              match: isOnOrgIntel && location.search.includes('view=topology') },
+          ].map(({ label, to, icon: Icon, color, match }) => (
+            <Link
+              key={label}
+              to={to}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                match && 'bg-accent text-accent-foreground'
+              )}
+            >
+              <Icon className={cn('h-3 w-3 shrink-0', color)} />
+              <span>{label}</span>
+            </Link>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ============================================================================
+// ProjectFolder — existing component for rendering leaf-level project items
+// ============================================================================
+
+// ============================================================================
 // CrmSidebarLinks — expandable CRM sub-navigation for a project
 // ============================================================================
 
@@ -166,11 +291,11 @@ function CrmSidebarLinks({
   const [expanded, setExpanded] = useState(isCrmActive);
 
   const crmLinks = [
-    { label: 'Overview', to: `/projects/${projectId}/crm/overview`, icon: BarChart3 },
-    { label: 'Sales Pipeline', to: `/projects/${projectId}/crm/sales`, icon: TrendingUp },
-    { label: 'Client Delivery', to: `/projects/${projectId}/crm/delivery`, icon: Package },
-    { label: 'Contacts', to: `/projects/${projectId}/crm`, icon: Users },
-    { label: 'Conferences', to: `/projects/${projectId}/crm/conferences`, icon: Calendar },
+    { label: 'Overview',       to: `/projects/${projectId}/crm/overview`,     icon: BarChart3  },
+    { label: 'Sales Pipeline', to: `/projects/${projectId}/crm/sales`,         icon: TrendingUp },
+    { label: 'Client Delivery',to: `/projects/${projectId}/crm/delivery`,      icon: Package    },
+    { label: 'Contacts',       to: `/projects/${projectId}/crm`,               icon: Users      },
+    { label: 'Conferences',    to: `/projects/${projectId}/crm/conferences`,   icon: Calendar   },
   ];
 
   return (
@@ -195,9 +320,7 @@ function CrmSidebarLinks({
         <div className="space-y-0.5">
           {crmLinks.map((link) => {
             const Icon = link.icon;
-            const isActive = link.to === `/projects/${projectId}/crm`
-              ? location.pathname === link.to
-              : location.pathname === link.to;
+            const isActive = location.pathname === link.to;
             return (
               <Link
                 key={link.to}
@@ -218,8 +341,6 @@ function CrmSidebarLinks({
   );
 }
 
-// ============================================================================
-// ProjectFolder — existing component for rendering leaf-level project items
 // ============================================================================
 
 interface ProjectFolderProps {
@@ -380,34 +501,45 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
             </Link>
           )}
 
-          {/* Project Controller / Master Control */}
+          {/* Controller */}
           <Link
             to={`/projects/${project.id}/control`}
             className={cn(
               'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-2 border-t pt-2',
-              location.pathname === `/projects/${project.id}/control` &&
-                'bg-accent text-accent-foreground'
+              location.pathname === `/projects/${project.id}/control` && 'bg-accent text-accent-foreground'
             )}
           >
             <Bot className="h-3 w-3 text-purple-500" />
             <span className="font-medium">Controller</span>
           </Link>
 
-          {/* CRM Section */}
+          {/* CRM */}
           <CrmSidebarLinks projectId={project.id} location={location} indent="pl-5" />
 
-          {/* Social Media Link */}
+          {/* Social */}
           <Link
             to={`/projects/${project.id}/social`}
             className={cn(
               'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-              location.pathname === `/projects/${project.id}/social` &&
-                'bg-accent text-accent-foreground'
+              location.pathname === `/projects/${project.id}/social` && 'bg-accent text-accent-foreground'
             )}
           >
             <Share2 className="h-3 w-3 text-muted-foreground" />
             <span>Social</span>
           </Link>
+
+          {/* Knowledge */}
+          <Link
+            to={`/projects/${project.id}/knowledge`}
+            className={cn(
+              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+              location.pathname === `/projects/${project.id}/knowledge` && 'bg-accent text-accent-foreground'
+            )}
+          >
+            <BookOpen className="h-3 w-3 text-muted-foreground" />
+            <span>Knowledge</span>
+          </Link>
+
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -570,15 +702,14 @@ function SortableSidebarProjectFolder({
               to={`/projects/${project.id}/control`}
               className={cn(
                 'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-1 border-t pt-2',
-                location.pathname === `/projects/${project.id}/control` &&
-                  'bg-accent text-accent-foreground'
+                location.pathname === `/projects/${project.id}/control` && 'bg-accent text-accent-foreground'
               )}
             >
               <Bot className="h-3 w-3 text-purple-500" />
               <span className="font-medium">Controller</span>
             </Link>
 
-            {/* CRM Section */}
+            {/* CRM */}
             <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
 
             {/* Social */}
@@ -586,8 +717,7 @@ function SortableSidebarProjectFolder({
               to={`/projects/${project.id}/social`}
               className={cn(
                 'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === `/projects/${project.id}/social` &&
-                  'bg-accent text-accent-foreground'
+                location.pathname === `/projects/${project.id}/social` && 'bg-accent text-accent-foreground'
               )}
             >
               <Share2 className="h-3 w-3 text-muted-foreground" />
@@ -599,18 +729,13 @@ function SortableSidebarProjectFolder({
               to={`/projects/${project.id}/knowledge`}
               className={cn(
                 'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === `/projects/${project.id}/knowledge` &&
-                  'bg-accent text-accent-foreground'
+                location.pathname === `/projects/${project.id}/knowledge` && 'bg-accent text-accent-foreground'
               )}
             >
               <BookOpen className="h-3 w-3 text-muted-foreground" />
               <span>Knowledge</span>
-              {project.knowledge_completeness != null && (
-                <span className="text-[9px] text-muted-foreground ml-auto">
-                  {Math.round(project.knowledge_completeness * 100)}%
-                </span>
-              )}
             </Link>
+
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -990,19 +1115,22 @@ function OrgSection({
       {expanded && (
       <div className="pl-2">
         <div className="space-y-0.5">
-          {/* Org-level CRM pipelines link */}
-          <div className="px-1 py-1">
+          {/* Org-level workspace links: CRM (expandable), Social, Intelligence */}
+          <div className="px-1 py-1 space-y-0.5">
+            <OrgCrmSection orgId={org.id} location={location} />
+
             <Link
-              to={`/organizations/${org.id}?tab=pipelines`}
+              to={`/social-command`}
               className={cn(
                 'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.search.includes('tab=pipelines') && location.pathname === `/organizations/${org.id}` &&
-                  'bg-accent text-accent-foreground'
+                location.pathname === '/social-command' && 'bg-accent text-accent-foreground'
               )}
             >
-              <Target className="h-3 w-3 text-amber-500 shrink-0" />
-              <span>Pipelines</span>
+              <Megaphone className="h-3 w-3 shrink-0 text-purple-500" />
+              <span>Social</span>
             </Link>
+
+            <OrgIntelligenceSection orgId={org.id} location={location} />
           </div>
 
           {/* Internal projects and folders (no client) */}

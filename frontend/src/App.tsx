@@ -64,6 +64,8 @@ const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m =
 const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
 const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
 const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
+const CompaniesPage         = lazy(() => import('@/pages/companies').then(m => ({ default: m.CompaniesPage })));
+const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(m => ({ default: m.CompanyProfilePage })));
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
@@ -320,7 +322,7 @@ function AppContent() {
                       />
                       <Route path="/my-tasks" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
                       <Route path="/nora" element={<AdminRoute><NoraPage /></AdminRoute>} />
-                      <Route path="/topsi" element={<AdminRoute><TopsiPage /></AdminRoute>} />
+                      <Route path="/topsi" element={<ProtectedRoute><TopsiPage /></ProtectedRoute>} />
                       <Route path="/global-tasks" element={<AdminRoute><GlobalTasksPage /></AdminRoute>} />
                       <Route path="/mission-control" element={<ProtectedRoute><MissionControlPage /></ProtectedRoute>} />
                       <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
@@ -347,6 +349,14 @@ function AppContent() {
                       <Route
                         path="/proposals"
                         element={<ProtectedRoute><ProposalsPage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/companies"
+                        element={<ProtectedRoute><CompaniesPage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/companies/:companyId"
+                        element={<ProtectedRoute><CompanyProfilePage /></ProtectedRoute>}
                       />
                       <Route
                         path="/command-center"

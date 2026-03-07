@@ -350,6 +350,8 @@ export function EnhancedTaskDetailsPanel({
               isWorkflowFollowUp: true,
             },
             stream: false,
+            model: null,
+            provider: null,
           };
 
 
