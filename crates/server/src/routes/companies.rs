@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::{error::ApiError, DeploymentImpl};
 use db::models::company::{Company, CreateCompany, UpdateCompany};
 use db::models::proposal::Proposal;
+use db::models::person_association::{CompanyContactMethod, CreateCompanyContactMethod};
 
 #[derive(Debug, Deserialize)]
 pub struct ListCompaniesQuery {
@@ -93,19 +94,60 @@ async fn list_company_proposals(
     Ok(Json(ApiResponse::success(proposals)))
 }
 
-/// GET /companies/:id/persons — persons (contacts) at this company
+/// GET /companies/:id/persons — persons (contacts) at this company (via junction table)
 async fn list_company_persons(
     State(deployment): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<db::models::person::Person>>>, ApiError> {
     let pool = &deployment.db().pool;
     let persons = sqlx::query_as::<_, db::models::person::Person>(
-        "SELECT * FROM persons WHERE company_id = ? ORDER BY full_name ASC",
+        r#"SELECT p.* FROM persons p
+           JOIN person_company_roles pcr ON pcr.person_id = p.id
+           WHERE pcr.company_id = ?
+           ORDER BY pcr.is_primary DESC, p.full_name ASC"#,
     )
-    .bind(id)
+    .bind(id.as_bytes().as_slice())
     .fetch_all(pool)
     .await?;
     Ok(Json(ApiResponse::success(persons)))
+}
+
+// ---------------------------------------------------------------------------
+// Company contact methods
+// ---------------------------------------------------------------------------
+
+/// GET /companies/:id/contact-methods
+async fn list_contact_methods(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<CompanyContactMethod>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let methods = CompanyContactMethod::list_for_company(pool, id).await?;
+    Ok(Json(ApiResponse::success(methods)))
+}
+
+/// POST /companies/:id/contact-methods
+async fn add_contact_method(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Json(data): Json<CreateCompanyContactMethod>,
+) -> Result<Json<ApiResponse<CompanyContactMethod>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let method = CompanyContactMethod::create(pool, id, data).await?;
+    Ok(Json(ApiResponse::success(method)))
+}
+
+/// DELETE /companies/:id/contact-methods/:method_id
+async fn delete_contact_method(
+    State(deployment): State<DeploymentImpl>,
+    Path((_id, method_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deleted = CompanyContactMethod::delete(pool, method_id).await?;
+    if !deleted {
+        return Err(ApiError::NotFound("Contact method not found".into()));
+    }
+    Ok(Json(ApiResponse::success(())))
 }
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
@@ -117,4 +159,12 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/companies/{id}/proposals", get(list_company_proposals))
         .route("/companies/{id}/persons", get(list_company_persons))
+        .route(
+            "/companies/{id}/contact-methods",
+            get(list_contact_methods).post(add_contact_method),
+        )
+        .route(
+            "/companies/{id}/contact-methods/{method_id}",
+            delete(delete_contact_method),
+        )
 }

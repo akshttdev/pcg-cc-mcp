@@ -75,7 +75,7 @@ pub enum EmailAccountStatus {
 #[ts(export)]
 pub struct EmailAccount {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
     pub provider: String,
     pub account_type: String,
     pub email_address: String,
@@ -111,7 +111,7 @@ pub struct EmailAccount {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateEmailAccount {
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
     pub provider: EmailProvider,
     pub account_type: Option<EmailAccountType>,
     pub email_address: String,
@@ -168,7 +168,7 @@ impl EmailAccount {
             .unwrap_or_else(|| "primary".to_string());
         let metadata = data.metadata.map(|v| v.to_string());
         let granted_scopes = data.granted_scopes.map(|v| serde_json::to_string(&v).unwrap_or_default());
-        let use_ssl = data.use_ssl.map(|b| if b { 1 } else { 0 });
+        let use_ssl = data.use_ssl.map(|b| if b { 1 } else { 0 }).unwrap_or(1);
 
         let account = sqlx::query_as::<_, EmailAccount>(
             r#"
@@ -337,7 +337,7 @@ impl EmailAccount {
         let status = data.status.map(|s| format!("{:?}", s).to_lowercase());
         let metadata = data.metadata.map(|v| v.to_string());
         let granted_scopes = data.granted_scopes.map(|v| serde_json::to_string(&v).unwrap_or_default());
-        let use_ssl = data.use_ssl.map(|b| if b { 1 } else { 0 });
+        let use_ssl = data.use_ssl.map(|b| if b { 1 } else { 0 }).unwrap_or(1);
         let sync_enabled = data.sync_enabled.map(|b| if b { 1 } else { 0 });
         let auto_reply_enabled = data.auto_reply_enabled.map(|b| if b { 1 } else { 0 });
 
@@ -537,7 +537,7 @@ mod tests {
     #[tokio::test]
     async fn create_and_query_email_accounts() {
         let pool = setup_test_pool().await;
-        let project_id = create_test_project(&pool).await;
+        let project_id = Some(create_test_project(&pool).await);
 
         let created = EmailAccount::create(
             &pool,
@@ -586,7 +586,7 @@ mod tests {
     #[tokio::test]
     async fn create_zoho_account() {
         let pool = setup_test_pool().await;
-        let project_id = create_test_project(&pool).await;
+        let project_id = Some(create_test_project(&pool).await);
 
         let created = EmailAccount::create(
             &pool,
@@ -619,7 +619,7 @@ mod tests {
     #[tokio::test]
     async fn update_and_delete_email_account() {
         let pool = setup_test_pool().await;
-        let project_id = create_test_project(&pool).await;
+        let project_id = Some(create_test_project(&pool).await);
 
         let account = EmailAccount::create(
             &pool,

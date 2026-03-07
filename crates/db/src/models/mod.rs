@@ -90,6 +90,7 @@ pub mod project_knowledge_source;
 // pub mod topology_route;
 pub mod workflow_template;
 pub mod person;
+pub mod person_association;
 pub mod invoice;
 pub mod proposal;
 pub mod deliverable;

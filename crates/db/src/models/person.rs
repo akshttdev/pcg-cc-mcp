@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
+use crate::models::person_association::{PersonCompanyRole, PersonOrgContact};
 
 /// Universal Person entity — the single canonical identity record.
 ///
@@ -70,6 +71,8 @@ pub struct PersonWithSocials {
     #[serde(flatten)]
     pub person: Person,
     pub social_profiles: Vec<PersonSocialProfile>,
+    pub company_roles: Vec<PersonCompanyRole>,
+    pub org_contacts: Vec<PersonOrgContact>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
@@ -203,7 +206,10 @@ impl Person {
             where_parts.push("lifecycle_stage = ?".into());
         }
         if q.organization_id.is_some() {
-            where_parts.push("organization_id = ?".into());
+            where_parts.push(
+                "(organization_id = ? OR EXISTS (SELECT 1 FROM person_organization_contacts poc WHERE poc.person_id = persons.id AND poc.organization_id = ?))"
+                    .into(),
+            );
         }
         if q.query.is_some() {
             where_parts.push("(full_name LIKE ? OR email LIKE ? OR company_name LIKE ?)".into());
@@ -231,7 +237,8 @@ impl Person {
             qb = qb.bind(ls);
         }
         if let Some(org_id) = q.organization_id {
-            qb = qb.bind(org_id.as_bytes().as_slice().to_vec());
+            let bytes = org_id.as_bytes().to_vec();
+            qb = qb.bind(bytes.clone()).bind(bytes);
         }
         if let Some(ref query) = q.query {
             let like = format!("%{}%", query);

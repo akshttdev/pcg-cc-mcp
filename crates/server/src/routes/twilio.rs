@@ -51,6 +51,20 @@ static TWILIO_HANDLER: tokio::sync::OnceCell<Arc<TwilioCallHandler>> =
 static CALL_DB_CONTEXTS: Lazy<Arc<Mutex<HashMap<String, CallDbContext>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
+/// Secondary index: caller phone → call_sid (for SMS-during-call lookup)
+static ACTIVE_CALL_PHONES: Lazy<Arc<Mutex<HashMap<String, String>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// An SMS received while a call is active, optionally with ingested content.
+#[derive(Debug, Clone)]
+struct InCallSms {
+    body: String,
+    from: String,
+    received_at: chrono::DateTime<chrono::Utc>,
+    /// Fetched/extracted content if the SMS contained a URL.
+    ingested_content: Option<String>,
+}
+
 /// Who is calling — drives system prompt + context depth
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
@@ -74,12 +88,16 @@ struct CallDbContext {
     crm_contact_id: Uuid,
     project_id: Uuid,
     caller_role: CallerRole,
+    /// E.164 phone number of the caller (used as SMS-during-call lookup key)
+    caller_phone: String,
     /// PCG user ID if caller is a PCG team member
     pcg_user_id: Option<Uuid>,
     /// Caller profile pre-serialised as JSON string for the LLM
     caller_profile_json: String,
     /// Pre-built PCG team context (projects/tasks) — only for host callers
     pcg_team_context_json: Option<String>,
+    /// SMS messages received while this call is active (drained each speech turn)
+    sms_queue: Arc<tokio::sync::Mutex<Vec<InCallSms>>>,
 }
 
 /// Get or initialize the Twilio call handler
@@ -152,8 +170,11 @@ async fn generate_and_cache_audio(
     let truncated_text = truncate_for_log(text, 50);
     info!("Synthesizing speech with NORA voice engine: '{}'", truncated_text);
 
+    // Strip markdown before TTS so symbols like * aren't read aloud
+    let clean_text = strip_markdown_for_tts(text);
+
     // Apply timeout to TTS generation
-    let tts_future = nora.voice_engine.synthesize_speech_with_format(text);
+    let tts_future = nora.voice_engine.synthesize_speech_with_format(&clean_text);
     let (audio_base64, audio_format) = match timeout(TTS_TIMEOUT, tts_future).await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => return Err(format!("TTS synthesis failed: {}", e)),
@@ -163,7 +184,7 @@ async fn generate_and_cache_audio(
     // Cache the audio using the actual format returned by the TTS provider
     let cache = get_audio_cache().await;
     let audio_id = cache
-        .store(&audio_base64, audio_format, text, call_sid)
+        .store(&audio_base64, audio_format, &clean_text, call_sid)
         .await?;
 
     Ok(audio_id)
@@ -761,7 +782,7 @@ pub async fn handle_incoming_call(
     };
 
     // ------------------------------------------------------------------
-    // 6. Store in CALL_DB_CONTEXTS
+    // 6. Store in CALL_DB_CONTEXTS + register phone→call_sid mapping
     // ------------------------------------------------------------------
     {
         let mut map = CALL_DB_CONTEXTS.lock().await;
@@ -773,11 +794,17 @@ pub async fn handle_incoming_call(
                 crm_contact_id,
                 project_id,
                 caller_role: caller_role.clone(),
+                caller_phone: request.from.clone(),
                 pcg_user_id,
                 caller_profile_json: caller_profile_json.clone(),
                 pcg_team_context_json: pcg_team_context_json.clone(),
+                sms_queue: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             },
         );
+    }
+    {
+        let mut phones = ACTIVE_CALL_PHONES.lock().await;
+        phones.insert(request.from.clone(), request.call_sid.clone());
     }
 
     // ------------------------------------------------------------------
@@ -923,6 +950,33 @@ pub async fn handle_speech_input(
         map.get(call_sid.as_str()).cloned()
     };
 
+    // Drain any SMS messages queued while this call was active
+    let queued_sms: Vec<serde_json::Value> = if let Some(ref ctx) = db_ctx {
+        let mut queue = ctx.sms_queue.lock().await;
+        queue.drain(..).map(|sms| {
+            let mut entry = json!({
+                "from": sms.from,
+                "received_at": sms.received_at.to_rfc3339(),
+                "body": sms.body,
+            });
+            if let Some(content) = sms.ingested_content {
+                entry["ingested_content"] = json!(content);
+            }
+            entry
+        }).collect()
+    } else {
+        vec![]
+    };
+    let sms_note = if !queued_sms.is_empty() {
+        format!(
+            "\n\nNOTE: The caller sent {} SMS message(s) during this call. Acknowledge them naturally and use their content in your response:\n{}",
+            queued_sms.len(),
+            serde_json::to_string_pretty(&queued_sms).unwrap_or_default()
+        )
+    } else {
+        String::new()
+    };
+
     // Build caller-aware phone context
     let phone_context = if let Some(ref ctx) = db_ctx {
         let caller_profile: serde_json::Value =
@@ -941,7 +995,8 @@ pub async fn handle_speech_input(
                     "caller": caller_profile,
                     "pcg_work": team_data,
                     "conversation_history": context.unwrap_or_default(),
-                    "instruction": "Keep responses to 2-3 SHORT sentences. Be direct and action-oriented. British English. When asked to create tasks or update projects, confirm what you will do."
+                    "sms_received_during_call": queued_sms,
+                    "instruction": format!("Keep responses to 2-3 SHORT sentences. Be direct and action-oriented. British English. When asked to create tasks or update projects, confirm what you will do.{}", sms_note)
                 })
             }
             CallerRole::ReturningClient => {
@@ -950,7 +1005,8 @@ pub async fn handle_speech_input(
                     "caller_type": "returning_client",
                     "caller": caller_profile,
                     "conversation_history": context.unwrap_or_default(),
-                    "instruction": "Keep responses to 2-3 SHORT sentences. Be warm and professional. British English. Reference previous context where relevant."
+                    "sms_received_during_call": queued_sms,
+                    "instruction": format!("Keep responses to 2-3 SHORT sentences. Be warm and professional. British English. Reference previous context where relevant.{}", sms_note)
                 })
             }
             CallerRole::NewCaller => {
@@ -959,7 +1015,8 @@ pub async fn handle_speech_input(
                     "caller_type": "new_caller",
                     "caller": caller_profile,
                     "conversation_history": context.unwrap_or_default(),
-                    "instruction": "Keep responses to 2-3 SHORT sentences. Be warm and welcoming. British English. Help them understand what PCG can do for them."
+                    "sms_received_during_call": queued_sms,
+                    "instruction": format!("Keep responses to 2-3 SHORT sentences. Be warm and welcoming. British English. Help them understand what PCG can do for them.{}", sms_note)
                 })
             }
         }
@@ -972,7 +1029,7 @@ pub async fn handle_speech_input(
     };
 
     // Process through NORA to get response text
-    let (nora_response, input_tokens, output_tokens) =
+    let (nora_response_raw, input_tokens, output_tokens) =
         match process_with_nora(&speech_text, &session_id, Some(phone_context)).await {
             Ok(result) => result,
             Err(e) => {
@@ -980,6 +1037,8 @@ pub async fn handle_speech_input(
                 ("I apologise, I'm having trouble processing your request. Could you please try again?".to_string(), 0i64, 0i64)
             }
         };
+    // Strip markdown so neither ElevenLabs TTS nor Twilio <Say> reads symbols aloud
+    let nora_response = strip_markdown_for_tts(&nora_response_raw);
 
     // Record VIBE usage for this phone turn (fire-and-forget)
     if let Some(ref ctx) = db_ctx {
@@ -1151,11 +1210,15 @@ pub async fn handle_call_status(
 
     let pool = &deployment.db().pool;
 
-    // Retrieve and remove CallDbContext
+    // Retrieve and remove CallDbContext + clear phone mapping
     let db_ctx = {
         let mut map = CALL_DB_CONTEXTS.lock().await;
         map.remove(status.call_sid.as_str())
     };
+    if let Some(ref ctx) = db_ctx {
+        let mut phones = ACTIVE_CALL_PHONES.lock().await;
+        phones.remove(&ctx.caller_phone);
+    }
 
     let db_ctx = match db_ctx {
         Some(ctx) => ctx,
@@ -1494,7 +1557,45 @@ pub async fn handle_incoming_sms(
 
     let pool = &deployment.db().pool;
 
-    // ── CRM lookup: who is texting? ──────────────────────────────────────────
+    // ── Check if sender is on an active call ─────────────────────────────────
+    let active_call_sid = {
+        let phones = ACTIVE_CALL_PHONES.lock().await;
+        phones.get(&request.from).cloned()
+    };
+
+    if let Some(call_sid) = active_call_sid {
+        // Caller is mid-call — ingest and queue the SMS for Nora to use
+        info!("SMS from {} received during active call {} — queuing for Nora", request.from, call_sid);
+
+        let sms_queue = {
+            let map = CALL_DB_CONTEXTS.lock().await;
+            map.get(&call_sid).map(|ctx| ctx.sms_queue.clone())
+        };
+
+        if let Some(queue) = sms_queue {
+            // Spawn content ingestion so we don't block Twilio's webhook timeout
+            let body = request.body.clone();
+            let from = request.from.clone();
+            tokio::spawn(async move {
+                let ingested = ingest_sms_content(&body).await;
+                let mut q = queue.lock().await;
+                q.push(InCallSms {
+                    body,
+                    from,
+                    received_at: chrono::Utc::now(),
+                    ingested_content: ingested,
+                });
+            });
+
+            // Acknowledge immediately — Nora will weave it into the next voice turn
+            let twiml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>\
+                <Message>Got it — I'll bring that into our conversation now.</Message>\
+                </Response>";
+            return (StatusCode::OK, [("Content-Type", "application/xml")], twiml.to_string());
+        }
+    }
+
+    // ── No active call — normal standalone SMS processing ────────────────────
     let (caller_name, caller_type) =
         match CrmContact::find_by_phone_global(pool, &request.from).await {
             Ok(Some(contact)) => {
@@ -1504,7 +1605,6 @@ pub async fn handle_incoming_sms(
                 (name, "returning_client")
             }
             _ => {
-                // Check PCG team
                 if let Some((_, full_name, _)) =
                     lookup_pcg_team_member(pool, &request.from).await
                 {
@@ -1515,7 +1615,6 @@ pub async fn handle_incoming_sms(
             }
         };
 
-    // ── Process through Nora ─────────────────────────────────────────────────
     let sms_context = json!({
         "channel": "sms",
         "caller_type": caller_type,
@@ -1534,13 +1633,104 @@ pub async fn handle_incoming_sms(
         }
     };
 
-    // ── TwiML response ───────────────────────────────────────────────────────
     let twiml = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>{}</Message></Response>",
         xml_escape(&nora_text)
     );
 
     (StatusCode::OK, [("Content-Type", "application/xml")], twiml)
+}
+
+/// Fetch and extract readable content from any URLs in an SMS body.
+/// Returns a summarised string of ingested content, or None if no URLs found.
+async fn ingest_sms_content(body: &str) -> Option<String> {
+    // Find URLs in the message
+    let urls: Vec<&str> = body.split_whitespace()
+        .filter(|w| w.starts_with("http://") || w.starts_with("https://"))
+        .collect();
+
+    if urls.is_empty() {
+        return None;
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Mozilla/5.0 (compatible; NoraBot/1.0)")
+        .build()
+        .ok()?;
+
+    let mut parts = Vec::new();
+
+    for url in urls.iter().take(3) {
+        match client.get(*url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let content_type = resp.headers()
+                    .get("content-type")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+
+                if content_type.contains("text/html") || content_type.contains("text/plain") {
+                    if let Ok(text) = resp.text().await {
+                        let extracted = extract_text_from_html(&text);
+                        // Truncate to 1500 chars per URL to keep context manageable
+                        let snippet = if extracted.len() > 1500 {
+                            format!("{}…", &extracted[..1500])
+                        } else {
+                            extracted
+                        };
+                        parts.push(format!("[Content from {}]:\n{}", url, snippet));
+                    }
+                } else {
+                    parts.push(format!("[Link {} — content type: {}]", url, content_type));
+                }
+            }
+            Ok(resp) => {
+                parts.push(format!("[Link {} — HTTP {}]", url, resp.status()));
+            }
+            Err(e) => {
+                parts.push(format!("[Link {} — fetch error: {}]", url, e));
+            }
+        }
+    }
+
+    if parts.is_empty() { None } else { Some(parts.join("\n\n")) }
+}
+
+/// Strip HTML tags and collapse whitespace to get readable text.
+fn extract_text_from_html(html: &str) -> String {
+    let mut out = String::with_capacity(html.len() / 2);
+    let mut in_tag = false;
+    let mut in_script_or_style = false;
+    let mut tag_buf = String::new();
+
+    for c in html.chars() {
+        match c {
+            '<' => {
+                in_tag = true;
+                tag_buf.clear();
+            }
+            '>' => {
+                in_tag = false;
+                let tag_lower = tag_buf.trim().to_lowercase();
+                if tag_lower.starts_with("script") || tag_lower.starts_with("style") {
+                    in_script_or_style = true;
+                } else if tag_lower.starts_with("/script") || tag_lower.starts_with("/style") {
+                    in_script_or_style = false;
+                } else if tag_lower == "br" || tag_lower == "p" || tag_lower == "/p"
+                    || tag_lower.starts_with("h") || tag_lower.starts_with("/h")
+                {
+                    out.push('\n');
+                }
+            }
+            _ if in_tag => tag_buf.push(c),
+            _ if in_script_or_style => {}
+            _ => out.push(c),
+        }
+    }
+
+    // Collapse whitespace
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Process an SMS through Nora's LLM (text channel — no voice constraints).
@@ -1618,6 +1808,39 @@ fn xml_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+/// Strip markdown formatting so TTS doesn't read symbols aloud.
+pub(crate) fn strip_markdown_for_tts(text: &str) -> String {
+    // Remove bold/italic markers (** __ * _), inline code backticks, and headers (#)
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '*' | '_' | '`' | '#' => {
+                // Skip runs of the same symbol
+                while chars.peek() == Some(&c) {
+                    chars.next();
+                }
+            }
+            // Replace markdown links [label](url) with just the label
+            '[' => {
+                let label: String = chars.by_ref().take_while(|&ch| ch != ']').collect();
+                // Consume (url) if present
+                if chars.peek() == Some(&'(') {
+                    chars.next();
+                    while let Some(ch) = chars.next() {
+                        if ch == ')' { break; }
+                    }
+                }
+                out.push_str(&label);
+            }
+            _ => out.push(c),
+        }
+    }
+    // Collapse runs of spaces that removing symbols may leave
+    let cleaned: String = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    cleaned
 }
 
 /// Safely truncate a string for logging (UTF-8 aware)

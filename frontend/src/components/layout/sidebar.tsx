@@ -45,6 +45,8 @@ import {
   Bot,
   Share2,
   Calendar,
+  Radio,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -192,6 +194,63 @@ function OrgCrmSection({
             { label: 'Pipeline',     to: `/organizations/${orgId}?tab=pipelines`,   icon: TrendingUp, color: 'text-amber-500',         match: isOnOrg && location.search.includes('tab=pipelines') },
             { label: 'Deliverables', to: `/organizations/${orgId}?tab=deliverables`,icon: Package,    color: 'text-green-500',         match: isOnOrg && location.search.includes('tab=deliverables') },
             { label: 'Experiences',  to: `/organizations/${orgId}?tab=social`,      icon: Sparkles,   color: 'text-pink-500',          match: isOnOrg && location.search.includes('tab=social') },
+          ].map(({ label, to, icon: Icon, color, match }) => (
+            <Link
+              key={label}
+              to={to}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                match && 'bg-accent text-accent-foreground'
+              )}
+            >
+              <Icon className={cn('h-3 w-3 shrink-0', color)} />
+              <span>{label}</span>
+            </Link>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ============================================================================
+// OrgIntelligenceSection — collapsible Intelligence sub-navigation for an org
+// ============================================================================
+
+function OrgIntelligenceSection({
+  orgId,
+  location,
+}: {
+  orgId: string;
+  location: ReturnType<typeof useLocation>;
+}) {
+  const isOnOrgIntel =
+    location.pathname === `/organizations/${orgId}` &&
+    location.search.includes('tab=knowledge');
+  const [open, setOpen] = useState(isOnOrgIntel);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+            isOnOrgIntel && 'text-accent-foreground font-medium'
+          )}
+        >
+          <Brain className="h-3 w-3 shrink-0 text-emerald-500" />
+          <span className="flex-1 text-left">Intelligence</span>
+          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-4 space-y-0.5 py-0.5">
+          {[
+            { label: 'Overview',      icon: Brain,         color: 'text-emerald-500', to: `/organizations/${orgId}?tab=knowledge`,                           match: isOnOrgIntel && !location.search.includes('view=') },
+            { label: 'Conversations', icon: MessageSquare, color: 'text-blue-400',    to: `/organizations/${orgId}?tab=knowledge&view=conversations`,         match: isOnOrgIntel && location.search.includes('view=conversations') },
+            { label: 'Artifacts',     icon: FileText,      color: 'text-purple-400',  to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,             match: isOnOrgIntel && location.search.includes('view=artifacts') },
+            { label: 'Pulse',         icon: Radio,         color: 'text-orange-400',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,                 match: isOnOrgIntel && location.search.includes('view=pulse') },
+            { label: 'Topology',      icon: Network,       color: 'text-cyan-400',    to: `/organizations/${orgId}?tab=knowledge&view=topology`,              match: isOnOrgIntel && location.search.includes('view=topology') },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
@@ -1071,16 +1130,7 @@ function OrgSection({
               <span>Social</span>
             </Link>
 
-            <Link
-              to={`/companies`}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
-                location.pathname === '/companies' && 'bg-accent text-accent-foreground'
-              )}
-            >
-              <Brain className="h-3 w-3 shrink-0 text-emerald-500" />
-              <span>Intelligence</span>
-            </Link>
+            <OrgIntelligenceSection orgId={org.id} location={location} />
           </div>
 
           {/* Internal projects and folders (no client) */}
