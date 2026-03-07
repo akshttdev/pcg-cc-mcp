@@ -101,6 +101,7 @@ pub mod intelligence;
 pub mod graph;
 pub mod invite_dispatch;
 pub mod companies;
+pub mod data_sources;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -172,6 +173,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
         .merge(companies::router(&deployment))
+        .merge(data_sources::router(&deployment))
         .merge(graph::router(&deployment))
         .merge(invite_dispatch::router(&deployment))
         .merge(nora::nora_routes())

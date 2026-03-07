@@ -24,6 +24,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   Building2,
   Users,
@@ -58,6 +74,12 @@ import {
   Inbox,
   Database,
   Plus,
+  MoreHorizontal,
+  Trash2,
+  Upload,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -74,7 +96,11 @@ import {
   type SocialAccountRecord,
   type SocialMentionRecord,
   type PersonOrgContact,
-  type CreateKnowledgeSourceRequest,
+  dataSourcesApi,
+  type DataSourceRecord,
+  type UpdateDataSourceRequest,
+  DATA_TYPE_OPTIONS,
+  SOURCE_TYPE_OPTIONS,
 } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
@@ -605,120 +631,261 @@ const SOURCE_TYPE_META: Record<string, { label: string; icon: typeof BookOpen }>
   topology_snapshot: { label: 'Topology Snapshots', icon: Network },
 };
 
-const ALL_SOURCE_TYPES = [
-  'conversation',
-  'artifact',
-  'pulse_content',
-  'context_injection',
-  'entity',
-  'topology_snapshot',
-];
-
 // ── Add Data Source Dialog ────────────────────────────────────────────────────
 
 function AddDataSourceDialog({
+  orgId,
   projectEntries,
   open,
   onOpenChange,
+  editingSource,
 }: {
+  orgId: string;
   projectEntries: { id: string; name: string }[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  editingSource?: DataSourceRecord | null;
 }) {
   const queryClient = useQueryClient();
-  const [selectedProject, setSelectedProject] = useState<string>(projectEntries[0]?.id ?? '');
-  const [sourceType, setSourceType] = useState<string>('conversation');
-  const [title, setTitle] = useState('');
-  const [summary, setSummary] = useState('');
+  const isEdit = !!editingSource;
+
+  const [selectedProject, setSelectedProject] = useState<string>(editingSource?.project_id ?? '__none__');
+  const [sourceType, setSourceType] = useState<string>(editingSource?.source_type ?? 'text');
+  const [dataType, setDataType] = useState<string>(editingSource?.data_type ?? 'conversation');
+  const [title, setTitle] = useState(editingSource?.title ?? '');
+  const [description, setDescription] = useState(editingSource?.description ?? '');
+  const [content, setContent] = useState(editingSource?.content ?? '');
+  const [file, setFile] = useState<File | null>(null);
+
+  // Reset form when dialog opens/closes or editingSource changes
+  const resetForm = () => {
+    setSelectedProject(editingSource?.project_id ?? '__none__');
+    setSourceType(editingSource?.source_type ?? 'text');
+    setDataType(editingSource?.data_type ?? 'conversation');
+    setTitle(editingSource?.title ?? '');
+    setDescription(editingSource?.description ?? '');
+    setContent(editingSource?.content ?? '');
+    setFile(null);
+  };
 
   const createMutation = useMutation({
-    mutationFn: (data: { projectId: string } & CreateKnowledgeSourceRequest) =>
-      knowledgeApi.createSource(data.projectId, {
-        source_type: data.source_type,
-        source_title: data.source_title,
-        source_summary: data.source_summary,
-      }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['projectKnowledge', variables.projectId] });
+    mutationFn: async () => {
+      const projId = selectedProject !== '__none__' ? selectedProject : undefined;
+      if (sourceType === 'file' && file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', title.trim());
+        formData.append('data_type', dataType);
+        if (description.trim()) formData.append('description', description.trim());
+        if (projId) formData.append('project_id', projId);
+        formData.append('organization_id', orgId);
+        return dataSourcesApi.upload(formData);
+      }
+      return dataSourcesApi.create({
+        organization_id: orgId,
+        project_id: projId,
+        title: title.trim(),
+        description: description.trim() || undefined,
+        data_type: dataType,
+        source_type: sourceType,
+        content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
       onOpenChange(false);
-      setTitle('');
-      setSummary('');
+      resetForm();
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: UpdateDataSourceRequest) =>
+      dataSourcesApi.update(editingSource!.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      onOpenChange(false);
     },
   });
 
   const handleSubmit = () => {
-    if (!selectedProject || !title.trim()) return;
-    createMutation.mutate({
-      projectId: selectedProject,
-      source_type: sourceType,
-      source_title: title.trim(),
-      source_summary: summary.trim() || undefined,
-    });
+    if (!title.trim()) return;
+    if (isEdit) {
+      updateMutation.mutate({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        data_type: dataType,
+        source_type: sourceType,
+        content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+      });
+    } else {
+      createMutation.mutate();
+    }
   };
 
+  const isPending = createMutation.isPending || updateMutation.isPending;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Database className="h-4 w-4" />
-            Add Data Source
+            {isEdit ? 'Edit Data Source' : 'Add Data Source'}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
+          {/* Source type radio */}
           <div className="space-y-2">
-            <Label>Project</Label>
-            <Select value={selectedProject} onValueChange={setSelectedProject}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select project" />
-              </SelectTrigger>
-              <SelectContent>
-                {projectEntries.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Source</Label>
+            <RadioGroup
+              value={sourceType}
+              onValueChange={setSourceType}
+              className="flex gap-4"
+            >
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="text" id="st-text" />
+                <Label htmlFor="st-text" className="text-sm font-normal cursor-pointer">Text</Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="file" id="st-file" />
+                <Label htmlFor="st-file" className="text-sm font-normal cursor-pointer">File Upload</Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="integration" id="st-integration" />
+                <Label htmlFor="st-integration" className="text-sm font-normal cursor-pointer">Integration</Label>
+              </div>
+            </RadioGroup>
           </div>
-          <div className="space-y-2">
-            <Label>Source Type</Label>
-            <Select value={sourceType} onValueChange={setSourceType}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ALL_SOURCE_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {SOURCE_TYPE_META[type]?.label ?? type}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+
           <div className="space-y-2">
             <Label>Title</Label>
             <Input
               placeholder="e.g. Client kickoff call notes"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              autoFocus
             />
           </div>
+
           <div className="space-y-2">
-            <Label>Summary (optional)</Label>
+            <Label>Data Type</Label>
+            <Select value={dataType} onValueChange={setDataType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DATA_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Description (optional)</Label>
             <Textarea
-              placeholder="Brief description or paste content..."
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              rows={4}
+              placeholder="Brief description of this data source..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
             />
           </div>
+
+          {/* Conditional input based on source type */}
+          {sourceType === 'text' && (
+            <div className="space-y-2">
+              <Label>Content</Label>
+              <Textarea
+                placeholder="Paste or type your content here..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={6}
+                className="font-mono text-xs"
+              />
+            </div>
+          )}
+          {sourceType === 'file' && !isEdit && (
+            <div className="space-y-2">
+              <Label>File</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  className="text-xs"
+                />
+                {file && (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {(file.size / 1024).toFixed(0)} KB
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          {sourceType === 'integration' && (
+            <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+              Integration sources are populated automatically from connected services.
+            </div>
+          )}
+
+          {projectEntries.length > 0 && (
+            <div className="space-y-2">
+              <Label>Project (optional)</Label>
+              <Select value={selectedProject} onValueChange={setSelectedProject}>
+                <SelectTrigger>
+                  <SelectValue placeholder="No project (org-level)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No project (org-level)</SelectItem>
+                  {projectEntries.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!title.trim() || !selectedProject || createMutation.isPending}
-          >
-            {createMutation.isPending ? 'Adding...' : 'Add Source'}
+          <Button onClick={handleSubmit} disabled={!title.trim() || isPending}>
+            {isPending ? (isEdit ? 'Saving...' : 'Adding...') : (isEdit ? 'Save' : 'Add Source')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Delete Confirmation Dialog ───────────────────────────────────────────────
+
+function DeleteConfirmDialog({
+  open,
+  onOpenChange,
+  sourceName,
+  onConfirm,
+  isPending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  sourceName: string;
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <Trash2 className="h-4 w-4" />
+            Delete Data Source
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Are you sure you want to delete <strong>{sourceName}</strong>? This action cannot be undone.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+            {isPending ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -728,112 +895,240 @@ function AddDataSourceDialog({
 
 // ── Data Sources View ────────────────────────────────────────────────────────
 
+type SortField = 'title' | 'data_type' | 'status' | 'created_at';
+type SortDir = 'asc' | 'desc';
+
 function DataSourcesView({
-  items,
-  title,
-  Icon,
-  isLoading,
-  loadedCount,
-  totalProjects,
+  orgId,
   projectEntries,
-  isDatasources,
 }: {
-  items: { source: ProjectKnowledgeSource; projectName: string; projectId: string }[];
-  title: string;
-  Icon: typeof BookOpen;
-  isLoading: boolean;
-  loadedCount: number;
-  totalProjects: number;
+  orgId: string;
   projectEntries: { id: string; name: string }[];
-  isDatasources: boolean;
 }) {
+  const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
+  const [editingSource, setEditingSource] = useState<DataSourceRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DataSourceRecord | null>(null);
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const { data: sources = [], isLoading } = useQuery({
+    queryKey: ['dataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    staleTime: 30_000,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => dataSourcesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      setDeleteTarget(null);
+    },
+  });
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+  };
+
+  const sorted = useMemo(() => {
+    const arr = [...sources];
+    arr.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'title': cmp = a.title.localeCompare(b.title); break;
+        case 'data_type': cmp = a.data_type.localeCompare(b.data_type); break;
+        case 'status': cmp = a.status.localeCompare(b.status); break;
+        case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [sources, sortField, sortDir]);
+
+  const dataTypeLabel = (dt: string) =>
+    DATA_TYPE_OPTIONS.find(o => o.value === dt)?.label ?? dt;
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const statusBadge = (status: string) => {
+    const variants: Record<string, string> = {
+      ready: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+      processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    };
+    return (
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}>
+        {status}
+      </span>
+    );
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Icon className="h-5 w-5 text-muted-foreground" />
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <Badge variant="secondary">{items.length}</Badge>
-          {isLoading && (
-            <span className="text-xs text-muted-foreground ml-2">
-              Loading {loadedCount}/{totalProjects} projects…
-            </span>
-          )}
+          <Database className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Data Sources</h2>
+          <Badge variant="secondary">{sources.length}</Badge>
         </div>
-        {isDatasources && projectEntries.length > 0 && (
-          <Button size="sm" onClick={() => setAddOpen(true)} className="gap-1">
-            <Plus className="h-3.5 w-3.5" />
-            Add Data
-          </Button>
-        )}
+        <Button size="sm" onClick={() => { setEditingSource(null); setAddOpen(true); }} className="gap-1">
+          <Plus className="h-3.5 w-3.5" />
+          Add Data Source
+        </Button>
       </div>
-      {items.length === 0 && !isLoading ? (
+
+      {isLoading ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">Loading data sources...</div>
+      ) : sorted.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          <Icon className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>No {title.toLowerCase()} indexed yet</p>
-          {isDatasources && projectEntries.length > 0 && (
-            <Button variant="outline" size="sm" className="mt-4 gap-1" onClick={() => setAddOpen(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              Add your first data source
-            </Button>
-          )}
+          <Database className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>No data sources yet</p>
+          <Button variant="outline" size="sm" className="mt-4 gap-1" onClick={() => setAddOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Add your first data source
+          </Button>
         </div>
       ) : (
-        <div className="space-y-2">
-          {items.map(({ source, projectName, projectId }) => (
-            <Card key={source.id} className="bg-card/80 backdrop-blur-sm border-border/50">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-sm truncate">{source.source_title}</p>
-                      {isDatasources && (
-                        <Badge variant="outline" className="text-[10px] shrink-0">
-                          {SOURCE_TYPE_META[source.source_type]?.label ?? source.source_type}
-                        </Badge>
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('title')}>
+                  <span className="flex items-center gap-1">Title <SortIcon field="title" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none w-[120px]" onClick={() => toggleSort('data_type')}>
+                  <span className="flex items-center gap-1">Type <SortIcon field="data_type" /></span>
+                </TableHead>
+                <TableHead className="w-[100px]">Source</TableHead>
+                <TableHead className="cursor-pointer select-none w-[80px]" onClick={() => toggleSort('status')}>
+                  <span className="flex items-center gap-1">Status <SortIcon field="status" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none w-[110px]" onClick={() => toggleSort('created_at')}>
+                  <span className="flex items-center gap-1">Created <SortIcon field="created_at" /></span>
+                </TableHead>
+                <TableHead className="w-[40px]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sorted.map((source) => (
+                <TableRow key={source.id}>
+                  <TableCell>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{source.title}</p>
+                      {source.description && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{source.description}</p>
                       )}
                     </div>
-                    {source.source_summary && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.source_summary}</p>
-                    )}
-                    <div className="flex items-center gap-2 mt-2">
-                      <Link
-                        to={`/projects/${projectId}/knowledge`}
-                        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                      >
-                        <FolderOpen className="h-3 w-3" />
-                        {projectName}
-                      </Link>
-                      {source.is_stale && (
-                        <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">stale</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-[10px]">{dataTypeLabel(source.data_type)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {source.source_type === 'file' && source.file_name ? (
+                        <>
+                          <Upload className="h-3 w-3 shrink-0" />
+                          <span className="truncate max-w-[60px]">{source.file_name}</span>
+                          {source.file_size_bytes != null && (
+                            <span className="shrink-0">({formatFileSize(source.file_size_bytes)})</span>
+                          )}
+                        </>
+                      ) : source.source_type === 'file' ? (
+                        <>
+                          <Upload className="h-3 w-3 shrink-0" />
+                          <span>File</span>
+                        </>
+                      ) : source.source_type === 'text' ? (
+                        <>
+                          <FileText className="h-3 w-3 shrink-0" />
+                          <span>Text</span>
+                        </>
+                      ) : (
+                        <>
+                          <Database className="h-3 w-3 shrink-0" />
+                          <span>Integration</span>
+                        </>
                       )}
                     </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <Progress value={Math.round(source.coverage_score * 100)} className="w-16 h-1.5 mb-1" />
-                    <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}%</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  </TableCell>
+                  <TableCell>{statusBadge(source.status)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{formatDate(source.created_at)}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => { setEditingSource(source); setAddOpen(true); }}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleteTarget(source)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
       )}
+
       <AddDataSourceDialog
+        orgId={orgId}
         projectEntries={projectEntries}
         open={addOpen}
         onOpenChange={setAddOpen}
+        editingSource={editingSource}
+      />
+
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
+        sourceName={deleteTarget?.title ?? ''}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+        isPending={deleteMutation.isPending}
       />
     </div>
   );
 }
 
 function KnowledgeTab({
+  orgId,
   projectEntries,
   view,
 }: {
+  orgId: string;
   projectEntries: { id: string; name: string }[];
   view?: string | null;
 }) {
@@ -879,35 +1174,79 @@ function KnowledgeTab({
     return { totalSources, staleSources, avgCompleteness, sourcesByProject, byType };
   }, [knowledgeQueries, projectEntries]);
 
-  // Deep view: "datasources" shows ALL sources across all types; others filter by type
+  // Deep view: "datasources" shows the new data sources table; others filter knowledge by type
   if (view && view !== 'overview') {
-    const isDatasources = view === 'datasources';
-    const typeKey = isDatasources ? null
-      : view === 'conversations' ? 'conversation'
+    if (view === 'datasources') {
+      return (
+        <DataSourcesView
+          orgId={orgId}
+          projectEntries={projectEntries}
+        />
+      );
+    }
+
+    const typeKey =
+      view === 'conversations' ? 'conversation'
       : view === 'artifacts'  ? 'artifact'
       : view === 'pulse'      ? 'pulse_content'
       : view === 'topology'   ? 'topology_snapshot'
       : null;
-
-    // For datasources, flatten all types; otherwise filter to one type
-    const items = isDatasources
-      ? Object.values(aggregated.byType).flat()
-      : typeKey ? (aggregated.byType[typeKey] || []) : [];
+    const items = typeKey ? (aggregated.byType[typeKey] || []) : [];
     const meta = typeKey ? SOURCE_TYPE_META[typeKey] : null;
-    const Icon = isDatasources ? Database : (meta?.icon ?? BookOpen);
-    const title = isDatasources ? 'Data Sources' : (meta?.label ?? view);
+    const Icon = meta?.icon ?? BookOpen;
 
     return (
-      <DataSourcesView
-        items={items}
-        title={title}
-        Icon={Icon}
-        isLoading={isLoading}
-        loadedCount={loadedCount}
-        totalProjects={projectEntries.length}
-        projectEntries={projectEntries}
-        isDatasources={isDatasources}
-      />
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Icon className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">{meta?.label ?? view}</h2>
+          <Badge variant="secondary">{items.length}</Badge>
+          {isLoading && (
+            <span className="text-xs text-muted-foreground ml-2">
+              Loading {loadedCount}/{projectEntries.length} projects…
+            </span>
+          )}
+        </div>
+        {items.length === 0 && !isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Icon className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>No {meta?.label.toLowerCase() ?? view} indexed yet</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {items.map(({ source, projectName, projectId }) => (
+              <Card key={source.id} className="bg-card/80 backdrop-blur-sm border-border/50">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{source.source_title}</p>
+                      {source.source_summary && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.source_summary}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <Link
+                          to={`/projects/${projectId}/knowledge`}
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                          {projectName}
+                        </Link>
+                        {source.is_stale && (
+                          <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">stale</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <Progress value={Math.round(source.coverage_score * 100)} className="w-16 h-1.5 mb-1" />
+                      <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}%</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -1533,6 +1872,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
             <TabsContent value="knowledge">
               <KnowledgeTab
+                orgId={orgId!}
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                 view={viewFromUrl}
               />
