@@ -276,6 +276,14 @@ async function handleJoin(interaction, agentName) {
   const player = createAudioPlayer();
   connection.subscribe(player);
 
+  // Seed participant list from current channel members (excluding bots)
+  const participants = new Map(); // userId → displayName
+  for (const [memberId, member] of voiceChannel.members) {
+    if (!member.user.bot) {
+      participants.set(memberId, member.displayName || member.user.username);
+    }
+  }
+
   const session = {
     meetingId,
     guildId: interaction.guildId,
@@ -287,9 +295,31 @@ async function handleJoin(interaction, agentName) {
     segmentCount: 0,
     connection,
     player,
+    guild: interaction.guild,
+    participants,
   };
 
   sessions.set(sessionKey, session);
+
+  // Track participants joining/leaving while bot is in channel
+  const voiceStateHandler = (oldState, newState) => {
+    if (oldState.channelId === newState.channelId) return; // mute/deafen only — ignore
+    const member = newState.member ?? oldState.member;
+    if (!member || member.user.bot) return;
+    const userId = member.id;
+    if (newState.channelId === voiceChannel.id) {
+      // Joined this channel
+      participants.set(userId, member.displayName || member.user.username);
+      console.log(`[${agentName}] ${member.displayName} joined #${voiceChannel.name}`);
+    } else if (oldState.channelId === voiceChannel.id) {
+      // Left this channel
+      participants.delete(userId);
+      console.log(`[${agentName}] ${member.displayName} left #${voiceChannel.name}`);
+    }
+  };
+  interaction.guild.client.on('voiceStateUpdate', voiceStateHandler);
+  session.voiceStateHandler = voiceStateHandler;
+  session.guildClient = interaction.guild.client;
 
   // Announce arrival with TTS greeting
   const greetings = {
@@ -342,6 +372,15 @@ function setupReceivePipeline(connection, session) {
     if (activeSubs.has(userId)) return;
     activeSubs.add(userId);
 
+    // Resolve display name — fetch from guild if not yet cached
+    if (!session.participants.has(userId)) {
+      session.guild.members.fetch(userId).then((member) => {
+        session.participants.set(userId, member.displayName || member.user.username);
+      }).catch(() => {
+        session.participants.set(userId, `User ${userId.slice(-4)}`);
+      });
+    }
+
     const opusStream = connection.receiver.subscribe(userId, {
       end: { behavior: EndBehaviorType.AfterSilence, duration: SILENCE_TIMEOUT_MS },
     });
@@ -357,7 +396,8 @@ function setupReceivePipeline(connection, session) {
       activeSubs.delete(userId);
       if (chunks.length === 0) return;
       const pcm = Buffer.concat(chunks);
-      processUtterance(pcm, userId, session).catch((e) =>
+      const displayName = session.participants.get(userId) ?? `User ${userId.slice(-4)}`;
+      processUtterance(pcm, userId, displayName, session).catch((e) =>
         console.error(`[${session.agentName}] Pipeline error for user ${userId}:`, e.message)
       );
     });
@@ -372,7 +412,7 @@ function setupReceivePipeline(connection, session) {
   });
 }
 
-async function processUtterance(pcm, userId, session) {
+async function processUtterance(pcm, userId, displayName, session) {
   const startMs = Date.now() - session.startedAt;
 
   // 48kHz stereo → 16kHz mono WAV → Whisper
@@ -380,7 +420,7 @@ async function processUtterance(pcm, userId, session) {
   const transcript = await transcribeWav(wavBuffer);
   if (!transcript) return;
 
-  console.log(`[${session.agentName}] [user:${userId.slice(-4)}]: ${transcript.slice(0, 100)}`);
+  console.log(`[${session.agentName}] [${displayName}]: ${transcript.slice(0, 100)}`);
 
   const addressed = detectWakeWord(transcript, session.agentName);
   const isAddressed = addressed !== null;
@@ -390,12 +430,21 @@ async function processUtterance(pcm, userId, session) {
   if (isAddressed) {
     try {
       const cmd = addressed || transcript;
+      // Build participant context for the agent
+      const others = [...session.participants.entries()]
+        .filter(([id]) => id !== userId)
+        .map(([, name]) => name);
+      const participantCtx = others.length
+        ? `Channel participants: ${[displayName, ...others].join(', ')}. Speaking now: ${displayName}.`
+        : `Speaking: ${displayName}.`;
+
       agentResponse = await callAgent(
         SERVER_PORT,
         session.agentName,
         cmd,
         session.projectId,
-        session.meetingId
+        session.meetingId,
+        participantCtx
       );
     } catch (e) {
       console.warn(`[${session.agentName}] Agent call failed:`, e.message);
@@ -420,12 +469,12 @@ async function processUtterance(pcm, userId, session) {
     randomUUID(),
     session.meetingId,
     session.segmentCount,
-    `User ${userId.slice(-6)}`,
+    displayName,
     transcript,
     startMs,
     endMs,
     isAddressed ? 1 : 0,
-    JSON.stringify({ discord_user_id: userId, agent_response: agentResponse })
+    JSON.stringify({ discord_user_id: userId, discord_display_name: displayName, agent_response: agentResponse })
   );
 
   // Persist agent response as its own segment
@@ -492,6 +541,11 @@ function destroySession(sessionKey) {
   try {
     session.connection.destroy();
   } catch (_) {}
+
+  // Remove voice state listener
+  if (session.guildClient && session.voiceStateHandler) {
+    session.guildClient.off('voiceStateUpdate', session.voiceStateHandler);
+  }
 
   sessions.delete(sessionKey);
 

@@ -157,14 +157,15 @@ export function detectWakeWord(text, agentName) {
 
 // ─── Agent call ───────────────────────────────────────────────────────────────
 
-export async function callAgent(serverPort, agentName, message, projectId, sessionId) {
+export async function callAgent(serverPort, agentName, message, projectId, sessionId, participantCtx = '') {
   const endpoint = agentName.toLowerCase() === 'topsi' ? 'topsi' : 'nora';
   const identities = {
     nora: `You are Nora, PowerClub Global's Executive AI Agent. You are speaking via Discord voice.`,
     topsi: `You are Topsi, PowerClub Global's technical AI agent. You are speaking via Discord voice.`,
   };
   const identity = identities[agentName.toLowerCase()] ?? `You are ${agentName}, a PowerClub Global AI agent.`;
-  const prefix = `[DISCORD VOICE CALL — ${identity} Voice only. 1-3 sentences max. No markdown. British English.]`;
+  const contextPart = participantCtx ? ` ${participantCtx}` : '';
+  const prefix = `[DISCORD VOICE CALL — ${identity}${contextPart} Voice only. 1-3 sentences max. No markdown. British English.]`;
 
   const res = await fetch(`http://127.0.0.1:${serverPort}/api/internal/${endpoint}/chat`, {
     method: 'POST',
