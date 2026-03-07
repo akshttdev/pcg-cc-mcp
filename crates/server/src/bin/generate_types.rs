@@ -264,9 +264,11 @@ fn generate_types_content() -> String {
         server::routes::sidebar::SidebarOrg::decl(),
         server::routes::sidebar::SidebarClient::decl(),
         server::routes::sidebar::SidebarProject::decl(),
-        server::routes::sidebar::SidebarProjectFolder::decl(),
+        // SidebarProjectFolder removed — projects now use nested children
         server::routes::sidebar::SidebarSharedBoardGroup::decl(),
         server::routes::sidebar::SidebarSharedBoard::decl(),
+        server::routes::entity_conversion::ConvertEntityRequest::decl(),
+        server::routes::entity_conversion::ConvertEntityResponse::decl(),
         // Feedback types
         server::routes::feedback::SubmitFeedbackRequest::decl(),
         server::routes::feedback::SubmitFeedbackResponse::decl(),

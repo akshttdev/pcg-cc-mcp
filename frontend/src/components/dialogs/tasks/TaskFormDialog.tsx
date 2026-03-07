@@ -89,6 +89,9 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
     const [quickstartExpanded, setQuickstartExpanded] =
       useState<boolean>(false);
+    const [simpleMode, setSimpleMode] = useState<boolean>(
+      () => localStorage.getItem('pcg-task-simple-mode') === 'true'
+    );
 
     const isEditMode = Boolean(task);
 
@@ -714,9 +717,24 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
         <Dialog open={modal.visible} onOpenChange={handleDialogOpenChange}>
           <DialogContent className="sm:max-w-[550px]">
             <DialogHeader>
-              <DialogTitle>
-                {isEditMode ? 'Edit Task' : 'Create New Task'}
-              </DialogTitle>
+              <div className="flex items-center justify-between">
+                <DialogTitle>
+                  {isEditMode ? 'Edit Task' : 'Create New Task'}
+                </DialogTitle>
+                <div className="flex items-center gap-2 mr-6">
+                  <Switch
+                    id="simple-mode"
+                    checked={simpleMode}
+                    onCheckedChange={(checked) => {
+                      setSimpleMode(checked);
+                      localStorage.setItem('pcg-task-simple-mode', String(checked));
+                    }}
+                  />
+                  <Label htmlFor="simple-mode" className="text-xs text-muted-foreground cursor-pointer">
+                    Simple
+                  </Label>
+                </div>
+              </div>
             </DialogHeader>
             <div className="space-y-4">
               <div>
@@ -829,7 +847,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className={simpleMode ? '' : 'grid gap-4 md:grid-cols-2'}>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Assignee</Label>
                   <UserCombobox
@@ -840,50 +858,56 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Assigned Agent</Label>
-                  <AgentCombobox
-                    value={assignedAgent}
-                    onChange={setAssignedAgent}
-                    placeholder="Select agent..."
-                    disabled={isSubmitting || isSubmittingAndStart}
-                  />
-                </div>
+                {!simpleMode && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Assigned Agent</Label>
+                    <AgentCombobox
+                      value={assignedAgent}
+                      onChange={setAssignedAgent}
+                      placeholder="Select agent..."
+                      disabled={isSubmitting || isSubmittingAndStart}
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Assigned MCPs (comma-separated)</Label>
-                  <Textarea
-                    value={assignedMcpsInput}
-                    onChange={(e) => setAssignedMcpsInput(e.target.value)}
-                    rows={2}
+              {!simpleMode && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Assigned MCPs (comma-separated)</Label>
+                    <Textarea
+                      value={assignedMcpsInput}
+                      onChange={(e) => setAssignedMcpsInput(e.target.value)}
+                      rows={2}
+                      disabled={isSubmitting || isSubmittingAndStart}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Tags (comma-separated)</Label>
+                    <Textarea
+                      value={tagsInput}
+                      onChange={(e) => setTagsInput(e.target.value)}
+                      rows={2}
+                      disabled={isSubmitting || isSubmittingAndStart}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {!simpleMode && (
+                <div className="flex items-center gap-3 pt-2">
+                  <Switch
+                    id="requires-approval"
+                    checked={requiresApproval}
+                    onCheckedChange={(checked) => setRequiresApproval(checked)}
                     disabled={isSubmitting || isSubmittingAndStart}
                   />
+                  <Label htmlFor="requires-approval" className="text-sm">
+                    Requires approval before completion
+                  </Label>
                 </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Tags (comma-separated)</Label>
-                  <Textarea
-                    value={tagsInput}
-                    onChange={(e) => setTagsInput(e.target.value)}
-                    rows={2}
-                    disabled={isSubmitting || isSubmittingAndStart}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <Switch
-                  id="requires-approval"
-                  checked={requiresApproval}
-                  onCheckedChange={(checked) => setRequiresApproval(checked)}
-                  disabled={isSubmitting || isSubmittingAndStart}
-                />
-                <Label htmlFor="requires-approval" className="text-sm">
-                  Requires approval before completion
-                </Label>
-              </div>
+              )}
 
               <ImageUploadSection
                 images={images}
@@ -969,7 +993,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                 </div>
               )}
 
-              {!isEditMode &&
+              {!isEditMode && !simpleMode &&
                 (() => {
                   const quickstartSection = (
                     <div className="pt-2">

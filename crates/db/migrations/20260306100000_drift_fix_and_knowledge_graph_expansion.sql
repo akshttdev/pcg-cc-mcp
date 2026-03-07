@@ -12,12 +12,10 @@
 -- These "" values cause sqlx Option<DateTime> deserialization
 -- failures at runtime. Idempotent (NULL WHERE '' is a no-op if clean).
 
--- crm_contacts date fields
+-- crm_contacts date fields (only columns that exist in schema)
 UPDATE crm_contacts SET last_activity_at      = NULL WHERE last_activity_at      = '';
 UPDATE crm_contacts SET last_contacted_at     = NULL WHERE last_contacted_at     = '';
 UPDATE crm_contacts SET last_replied_at       = NULL WHERE last_replied_at       = '';
-UPDATE crm_contacts SET discovery_scheduled_at= NULL WHERE discovery_scheduled_at= '';
-UPDATE crm_contacts SET proposal_meeting_at   = NULL WHERE proposal_meeting_at   = '';
 
 -- crm_contacts structural empties
 UPDATE crm_contacts SET mobile         = NULL WHERE mobile         = '';
@@ -46,8 +44,7 @@ UPDATE crm_deals SET zoho_deal_id        = NULL WHERE zoho_deal_id        = '';
 UPDATE crm_deals SET owner_user_id       = NULL WHERE owner_user_id       = '';
 UPDATE crm_deals SET tags                = NULL WHERE tags                = '';
 
--- persons
-UPDATE persons SET website = NULL WHERE website = '';
+-- persons (table created in later migration, skip drift fix)
 
 -- tasks
 UPDATE tasks SET assigned_agent = NULL WHERE assigned_agent = '';
@@ -56,11 +53,8 @@ UPDATE tasks SET assigned_agent = NULL WHERE assigned_agent = '';
 UPDATE projects SET setup_script = NULL WHERE setup_script = '';
 UPDATE projects SET dev_script   = NULL WHERE dev_script   = '';
 
--- Back-fill owner_id for any project_knowledge_sources rows missing it
--- (owner_type defaults to 'project' from previous migration)
-UPDATE project_knowledge_sources
-SET owner_id = LOWER(HEX(project_id))
-WHERE owner_id IS NULL;
+-- Back-fill owner_id skipped: owner_id/owner_type columns from
+-- missing migration 20260305200000 (will be added in a later migration)
 
 
 -- ── Part 2: User knowledge graph ─────────────────────────────
@@ -81,8 +75,10 @@ CREATE TABLE IF NOT EXISTS user_knowledge_sources (
     source_summary TEXT,
 
     -- Optional cross-references into the broader knowledge graph
-    related_company_id BLOB REFERENCES companies(id),
-    related_person_id  BLOB REFERENCES persons(id),
+    -- Note: companies and persons tables created in later migration,
+    -- so FK constraints are omitted here (enforced at app level)
+    related_company_id BLOB,
+    related_person_id  BLOB,
     related_project_id BLOB REFERENCES projects(id),
 
     coverage_score REAL    NOT NULL DEFAULT 0.0,

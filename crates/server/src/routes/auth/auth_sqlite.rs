@@ -13,6 +13,29 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 
+/// Load platform roles for a user (public alias for cross-module use)
+pub async fn load_platform_roles_pub(pool: &sqlx::SqlitePool, user_id: &[u8]) -> Vec<String> {
+    load_platform_roles(pool, user_id).await
+}
+
+/// Load platform roles for a user
+async fn load_platform_roles(pool: &sqlx::SqlitePool, user_id: &[u8]) -> Vec<String> {
+    #[derive(FromRow)]
+    struct RoleRow {
+        role: String,
+    }
+    sqlx::query_as::<_, RoleRow>(
+        "SELECT role FROM user_platform_roles WHERE user_id = ?"
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| r.role)
+    .collect()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginRequest {
     pub username: String,
@@ -47,6 +70,7 @@ pub struct UserProfile {
     pub avatar_url: Option<String>,
     pub is_admin: bool,
     pub organizations: Vec<UserOrganization>,
+    pub platform_roles: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -171,14 +195,18 @@ pub async fn login(
         })
         .collect();
 
+    let platform_roles = load_platform_roles(pool, user.id.as_bytes().as_slice()).await;
+    let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
+
     let profile = UserProfile {
         id: user.id.to_string(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,
         avatar_url: user.avatar_url,
-        is_admin: user.is_admin == 1,
+        is_admin: effective_admin,
         organizations,
+        platform_roles,
     };
 
     let response = LoginResponse {
@@ -244,8 +272,12 @@ pub async fn get_current_user(
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
     .ok_or_else(|| ApiError::BadRequest("Invalid session".to_string()))?;
 
-    // Check if session expired
+    // Check if session expired (handle both RFC 3339 and SQLite datetime formats)
     let expires_at = chrono::DateTime::parse_from_rfc3339(&session.expires_at)
+        .or_else(|_| {
+            chrono::NaiveDateTime::parse_from_str(&session.expires_at, "%Y-%m-%d %H:%M:%S")
+                .map(|naive| naive.and_utc().fixed_offset())
+        })
         .map_err(|e| ApiError::InternalError(format!("Invalid expiry date: {}", e)))?;
 
     if expires_at < chrono::Utc::now() {
@@ -294,14 +326,18 @@ pub async fn get_current_user(
         })
         .collect();
 
+    let platform_roles = load_platform_roles(pool, user.id.as_bytes().as_slice()).await;
+    let effective_admin = user.is_admin == 1 || platform_roles.iter().any(|r| r == "platform_admin");
+
     let profile = UserProfile {
         id: user.id.to_string(),
         username: user.username,
         email: user.email,
         full_name: user.full_name,
         avatar_url: user.avatar_url,
-        is_admin: user.is_admin == 1,
+        is_admin: effective_admin,
         organizations,
+        platform_roles,
     };
 
     // Wrap in ApiResponse

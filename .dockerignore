@@ -50,15 +50,15 @@ logs/
 # Runtime data (NEVER include in image!)
 pids/
 *.pid
-*.seed
 *.pid.lock
-*.sqlite
-*.sqlite-shm
-*.sqlite-wal
 dev_assets/db.sqlite*
+dev_assets/*.sqlite-shm
+dev_assets/*.sqlite-wal
 dev_assets/*.db
 backups/
 *.backup
+# Keep dev_assets_seed sqlite files for seeding
+!dev_assets_seed/
 
 # Coverage directory used by tools like istanbul
 coverage/

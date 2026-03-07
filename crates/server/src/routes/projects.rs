@@ -46,21 +46,55 @@ pub async fn get_projects(
         return Ok(ResponseJson(ApiResponse::success(projects)));
     }
 
-    // For regular users: direct project memberships + org-based access
+    // For regular users, get projects from all access paths:
+    // 1. Direct project_members
+    // 2. Organization membership (projects under their orgs)
+    // 3. Client membership (projects under their clients)
+    // 4. Task assignment (projects where they have assigned tasks)
     let user_id_bytes = access_context.user_id.as_bytes().to_vec();
+    let user_id_str = access_context.user_id.to_string();
 
-    // Single query: union of direct memberships and org-based projects
-    let projects = sqlx::query_as::<_, Project>(
-        r#"SELECT DISTINCT p.* FROM projects p
-           LEFT JOIN project_members pm ON pm.project_id = p.id
-           LEFT JOIN organization_members om ON om.organization_id = p.organization_id
-           WHERE (pm.user_id = ?1 OR om.user_id = ?1)
-             AND p.deleted_at IS NULL"#,
+    #[derive(sqlx::FromRow)]
+    struct ProjectRow {
+        id: Vec<u8>,
+    }
+
+    let project_rows: Vec<ProjectRow> = sqlx::query_as::<_, ProjectRow>(
+        r#"
+        SELECT DISTINCT id FROM (
+            -- Direct project membership
+            SELECT project_id as id FROM project_members WHERE user_id = ?1
+            UNION
+            -- Organization membership → org projects
+            SELECT p.id FROM projects p
+            INNER JOIN organization_members om ON om.organization_id = p.organization_id
+            WHERE om.user_id = ?1 AND p.organization_id IS NOT NULL AND p.deleted_at IS NULL
+            UNION
+            -- Client membership → client projects
+            SELECT p.id FROM projects p
+            INNER JOIN client_members cm ON cm.client_id = p.client_id
+            WHERE cm.user_id = ?1 AND p.client_id IS NOT NULL AND p.deleted_at IS NULL
+            UNION
+            -- Task assignment (no project membership, but assigned tasks)
+            SELECT CAST(project_id AS BLOB) as id FROM tasks
+            WHERE assignee_id = ?2 AND deleted_at IS NULL
+        )
+        WHERE id IS NOT NULL
+        "#,
     )
     .bind(&user_id_bytes)
-    .fetch_all(pool)
+    .bind(&user_id_str)
+    .fetch_all(&deployment.db().pool)
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to fetch user projects: {}", e)))?;
+
+    // Fetch full project objects for the discovered IDs
+    let mut projects = Vec::new();
+    for uuid in project_rows.iter().filter_map(|r| Uuid::from_slice(&r.id).ok()) {
+        if let Ok(Some(project)) = Project::find_by_id(pool, uuid).await {
+            projects.push(project);
+        }
+    }
 
     Ok(ResponseJson(ApiResponse::success(projects)))
 }
@@ -350,87 +384,100 @@ pub async fn create_project(
         organization_id,
         client_id,
         folder_id,
+        parent_project_id,
     } = payload;
     tracing::debug!("Creating project '{}'", name);
 
-    // Validate and setup git repository
-    let path = std::path::absolute(expand_tilde(&git_repo_path))?;
-    // Check if git repo path is already used by another project
-    match Project::find_by_git_repo_path(&deployment.db().pool, path.to_string_lossy().as_ref())
-        .await
-    {
-        Ok(Some(_)) => {
-            return Ok(ResponseJson(ApiResponse::error(
-                "A project with this git repository path already exists",
-            )));
-        }
-        Ok(None) => {
-            // Path is available, continue
-        }
-        Err(e) => {
-            return Err(ProjectError::GitRepoCheckFailed(e.to_string()).into());
-        }
-    }
-
-    if use_existing_repo {
-        // For existing repos, validate that the path exists and is a git repository
-        if !path.exists() {
-            return Ok(ResponseJson(ApiResponse::error(
-                "The specified path does not exist",
-            )));
-        }
-
-        if !path.is_dir() {
-            return Ok(ResponseJson(ApiResponse::error(
-                "The specified path is not a directory",
-            )));
-        }
-
-        if !path.join(".git").exists() {
-            return Ok(ResponseJson(ApiResponse::error(
-                "The specified directory is not a git repository",
-            )));
-        }
-
-        // Ensure existing repo has a main branch if it's empty
-        if let Err(e) = deployment.git().ensure_main_branch_exists(&path) {
-            tracing::error!("Failed to ensure main branch exists: {}", e);
-            return Ok(ResponseJson(ApiResponse::error(&format!(
-                "Failed to ensure main branch exists: {}",
-                e
-            ))));
-        }
+    // Container projects (project groups) have empty git_repo_path — skip git validation
+    let is_container = git_repo_path.trim().is_empty();
+    let resolved_path = if is_container {
+        // Use a unique placeholder to satisfy the UNIQUE constraint on git_repo_path
+        format!("container:{}", id)
     } else {
-        // For new repos, create directory and initialize git
-
-        // Create directory if it doesn't exist
-        if !path.exists()
-            && let Err(e) = std::fs::create_dir_all(&path)
+        // Validate and setup git repository
+        let path = std::path::absolute(expand_tilde(&git_repo_path))?;
+        // Check if git repo path is already used by another project
+        match Project::find_by_git_repo_path(
+            &deployment.db().pool,
+            path.to_string_lossy().as_ref(),
+        )
+        .await
         {
-            tracing::error!("Failed to create directory: {}", e);
-            return Ok(ResponseJson(ApiResponse::error(&format!(
-                "Failed to create directory: {}",
-                e
-            ))));
+            Ok(Some(_)) => {
+                return Ok(ResponseJson(ApiResponse::error(
+                    "A project with this git repository path already exists",
+                )));
+            }
+            Ok(None) => {
+                // Path is available, continue
+            }
+            Err(e) => {
+                return Err(ProjectError::GitRepoCheckFailed(e.to_string()).into());
+            }
         }
 
-        // Check if it's already a git repo, if not initialize it
-        if !path.join(".git").exists()
-            && let Err(e) = deployment.git().initialize_repo_with_main_branch(&path)
-        {
-            tracing::error!("Failed to initialize git repository: {}", e);
-            return Ok(ResponseJson(ApiResponse::error(&format!(
-                "Failed to initialize git repository: {}",
-                e
-            ))));
+        if use_existing_repo {
+            // For existing repos, validate that the path exists and is a git repository
+            if !path.exists() {
+                return Ok(ResponseJson(ApiResponse::error(
+                    "The specified path does not exist",
+                )));
+            }
+
+            if !path.is_dir() {
+                return Ok(ResponseJson(ApiResponse::error(
+                    "The specified path is not a directory",
+                )));
+            }
+
+            if !path.join(".git").exists() {
+                return Ok(ResponseJson(ApiResponse::error(
+                    "The specified directory is not a git repository",
+                )));
+            }
+
+            // Ensure existing repo has a main branch if it's empty
+            if let Err(e) = deployment.git().ensure_main_branch_exists(&path) {
+                tracing::error!("Failed to ensure main branch exists: {}", e);
+                return Ok(ResponseJson(ApiResponse::error(&format!(
+                    "Failed to ensure main branch exists: {}",
+                    e
+                ))));
+            }
+        } else {
+            // For new repos, create directory and initialize git
+
+            // Create directory if it doesn't exist
+            if !path.exists()
+                && let Err(e) = std::fs::create_dir_all(&path)
+            {
+                tracing::error!("Failed to create directory: {}", e);
+                return Ok(ResponseJson(ApiResponse::error(&format!(
+                    "Failed to create directory: {}",
+                    e
+                ))));
+            }
+
+            // Check if it's already a git repo, if not initialize it
+            if !path.join(".git").exists()
+                && let Err(e) = deployment.git().initialize_repo_with_main_branch(&path)
+            {
+                tracing::error!("Failed to initialize git repository: {}", e);
+                return Ok(ResponseJson(ApiResponse::error(&format!(
+                    "Failed to initialize git repository: {}",
+                    e
+                ))));
+            }
         }
-    }
+
+        path.to_string_lossy().to_string()
+    };
 
     match Project::create(
         &deployment.db().pool,
         &CreateProject {
             name,
-            git_repo_path: path.to_string_lossy().to_string(),
+            git_repo_path: resolved_path,
             use_existing_repo,
             setup_script,
             dev_script,
@@ -439,6 +486,7 @@ pub async fn create_project(
             organization_id,
             client_id,
             folder_id,
+            parent_project_id,
         },
         id,
     )
@@ -461,7 +509,7 @@ pub async fn create_project(
                    VALUES (?, ?, ?, ?, ?)"#
             )
             .bind(member_id.as_bytes().to_vec())
-            .bind(project.id.to_string()) // project_id is TEXT
+            .bind(project.id.as_bytes().to_vec())
             .bind(access_context.user_id.as_bytes().to_vec())
             .bind("owner")
             .bind(access_context.user_id.as_bytes().to_vec())
@@ -540,6 +588,8 @@ pub async fn update_project(
         dev_script,
         cleanup_script,
         copy_files,
+        organization_id,
+        client_id,
     } = payload;
     // If git_repo_path is being changed, check if the new path is already used by another project
     let git_repo_path = if let Some(new_git_repo_path) = git_repo_path.map(|s| expand_tilde(&s))
@@ -567,6 +617,28 @@ pub async fn update_project(
         existing_project.git_repo_path
     };
 
+    // Resolve organization_id: if provided use it, otherwise keep existing
+    let resolved_org_id = match organization_id {
+        Some(org_id_str) => {
+            if org_id_str.is_empty() {
+                None
+            } else {
+                Some(Uuid::parse_str(&org_id_str).map_err(|_| StatusCode::BAD_REQUEST)?)
+            }
+        }
+        None => existing_project.organization_id,
+    };
+    let resolved_client_id = match client_id {
+        Some(client_id_str) => {
+            if client_id_str.is_empty() {
+                None
+            } else {
+                Some(Uuid::parse_str(&client_id_str).map_err(|_| StatusCode::BAD_REQUEST)?)
+            }
+        }
+        None => existing_project.client_id,
+    };
+
     match Project::update(
         &deployment.db().pool,
         existing_project.id,
@@ -576,6 +648,8 @@ pub async fn update_project(
         dev_script,
         cleanup_script,
         copy_files,
+        resolved_org_id,
+        resolved_client_id,
     )
     .await
     {
@@ -962,6 +1036,66 @@ pub async fn set_vibe_budget(
     })))
 }
 
+// ============================================================================
+// Project Hierarchy (Parent/Reorder)
+// ============================================================================
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SetParentRequest {
+    pub parent_project_id: Option<Uuid>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ReorderRequest {
+    pub sort_order: i32,
+}
+
+pub async fn set_project_parent(
+    Extension(access_context): Extension<AccessContext>,
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<SetParentRequest>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    // Only admins or project owners can reparent
+    if !access_context.is_admin {
+        access_context
+            .check_project_access(
+                &deployment.db().pool,
+                &project.id.to_string(),
+                ProjectRole::Owner,
+            )
+            .await
+            .map_err(|_| ApiError::Forbidden("Only project owners can change parent".into()))?;
+    }
+
+    Project::set_parent(&deployment.db().pool, project.id, payload.parent_project_id)
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
+pub async fn reorder_project(
+    Extension(access_context): Extension<AccessContext>,
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<ReorderRequest>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    if !access_context.is_admin {
+        access_context
+            .check_project_access(
+                &deployment.db().pool,
+                &project.id.to_string(),
+                ProjectRole::Owner,
+            )
+            .await
+            .map_err(|_| ApiError::Forbidden("Only project owners can reorder".into()))?;
+    }
+
+    Project::reorder(&deployment.db().pool, project.id, payload.sort_order).await?;
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let project_id_router = Router::new()
         .route(
@@ -992,6 +1126,8 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/budget",
             get(get_vibe_budget).put(set_vibe_budget),
         )
+        .route("/parent", put(set_project_parent))
+        .route("/reorder", put(reorder_project))
         .route("/wallet", patch(register_project_wallet))
         .merge(crate::routes::project_boards::router(deployment))
         .merge(crate::routes::project_controllers::router(deployment))

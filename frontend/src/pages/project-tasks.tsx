@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle, Archive, Plus, Sparkles } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
-import { projectsApi, tasksApi, attemptsApi, agentsApi, resolveApiUrl } from '@/lib/api';
+import { projectsApi, tasksApi, attemptsApi, agentsApi, usersApi, resolveApiUrl } from '@/lib/api';
+import type { UserListItem } from '@/lib/api';
 import type { AgentChatRequest } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { ViewSwitcher } from '@/components/views/ViewSwitcher';
@@ -49,12 +50,16 @@ import {
 } from '@/lib/responsive-config';
 
 import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
+import { SortMenu } from '@/components/tasks/SortMenu';
 import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import { EnhancedTaskDetailsPanel } from '@/components/tasks';
+import { ProjectOverview } from '@/components/projects/ProjectOverview';
 import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
+import { useProjectAccess } from '@/hooks/useProjectAccess';
 import { useTaskAgentFlowMap } from '@/hooks/useAgentFlows';
+import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import NiceModal from '@ebay/nice-modal-react';
 import { useHotkeysContext } from 'react-hotkeys-hook';
@@ -86,7 +91,7 @@ export function ProjectTasks() {
   const [showArchived, setShowArchived] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const { currentViewType, useEnhancedCards, setUseEnhancedCards } = useViewStore();
+  const { currentViewType, useEnhancedCards, setUseEnhancedCards, sortOption } = useViewStore();
   const {
     selectionMode,
     selectedTaskIds,
@@ -159,13 +164,39 @@ export function ProjectTasks() {
     [navigateToTask, navigateToAttempt, projectId, selectedTask]
   );
 
+  const { user } = useAuth();
+
+  // Fetch users for assignee display
+  const { data: usersData } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => usersApi.list(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const usersMap = useMemo(() => {
+    const map = new Map<string, UserListItem>();
+    usersData?.forEach(u => map.set(u.id, u));
+    return map;
+  }, [usersData]);
+
   // Stream tasks for this project
   const {
-    tasks,
+    tasks: allTasks,
     tasksById,
     isLoading,
     error: streamError,
   } = useProjectTasks(projectId || '');
+
+  // Fetch project access scope (full vs assigned_only)
+  const { data: projectAccess } = useProjectAccess(projectId);
+
+  // Apply access scope: task-only assignees see only their tasks
+  const tasks = useMemo(() => {
+    if (!projectAccess || projectAccess.access_scope !== 'assigned_only' || !user) {
+      return allTasks;
+    }
+    return allTasks.filter(t => t.assignee_id === user.id);
+  }, [allTasks, projectAccess, user]);
 
   // Fetch agent flows for all tasks to display on cards
   const taskIds = useMemo(() => tasks.map(t => t.id), [tasks]);
@@ -277,8 +308,9 @@ export function ProjectTasks() {
     return result;
   }, [tasks, boardFilter, searchQuery, projectId, getActiveFilters, showArchived]);
 
-  // Memoize grouped filtered tasks
+  // Memoize grouped filtered tasks, sorted by active sort option within each column
   const groupedFilteredTasks = useMemo(() => {
+    const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
     const groups: Record<string, Task[]> = {};
     taskStatuses.forEach((status) => {
       groups[status] = [];
@@ -291,8 +323,59 @@ export function ProjectTasks() {
         groups['todo'].push(task);
       }
     });
+
+    const dir = sortOption.direction === 'asc' ? 1 : -1;
+
+    for (const status of taskStatuses) {
+      groups[status].sort((a, b) => {
+        let cmp = 0;
+        switch (sortOption.field) {
+          case 'priority': {
+            const pa = priorityOrder[a.priority || 'medium'] ?? 2;
+            const pb = priorityOrder[b.priority || 'medium'] ?? 2;
+            cmp = pa - pb;
+            // Secondary: due date soonest first
+            if (cmp === 0) {
+              const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+              const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+              cmp = da - db;
+            }
+            break;
+          }
+          case 'due_date': {
+            const da = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+            const db = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+            cmp = da - db;
+            break;
+          }
+          case 'updated_at': {
+            const ua = new Date(a.updated_at).getTime();
+            const ub = new Date(b.updated_at).getTime();
+            cmp = ua - ub;
+            break;
+          }
+          case 'created_at': {
+            const ca = new Date(a.created_at).getTime();
+            const cb = new Date(b.created_at).getTime();
+            cmp = ca - cb;
+            break;
+          }
+          case 'assignee_id': {
+            const aa = a.assignee_id || '';
+            const ab = b.assignee_id || '';
+            cmp = aa.localeCompare(ab);
+            break;
+          }
+          case 'title': {
+            cmp = a.title.localeCompare(b.title);
+            break;
+          }
+        }
+        return cmp * dir;
+      });
+    }
     return groups;
-  }, [filteredTasks]);
+  }, [filteredTasks, sortOption]);
 
   useKeyNavUp(
     () => {
@@ -669,13 +752,14 @@ export function ProjectTasks() {
 
           {/* View Switcher */}
           {tasks && tasks.length > 0 && projectId && (
-            <div className="px-6 py-4 border-b bg-background/95 backdrop-blur sticky top-0 z-10 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">{project?.name || 'Tasks'}</h2>
-              <div className="flex items-center gap-2">
+            <div className="px-6 py-4 border-b bg-background/95 backdrop-blur sticky top-0 z-10 flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold mr-auto">{project?.name || 'Tasks'}</h2>
+              <div className="flex items-center gap-2 flex-wrap">
                 <FilterButton
                   projectId={projectId}
                   onClick={() => setFilterPanelOpen(true)}
                 />
+                <SortMenu />
                 <SavedFiltersMenu projectId={projectId} />
                 <Button
                   variant="outline"
@@ -789,6 +873,8 @@ export function ProjectTasks() {
                 </CardContent>
               </Card>
             </div>
+          ) : currentViewType === 'overview' && project ? (
+            <ProjectOverview project={project} tasks={filteredTasks} />
           ) : currentViewType === 'table' && projectId ? (
             <div className="w-full h-full p-6">
               <TableView
@@ -851,6 +937,7 @@ export function ProjectTasks() {
                 useEnhancedCards={useEnhancedCards}
                 onSendMessageToAgent={handleSendMessageToAgent}
                 showArchived={showArchived}
+                usersMap={usersMap}
               />
             </div>
           )}

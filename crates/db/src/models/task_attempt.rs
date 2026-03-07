@@ -45,6 +45,10 @@ pub struct TaskAttempt {
     // "GEMINI", etc.)
     pub worktree_deleted: bool, // Flag indicating if worktree has been cleaned up
     pub setup_completed_at: Option<DateTime<Utc>>, // When setup script was last completed
+    pub archived: bool,          // Whether this workspace is archived
+    pub pinned: bool,            // Whether this workspace is pinned
+    pub name: Option<String>,    // Auto-generated or user-set name (max 60 chars)
+    pub seen_at: Option<DateTime<Utc>>, // When the user last viewed this workspace
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -106,6 +110,10 @@ impl TaskAttempt {
                               executor AS "executor!",
                               worktree_deleted AS "worktree_deleted!: bool",
                               setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                              archived AS "archived!: bool",
+                              pinned AS "pinned!: bool",
+                              name,
+                              seen_at AS "seen_at: DateTime<Utc>",
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
                        FROM task_attempts
@@ -126,6 +134,10 @@ impl TaskAttempt {
                               executor AS "executor!",
                               worktree_deleted AS "worktree_deleted!: bool",
                               setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                              archived AS "archived!: bool",
+                              pinned AS "pinned!: bool",
+                              name,
+                              seen_at AS "seen_at: DateTime<Utc>",
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
                        FROM task_attempts
@@ -157,6 +169,10 @@ impl TaskAttempt {
                        ta.executor AS "executor!",
                        ta.worktree_deleted  AS "worktree_deleted!: bool",
                        ta.setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                       ta.archived AS "archived!: bool",
+                       ta.pinned AS "pinned!: bool",
+                       ta.name,
+                       ta.seen_at AS "seen_at: DateTime<Utc>",
                        ta.created_at        AS "created_at!: DateTime<Utc>",
                        ta.updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    task_attempts ta
@@ -247,6 +263,10 @@ impl TaskAttempt {
                        executor AS "executor!",
                        worktree_deleted  AS "worktree_deleted!: bool",
                        setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                       archived AS "archived!: bool",
+                       pinned AS "pinned!: bool",
+                       name,
+                       seen_at AS "seen_at: DateTime<Utc>",
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    task_attempts
@@ -268,6 +288,10 @@ impl TaskAttempt {
                        executor AS "executor!",
                        worktree_deleted  AS "worktree_deleted!: bool",
                        setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                       archived AS "archived!: bool",
+                       pinned AS "pinned!: bool",
+                       name,
+                       seen_at AS "seen_at: DateTime<Utc>",
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    task_attempts
@@ -390,7 +414,7 @@ impl TaskAttempt {
             TaskAttempt,
             r#"INSERT INTO task_attempts (id, task_id, container_ref, branch, base_branch, executor, worktree_deleted, setup_completed_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, base_branch, executor as "executor!",  worktree_deleted as "worktree_deleted!: bool", setup_completed_at as "setup_completed_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, base_branch, executor as "executor!",  worktree_deleted as "worktree_deleted!: bool", setup_completed_at as "setup_completed_at: DateTime<Utc>", archived as "archived!: bool", pinned as "pinned!: bool", name, seen_at as "seen_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             attempt_id,
             task_id,
             Option::<String>::None, // Container isn't known yet
@@ -417,6 +441,82 @@ impl TaskAttempt {
         .execute(pool)
         .await?;
 
+        Ok(())
+    }
+
+    /// Update workspace flags (archived, pinned, name)
+    pub async fn update_workspace_flags(
+        pool: &SqlitePool,
+        attempt_id: Uuid,
+        archived: Option<bool>,
+        pinned: Option<bool>,
+        name: Option<Option<&str>>,
+    ) -> Result<(), sqlx::Error> {
+        // Build dynamic update
+        if let Some(archived) = archived {
+            sqlx::query!(
+                "UPDATE task_attempts SET archived = $1, updated_at = datetime('now', 'subsec') WHERE id = $2",
+                archived,
+                attempt_id
+            )
+            .execute(pool)
+            .await?;
+        }
+        if let Some(pinned) = pinned {
+            sqlx::query!(
+                "UPDATE task_attempts SET pinned = $1, updated_at = datetime('now', 'subsec') WHERE id = $2",
+                pinned,
+                attempt_id
+            )
+            .execute(pool)
+            .await?;
+        }
+        if let Some(name) = name {
+            sqlx::query!(
+                "UPDATE task_attempts SET name = $1, updated_at = datetime('now', 'subsec') WHERE id = $2",
+                name,
+                attempt_id
+            )
+            .execute(pool)
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// Mark a workspace as seen (user viewed it)
+    pub async fn mark_seen(
+        pool: &SqlitePool,
+        attempt_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        let now = Utc::now();
+        sqlx::query!(
+            "UPDATE task_attempts SET seen_at = $1, updated_at = datetime('now', 'subsec') WHERE id = $2",
+            now,
+            attempt_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Auto-generate a workspace name from the first prompt (truncated to 60 chars)
+    pub async fn set_auto_name(
+        pool: &SqlitePool,
+        attempt_id: Uuid,
+        prompt: &str,
+    ) -> Result<(), sqlx::Error> {
+        let name: String = prompt.chars().take(60).collect();
+        let name = name.trim();
+        if name.is_empty() {
+            return Ok(());
+        }
+        sqlx::query!(
+            "UPDATE task_attempts SET name = $1, updated_at = datetime('now', 'subsec') WHERE id = $2 AND name IS NULL",
+            name,
+            attempt_id
+        )
+        .execute(pool)
+        .await?;
         Ok(())
     }
 

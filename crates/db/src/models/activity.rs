@@ -127,6 +127,38 @@ impl ActivityLog {
         .await
     }
 
+    /// Fetch recent activity across multiple tasks (for notification feed).
+    /// Returns the most recent N activity log entries for tasks in the given project IDs.
+    pub async fn find_recent_for_projects(
+        pool: &SqlitePool,
+        project_ids: &[Uuid],
+        limit: i64,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        if project_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        // Build a comma-separated list of hex(?) placeholders for BLOB comparison
+        let placeholders: Vec<String> = project_ids.iter().map(|_| "?".to_string()).collect();
+        let query_str = format!(
+            r#"SELECT
+                al.id, al.task_id, al.actor_id, al.actor_type, al.action,
+                al.previous_state, al.new_state, al.metadata, al.timestamp
+            FROM activity_logs al
+            JOIN tasks t ON al.task_id = t.id
+            WHERE t.project_id IN ({})
+            ORDER BY al.timestamp DESC
+            LIMIT ?"#,
+            placeholders.join(", ")
+        );
+
+        let mut query = sqlx::query_as::<_, ActivityLog>(&query_str);
+        for pid in project_ids {
+            query = query.bind(pid.as_bytes().as_slice());
+        }
+        query = query.bind(limit);
+        query.fetch_all(pool).await
+    }
+
     pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!("DELETE FROM activity_logs WHERE id = $1", id)
             .execute(pool)

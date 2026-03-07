@@ -44,10 +44,8 @@ import { ProjectMembersDialog } from '@/components/dialogs/project-members-dialo
 import { projectsApi, organizationsApi, type ClientData } from '@/lib/api';
 import type { Project } from 'shared/types';
 
-// Extended project type that includes org/client fields returned by the API
-interface ProjectWithOrg extends Project {
-  client_id: string | null;
-}
+// Project already includes organization_id and client_id
+type ProjectWithOrg = Project;
 
 interface VibeBudgetResponse {
   vibe_budget_limit: number | null;

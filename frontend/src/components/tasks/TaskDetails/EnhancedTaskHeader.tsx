@@ -272,11 +272,22 @@ export function EnhancedTaskHeader({
         )}
 
         {/* Tags */}
-        {task.tags && task.tags.split(',').slice(0, 3).map((tag, i) => (
-          <Badge key={i} variant="secondary" className="text-xs">
-            {tag.trim()}
-          </Badge>
-        ))}
+        {task.tags && (() => {
+          try {
+            const parsed = JSON.parse(task.tags) as string[];
+            return parsed.slice(0, 3).map((tag, i) => (
+              <Badge key={i} variant="secondary" className="text-xs">
+                {tag.trim()}
+              </Badge>
+            ));
+          } catch {
+            return task.tags.split(',').slice(0, 3).map((tag, i) => (
+              <Badge key={i} variant="secondary" className="text-xs">
+                {tag.trim()}
+              </Badge>
+            ));
+          }
+        })()}
       </div>
     </div>
     </TooltipProvider>
