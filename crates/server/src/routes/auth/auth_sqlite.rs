@@ -274,8 +274,12 @@ pub async fn get_current_user(
     .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?
     .ok_or_else(|| ApiError::BadRequest("Invalid session".to_string()))?;
 
-    // Check if session expired
+    // Check if session expired (handle both RFC 3339 and SQLite datetime formats)
     let expires_at = chrono::DateTime::parse_from_rfc3339(&session.expires_at)
+        .or_else(|_| {
+            chrono::NaiveDateTime::parse_from_str(&session.expires_at, "%Y-%m-%d %H:%M:%S")
+                .map(|naive| naive.and_utc().fixed_offset())
+        })
         .map_err(|e| ApiError::InternalError(format!("Invalid expiry date: {}", e)))?;
 
     if expires_at < chrono::Utc::now() {

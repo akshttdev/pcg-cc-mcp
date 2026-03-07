@@ -592,9 +592,11 @@ pub async fn get_current_user(
                     .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
 
                 // Extend session expiry on activity (sliding window)
+                let new_expiry = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
                 let _ = sqlx::query(
-                    "UPDATE sessions SET expires_at = datetime('now', '+7 days'), last_used_at = datetime('now') WHERE token_hash = ?"
+                    "UPDATE sessions SET expires_at = ?, last_used_at = datetime('now') WHERE token_hash = ?"
                 )
+                .bind(&new_expiry)
                 .bind(&session_token_hash)
                 .execute(&pool)
                 .await;
@@ -638,9 +640,11 @@ pub async fn get_current_user(
                 .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {}", e)))?;
 
             // Extend session expiry on activity (sliding window)
+            let new_expiry = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
             let _ = sqlx::query(
-                "UPDATE sessions SET expires_at = datetime('now', '+7 days'), last_used_at = datetime('now') WHERE token_hash = ?"
+                "UPDATE sessions SET expires_at = ?, last_used_at = datetime('now') WHERE token_hash = ?"
             )
+            .bind(&new_expiry)
             .bind(&token_hash)
             .execute(&pool)
             .await;

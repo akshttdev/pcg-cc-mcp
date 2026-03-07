@@ -92,3 +92,11 @@ export const useKeyToggleFullscreen = createSemanticHook(
  * useKeyDeleteTask(() => handleDeleteTask(selectedTask), { scope: Scope.KANBAN });
  */
 export const useKeyDeleteTask = createSemanticHook(Action.DELETE_TASK);
+
+/**
+ * Toggle sidebar action - typically Cmd+B / Ctrl+B
+ *
+ * @example
+ * useKeyToggleSidebar(() => toggleSidebar(), { scope: Scope.GLOBAL });
+ */
+export const useKeyToggleSidebar = createSemanticHook(Action.TOGGLE_SIDEBAR);

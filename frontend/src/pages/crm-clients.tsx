@@ -22,3 +22,23 @@ export function CrmClientsPage() {
     />
   );
 }
+
+export function CrmAcquisitionPage() {
+  const { orgId } = useParams<{ orgId: string }>();
+
+  return (
+    <div className="h-full flex items-center justify-center text-muted-foreground">
+      {orgId ? 'Acquisition Pipeline — coming soon' : 'Organization not found'}
+    </div>
+  );
+}
+
+export function CrmLifecyclePage() {
+  const { orgId } = useParams<{ orgId: string }>();
+
+  return (
+    <div className="h-full flex items-center justify-center text-muted-foreground">
+      {orgId ? 'Lifecycle Pipeline — coming soon' : 'Organization not found'}
+    </div>
+  );
+}
