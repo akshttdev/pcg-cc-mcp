@@ -42,6 +42,9 @@ import {
   Sparkles,
   LayoutGrid,
   Brain,
+  Bot,
+  Share2,
+  Calendar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -212,6 +215,75 @@ function OrgCrmSection({
 // ProjectFolder — existing component for rendering leaf-level project items
 // ============================================================================
 
+// ============================================================================
+// CrmSidebarLinks — expandable CRM sub-navigation for a project
+// ============================================================================
+
+function CrmSidebarLinks({
+  projectId,
+  location,
+  indent = 'pl-5',
+}: {
+  projectId: string;
+  location: ReturnType<typeof useLocation>;
+  indent?: string;
+}) {
+  const isCrmActive = location.pathname.startsWith(`/projects/${projectId}/crm`);
+  const [expanded, setExpanded] = useState(isCrmActive);
+
+  const crmLinks = [
+    { label: 'Overview',       to: `/projects/${projectId}/crm/overview`,     icon: BarChart3  },
+    { label: 'Sales Pipeline', to: `/projects/${projectId}/crm/sales`,         icon: TrendingUp },
+    { label: 'Client Delivery',to: `/projects/${projectId}/crm/delivery`,      icon: Package    },
+    { label: 'Contacts',       to: `/projects/${projectId}/crm`,               icon: Users      },
+    { label: 'Conferences',    to: `/projects/${projectId}/crm/conferences`,   icon: Calendar   },
+  ];
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            `flex items-center gap-2 ${indent} pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground w-full text-left`,
+            isCrmActive && 'text-accent-foreground'
+          )}
+        >
+          <Users className="h-3 w-3 text-muted-foreground" />
+          <span className="flex-1">CRM</span>
+          {expanded ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-0.5">
+          {crmLinks.map((link) => {
+            const Icon = link.icon;
+            const isActive = location.pathname === link.to;
+            return (
+              <Link
+                key={link.to}
+                to={link.to}
+                className={cn(
+                  `flex items-center gap-2 ${indent} pl-7 pr-2 py-1 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground`,
+                  isActive && 'bg-accent text-accent-foreground'
+                )}
+              >
+                <Icon className="h-3 w-3 text-muted-foreground" />
+                <span>{link.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ============================================================================
+
 interface ProjectFolderProps {
   project: Project;
   isActive: boolean;
@@ -370,6 +442,45 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, isFavorite, on
             </Link>
           )}
 
+          {/* Controller */}
+          <Link
+            to={`/projects/${project.id}/control`}
+            className={cn(
+              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-2 border-t pt-2',
+              location.pathname === `/projects/${project.id}/control` && 'bg-accent text-accent-foreground'
+            )}
+          >
+            <Bot className="h-3 w-3 text-purple-500" />
+            <span className="font-medium">Controller</span>
+          </Link>
+
+          {/* CRM */}
+          <CrmSidebarLinks projectId={project.id} location={location} indent="pl-5" />
+
+          {/* Social */}
+          <Link
+            to={`/projects/${project.id}/social`}
+            className={cn(
+              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+              location.pathname === `/projects/${project.id}/social` && 'bg-accent text-accent-foreground'
+            )}
+          >
+            <Share2 className="h-3 w-3 text-muted-foreground" />
+            <span>Social</span>
+          </Link>
+
+          {/* Knowledge */}
+          <Link
+            to={`/projects/${project.id}/knowledge`}
+            className={cn(
+              'flex items-center gap-2 pl-5 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+              location.pathname === `/projects/${project.id}/knowledge` && 'bg-accent text-accent-foreground'
+            )}
+          >
+            <BookOpen className="h-3 w-3 text-muted-foreground" />
+            <span>Knowledge</span>
+          </Link>
+
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -526,6 +637,45 @@ function SortableSidebarProjectFolder({
                   </Link>
                 );
               })}
+
+            {/* Controller */}
+            <Link
+              to={`/projects/${project.id}/control`}
+              className={cn(
+                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground mt-1 border-t pt-2',
+                location.pathname === `/projects/${project.id}/control` && 'bg-accent text-accent-foreground'
+              )}
+            >
+              <Bot className="h-3 w-3 text-purple-500" />
+              <span className="font-medium">Controller</span>
+            </Link>
+
+            {/* CRM */}
+            <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
+
+            {/* Social */}
+            <Link
+              to={`/projects/${project.id}/social`}
+              className={cn(
+                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                location.pathname === `/projects/${project.id}/social` && 'bg-accent text-accent-foreground'
+              )}
+            >
+              <Share2 className="h-3 w-3 text-muted-foreground" />
+              <span>Social</span>
+            </Link>
+
+            {/* Knowledge */}
+            <Link
+              to={`/projects/${project.id}/knowledge`}
+              className={cn(
+                'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent hover:text-accent-foreground',
+                location.pathname === `/projects/${project.id}/knowledge` && 'bg-accent text-accent-foreground'
+              )}
+            >
+              <BookOpen className="h-3 w-3 text-muted-foreground" />
+              <span>Knowledge</span>
+            </Link>
 
           </div>
         </CollapsibleContent>
