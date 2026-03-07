@@ -54,6 +54,7 @@ pub mod autonomy;
 pub mod cinematics;
 pub mod webhooks;
 pub mod dropbox;
+pub mod quickbooks;
 pub mod wide_research;
 pub mod token_usage;
 pub mod system_metrics;
@@ -101,6 +102,7 @@ pub mod intelligence;
 pub mod graph;
 pub mod invite_dispatch;
 pub mod companies;
+pub mod discord;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -139,6 +141,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(crm_deals::router(&deployment))
         .merge(crm_activities::router(&deployment))
         .merge(dropbox::router())
+        .merge(quickbooks::router(&deployment))
         .merge(agents::routes())
         .merge(agent_chat::routes())
         .merge(comments::router())
@@ -174,6 +177,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(companies::router(&deployment))
         .merge(graph::router(&deployment))
         .merge(invite_dispatch::router(&deployment))
+        .merge(discord::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
         .layer(middleware::from_fn_with_state(

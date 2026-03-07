@@ -45,9 +45,9 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
-  Target,
   Activity,
   Globe,
+  Headphones,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -65,7 +65,6 @@ import type {
   SidebarOrg,
   SidebarClient as SidebarClientType,
   SidebarProject as SidebarProjectType,
-  SidebarSharedBoardGroup as SidebarSharedBoardGroupType,
 } from '@/lib/api';
 import type { Project, ProjectBoard } from 'shared/types';
 import { useCommandStore } from '@/stores/useCommandStore';
@@ -140,6 +139,7 @@ const MANAGEMENT_NAV_ITEMS: NavItem[] = [
   { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
   { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
   { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
+  { label: 'Discord Voice', icon: Headphones, to: '/discord', id: 'discord', adminOnly: true },
 ];
 
 // Global views - admin only, collapsible
@@ -923,17 +923,27 @@ function ClientGroup({
   queryClient?: QueryClient;
 }) {
   const hasActiveProject = isProjectInTree(client.projects, projectId || '');
-  const [expanded, setExpanded] = useState(hasActiveProject);
+  const storageKey = `sidebar:client:${client.id}:expanded`;
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    if (hasActiveProject) return true;
+    const stored = localStorage.getItem(storageKey);
+    return stored !== null ? stored === 'true' : false;
+  });
   const navigate = useNavigate();
+
+  const handleSetExpanded = (next: boolean) => {
+    setExpanded(next);
+    localStorage.setItem(storageKey, String(next));
+  };
 
   useEffect(() => {
     if (hasActiveProject && !expanded) {
-      setExpanded(true);
+      handleSetExpanded(true);
     }
   }, [hasActiveProject]);
 
   return (
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
+    <Collapsible open={expanded} onOpenChange={handleSetExpanded}>
       <div className="flex items-center group/client">
         <Button
           variant="ghost"
@@ -1000,84 +1010,6 @@ function ClientGroup({
             onToggleProject={onToggleProject}
             queryClient={queryClient}
           />
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-// ============================================================================
-// SharedBoardGroup — renders boards shared TO this org from a source org
-// ============================================================================
-
-function SharedBoardGroup({
-  group,
-  projectId: _projectId,
-}: {
-  group: SidebarSharedBoardGroupType;
-  projectId?: string;
-}) {
-  const location = useLocation();
-  const [expanded, setExpanded] = useState(false);
-
-  const shareLabel = group.share_type === 'joint_venture'
-    ? 'Joint Venture'
-    : group.share_type === 'review'
-    ? 'Review'
-    : 'Collaboration';
-
-  return (
-    <Collapsible open={expanded} onOpenChange={setExpanded}>
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          className="w-full justify-between px-2 py-1 h-auto font-normal text-xs"
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Share2 className="h-3.5 w-3.5 text-[hsl(var(--warning))] shrink-0" />
-            <span className="truncate">{group.source_org_name}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] px-1 py-0.5 rounded bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))]">
-              {shareLabel}
-            </span>
-            {expanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-          </div>
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pl-4">
-        <div className="space-y-0.5 py-0.5">
-          {group.boards.map((board) => {
-            const params = new URLSearchParams({ board: board.board_id });
-            const isActive =
-              location.pathname === `/projects/${board.project_id}/tasks` &&
-              location.search.includes(`board=${board.board_id}`);
-
-            return (
-              <Link
-                key={board.board_id}
-                to={{
-                  pathname: `/projects/${board.project_id}/tasks`,
-                  search: params.toString(),
-                }}
-                className={cn(
-                  'block px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground truncate transition-colors',
-                  isActive && 'bg-primary/10 text-foreground font-medium'
-                )}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Folder className="h-3 w-3 text-muted-foreground shrink-0" />
-                  <span className="truncate">
-                    {board.project_name} &rarr; {board.board_name}
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -1161,32 +1093,6 @@ function OrgSection({
           </Link>
 
           <OrgIntelligenceSection orgId={org.id} location={location} />
-        </div>
-
-        {/* Org-level CRM pipeline quick links */}
-        <div className="flex gap-1 px-1 py-1">
-          <Link
-            to={`/organizations/${org.id}/crm/acquisition`}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground flex-1 transition-colors',
-              location.pathname === `/organizations/${org.id}/crm/acquisition` &&
-                'bg-primary/10 text-foreground font-medium'
-            )}
-          >
-            <Target className="h-3 w-3 text-[hsl(var(--warning))] shrink-0" />
-            <span>Acquisition</span>
-          </Link>
-          <Link
-            to={`/organizations/${org.id}/crm/lifecycle`}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground flex-1 transition-colors',
-              location.pathname === `/organizations/${org.id}/crm/lifecycle` &&
-                'bg-primary/10 text-foreground font-medium'
-            )}
-          >
-            <TrendingUp className="h-3 w-3 text-[hsl(var(--success))] shrink-0" />
-            <span>Lifecycle</span>
-          </Link>
         </div>
 
         {/* Internal projects — collapsible */}
@@ -1285,21 +1191,6 @@ function OrgSection({
           </CollapsibleContent>
         </Collapsible>
 
-        {/* Shared boards from other orgs */}
-        {org.shared_boards && org.shared_boards.length > 0 && (
-          <div className="space-y-0.5 py-0.5">
-            <div className="px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Shared with You
-            </div>
-            {org.shared_boards.map((group) => (
-              <SharedBoardGroup
-                key={group.source_org_id}
-                group={group}
-                projectId={projectId}
-              />
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1314,6 +1205,7 @@ function SidebarOrgGroups({
   projectId,
   orgId,
   isAdmin,
+  homeOrgId,
   expandedProjects,
   onToggleProject,
   queryClient,
@@ -1322,25 +1214,29 @@ function SidebarOrgGroups({
   projectId?: string;
   orgId?: string;
   isAdmin: boolean;
+  homeOrgId?: string | null;
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
   queryClient: QueryClient;
 }) {
   const [showOtherOrgs, setShowOtherOrgs] = useState(false);
 
-  // Derive activeOrgId: from URL orgId, or from which org contains the active project
+  // Derive activeOrgId: from URL orgId, from which org contains the active project, or from home org
   const allOrgs = [...sidebarTree.owned_orgs, ...sidebarTree.member_orgs];
   const activeOrgId = useMemo(() => {
     if (orgId) return orgId;
-    if (!projectId) return undefined;
-    for (const org of allOrgs) {
-      if (isProjectInTree(org.internal_projects, projectId)) return org.id;
-      for (const client of org.clients) {
-        if (isProjectInTree(client.projects, projectId)) return org.id;
+    if (projectId) {
+      for (const org of allOrgs) {
+        if (isProjectInTree(org.internal_projects, projectId)) return org.id;
+        for (const client of org.clients) {
+          if (isProjectInTree(client.projects, projectId)) return org.id;
+        }
       }
     }
+    // Fall back to home org when no URL context
+    if (homeOrgId) return homeOrgId;
     return undefined;
-  }, [orgId, projectId, allOrgs]);
+  }, [orgId, projectId, homeOrgId, allOrgs]);
 
   // Only show the active org expanded; all others go into "Other Organizations"
   const activeOrg = activeOrgId ? allOrgs.find((o) => o.id === activeOrgId) : undefined;
@@ -1746,6 +1642,7 @@ export function Sidebar({ className }: SidebarProps) {
                 projectId={projectId}
                 orgId={orgIdFromPath}
                 isAdmin={isAdmin}
+                homeOrgId={user?.home_organization_id}
                 expandedProjects={expandedProjects}
                 onToggleProject={toggleProject}
                 queryClient={queryClient}

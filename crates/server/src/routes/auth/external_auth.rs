@@ -47,6 +47,7 @@ struct User {
     #[allow(dead_code)]
     pub is_active: i32,
     pub is_admin: i32,
+    pub home_organization_id: Option<Vec<u8>>,
 }
 
 /// POST /auth/external/validate
@@ -78,7 +79,7 @@ pub async fn validate_external_token(
 
     // Look up user by external provider + external_id
     let existing_user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, full_name, avatar_url, is_active, is_admin
+        "SELECT id, username, email, full_name, avatar_url, is_active, is_admin, home_organization_id
          FROM users
          WHERE external_provider = ? AND external_id = ?",
     )
@@ -132,6 +133,7 @@ pub async fn validate_external_token(
                 avatar_url: None,
                 is_active: 1,
                 is_admin: 0,
+                home_organization_id: None,
             }
         }
     };
@@ -196,6 +198,9 @@ pub async fn validate_external_token(
         is_admin: effective_admin,
         organizations,
         platform_roles,
+        home_organization_id: user.home_organization_id
+            .and_then(|b| uuid::Uuid::from_slice(&b).ok())
+            .map(|u| u.to_string()),
     };
 
     let response = ValidateTokenResponse {

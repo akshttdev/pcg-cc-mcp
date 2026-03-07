@@ -103,6 +103,7 @@ pub mod tag;
 pub mod entity_conversion;
 pub mod scheduled_meeting;
 pub mod company;
+pub mod quickbooks_account;
 pub mod entity_graph;
 pub mod topology_node;
 pub mod topology_edge;
