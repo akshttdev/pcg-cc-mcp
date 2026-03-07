@@ -42,6 +42,7 @@ import {
   Calendar,
   Radio,
   MessageSquare,
+  Database,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -284,7 +285,7 @@ function OrgIntelligenceSection({
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
             { label: 'Overview',      icon: Brain,         color: 'text-[hsl(var(--success))]', to: `/organizations/${orgId}?tab=knowledge`,                   match: isOnOrgIntel && !location.search.includes('view=') },
-            { label: 'Conversations', icon: MessageSquare, color: 'text-primary',                to: `/organizations/${orgId}?tab=knowledge&view=conversations`, match: isOnOrgIntel && location.search.includes('view=conversations') },
+            { label: 'Data Sources',  icon: Database,       color: 'text-primary',                to: `/organizations/${orgId}?tab=knowledge&view=datasources`,   match: isOnOrgIntel && location.search.includes('view=datasources') },
             { label: 'Artifacts',     icon: FileText,      color: 'text-[hsl(var(--brand))]',    to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,     match: isOnOrgIntel && location.search.includes('view=artifacts') },
             { label: 'Pulse',         icon: Radio,         color: 'text-[hsl(var(--warning))]',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,         match: isOnOrgIntel && location.search.includes('view=pulse') },
             { label: 'Topology',      icon: Network,       color: 'text-[hsl(var(--info))]',     to: `/organizations/${orgId}?tab=knowledge&view=topology`,      match: isOnOrgIntel && location.search.includes('view=topology') },

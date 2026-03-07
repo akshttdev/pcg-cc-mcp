@@ -1,12 +1,29 @@
 import { useMemo, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Building2,
   Users,
@@ -39,6 +56,8 @@ import {
   Facebook,
   Youtube,
   Inbox,
+  Database,
+  Plus,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -55,6 +74,7 @@ import {
   type SocialAccountRecord,
   type SocialMentionRecord,
   type PersonOrgContact,
+  type CreateKnowledgeSourceRequest,
 } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
@@ -585,6 +605,231 @@ const SOURCE_TYPE_META: Record<string, { label: string; icon: typeof BookOpen }>
   topology_snapshot: { label: 'Topology Snapshots', icon: Network },
 };
 
+const ALL_SOURCE_TYPES = [
+  'conversation',
+  'artifact',
+  'pulse_content',
+  'context_injection',
+  'entity',
+  'topology_snapshot',
+];
+
+// ── Add Data Source Dialog ────────────────────────────────────────────────────
+
+function AddDataSourceDialog({
+  projectEntries,
+  open,
+  onOpenChange,
+}: {
+  projectEntries: { id: string; name: string }[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [selectedProject, setSelectedProject] = useState<string>(projectEntries[0]?.id ?? '');
+  const [sourceType, setSourceType] = useState<string>('conversation');
+  const [title, setTitle] = useState('');
+  const [summary, setSummary] = useState('');
+
+  const createMutation = useMutation({
+    mutationFn: (data: { projectId: string } & CreateKnowledgeSourceRequest) =>
+      knowledgeApi.createSource(data.projectId, {
+        source_type: data.source_type,
+        source_title: data.source_title,
+        source_summary: data.source_summary,
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['projectKnowledge', variables.projectId] });
+      onOpenChange(false);
+      setTitle('');
+      setSummary('');
+    },
+  });
+
+  const handleSubmit = () => {
+    if (!selectedProject || !title.trim()) return;
+    createMutation.mutate({
+      projectId: selectedProject,
+      source_type: sourceType,
+      source_title: title.trim(),
+      source_summary: summary.trim() || undefined,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            Add Data Source
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Project</Label>
+            <Select value={selectedProject} onValueChange={setSelectedProject}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select project" />
+              </SelectTrigger>
+              <SelectContent>
+                {projectEntries.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Source Type</Label>
+            <Select value={sourceType} onValueChange={setSourceType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ALL_SOURCE_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {SOURCE_TYPE_META[type]?.label ?? type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Title</Label>
+            <Input
+              placeholder="e.g. Client kickoff call notes"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Summary (optional)</Label>
+            <Textarea
+              placeholder="Brief description or paste content..."
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              rows={4}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!title.trim() || !selectedProject || createMutation.isPending}
+          >
+            {createMutation.isPending ? 'Adding...' : 'Add Source'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Data Sources View ────────────────────────────────────────────────────────
+
+function DataSourcesView({
+  items,
+  title,
+  Icon,
+  isLoading,
+  loadedCount,
+  totalProjects,
+  projectEntries,
+  isDatasources,
+}: {
+  items: { source: ProjectKnowledgeSource; projectName: string; projectId: string }[];
+  title: string;
+  Icon: typeof BookOpen;
+  isLoading: boolean;
+  loadedCount: number;
+  totalProjects: number;
+  projectEntries: { id: string; name: string }[];
+  isDatasources: boolean;
+}) {
+  const [addOpen, setAddOpen] = useState(false);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <Badge variant="secondary">{items.length}</Badge>
+          {isLoading && (
+            <span className="text-xs text-muted-foreground ml-2">
+              Loading {loadedCount}/{totalProjects} projects…
+            </span>
+          )}
+        </div>
+        {isDatasources && projectEntries.length > 0 && (
+          <Button size="sm" onClick={() => setAddOpen(true)} className="gap-1">
+            <Plus className="h-3.5 w-3.5" />
+            Add Data
+          </Button>
+        )}
+      </div>
+      {items.length === 0 && !isLoading ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Icon className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>No {title.toLowerCase()} indexed yet</p>
+          {isDatasources && projectEntries.length > 0 && (
+            <Button variant="outline" size="sm" className="mt-4 gap-1" onClick={() => setAddOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Add your first data source
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map(({ source, projectName, projectId }) => (
+            <Card key={source.id} className="bg-card/80 backdrop-blur-sm border-border/50">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm truncate">{source.source_title}</p>
+                      {isDatasources && (
+                        <Badge variant="outline" className="text-[10px] shrink-0">
+                          {SOURCE_TYPE_META[source.source_type]?.label ?? source.source_type}
+                        </Badge>
+                      )}
+                    </div>
+                    {source.source_summary && (
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.source_summary}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-2">
+                      <Link
+                        to={`/projects/${projectId}/knowledge`}
+                        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        <FolderOpen className="h-3 w-3" />
+                        {projectName}
+                      </Link>
+                      {source.is_stale && (
+                        <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">stale</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Progress value={Math.round(source.coverage_score * 100)} className="w-16 h-1.5 mb-1" />
+                    <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}%</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+      <AddDataSourceDialog
+        projectEntries={projectEntries}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+      />
+    </div>
+  );
+}
+
 function KnowledgeTab({
   projectEntries,
   view,
@@ -634,70 +879,35 @@ function KnowledgeTab({
     return { totalSources, staleSources, avgCompleteness, sourcesByProject, byType };
   }, [knowledgeQueries, projectEntries]);
 
-  // Deep view — show all sources of a specific type across projects
+  // Deep view: "datasources" shows ALL sources across all types; others filter by type
   if (view && view !== 'overview') {
-    const typeKey =
-      view === 'conversations' ? 'conversation'
+    const isDatasources = view === 'datasources';
+    const typeKey = isDatasources ? null
+      : view === 'conversations' ? 'conversation'
       : view === 'artifacts'  ? 'artifact'
       : view === 'pulse'      ? 'pulse_content'
       : view === 'topology'   ? 'topology_snapshot'
       : null;
-    const items = typeKey ? (aggregated.byType[typeKey] || []) : [];
+
+    // For datasources, flatten all types; otherwise filter to one type
+    const items = isDatasources
+      ? Object.values(aggregated.byType).flat()
+      : typeKey ? (aggregated.byType[typeKey] || []) : [];
     const meta = typeKey ? SOURCE_TYPE_META[typeKey] : null;
-    const Icon = meta?.icon ?? BookOpen;
+    const Icon = isDatasources ? Database : (meta?.icon ?? BookOpen);
+    const title = isDatasources ? 'Data Sources' : (meta?.label ?? view);
 
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Icon className="h-5 w-5 text-muted-foreground" />
-          <h2 className="text-lg font-semibold">{meta?.label ?? view}</h2>
-          <Badge variant="secondary">{items.length}</Badge>
-          {isLoading && (
-            <span className="text-xs text-muted-foreground ml-2">
-              Loading {loadedCount}/{projectEntries.length} projects…
-            </span>
-          )}
-        </div>
-        {items.length === 0 && !isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Icon className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p>No {meta?.label.toLowerCase() ?? view} indexed yet</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {items.map(({ source, projectName, projectId }) => (
-              <Card key={source.id} className="bg-card/80 backdrop-blur-sm border-border/50">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium text-sm truncate">{source.source_title}</p>
-                      {source.source_summary && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.source_summary}</p>
-                      )}
-                      <div className="flex items-center gap-2 mt-2">
-                        <Link
-                          to={`/projects/${projectId}/knowledge`}
-                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                        >
-                          <FolderOpen className="h-3 w-3" />
-                          {projectName}
-                        </Link>
-                        {source.is_stale && (
-                          <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">stale</Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <Progress value={Math.round(source.coverage_score * 100)} className="w-16 h-1.5 mb-1" />
-                      <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}%</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+      <DataSourcesView
+        items={items}
+        title={title}
+        Icon={Icon}
+        isLoading={isLoading}
+        loadedCount={loadedCount}
+        totalProjects={projectEntries.length}
+        projectEntries={projectEntries}
+        isDatasources={isDatasources}
+      />
     );
   }
 
