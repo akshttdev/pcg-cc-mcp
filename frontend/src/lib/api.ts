@@ -5360,4 +5360,33 @@ export const dataSourcesApi = {
     const response = await makeRequest(`/api/data-sources/metadata-template/${dataType}`);
     return handleApiResponse<Record<string, unknown>>(response);
   },
+
+  getWorkflows: async (dataSourceId: string) => {
+    const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows`);
+    return handleApiResponse<any>(response);
+  },
+
+  runWorkflow: async (dataSourceId: string, workflowId: string) => {
+    const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows/${workflowId}/run`, {
+      method: 'POST',
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  getArtifacts: async (dataSourceId: string) => {
+    const response = await makeRequest(`/api/data-sources/${dataSourceId}/artifacts`);
+    return handleApiResponse<any[]>(response);
+  },
+};
+
+export const workflowsApi = {
+  listDefinitions: async () => {
+    const response = await makeRequest('/api/workflows/definitions');
+    return handleApiResponse<any[]>(response);
+  },
+
+  listRecentArtifacts: async () => {
+    const response = await makeRequest('/api/artifacts/recent');
+    return handleApiResponse<ExecutionArtifact[]>(response);
+  },
 };

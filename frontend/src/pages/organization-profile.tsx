@@ -80,6 +80,10 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  GitBranch,
+  Clock,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -97,10 +101,11 @@ import {
   type SocialMentionRecord,
   type PersonOrgContact,
   dataSourcesApi,
+  workflowsApi,
   type DataSourceRecord,
   type UpdateDataSourceRequest,
+  type ExecutionArtifact,
   DATA_TYPE_OPTIONS,
-  SOURCE_TYPE_OPTIONS,
 } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
@@ -1035,7 +1040,7 @@ function DataSourcesView({
                 <TableRow key={source.id}>
                   <TableCell>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{source.title}</p>
+                      <Link to={`/organizations/${orgId}/data-sources/${source.id}`} className="text-sm font-medium truncate hover:underline block">{source.title}</Link>
                       {source.description && (
                         <p className="text-xs text-muted-foreground truncate mt-0.5">{source.description}</p>
                       )}
@@ -1123,6 +1128,222 @@ function DataSourcesView({
   );
 }
 
+// ── Artifacts View ──────────────────────────────────────────────────────────
+
+function ArtifactsView({ orgId }: { orgId: string }) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const { data: artifacts = [], isLoading } = useQuery({
+    queryKey: ['recentArtifacts'],
+    queryFn: () => workflowsApi.listRecentArtifacts(),
+  });
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const parseContent = (content?: string) => {
+    if (!content) return null;
+    try { return JSON.parse(content); } catch { return content; }
+  };
+
+  const renderValue = (val: any): React.ReactNode => {
+    if (val === null || val === undefined) return <span className="text-muted-foreground italic">null</span>;
+    if (typeof val === 'string') return <span className="text-sm">{val}</span>;
+    if (typeof val === 'number' || typeof val === 'boolean') return <span className="text-sm font-mono">{String(val)}</span>;
+    if (Array.isArray(val)) {
+      return (
+        <div className="ml-3 space-y-1">
+          {val.map((item, i) => (
+            <div key={i} className="text-sm border-l-2 border-border/50 pl-2">
+              {typeof item === 'object' ? renderValue(item) : String(item)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (typeof val === 'object') {
+      return (
+        <div className="ml-3 space-y-1">
+          {Object.entries(val).map(([k, v]) => (
+            <div key={k}>
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{k.replace(/_/g, ' ')}: </span>
+              {typeof v === 'object' && v !== null ? renderValue(v) : <span className="text-sm">{String(v ?? '')}</span>}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return <span>{String(val)}</span>;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading artifacts...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <FileText className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Artifacts</h2>
+        <Badge variant="secondary">{artifacts.length}</Badge>
+      </div>
+
+      {artifacts.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No artifacts generated yet.</p>
+          <p className="text-xs mt-1">Run a workflow on a data source to generate artifacts.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {artifacts.map((artifact: ExecutionArtifact) => {
+            const isExpanded = expandedIds.has(artifact.id);
+            const meta = artifact.metadata ? (() => { try { return JSON.parse(artifact.metadata); } catch { return {}; } })() : {};
+            const content = parseContent(artifact.content ?? undefined);
+
+            return (
+              <Card key={artifact.id} className="bg-card/80 border-border/50">
+                <button
+                  className="flex items-center justify-between w-full p-4 text-left hover:bg-muted/30 transition-colors"
+                  onClick={() => toggleExpand(artifact.id)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{artifact.title || 'Untitled Artifact'}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Badge variant="outline" className="text-[10px]">{artifact.artifact_type}</Badge>
+                        {meta.step_id && <span className="text-xs text-muted-foreground">{meta.step_id.replace(/_/g, ' ')}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0 ml-2 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(artifact.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </button>
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t">
+                    <div className="mt-3">
+                      {content ? renderValue(content) : <p className="text-sm text-muted-foreground italic">No content.</p>}
+                    </div>
+                    {meta.data_source_id && (
+                      <div className="mt-3 pt-2 border-t border-border/30">
+                        <Link
+                          to={`/organizations/${orgId}/data-sources/${meta.data_source_id}`}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          View source data source
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Workflows Management View ───────────────────────────────────────────────
+
+function WorkflowsView({ orgId: _orgId }: { orgId: string }) {
+  const { data: workflows = [], isLoading } = useQuery({
+    queryKey: ['workflowDefinitions'],
+    queryFn: () => workflowsApi.listDefinitions(),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading workflows...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <GitBranch className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Workflows</h2>
+          <Badge variant="secondary">{workflows.length}</Badge>
+        </div>
+        <Button size="sm" variant="outline" disabled className="gap-1.5">
+          <Plus className="h-3.5 w-3.5" />
+          New Workflow
+        </Button>
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        Workflows are data processing pipelines that extract structured information from data sources.
+        Run them from any data source detail page.
+      </p>
+
+      {workflows.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No workflows defined yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {workflows.map((wf: any) => (
+            <Card key={wf.id} className="bg-card/80 border-border/50">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <GitBranch className="h-4 w-4 text-purple-500" />
+                    <CardTitle className="text-base">{wf.name}</CardTitle>
+                  </div>
+                  <Badge variant="outline">{wf.steps?.length ?? 0} steps</Badge>
+                </div>
+                <CardDescription className="text-xs">ID: {wf.id}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  {(wf.steps ?? []).map((step: any, idx: number) => (
+                    <div key={step.id} className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground">
+                          {idx + 1}
+                        </div>
+                        {idx < (wf.steps?.length ?? 0) - 1 && (
+                          <div className="absolute ml-2.5 mt-6 w-px h-3 bg-border" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm">{step.name}</span>
+                        {step.depends_on?.length > 0 && (
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (depends on: {step.depends_on.join(', ')})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function KnowledgeTab({
   orgId,
   projectEntries,
@@ -1185,9 +1406,16 @@ function KnowledgeTab({
       );
     }
 
+    if (view === 'artifacts') {
+      return <ArtifactsView orgId={orgId} />;
+    }
+
+    if (view === 'workflows') {
+      return <WorkflowsView orgId={orgId} />;
+    }
+
     const typeKey =
       view === 'conversations' ? 'conversation'
-      : view === 'artifacts'  ? 'artifact'
       : view === 'pulse'      ? 'pulse_content'
       : view === 'topology'   ? 'topology_snapshot'
       : null;

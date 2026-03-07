@@ -53,6 +53,7 @@ const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
+const DataSourceDetailPage = lazy(() => import('@/pages/data-source-detail').then(m => ({ default: m.DataSourceDetailPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -183,6 +184,10 @@ function App() {
           <Route
             path="/organizations/:orgId/clients/:clientId"
             element={<ProtectedRoute><ClientOverview /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/data-sources/:dataSourceId"
+            element={<ProtectedRoute><DataSourceDetailPage /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/crm/acquisition"
