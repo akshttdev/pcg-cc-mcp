@@ -1,5 +1,15 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+
+// Redirect helpers for consolidated CRM routes
+function AcquisitionRedirect() {
+  const { orgId } = useParams<{ orgId: string }>();
+  return <Navigate to={`/organizations/${orgId}?tab=pipelines&pipeline=sales`} replace />;
+}
+function LifecycleRedirect() {
+  const { orgId } = useParams<{ orgId: string }>();
+  return <Navigate to={`/organizations/${orgId}?tab=pipelines&pipeline=lifecycle`} replace />;
+}
 import {
   UserSystemProvider,
 } from '@/components/config-provider';
@@ -30,8 +40,6 @@ const WorkflowsPage         = lazy(() => import('@/pages/workflows').then(m => (
 const SocialPage            = lazy(() => import('@/pages/social').then(m => ({ default: m.SocialPage })));
 const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ default: m.CrmPage })));
 const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
-const CrmAcquisitionPage    = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmAcquisitionPage })));
-const CrmLifecyclePage      = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmLifecyclePage })));
 const OrganizationProfilePage  = lazy(() => import('@/pages/organization-profile').then(m => ({ default: m.OrganizationProfilePage })));
 const ClientOverview        = lazy(() => import('@/pages/client-overview').then(m => ({ default: m.ClientOverview })));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
@@ -53,6 +61,7 @@ const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
+const DiscordPage             = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -67,7 +76,6 @@ const AgentSettings     = lazy(() => import('@/pages/settings/AgentSettings').th
 const ModelsSettings    = lazy(() => import('@/pages/settings/ModelsSettings').then(m => ({ default: m.ModelsSettings })));
 const McpSettings       = lazy(() => import('@/pages/settings/McpSettings').then(m => ({ default: m.McpSettings })));
 const WalletSettings    = lazy(() => import('@/pages/settings/WalletSettings').then(m => ({ default: m.WalletSettings })));
-const AirtableSettings  = lazy(() => import('@/pages/settings/AirtableSettings').then(m => ({ default: m.AirtableSettings })));
 const NetworkSettings   = lazy(() => import('@/pages/settings/NetworkSettings').then(m => ({ default: m.NetworkSettings })));
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
@@ -174,14 +182,8 @@ function App() {
             path="/organizations/:orgId/clients/:clientId"
             element={<ProtectedRoute><ClientOverview /></ProtectedRoute>}
           />
-          <Route
-            path="/organizations/:orgId/crm/acquisition"
-            element={<ProtectedRoute><CrmAcquisitionPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/organizations/:orgId/crm/lifecycle"
-            element={<ProtectedRoute><CrmLifecyclePage /></ProtectedRoute>}
-          />
+          <Route path="/organizations/:orgId/crm/acquisition" element={<AcquisitionRedirect />} />
+          <Route path="/organizations/:orgId/crm/lifecycle" element={<LifecycleRedirect />} />
           <Route
             path="/projects/:projectId/knowledge"
             element={<ProtectedRoute><KnowledgePage /></ProtectedRoute>}
@@ -237,6 +239,10 @@ function App() {
             element={<ProtectedRoute><ProjectDeliverablesPage /></ProtectedRoute>}
           />
           <Route
+            path="/discord"
+            element={<ProtectedRoute><DiscordPage /></ProtectedRoute>}
+          />
+          <Route
             path="/virtual-environment"
             element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}
           />
@@ -264,7 +270,7 @@ function App() {
             <Route path="agents" element={<AgentSettings />} />
             <Route path="models" element={<ModelsSettings />} />
             <Route path="mcp" element={<McpSettings />} />
-            <Route path="airtable" element={<AirtableSettings />} />
+            <Route path="airtable" element={<Navigate to="/settings/general" replace />} />
             <Route path="network" element={<NetworkSettings />} />
           </Route>
           <Route

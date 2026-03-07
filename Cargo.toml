@@ -18,7 +18,8 @@ members = [
     "frontend/src-tauri",
     "crates/cli",
     "crates/setup-wizard",
-    "crates/editron-runner"
+    "crates/editron-runner",
+    "crates/discord-bot"
 ]
 exclude = [
     "src-tauri"
@@ -50,3 +51,7 @@ strip = true
 lto = "thin"
 codegen-units = 1
 opt-level = "s"
+
+[patch.crates-io]
+# Discord voice gateway moved to v8; serenity-voice-model 0.2.1 hardcodes v4
+serenity-voice-model = { path = "vendor/serenity-voice-model" }
