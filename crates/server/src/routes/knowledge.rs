@@ -4,10 +4,10 @@ use axum::{
     routing::{get, post},
 };
 use db::models::project_knowledge_source::{
-    ProjectKnowledgeSource, ProjectKnowledgeCompleteness,
+    ProjectKnowledgeSource, ProjectKnowledgeCompleteness, KnowledgeSourceType,
 };
 use deployment::Deployment;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
@@ -61,6 +61,54 @@ async fn get_project_knowledge(
     })))
 }
 
+/// Create knowledge source request
+#[derive(Debug, Deserialize)]
+pub struct CreateKnowledgeSourceRequest {
+    pub source_type: String,
+    pub source_title: String,
+    pub source_summary: Option<String>,
+    pub coverage_score: Option<f64>,
+}
+
+/// POST /api/projects/:project_id/knowledge
+async fn create_knowledge_source(
+    Path(project_id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<CreateKnowledgeSourceRequest>,
+) -> Result<Json<ApiResponse<ProjectKnowledgeSource>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    let source_type: KnowledgeSourceType = body.source_type.parse()
+        .map_err(|e: String| ApiError::BadRequest(e))?;
+
+    let source_id = Uuid::new_v4().to_string();
+    let coverage = body.coverage_score.unwrap_or(0.0);
+
+    ProjectKnowledgeSource::upsert_source(
+        pool,
+        project_id,
+        &source_type,
+        &source_id,
+        &body.source_title,
+        body.source_summary.as_deref(),
+        coverage,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to create knowledge source: {}", e)))?;
+
+    // Fetch the newly created source back
+    let sources = ProjectKnowledgeSource::find_by_project(pool, project_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to fetch source: {}", e)))?;
+
+    let created = sources
+        .into_iter()
+        .find(|s| s.source_id == source_id)
+        .ok_or_else(|| ApiError::InternalError("Source created but not found".to_string()))?;
+
+    Ok(Json(ApiResponse::success(created)))
+}
+
 /// POST /api/projects/:project_id/knowledge/:source_id/refresh
 async fn refresh_source(
     Path((project_id, source_id)): Path<(Uuid, Uuid)>,
@@ -95,7 +143,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route(
             "/projects/{project_id}/knowledge",
-            get(get_project_knowledge),
+            get(get_project_knowledge).post(create_knowledge_source),
         )
         .route(
             "/projects/{project_id}/knowledge/{source_id}/refresh",

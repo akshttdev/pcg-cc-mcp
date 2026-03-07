@@ -1,12 +1,45 @@
 import { useMemo, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   Building2,
   Users,
@@ -39,10 +72,21 @@ import {
   Facebook,
   Youtube,
   Inbox,
+  Database,
+  Plus,
+  MoreHorizontal,
+  Trash2,
+  Upload,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  GitBranch,
+  Clock,
+  ChevronDown,
+  ChevronRight,
   Plug,
   Mail,
   RefreshCw,
-  Trash2,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -68,6 +112,12 @@ import {
   type SocialAccountRecord,
   type SocialMentionRecord,
   type PersonOrgContact,
+  dataSourcesApi,
+  workflowsApi,
+  type DataSourceRecord,
+  type UpdateDataSourceRequest,
+  type ExecutionArtifact,
+  DATA_TYPE_OPTIONS,
   type EmailAccountRecord,
 } from '@/lib/api';
 import { useUserSystem } from '@/components/config-provider';
@@ -601,10 +651,720 @@ const SOURCE_TYPE_META: Record<string, { label: string; icon: typeof BookOpen }>
   topology_snapshot: { label: 'Topology Snapshots', icon: Network },
 };
 
+// ── Add Data Source Dialog ────────────────────────────────────────────────────
+
+function AddDataSourceDialog({
+  orgId,
+  projectEntries,
+  open,
+  onOpenChange,
+  editingSource,
+}: {
+  orgId: string;
+  projectEntries: { id: string; name: string }[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  editingSource?: DataSourceRecord | null;
+}) {
+  const queryClient = useQueryClient();
+  const isEdit = !!editingSource;
+
+  const [selectedProject, setSelectedProject] = useState<string>(editingSource?.project_id ?? '__none__');
+  const [sourceType, setSourceType] = useState<string>(editingSource?.source_type ?? 'text');
+  const [dataType, setDataType] = useState<string>(editingSource?.data_type ?? 'conversation');
+  const [title, setTitle] = useState(editingSource?.title ?? '');
+  const [description, setDescription] = useState(editingSource?.description ?? '');
+  const [content, setContent] = useState(editingSource?.content ?? '');
+  const [file, setFile] = useState<File | null>(null);
+
+  // Reset form when dialog opens/closes or editingSource changes
+  const resetForm = () => {
+    setSelectedProject(editingSource?.project_id ?? '__none__');
+    setSourceType(editingSource?.source_type ?? 'text');
+    setDataType(editingSource?.data_type ?? 'conversation');
+    setTitle(editingSource?.title ?? '');
+    setDescription(editingSource?.description ?? '');
+    setContent(editingSource?.content ?? '');
+    setFile(null);
+  };
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const projId = selectedProject !== '__none__' ? selectedProject : undefined;
+      if (sourceType === 'file' && file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', title.trim());
+        formData.append('data_type', dataType);
+        if (description.trim()) formData.append('description', description.trim());
+        if (projId) formData.append('project_id', projId);
+        formData.append('organization_id', orgId);
+        return dataSourcesApi.upload(formData);
+      }
+      return dataSourcesApi.create({
+        organization_id: orgId,
+        project_id: projId,
+        title: title.trim(),
+        description: description.trim() || undefined,
+        data_type: dataType,
+        source_type: sourceType,
+        content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      onOpenChange(false);
+      resetForm();
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: UpdateDataSourceRequest) =>
+      dataSourcesApi.update(editingSource!.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      onOpenChange(false);
+    },
+  });
+
+  const handleSubmit = () => {
+    if (!title.trim()) return;
+    if (isEdit) {
+      updateMutation.mutate({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        data_type: dataType,
+        source_type: sourceType,
+        content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+      });
+    } else {
+      createMutation.mutate();
+    }
+  };
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            {isEdit ? 'Edit Data Source' : 'Add Data Source'}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {/* Source type radio */}
+          <div className="space-y-2">
+            <Label>Source</Label>
+            <RadioGroup
+              value={sourceType}
+              onValueChange={setSourceType}
+              className="flex gap-4"
+            >
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="text" id="st-text" />
+                <Label htmlFor="st-text" className="text-sm font-normal cursor-pointer">Text</Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="file" id="st-file" />
+                <Label htmlFor="st-file" className="text-sm font-normal cursor-pointer">File Upload</Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="integration" id="st-integration" />
+                <Label htmlFor="st-integration" className="text-sm font-normal cursor-pointer">Integration</Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Title</Label>
+            <Input
+              placeholder="e.g. Client kickoff call notes"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Data Type</Label>
+            <Select value={dataType} onValueChange={setDataType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DATA_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Description (optional)</Label>
+            <Textarea
+              placeholder="Brief description of this data source..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+            />
+          </div>
+
+          {/* Conditional input based on source type */}
+          {sourceType === 'text' && (
+            <div className="space-y-2">
+              <Label>Content</Label>
+              <Textarea
+                placeholder="Paste or type your content here..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={6}
+                className="font-mono text-xs"
+              />
+            </div>
+          )}
+          {sourceType === 'file' && !isEdit && (
+            <div className="space-y-2">
+              <Label>File</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  className="text-xs"
+                />
+                {file && (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {(file.size / 1024).toFixed(0)} KB
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          {sourceType === 'integration' && (
+            <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+              Integration sources are populated automatically from connected services.
+            </div>
+          )}
+
+          {projectEntries.length > 0 && (
+            <div className="space-y-2">
+              <Label>Project (optional)</Label>
+              <Select value={selectedProject} onValueChange={setSelectedProject}>
+                <SelectTrigger>
+                  <SelectValue placeholder="No project (org-level)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No project (org-level)</SelectItem>
+                  {projectEntries.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!title.trim() || isPending}>
+            {isPending ? (isEdit ? 'Saving...' : 'Adding...') : (isEdit ? 'Save' : 'Add Source')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Delete Confirmation Dialog ───────────────────────────────────────────────
+
+function DeleteConfirmDialog({
+  open,
+  onOpenChange,
+  sourceName,
+  onConfirm,
+  isPending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  sourceName: string;
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <Trash2 className="h-4 w-4" />
+            Delete Data Source
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Are you sure you want to delete <strong>{sourceName}</strong>? This action cannot be undone.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+            {isPending ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Data Sources View ────────────────────────────────────────────────────────
+
+type SortField = 'title' | 'data_type' | 'status' | 'created_at';
+type SortDir = 'asc' | 'desc';
+
+function DataSourcesView({
+  orgId,
+  projectEntries,
+}: {
+  orgId: string;
+  projectEntries: { id: string; name: string }[];
+}) {
+  const queryClient = useQueryClient();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editingSource, setEditingSource] = useState<DataSourceRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DataSourceRecord | null>(null);
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const { data: sources = [], isLoading } = useQuery({
+    queryKey: ['dataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    staleTime: 30_000,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => dataSourcesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      setDeleteTarget(null);
+    },
+  });
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+  };
+
+  const sorted = useMemo(() => {
+    const arr = [...sources];
+    arr.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'title': cmp = a.title.localeCompare(b.title); break;
+        case 'data_type': cmp = a.data_type.localeCompare(b.data_type); break;
+        case 'status': cmp = a.status.localeCompare(b.status); break;
+        case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [sources, sortField, sortDir]);
+
+  const dataTypeLabel = (dt: string) =>
+    DATA_TYPE_OPTIONS.find(o => o.value === dt)?.label ?? dt;
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const statusBadge = (status: string) => {
+    const variants: Record<string, string> = {
+      ready: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+      processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    };
+    return (
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}>
+        {status}
+      </span>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Database className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Data Sources</h2>
+          <Badge variant="secondary">{sources.length}</Badge>
+        </div>
+        <Button size="sm" onClick={() => { setEditingSource(null); setAddOpen(true); }} className="gap-1">
+          <Plus className="h-3.5 w-3.5" />
+          Add Data Source
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">Loading data sources...</div>
+      ) : sorted.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Database className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>No data sources yet</p>
+          <Button variant="outline" size="sm" className="mt-4 gap-1" onClick={() => setAddOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Add your first data source
+          </Button>
+        </div>
+      ) : (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('title')}>
+                  <span className="flex items-center gap-1">Title <SortIcon field="title" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none w-[120px]" onClick={() => toggleSort('data_type')}>
+                  <span className="flex items-center gap-1">Type <SortIcon field="data_type" /></span>
+                </TableHead>
+                <TableHead className="w-[100px]">Source</TableHead>
+                <TableHead className="cursor-pointer select-none w-[80px]" onClick={() => toggleSort('status')}>
+                  <span className="flex items-center gap-1">Status <SortIcon field="status" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none w-[110px]" onClick={() => toggleSort('created_at')}>
+                  <span className="flex items-center gap-1">Created <SortIcon field="created_at" /></span>
+                </TableHead>
+                <TableHead className="w-[40px]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sorted.map((source) => (
+                <TableRow key={source.id}>
+                  <TableCell>
+                    <div className="min-w-0">
+                      <Link to={`/organizations/${orgId}/data-sources/${source.id}`} className="text-sm font-medium truncate hover:underline block">{source.title}</Link>
+                      {source.description && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{source.description}</p>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-[10px]">{dataTypeLabel(source.data_type)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {source.source_type === 'file' && source.file_name ? (
+                        <>
+                          <Upload className="h-3 w-3 shrink-0" />
+                          <span className="truncate max-w-[60px]">{source.file_name}</span>
+                          {source.file_size_bytes != null && (
+                            <span className="shrink-0">({formatFileSize(source.file_size_bytes)})</span>
+                          )}
+                        </>
+                      ) : source.source_type === 'file' ? (
+                        <>
+                          <Upload className="h-3 w-3 shrink-0" />
+                          <span>File</span>
+                        </>
+                      ) : source.source_type === 'text' ? (
+                        <>
+                          <FileText className="h-3 w-3 shrink-0" />
+                          <span>Text</span>
+                        </>
+                      ) : (
+                        <>
+                          <Database className="h-3 w-3 shrink-0" />
+                          <span>Integration</span>
+                        </>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>{statusBadge(source.status)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{formatDate(source.created_at)}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => { setEditingSource(source); setAddOpen(true); }}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleteTarget(source)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      <AddDataSourceDialog
+        orgId={orgId}
+        projectEntries={projectEntries}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        editingSource={editingSource}
+      />
+
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
+        sourceName={deleteTarget?.title ?? ''}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+        isPending={deleteMutation.isPending}
+      />
+    </div>
+  );
+}
+
+// ── Artifacts View ──────────────────────────────────────────────────────────
+
+function ArtifactsView({ orgId }: { orgId: string }) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const { data: artifacts = [], isLoading } = useQuery({
+    queryKey: ['recentArtifacts'],
+    queryFn: () => workflowsApi.listRecentArtifacts(),
+  });
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const parseContent = (content?: string) => {
+    if (!content) return null;
+    try { return JSON.parse(content); } catch { return content; }
+  };
+
+  const renderValue = (val: any): React.ReactNode => {
+    if (val === null || val === undefined) return <span className="text-muted-foreground italic">null</span>;
+    if (typeof val === 'string') return <span className="text-sm">{val}</span>;
+    if (typeof val === 'number' || typeof val === 'boolean') return <span className="text-sm font-mono">{String(val)}</span>;
+    if (Array.isArray(val)) {
+      return (
+        <div className="ml-3 space-y-1">
+          {val.map((item, i) => (
+            <div key={i} className="text-sm border-l-2 border-border/50 pl-2">
+              {typeof item === 'object' ? renderValue(item) : String(item)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (typeof val === 'object') {
+      return (
+        <div className="ml-3 space-y-1">
+          {Object.entries(val).map(([k, v]) => (
+            <div key={k}>
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{k.replace(/_/g, ' ')}: </span>
+              {typeof v === 'object' && v !== null ? renderValue(v) : <span className="text-sm">{String(v ?? '')}</span>}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return <span>{String(val)}</span>;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading artifacts...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <FileText className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Artifacts</h2>
+        <Badge variant="secondary">{artifacts.length}</Badge>
+      </div>
+
+      {artifacts.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No artifacts generated yet.</p>
+          <p className="text-xs mt-1">Run a workflow on a data source to generate artifacts.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {artifacts.map((artifact: ExecutionArtifact) => {
+            const isExpanded = expandedIds.has(artifact.id);
+            const meta = artifact.metadata ? (() => { try { return JSON.parse(artifact.metadata); } catch { return {}; } })() : {};
+            const content = parseContent(artifact.content ?? undefined);
+
+            return (
+              <Card key={artifact.id} className="bg-card/80 border-border/50">
+                <button
+                  className="flex items-center justify-between w-full p-4 text-left hover:bg-muted/30 transition-colors"
+                  onClick={() => toggleExpand(artifact.id)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{artifact.title || 'Untitled Artifact'}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Badge variant="outline" className="text-[10px]">{artifact.artifact_type}</Badge>
+                        {meta.step_id && <span className="text-xs text-muted-foreground">{meta.step_id.replace(/_/g, ' ')}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0 ml-2 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(artifact.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </button>
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t">
+                    <div className="mt-3">
+                      {content ? renderValue(content) : <p className="text-sm text-muted-foreground italic">No content.</p>}
+                    </div>
+                    {meta.data_source_id && (
+                      <div className="mt-3 pt-2 border-t border-border/30">
+                        <Link
+                          to={`/organizations/${orgId}/data-sources/${meta.data_source_id}`}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          View source data source
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Workflows Management View ───────────────────────────────────────────────
+
+function WorkflowsView({ orgId: _orgId }: { orgId: string }) {
+  const { data: workflows = [], isLoading } = useQuery({
+    queryKey: ['workflowDefinitions'],
+    queryFn: () => workflowsApi.listDefinitions(),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading workflows...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <GitBranch className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Workflows</h2>
+          <Badge variant="secondary">{workflows.length}</Badge>
+        </div>
+        <Button size="sm" variant="outline" disabled className="gap-1.5">
+          <Plus className="h-3.5 w-3.5" />
+          New Workflow
+        </Button>
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        Workflows are data processing pipelines that extract structured information from data sources.
+        Run them from any data source detail page.
+      </p>
+
+      {workflows.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No workflows defined yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {workflows.map((wf: any) => (
+            <Card key={wf.id} className="bg-card/80 border-border/50">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <GitBranch className="h-4 w-4 text-purple-500" />
+                    <CardTitle className="text-base">{wf.name}</CardTitle>
+                  </div>
+                  <Badge variant="outline">{wf.steps?.length ?? 0} steps</Badge>
+                </div>
+                <CardDescription className="text-xs">ID: {wf.id}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  {(wf.steps ?? []).map((step: any, idx: number) => (
+                    <div key={step.id} className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium text-muted-foreground">
+                          {idx + 1}
+                        </div>
+                        {idx < (wf.steps?.length ?? 0) - 1 && (
+                          <div className="absolute ml-2.5 mt-6 w-px h-3 bg-border" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm">{step.name}</span>
+                        {step.depends_on?.length > 0 && (
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (depends on: {step.depends_on.join(', ')})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function KnowledgeTab({
+  orgId,
   projectEntries,
   view,
 }: {
+  orgId: string;
   projectEntries: { id: string; name: string }[];
   view?: string | null;
 }) {
@@ -650,11 +1410,27 @@ function KnowledgeTab({
     return { totalSources, staleSources, avgCompleteness, sourcesByProject, byType };
   }, [knowledgeQueries, projectEntries]);
 
-  // Deep view — show all sources of a specific type across projects
+  // Deep view: "datasources" shows the new data sources table; others filter knowledge by type
   if (view && view !== 'overview') {
+    if (view === 'datasources') {
+      return (
+        <DataSourcesView
+          orgId={orgId}
+          projectEntries={projectEntries}
+        />
+      );
+    }
+
+    if (view === 'artifacts') {
+      return <ArtifactsView orgId={orgId} />;
+    }
+
+    if (view === 'workflows') {
+      return <WorkflowsView orgId={orgId} />;
+    }
+
     const typeKey =
       view === 'conversations' ? 'conversation'
-      : view === 'artifacts'  ? 'artifact'
       : view === 'pulse'      ? 'pulse_content'
       : view === 'topology'   ? 'topology_snapshot'
       : null;
@@ -1892,6 +2668,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
             <TabsContent value="knowledge">
               <KnowledgeTab
+                orgId={orgId!}
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                 view={viewFromUrl}
               />

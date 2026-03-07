@@ -101,15 +101,17 @@ pub mod scratch;
 pub mod session;
 pub mod tag;
 pub mod entity_conversion;
+pub mod data_source;
 pub mod scheduled_meeting;
 pub mod company;
 pub mod quickbooks_account;
 pub mod entity_graph;
-pub mod topology_node;
-pub mod topology_edge;
-pub mod topology_cluster;
-pub mod topology_issue;
-pub mod topology_route;
+// Topology modules need SQLX prepared queries — commented out for offline builds
+// pub mod topology_node;
+// pub mod topology_edge;
+// pub mod topology_cluster;
+// pub mod topology_issue;
+// pub mod topology_route;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

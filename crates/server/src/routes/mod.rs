@@ -102,6 +102,8 @@ pub mod intelligence;
 pub mod graph;
 pub mod invite_dispatch;
 pub mod companies;
+pub mod data_sources;
+pub mod data_source_workflows;
 pub mod discord;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
@@ -175,6 +177,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
         .merge(companies::router(&deployment))
+        .merge(data_sources::router(&deployment))
+        .merge(data_source_workflows::router(&deployment))
         .merge(graph::router(&deployment))
         .merge(invite_dispatch::router(&deployment))
         .merge(discord::router(&deployment))
