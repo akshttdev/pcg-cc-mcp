@@ -499,9 +499,11 @@ async function processUtterance(pcm, userId, displayName, session) {
 }
 
 async function playTts(session, text) {
-  const mp3Buffer = await synthesizeTts(text, session.agentName);
-  const tmpPath = `/tmp/pcg_tts_${randomUUID()}.mp3`;
-  await writeFile(tmpPath, mp3Buffer);
+  const audioBuffer = await synthesizeTts(text, session.agentName);
+  // Use .wav for Chatterbox (Topsi), .mp3 for ElevenLabs (Nora) — FFmpeg handles both
+  const ext = session.agentName.toLowerCase() === 'topsi' ? 'wav' : 'mp3';
+  const tmpPath = `/tmp/pcg_tts_${randomUUID()}.${ext}`;
+  await writeFile(tmpPath, audioBuffer);
 
   const resource = createAudioResource(createReadStream(tmpPath), {
     inputType: StreamType.Arbitrary,
