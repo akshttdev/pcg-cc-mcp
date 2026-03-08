@@ -358,6 +358,17 @@ export function StagingReviewPanel({
                               </Badge>
                             )}
 
+                            {record.validation_errors && (() => {
+                              try {
+                                const errs = JSON.parse(record.validation_errors);
+                                return errs.length > 0 ? (
+                                  <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 gap-1">
+                                    <AlertTriangle className="h-2.5 w-2.5" /> {errs.length} validation {errs.length === 1 ? 'issue' : 'issues'}
+                                  </Badge>
+                                ) : null;
+                              } catch { return null; }
+                            })()}
+
                             <Badge
                               variant="outline"
                               className={cn('text-[10px]', {
@@ -412,6 +423,24 @@ export function StagingReviewPanel({
                           {record.error_message && (
                             <p className="text-xs text-red-600 mt-1">{record.error_message}</p>
                           )}
+
+                          {(() => {
+                            let validationErrs: string[] = [];
+                            if (record.validation_errors) {
+                              try { validationErrs = JSON.parse(record.validation_errors); } catch {}
+                            }
+                            return validationErrs.length > 0 ? (
+                              <div className="flex items-start gap-1.5 mt-1.5 p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                                <div className="space-y-0.5">
+                                  <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">Validation warnings</p>
+                                  {validationErrs.map((err, i) => (
+                                    <p key={i} className="text-[10px] text-amber-600 dark:text-amber-500">{err}</p>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null;
+                          })()}
 
                           {renderRecordFields(record)}
                         </div>

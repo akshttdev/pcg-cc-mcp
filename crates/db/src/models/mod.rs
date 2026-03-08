@@ -107,6 +107,7 @@ pub mod company;
 pub mod quickbooks_account;
 pub mod entity_graph;
 pub mod pcg_router_model;
+pub mod workflow_run;
 pub mod workflow_staging;
 // Topology modules need SQLX prepared queries — commented out for offline builds
 // pub mod topology_node;

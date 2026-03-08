@@ -28,7 +28,7 @@ pub struct TargetSchema {
     pub fields: std::collections::BTreeMap<String, FieldDef>,
 }
 
-fn crm_contact_schema() -> TargetSchema {
+pub fn crm_contact_schema() -> TargetSchema {
     let mut fields = std::collections::BTreeMap::new();
 
     fields.insert("first_name".to_string(), FieldDef {
@@ -159,7 +159,7 @@ fn crm_contact_schema() -> TargetSchema {
     }
 }
 
-fn company_schema() -> TargetSchema {
+pub fn company_schema() -> TargetSchema {
     let mut fields = std::collections::BTreeMap::new();
 
     fields.insert("name".to_string(), FieldDef {
@@ -219,7 +219,7 @@ fn company_schema() -> TargetSchema {
     }
 }
 
-fn crm_deal_schema() -> TargetSchema {
+pub fn crm_deal_schema() -> TargetSchema {
     let mut fields = std::collections::BTreeMap::new();
 
     fields.insert("name".to_string(), FieldDef {
@@ -279,7 +279,7 @@ fn crm_deal_schema() -> TargetSchema {
     }
 }
 
-fn task_schema() -> TargetSchema {
+pub fn task_schema() -> TargetSchema {
     let mut fields = std::collections::BTreeMap::new();
 
     fields.insert("title".to_string(), FieldDef {
@@ -332,6 +332,18 @@ fn task_schema() -> TargetSchema {
         target_type: "task".to_string(),
         description: "Task/Action Item".to_string(),
         fields,
+    }
+}
+
+/// Look up the schema for a given target_type string.
+/// Returns None if the target_type is unknown.
+pub fn get_schema_for_target(target_type: &str) -> Option<TargetSchema> {
+    match target_type {
+        "crm_contact" => Some(crm_contact_schema()),
+        "company" => Some(company_schema()),
+        "crm_deal" => Some(crm_deal_schema()),
+        "task" => Some(task_schema()),
+        _ => None,
     }
 }
 

@@ -5,6 +5,7 @@ use axum::{
 };
 use db::models::data_source::DataSource;
 use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, ExecutionArtifact};
+use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun, UpdateWorkflowRunOnComplete};
 use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -492,6 +493,97 @@ fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
     vec![]
 }
 
+/// Validate a single record (serde_json::Value) against the TargetSchema for the given target_type.
+/// Returns Ok(()) if valid, or Err(Vec<String>) with a list of human-readable validation errors.
+fn validate_record_against_schema(record: &Value, target_type: &str) -> Result<(), Vec<String>> {
+    let schema = match super::output_schemas::get_schema_for_target(target_type) {
+        Some(s) => s,
+        None => return Ok(()), // unknown target type — skip validation
+    };
+
+    let obj = match record.as_object() {
+        Some(o) => o,
+        None => return Err(vec!["Record is not a JSON object".to_string()]),
+    };
+
+    let mut errors = Vec::new();
+
+    for (field_name, field_def) in &schema.fields {
+        let value = obj.get(field_name);
+
+        // Check required fields
+        if field_def.required {
+            match value {
+                None | Some(Value::Null) => {
+                    errors.push(format!("Missing required field: {}", field_name));
+                    continue;
+                }
+                Some(Value::String(s)) if s.is_empty() => {
+                    errors.push(format!("Required field '{}' is empty", field_name));
+                    continue;
+                }
+                _ => {}
+            }
+        }
+
+        // If the field is present and not null, check types
+        if let Some(val) = value {
+            if val.is_null() {
+                continue; // null is OK for optional fields
+            }
+
+            let type_ok = match field_def.field_type.as_str() {
+                "string" => val.is_string(),
+                "number" => val.is_number() || val.is_f64() || val.is_i64() || val.is_u64(),
+                "array" => val.is_array(),
+                "object" => val.is_object(),
+                "boolean" => val.is_boolean(),
+                _ => true, // unknown type — don't validate
+            };
+
+            if !type_ok {
+                errors.push(format!(
+                    "Field '{}' expected type '{}', got {}",
+                    field_name,
+                    field_def.field_type,
+                    value_type_name(val)
+                ));
+            }
+
+            // Check enum constraints
+            if let Some(ref enum_values) = field_def.enum_values {
+                if let Some(s) = val.as_str() {
+                    if !enum_values.iter().any(|e| e == s) {
+                        errors.push(format!(
+                            "Field '{}' value '{}' not in allowed values: [{}]",
+                            field_name, s,
+                            enum_values.join(", ")
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
+/// Helper to get a human-readable type name for a serde_json::Value
+fn value_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
 /// Check if a CRM contact already exists by email match
 async fn check_contact_duplicate(
     pool: &sqlx::SqlitePool,
@@ -689,6 +781,7 @@ async fn run_workflow(
     let request_model = body.and_then(|b| b.0.model);
     let pool = &deployment.db().pool;
     let workflow_run_id = Uuid::new_v4();
+    let run_start = std::time::Instant::now();
 
     let data_source = DataSource::find_by_id(pool, data_source_id)
         .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
@@ -699,6 +792,17 @@ async fn run_workflow(
         .ok_or_else(|| ApiError::NotFound(format!("Workflow '{}' not found", workflow_id)))?;
 
     let model = request_model.or(workflow.default_model.clone()).unwrap_or_default();
+
+    // Create workflow run record
+    let _ = WorkflowRun::create(pool, CreateWorkflowRun {
+        id: workflow_run_id,
+        workflow_id: workflow.id.clone(),
+        workflow_name: workflow.name.clone(),
+        data_source_id: Some(data_source_id),
+        organization_id: data_source.organization_id,
+        project_id: data_source.project_id,
+        model_used: if model.is_empty() { None } else { Some(model.clone()) },
+    }).await;
 
     let content = data_source.content.unwrap_or_default();
     let title = &data_source.title;
@@ -858,6 +962,18 @@ async fn run_workflow(
                         None => (None, None),
                     };
 
+                    // Validate the record against the target schema
+                    let validation_errors = match validate_record_against_schema(&record, staging_target) {
+                        Ok(()) => None,
+                        Err(errs) => {
+                            tracing::warn!(
+                                "[WORKFLOW] Validation errors for {} record in node '{}': {:?}",
+                                staging_target, node.id, errs
+                            );
+                            Some(errs)
+                        }
+                    };
+
                     let _ = WorkflowStagingRecord::create(pool, CreateStagingRecord {
                         workflow_run_id,
                         workflow_id: workflow.id.clone(),
@@ -870,12 +986,45 @@ async fn run_workflow(
                         duplicate_of_id: dup_id,
                         duplicate_of_type: dup_type,
                         confidence: None,
+                        validation_errors,
                     }).await;
                     staged_records += 1;
                 }
             }
         }
     }
+
+    // Count duplicates and LLM nodes
+    let duplicates_found = {
+        let staging_records = WorkflowStagingRecord::find_by_run(pool, workflow_run_id).await.unwrap_or_default();
+        staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as i64
+    };
+    let node_count = workflow.nodes.len() as i64;
+    let llm_node_count = workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64;
+    let duration_ms = run_start.elapsed().as_millis() as i64;
+
+    let (total_input, total_output, total_cost) = if let Some(ref usage) = total_usage {
+        (
+            usage["total_input_tokens"].as_i64().unwrap_or(0),
+            usage["total_output_tokens"].as_i64().unwrap_or(0),
+            usage["total_estimated_cost_micros"].as_i64().unwrap_or(0),
+        )
+    } else {
+        (0, 0, 0)
+    };
+
+    // Update workflow run with final stats
+    let _ = WorkflowRun::update_on_complete(pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
+        status: "completed".to_string(),
+        total_input_tokens: total_input,
+        total_output_tokens: total_output,
+        total_estimated_cost_micros: total_cost,
+        total_records_staged: staged_records,
+        total_duplicates_found: duplicates_found,
+        node_count,
+        llm_node_count,
+        duration_ms,
+    }).await;
 
     Ok(Json(ApiResponse::success(WorkflowRunResult {
         workflow_run_id,
@@ -1097,7 +1246,7 @@ async fn execute_node_with_llm(
         .filter(|s| !s.is_empty())
         .or_else(|| if model.is_empty() { None } else { Some(model) });
 
-    match pcg_router::route_completion(pool, messages, node_model, Some(2048), None).await {
+    match pcg_router::route_completion(pool, messages.clone(), node_model, Some(2048), None).await {
         Ok((resp, metadata)) => {
             tracing::info!(
                 "[WORKFLOW] Node '{}' routed via {} ({}), tokens: {:?}/{:?}",
@@ -1114,6 +1263,80 @@ async fn execute_node_with_llm(
             // Extract text from OpenAI-format response
             if let Some(text) = resp["choices"][0]["message"]["content"].as_str() {
                 if !text.is_empty() {
+                    // Try to parse the response as JSON — if it fails, attempt one repair retry
+                    let trimmed = text.trim();
+                    // Strip markdown code fences if present
+                    let json_text = if trimmed.starts_with("```") {
+                        trimmed
+                            .trim_start_matches("```json")
+                            .trim_start_matches("```")
+                            .trim_end_matches("```")
+                            .trim()
+                    } else {
+                        trimmed
+                    };
+
+                    if serde_json::from_str::<Value>(json_text).is_ok() {
+                        // Valid JSON — return the cleaned text
+                        return (json_text.to_string(), Some(usage_meta));
+                    }
+
+                    // JSON parse failed — attempt one repair retry
+                    tracing::warn!(
+                        "[WORKFLOW] Node '{}' returned invalid JSON, attempting repair retry",
+                        node.id
+                    );
+                    let repair_messages = vec![
+                        ChatMessage {
+                            role: "system".to_string(),
+                            content: json!("You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only."),
+                        },
+                        ChatMessage {
+                            role: "user".to_string(),
+                            content: json!(format!(
+                                "The previous response was not valid JSON. Please fix it and return only valid JSON. Do not include any explanation or markdown formatting.\n\nOriginal response:\n{}",
+                                text
+                            )),
+                        },
+                    ];
+
+                    match pcg_router::route_completion(pool, repair_messages, node_model, Some(2048), None).await {
+                        Ok((retry_resp, retry_meta)) => {
+                            tracing::info!(
+                                "[WORKFLOW] Node '{}' repair retry via {} ({})",
+                                node.id, retry_meta.model_used, retry_meta.provider
+                            );
+                            // Merge usage metadata
+                            let combined_usage = json!({
+                                "model_used": retry_meta.model_used,
+                                "provider": retry_meta.provider,
+                                "input_tokens": metadata.input_tokens.unwrap_or(0) + retry_meta.input_tokens.unwrap_or(0),
+                                "output_tokens": metadata.output_tokens.unwrap_or(0) + retry_meta.output_tokens.unwrap_or(0),
+                                "estimated_cost_micros": metadata.estimated_cost_micros.unwrap_or(0) + retry_meta.estimated_cost_micros.unwrap_or(0),
+                                "retry_used": true,
+                            });
+                            if let Some(retry_text) = retry_resp["choices"][0]["message"]["content"].as_str() {
+                                let retry_trimmed = retry_text.trim();
+                                let retry_json = if retry_trimmed.starts_with("```") {
+                                    retry_trimmed
+                                        .trim_start_matches("```json")
+                                        .trim_start_matches("```")
+                                        .trim_end_matches("```")
+                                        .trim()
+                                } else {
+                                    retry_trimmed
+                                };
+                                if !retry_json.is_empty() {
+                                    return (retry_json.to_string(), Some(combined_usage));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("[WORKFLOW] Repair retry failed for node '{}': {e}", node.id);
+                        }
+                    }
+
+                    // Return original text even if repair failed — validation will catch errors downstream
                     return (text.to_string(), Some(usage_meta));
                 }
             }
@@ -1266,6 +1489,93 @@ async fn list_available_models(
     Ok(Json(ApiResponse::success(available)))
 }
 
+// ── Workflow Run Metrics Endpoints ────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct RecentRunsQuery {
+    workflow_id: Option<String>,
+    organization_id: Option<String>,
+    limit: Option<i64>,
+}
+
+/// GET /api/workflows/runs/recent
+async fn list_recent_runs(
+    State(deployment): State<DeploymentImpl>,
+    axum::extract::Query(params): axum::extract::Query<RecentRunsQuery>,
+) -> Result<Json<ApiResponse<Vec<WorkflowRun>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let limit = params.limit.unwrap_or(50);
+    let runs = WorkflowRun::find_recent(
+        pool,
+        limit,
+        params.workflow_id.as_deref(),
+        params.organization_id.as_deref(),
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to list runs: {e}")))?;
+    Ok(Json(ApiResponse::success(runs)))
+}
+
+/// GET /api/workflows/runs/:id
+async fn get_run_by_id(
+    Path(id): Path<String>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<WorkflowRun>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let run = WorkflowRun::find_by_id(pool, &id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to find run: {e}")))?
+        .ok_or_else(|| ApiError::NotFound("Workflow run not found".to_string()))?;
+    Ok(Json(ApiResponse::success(run)))
+}
+
+/// GET /api/workflows/runs/:id/stats
+async fn get_run_stats(
+    Path(id): Path<String>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let run = WorkflowRun::find_by_id(pool, &id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to find run: {e}")))?
+        .ok_or_else(|| ApiError::NotFound("Workflow run not found".to_string()))?;
+
+    // Get current staging record counts for live stats
+    let run_uuid = Uuid::parse_str(&id)
+        .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
+    let staging_records = WorkflowStagingRecord::find_by_run(pool, run_uuid)
+        .await
+        .unwrap_or_default();
+
+    let total = staging_records.len() as f64;
+    let approved = staging_records.iter().filter(|r| r.status == "approved" || r.status == "committed").count() as f64;
+    let rejected = staging_records.iter().filter(|r| r.status == "rejected").count() as f64;
+    let committed = staging_records.iter().filter(|r| r.status == "committed").count() as f64;
+    let duplicates = staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as f64;
+
+    let approval_rate = if total > 0.0 { approved / total } else { 0.0 };
+    let duplicate_rate = if total > 0.0 { duplicates / total } else { 0.0 };
+
+    let cost_dollars = run.total_estimated_cost_micros.unwrap_or(0) as f64 / 1_000_000.0;
+
+    Ok(Json(ApiResponse::success(json!({
+        "run": run,
+        "live_counts": {
+            "total": total as i64,
+            "approved": approved as i64,
+            "rejected": rejected as i64,
+            "committed": committed as i64,
+            "duplicates": duplicates as i64,
+            "pending": staging_records.iter().filter(|r| r.status == "pending_review").count(),
+        },
+        "rates": {
+            "approval_rate": approval_rate,
+            "duplicate_rate": duplicate_rate,
+        },
+        "cost_dollars": cost_dollars,
+    }))))
+}
+
 // ── Router ──────────────────────────────────────────────────────────────────
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
@@ -1277,5 +1587,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/workflows/definitions/{id}", put(update_workflow_definition).delete(delete_workflow_definition))
         .route("/workflows/preview", post(preview_workflow))
         .route("/workflows/models", get(list_available_models))
+        .route("/workflows/runs/recent", get(list_recent_runs))
+        .route("/workflows/runs/{id}", get(get_run_by_id))
+        .route("/workflows/runs/{id}/stats", get(get_run_stats))
         .route("/artifacts/recent", get(list_recent_artifacts))
 }
