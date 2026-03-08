@@ -105,6 +105,9 @@ pub mod invite_dispatch;
 pub mod companies;
 pub mod data_sources;
 pub mod data_source_workflows;
+pub mod workflow_staging;
+pub mod output_schemas;
+pub mod pcg_router;
 pub mod discord;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
@@ -180,6 +183,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(companies::router(&deployment))
         .merge(data_sources::router(&deployment))
         .merge(data_source_workflows::router(&deployment))
+        .merge(workflow_staging::router(&deployment))
+        .merge(output_schemas::router())
         .merge(graph::router(&deployment))
         .merge(invite_dispatch::router(&deployment))
         .merge(discord::router(&deployment))
@@ -236,6 +241,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(pythia::router(&deployment))
+        .merge(pcg_router::router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))
         .merge(protected_routes)
         .merge(admin_routes)

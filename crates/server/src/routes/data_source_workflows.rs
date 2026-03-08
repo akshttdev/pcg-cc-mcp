@@ -5,23 +5,17 @@ use axum::{
 };
 use db::models::data_source::DataSource;
 use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, ExecutionArtifact};
+use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun, UpdateWorkflowRunOnComplete};
+use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use deployment::Deployment;
+use db::models::pcg_router_model::PcgRouterModel;
 use crate::{DeploymentImpl, error::ApiError};
-
-/// Default (cheapest) model for LLM workflow nodes
-const DEFAULT_MODEL: &str = "claude-haiku-4-5-20251001";
-
-/// Available models for LLM workflow execution (cheapest first)
-const AVAILABLE_MODELS: &[(&str, &str)] = &[
-    ("claude-haiku-4-5-20251001", "Claude Haiku 4.5 (fastest, cheapest)"),
-    ("claude-sonnet-4-6", "Claude Sonnet 4.6 (balanced)"),
-    ("claude-opus-4-6", "Claude Opus 4.6 (most capable)"),
-];
+use super::pcg_router::{self, ChatMessage};
 
 // ── Workflow types (n8n-inspired schema) ─────────────────────────────────────
 
@@ -64,6 +58,7 @@ pub struct WorkflowDefinition {
     #[serde(default = "default_owner_type")]
     pub owner_type: String,     // "system", "organization", "user"
     pub owner_id: Option<String>,
+    pub default_model: Option<String>,
 }
 
 fn default_owner_type() -> String { "system".to_string() }
@@ -86,6 +81,7 @@ struct CreateWorkflowRequest {
     connections: Vec<WorkflowConnection>,
     owner_type: Option<String>,  // "organization" or "user"
     owner_id: Option<String>,    // UUID of the owner
+    default_model: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,6 +90,7 @@ struct UpdateWorkflowRequest {
     description: Option<String>,
     nodes: Option<Vec<WorkflowNode>>,
     connections: Option<Vec<WorkflowConnection>>,
+    default_model: Option<String>,
 }
 
 /// Request for dry-run preview (no artifacts saved)
@@ -116,10 +113,13 @@ struct StepResult {
 /// Response for a full workflow run
 #[derive(Debug, Serialize, Deserialize)]
 struct WorkflowRunResult {
+    workflow_run_id: Uuid,
     workflow_id: String,
     workflow_name: String,
     data_source_id: Uuid,
     steps: Vec<StepResult>,
+    total_usage: Option<Value>,
+    staged_records: i64,
 }
 
 // ── Default workflow seed ────────────────────────────────────────────────────
@@ -208,21 +208,25 @@ fn default_analysis_workflow() -> WorkflowDefinition {
         is_system: true,
         owner_type: "system".to_string(),
         owner_id: None,
+        default_model: None,
     }
 }
 
 // ── DB helpers ───────────────────────────────────────────────────────────────
 
-/// Serialize workflow to DB JSON columns
-fn serialize_workflow_data(wf: &WorkflowDefinition) -> (String, String) {
-    let nodes_json = serde_json::to_string(&wf.nodes).unwrap_or_else(|_| "[]".to_string());
-    let connections_json = serde_json::to_string(&wf.connections).unwrap_or_else(|_| "[]".to_string());
-    (nodes_json, connections_json)
+/// Serialize workflow to DB JSON column
+fn serialize_workflow_data(wf: &WorkflowDefinition) -> String {
+    let data = serde_json::json!({
+        "nodes": wf.nodes,
+        "connections": wf.connections,
+        "default_model": wf.default_model,
+    });
+    data.to_string()
 }
 
 async fn seed_defaults(pool: &sqlx::SqlitePool) {
     let default = default_analysis_workflow();
-    let (nodes_json, connections_json) = serialize_workflow_data(&default);
+    let data = serialize_workflow_data(&default);
     let desc = default.description.unwrap_or_default();
 
     let _ = sqlx::query(
@@ -232,18 +236,19 @@ async fn seed_defaults(pool: &sqlx::SqlitePool) {
     .bind(&default.id)
     .bind(&default.name)
     .bind(&desc)
-    .bind(format!("{{\"nodes\":{},\"connections\":{}}}", nodes_json, connections_json))
+    .bind(&data)
     .execute(pool)
     .await;
 }
 
 fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<String>, name: String, description: Option<String>, steps_json: String, is_system: bool) -> WorkflowDefinition {
-    // Try new format: {"nodes": [...], "connections": [...]}
+    // Try new format: {"nodes": [...], "connections": [...], "default_model": "..."}
     if let Ok(v) = serde_json::from_str::<Value>(&steps_json) {
         if v.get("nodes").is_some() {
             let nodes: Vec<WorkflowNode> = serde_json::from_value(v["nodes"].clone()).unwrap_or_default();
             let connections: Vec<WorkflowConnection> = serde_json::from_value(v["connections"].clone()).unwrap_or_default();
-            return WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id };
+            let default_model = v.get("default_model").and_then(|dm| dm.as_str()).filter(|s| !s.is_empty()).map(|s| s.to_string());
+            return WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id, default_model };
         }
     }
 
@@ -273,7 +278,7 @@ fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<Stri
         }
     }
 
-    WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id }
+    WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id, default_model: None }
 }
 
 async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<WorkflowDefinition>, sqlx::Error> {
@@ -458,14 +463,325 @@ struct RunWorkflowRequest {
     model: Option<String>,
 }
 
+/// Extract individual records from LLM output JSON
+fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
+    // Try direct array
+    if let Some(arr) = data.as_array() {
+        return arr.clone();
+    }
+
+    // Try common keys based on target type
+    let keys = match target_type {
+        "crm_contact" => vec!["contacts", "people", "persons"],
+        "company" => vec!["companies", "organizations"],
+        "crm_deal" => vec!["deals", "opportunities", "proposals"],
+        "task" => vec!["tasks", "action_items", "actions"],
+        _ => vec![],
+    };
+
+    for key in keys {
+        if let Some(arr) = data.get(key).and_then(|v| v.as_array()) {
+            return arr.clone();
+        }
+    }
+
+    // If it's a single object, wrap it
+    if data.is_object() {
+        return vec![data.clone()];
+    }
+
+    vec![]
+}
+
+/// Validate a single record (serde_json::Value) against the TargetSchema for the given target_type.
+/// Returns Ok(()) if valid, or Err(Vec<String>) with a list of human-readable validation errors.
+fn validate_record_against_schema(record: &Value, target_type: &str) -> Result<(), Vec<String>> {
+    let schema = match super::output_schemas::get_schema_for_target(target_type) {
+        Some(s) => s,
+        None => return Ok(()), // unknown target type — skip validation
+    };
+
+    let obj = match record.as_object() {
+        Some(o) => o,
+        None => return Err(vec!["Record is not a JSON object".to_string()]),
+    };
+
+    let mut errors = Vec::new();
+
+    for (field_name, field_def) in &schema.fields {
+        let value = obj.get(field_name);
+
+        // Check required fields
+        if field_def.required {
+            match value {
+                None | Some(Value::Null) => {
+                    errors.push(format!("Missing required field: {}", field_name));
+                    continue;
+                }
+                Some(Value::String(s)) if s.is_empty() => {
+                    errors.push(format!("Required field '{}' is empty", field_name));
+                    continue;
+                }
+                _ => {}
+            }
+        }
+
+        // If the field is present and not null, check types
+        if let Some(val) = value {
+            if val.is_null() {
+                continue; // null is OK for optional fields
+            }
+
+            let type_ok = match field_def.field_type.as_str() {
+                "string" => val.is_string(),
+                "number" => val.is_number() || val.is_f64() || val.is_i64() || val.is_u64(),
+                "array" => val.is_array(),
+                "object" => val.is_object(),
+                "boolean" => val.is_boolean(),
+                _ => true, // unknown type — don't validate
+            };
+
+            if !type_ok {
+                errors.push(format!(
+                    "Field '{}' expected type '{}', got {}",
+                    field_name,
+                    field_def.field_type,
+                    value_type_name(val)
+                ));
+            }
+
+            // Check enum constraints
+            if let Some(ref enum_values) = field_def.enum_values {
+                if let Some(s) = val.as_str() {
+                    if !enum_values.iter().any(|e| e == s) {
+                        errors.push(format!(
+                            "Field '{}' value '{}' not in allowed values: [{}]",
+                            field_name, s,
+                            enum_values.join(", ")
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
+/// Helper to get a human-readable type name for a serde_json::Value
+fn value_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+/// Check if a CRM contact already exists by email match
+async fn check_contact_duplicate(
+    pool: &sqlx::SqlitePool,
+    record: &Value,
+    project_id: Option<Uuid>,
+) -> Option<(Uuid, String)> {
+    let project_id = project_id?;
+
+    // Try email exact match first (strongest signal)
+    if let Some(email) = record["email"].as_str().filter(|s| !s.is_empty()) {
+        // Use a direct query since we need to check by email + project_id
+        let result = sqlx::query_as::<_, (Uuid,)>(
+            "SELECT id FROM crm_contacts WHERE project_id = ?1 AND LOWER(email) = LOWER(?2) LIMIT 1"
+        )
+        .bind(project_id)
+        .bind(email)
+        .fetch_optional(pool)
+        .await
+        .ok()?;
+
+        if let Some((id,)) = result {
+            return Some((id, "crm_contacts".to_string()));
+        }
+    }
+
+    // Try name match (weaker signal — first_name + last_name)
+    let first = record["first_name"].as_str().unwrap_or("").trim();
+    let last = record["last_name"].as_str().unwrap_or("").trim();
+    if !first.is_empty() && !last.is_empty() {
+        let result = sqlx::query_as::<_, (Uuid,)>(
+            "SELECT id FROM crm_contacts WHERE project_id = ?1 AND LOWER(first_name) = LOWER(?2) AND LOWER(last_name) = LOWER(?3) LIMIT 1"
+        )
+        .bind(project_id)
+        .bind(first)
+        .bind(last)
+        .fetch_optional(pool)
+        .await
+        .ok()?;
+
+        if let Some((id,)) = result {
+            return Some((id, "crm_contacts".to_string()));
+        }
+    }
+
+    None
+}
+
+/// Check if a company already exists by name match
+async fn check_company_duplicate(
+    pool: &sqlx::SqlitePool,
+    record: &Value,
+    _organization_id: Option<Uuid>,
+) -> Option<(Uuid, String)> {
+    let name = record["name"].as_str().filter(|s| !s.is_empty())?;
+
+    // Case-insensitive name match
+    let result = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT id FROM companies WHERE LOWER(name) = LOWER(?1) LIMIT 1"
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    .ok()?;
+
+    if let Some((id,)) = result {
+        return Some((id, "companies".to_string()));
+    }
+
+    // Also try matching by website domain if available
+    if let Some(website) = record["website"].as_str().filter(|s| !s.is_empty()) {
+        let result = sqlx::query_as::<_, (Uuid,)>(
+            "SELECT id FROM companies WHERE LOWER(website) = LOWER(?1) LIMIT 1"
+        )
+        .bind(website)
+        .fetch_optional(pool)
+        .await
+        .ok()?;
+
+        if let Some((id,)) = result {
+            return Some((id, "companies".to_string()));
+        }
+    }
+
+    None
+}
+
+/// Check if a deal already exists by name + pipeline
+async fn check_deal_duplicate(
+    pool: &sqlx::SqlitePool,
+    record: &Value,
+    project_id: Option<Uuid>,
+) -> Option<(Uuid, String)> {
+    let project_id = project_id?;
+    let name = record["name"].as_str().filter(|s| !s.is_empty())?;
+
+    let result = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT id FROM crm_deals WHERE project_id = ?1 AND LOWER(name) = LOWER(?2) LIMIT 1"
+    )
+    .bind(project_id)
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    .ok()?;
+
+    if let Some((id,)) = result {
+        return Some((id, "crm_deals".to_string()));
+    }
+
+    None
+}
+
+/// Check if a task already exists by title
+async fn check_task_duplicate(
+    pool: &sqlx::SqlitePool,
+    record: &Value,
+    project_id: Option<Uuid>,
+) -> Option<(Uuid, String)> {
+    let project_id = project_id?;
+    let title = record["title"].as_str().filter(|s| !s.is_empty())?;
+
+    let result = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT id FROM tasks WHERE project_id = ?1 AND LOWER(title) = LOWER(?2) LIMIT 1"
+    )
+    .bind(project_id)
+    .bind(title)
+    .fetch_optional(pool)
+    .await
+    .ok()?;
+
+    if let Some((id,)) = result {
+        return Some((id, "tasks".to_string()));
+    }
+
+    None
+}
+
+/// Also check within the current staging batch for duplicates (same run producing duplicate records)
+async fn check_intra_batch_duplicate(
+    pool: &sqlx::SqlitePool,
+    workflow_run_id: Uuid,
+    target_type: &str,
+    record: &Value,
+) -> Option<(Uuid, String)> {
+    // For contacts: check if same email already staged in this run
+    if target_type == "crm_contact" {
+        if let Some(email) = record["email"].as_str().filter(|s| !s.is_empty()) {
+            let result = sqlx::query_as::<_, (Uuid,)>(
+                r#"SELECT id FROM workflow_output_staging
+                   WHERE workflow_run_id = ?1 AND target_type = 'crm_contact'
+                   AND json_extract(record_data, '$.email') = ?2
+                   AND status != 'rejected' LIMIT 1"#
+            )
+            .bind(workflow_run_id)
+            .bind(email)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+
+            if let Some((id,)) = result {
+                return Some((id, "workflow_output_staging".to_string()));
+            }
+        }
+    }
+
+    // For companies: check if same name already staged
+    if target_type == "company" {
+        if let Some(name) = record["name"].as_str().filter(|s| !s.is_empty()) {
+            let result = sqlx::query_as::<_, (Uuid,)>(
+                r#"SELECT id FROM workflow_output_staging
+                   WHERE workflow_run_id = ?1 AND target_type = 'company'
+                   AND LOWER(json_extract(record_data, '$.name')) = LOWER(?2)
+                   AND status != 'rejected' LIMIT 1"#
+            )
+            .bind(workflow_run_id)
+            .bind(name)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+
+            if let Some((id,)) = result {
+                return Some((id, "workflow_output_staging".to_string()));
+            }
+        }
+    }
+
+    None
+}
+
 /// POST /api/data-sources/:id/workflows/:workflow_id/run
 async fn run_workflow(
     Path((data_source_id, workflow_id)): Path<(Uuid, String)>,
     State(deployment): State<DeploymentImpl>,
     body: Option<Json<RunWorkflowRequest>>,
 ) -> Result<Json<ApiResponse<WorkflowRunResult>>, ApiError> {
-    let model = body.and_then(|b| b.0.model).unwrap_or_else(|| DEFAULT_MODEL.to_string());
+    let request_model = body.and_then(|b| b.0.model);
     let pool = &deployment.db().pool;
+    let workflow_run_id = Uuid::new_v4();
+    let run_start = std::time::Instant::now();
 
     let data_source = DataSource::find_by_id(pool, data_source_id)
         .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
@@ -474,6 +790,19 @@ async fn run_workflow(
     let workflow = load_workflow(pool, &workflow_id).await
         .map_err(|e| ApiError::InternalError(format!("Failed to load workflow: {e}")))?
         .ok_or_else(|| ApiError::NotFound(format!("Workflow '{}' not found", workflow_id)))?;
+
+    let model = request_model.or(workflow.default_model.clone()).unwrap_or_default();
+
+    // Create workflow run record
+    let _ = WorkflowRun::create(pool, CreateWorkflowRun {
+        id: workflow_run_id,
+        workflow_id: workflow.id.clone(),
+        workflow_name: workflow.name.clone(),
+        data_source_id: Some(data_source_id),
+        organization_id: data_source.organization_id,
+        project_id: data_source.project_id,
+        model_used: if model.is_empty() { None } else { Some(model.clone()) },
+    }).await;
 
     let content = data_source.content.unwrap_or_default();
     let title = &data_source.title;
@@ -511,8 +840,20 @@ async fn run_workflow(
         }
     }
 
+    // Build downstream output target map: node_id → list of target types
+    let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for conn in &workflow.connections {
+        if let Some(target_node) = workflow.nodes.iter().find(|n| n.id == conn.target) {
+            if target_node.node_type.starts_with("output_") {
+                let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
+                downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
+            }
+        }
+    }
+
     let mut step_results: Vec<StepResult> = Vec::new();
     let mut step_outputs: Vec<(String, String)> = Vec::new();
+    let mut all_usage: Vec<Value> = Vec::new();
 
     for node in &ordered_nodes {
         let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
@@ -521,15 +862,29 @@ async fn run_workflow(
             .map(|(sid, out)| (sid.as_str(), out.as_str()))
             .collect();
 
-        let output = execute_node_with_llm(node, &content, &previous, &model).await;
+        let (output, usage_meta) = if node.node_type.starts_with("output_") {
+            // Output nodes pass through their input data unchanged
+            let input_data = previous.iter()
+                .map(|(_, result)| result.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+            (input_data, None)
+        } else {
+            let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
+            execute_node_with_llm(pool, node, &content, &previous, &model, targets).await
+        };
 
         let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
-        let artifact_metadata = json!({
+        let mut artifact_metadata = json!({
             "data_source_id": data_source_id.to_string(),
             "workflow_id": workflow.id,
             "step_id": node.id,
             "step_index": step_index,
         });
+        if let Some(usage) = &usage_meta {
+            artifact_metadata["usage"] = usage.clone();
+            all_usage.push(usage.clone());
+        }
 
         let artifact = ExecutionArtifact::create(
             pool,
@@ -551,11 +906,134 @@ async fn run_workflow(
         step_outputs.push((node.id.clone(), output));
     }
 
+    // Aggregate usage stats
+    let total_usage = if all_usage.is_empty() {
+        None
+    } else {
+        let mut total_input: i64 = 0;
+        let mut total_output: i64 = 0;
+        let mut total_cost: i64 = 0;
+        for u in &all_usage {
+            total_input += u["input_tokens"].as_i64().unwrap_or(0);
+            total_output += u["output_tokens"].as_i64().unwrap_or(0);
+            total_cost += u["estimated_cost_micros"].as_i64().unwrap_or(0);
+        }
+        Some(json!({
+            "total_input_tokens": total_input,
+            "total_output_tokens": total_output,
+            "total_estimated_cost_micros": total_cost,
+            "steps": all_usage.len(),
+        }))
+    };
+
+    // Create staging records for output nodes
+    let mut staged_records: i64 = 0;
+    for node in ordered_nodes.iter().filter(|n| n.node_type.starts_with("output_")) {
+        let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
+        let staging_target = match target_type {
+            "crm_contacts" => "crm_contact",
+            "crm_companies" => "company",
+            "crm_deals" => "crm_deal",
+            "tasks" => "task",
+            _ => continue,
+        };
+
+        // Find this node's output
+        if let Some((_, output)) = step_outputs.iter().find(|(id, _)| id == &node.id) {
+            if let Ok(parsed) = serde_json::from_str::<Value>(output) {
+                let records = extract_records_from_output(&parsed, staging_target);
+                for record in records {
+                    // Check for duplicates against existing records
+                    let dup = match staging_target {
+                        "crm_contact" => check_contact_duplicate(pool, &record, data_source.project_id).await,
+                        "company" => check_company_duplicate(pool, &record, data_source.organization_id).await,
+                        "crm_deal" => check_deal_duplicate(pool, &record, data_source.project_id).await,
+                        "task" => check_task_duplicate(pool, &record, data_source.project_id).await,
+                        _ => None,
+                    };
+
+                    // Also check within the current batch
+                    let dup = dup.or(
+                        check_intra_batch_duplicate(pool, workflow_run_id, staging_target, &record).await
+                    );
+
+                    let (dup_id, dup_type) = match dup {
+                        Some((id, t)) => (Some(id), Some(t)),
+                        None => (None, None),
+                    };
+
+                    // Validate the record against the target schema
+                    let validation_errors = match validate_record_against_schema(&record, staging_target) {
+                        Ok(()) => None,
+                        Err(errs) => {
+                            tracing::warn!(
+                                "[WORKFLOW] Validation errors for {} record in node '{}': {:?}",
+                                staging_target, node.id, errs
+                            );
+                            Some(errs)
+                        }
+                    };
+
+                    let _ = WorkflowStagingRecord::create(pool, CreateStagingRecord {
+                        workflow_run_id,
+                        workflow_id: workflow.id.clone(),
+                        node_id: node.id.clone(),
+                        data_source_id: Some(data_source_id),
+                        organization_id: data_source.organization_id,
+                        project_id: data_source.project_id,
+                        target_type: staging_target.to_string(),
+                        record_data: record,
+                        duplicate_of_id: dup_id,
+                        duplicate_of_type: dup_type,
+                        confidence: None,
+                        validation_errors,
+                    }).await;
+                    staged_records += 1;
+                }
+            }
+        }
+    }
+
+    // Count duplicates and LLM nodes
+    let duplicates_found = {
+        let staging_records = WorkflowStagingRecord::find_by_run(pool, workflow_run_id).await.unwrap_or_default();
+        staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as i64
+    };
+    let node_count = workflow.nodes.len() as i64;
+    let llm_node_count = workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64;
+    let duration_ms = run_start.elapsed().as_millis() as i64;
+
+    let (total_input, total_output, total_cost) = if let Some(ref usage) = total_usage {
+        (
+            usage["total_input_tokens"].as_i64().unwrap_or(0),
+            usage["total_output_tokens"].as_i64().unwrap_or(0),
+            usage["total_estimated_cost_micros"].as_i64().unwrap_or(0),
+        )
+    } else {
+        (0, 0, 0)
+    };
+
+    // Update workflow run with final stats
+    let _ = WorkflowRun::update_on_complete(pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
+        status: "completed".to_string(),
+        total_input_tokens: total_input,
+        total_output_tokens: total_output,
+        total_estimated_cost_micros: total_cost,
+        total_records_staged: staged_records,
+        total_duplicates_found: duplicates_found,
+        node_count,
+        llm_node_count,
+        duration_ms,
+    }).await;
+
     Ok(Json(ApiResponse::success(WorkflowRunResult {
+        workflow_run_id,
         workflow_id: workflow.id,
         workflow_name: workflow.name,
         data_source_id,
         steps: step_results,
+        total_usage,
+        staged_records,
     })))
 }
 
@@ -614,9 +1092,9 @@ async fn create_workflow_definition(
         id: req.id, name: req.name, description: req.description,
         nodes: req.nodes, connections: req.connections, is_system: false,
         owner_type: owner_type.clone(), owner_id: req.owner_id.clone(),
+        default_model: req.default_model,
     };
-    let (nodes_json, connections_json) = serialize_workflow_data(&wf);
-    let data = format!("{{\"nodes\":{},\"connections\":{}}}", nodes_json, connections_json);
+    let data = serialize_workflow_data(&wf);
 
     sqlx::query(
         r#"INSERT INTO workflow_definitions (id, owner_type, owner_id, name, description, steps, is_system) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)"#,
@@ -644,14 +1122,15 @@ async fn update_workflow_definition(
     let description = req.description.or(existing.description);
     let nodes = req.nodes.unwrap_or(existing.nodes);
     let connections = req.connections.unwrap_or(existing.connections);
+    let default_model = req.default_model.or(existing.default_model);
 
     let wf = WorkflowDefinition {
         id: workflow_id.clone(), name: name.clone(), description: description.clone(),
         nodes: nodes.clone(), connections: connections.clone(), is_system: existing.is_system,
         owner_type: existing.owner_type.clone(), owner_id: existing.owner_id.clone(),
+        default_model,
     };
-    let (nodes_json, connections_json) = serialize_workflow_data(&wf);
-    let data = format!("{{\"nodes\":{},\"connections\":{}}}", nodes_json, connections_json);
+    let data = serialize_workflow_data(&wf);
 
     sqlx::query(
         r#"UPDATE workflow_definitions SET name = ?1, description = ?2, steps = ?3, updated_at = datetime('now', 'subsec') WHERE id = ?4"#,
@@ -698,11 +1177,19 @@ async fn list_recent_artifacts(
     Ok(Json(ApiResponse::success(artifacts)))
 }
 
-// ── Real LLM execution (optional, falls back to mock) ────────────────────────
+// ── LLM execution via PCG Router (falls back to mock) ────────────────────────
 
-/// Call Anthropic API to execute a workflow node's prompt.
-/// Returns the LLM response text, or falls back to mock if no API key.
-async fn execute_node_with_llm(node: &WorkflowNode, content: &str, previous_results: &[(&str, &str)], model: &str) -> String {
+/// Execute a workflow node's LLM prompt via the PCG Router.
+/// Routes through all configured providers with priority-based fallback.
+/// Falls back to mock extraction if no models are available.
+async fn execute_node_with_llm(
+    pool: &sqlx::SqlitePool,
+    node: &WorkflowNode,
+    content: &str,
+    previous_results: &[(&str, &str)],
+    model: &str,
+    target_schemas: &[String],
+) -> (String, Option<Value>) {
     let prompt_template = node.parameters.get("prompt_template")
         .and_then(|v| v.as_str())
         .unwrap_or("Analyze the following content:\n{{content}}");
@@ -713,53 +1200,150 @@ async fn execute_node_with_llm(node: &WorkflowNode, content: &str, previous_resu
         .collect::<Vec<_>>()
         .join("\n\n");
 
+    // Build schema text from downstream output targets
+    let schema_text = if !target_schemas.is_empty() {
+        let schemas: Vec<String> = target_schemas.iter().filter_map(|t| {
+            match t.as_str() {
+                "crm_contacts" => Some("Output JSON must contain a \"contacts\" array. Each contact object must have: first_name (required, string), last_name (required, string), email (string or null), phone (string or null), company_name (string or null), job_title (string or null), lifecycle_stage (one of: subscriber, lead, mql, sql, opportunity, customer, evangelist, churned), notes (string or null), tags (array of strings or null).".to_string()),
+                "crm_companies" | "companies" => Some("Output JSON must contain a \"companies\" array. Each company object must have: name (required, string), website (string or null), industry (string or null), description (string or null), notes (string or null).".to_string()),
+                "crm_deals" | "deals" => Some("Output JSON must contain a \"deals\" array. Each deal object must have: name (required, string), amount (number or null), currency (string, default USD), probability (number 0-100 or null), expected_close_date (ISO date string or null), notes (string or null).".to_string()),
+                "tasks" => Some("Output JSON must contain a \"tasks\" array. Each task object must have: title (required, string), description (string or null), priority (one of: critical, high, medium, low), tags (array of strings or null).".to_string()),
+                _ => None,
+            }
+        }).collect();
+        schemas.join("\n\n")
+    } else {
+        String::new()
+    };
+
     let prompt = prompt_template
         .replace("{{content}}", content)
-        .replace("{{previous_results}}", &prev_text);
+        .replace("{{previous_results}}", &prev_text)
+        .replace("{{target_schema}}", &schema_text);
 
-    // Try real LLM if API key available
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .ok();
+    // If target_schema is non-empty but the prompt didn't contain the placeholder, append it
+    let prompt = if !schema_text.is_empty() && !prompt_template.contains("{{target_schema}}") {
+        format!("{}\n\n--- OUTPUT FORMAT ---\n{}", prompt, schema_text)
+    } else {
+        prompt
+    };
 
-    if let Some(key) = api_key {
-        let client = reqwest::Client::new();
-        let body = json!({
-            "model": model,
-            "max_tokens": 2048,
-            "system": "You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only.",
-            "messages": [{"role": "user", "content": prompt}]
-        });
+    // Route through PCG Router — handles multi-provider fallback
+    let messages = vec![
+        ChatMessage {
+            role: "system".to_string(),
+            content: json!("You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only."),
+        },
+        ChatMessage {
+            role: "user".to_string(),
+            content: json!(prompt),
+        },
+    ];
 
-        match client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(response) = resp.json::<Value>().await {
-                    // Extract text from Anthropic response
-                    if let Some(content_blocks) = response["content"].as_array() {
-                        let text: String = content_blocks.iter()
-                            .filter_map(|b| b["text"].as_str())
-                            .collect::<Vec<_>>()
-                            .join("");
-                        if !text.is_empty() {
-                            return text;
+    // Use per-node model override if set, otherwise use the workflow-level model
+    let node_model = node.parameters.get("model")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| if model.is_empty() { None } else { Some(model) });
+
+    match pcg_router::route_completion(pool, messages.clone(), node_model, Some(2048), None).await {
+        Ok((resp, metadata)) => {
+            tracing::info!(
+                "[WORKFLOW] Node '{}' routed via {} ({}), tokens: {:?}/{:?}",
+                node.id, metadata.model_used, metadata.provider,
+                metadata.input_tokens, metadata.output_tokens
+            );
+            let usage_meta = json!({
+                "model_used": metadata.model_used,
+                "provider": metadata.provider,
+                "input_tokens": metadata.input_tokens,
+                "output_tokens": metadata.output_tokens,
+                "estimated_cost_micros": metadata.estimated_cost_micros,
+            });
+            // Extract text from OpenAI-format response
+            if let Some(text) = resp["choices"][0]["message"]["content"].as_str() {
+                if !text.is_empty() {
+                    // Try to parse the response as JSON — if it fails, attempt one repair retry
+                    let trimmed = text.trim();
+                    // Strip markdown code fences if present
+                    let json_text = if trimmed.starts_with("```") {
+                        trimmed
+                            .trim_start_matches("```json")
+                            .trim_start_matches("```")
+                            .trim_end_matches("```")
+                            .trim()
+                    } else {
+                        trimmed
+                    };
+
+                    if serde_json::from_str::<Value>(json_text).is_ok() {
+                        // Valid JSON — return the cleaned text
+                        return (json_text.to_string(), Some(usage_meta));
+                    }
+
+                    // JSON parse failed — attempt one repair retry
+                    tracing::warn!(
+                        "[WORKFLOW] Node '{}' returned invalid JSON, attempting repair retry",
+                        node.id
+                    );
+                    let repair_messages = vec![
+                        ChatMessage {
+                            role: "system".to_string(),
+                            content: json!("You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only."),
+                        },
+                        ChatMessage {
+                            role: "user".to_string(),
+                            content: json!(format!(
+                                "The previous response was not valid JSON. Please fix it and return only valid JSON. Do not include any explanation or markdown formatting.\n\nOriginal response:\n{}",
+                                text
+                            )),
+                        },
+                    ];
+
+                    match pcg_router::route_completion(pool, repair_messages, node_model, Some(2048), None).await {
+                        Ok((retry_resp, retry_meta)) => {
+                            tracing::info!(
+                                "[WORKFLOW] Node '{}' repair retry via {} ({})",
+                                node.id, retry_meta.model_used, retry_meta.provider
+                            );
+                            // Merge usage metadata
+                            let combined_usage = json!({
+                                "model_used": retry_meta.model_used,
+                                "provider": retry_meta.provider,
+                                "input_tokens": metadata.input_tokens.unwrap_or(0) + retry_meta.input_tokens.unwrap_or(0),
+                                "output_tokens": metadata.output_tokens.unwrap_or(0) + retry_meta.output_tokens.unwrap_or(0),
+                                "estimated_cost_micros": metadata.estimated_cost_micros.unwrap_or(0) + retry_meta.estimated_cost_micros.unwrap_or(0),
+                                "retry_used": true,
+                            });
+                            if let Some(retry_text) = retry_resp["choices"][0]["message"]["content"].as_str() {
+                                let retry_trimmed = retry_text.trim();
+                                let retry_json = if retry_trimmed.starts_with("```") {
+                                    retry_trimmed
+                                        .trim_start_matches("```json")
+                                        .trim_start_matches("```")
+                                        .trim_end_matches("```")
+                                        .trim()
+                                } else {
+                                    retry_trimmed
+                                };
+                                if !retry_json.is_empty() {
+                                    return (retry_json.to_string(), Some(combined_usage));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("[WORKFLOW] Repair retry failed for node '{}': {e}", node.id);
                         }
                     }
+
+                    // Return original text even if repair failed — validation will catch errors downstream
+                    return (text.to_string(), Some(usage_meta));
                 }
             }
-            Ok(resp) => {
-                tracing::warn!("LLM API error {}: falling back to mock", resp.status());
-            }
-            Err(e) => {
-                tracing::warn!("LLM request failed: {e}: falling back to mock");
-            }
+            tracing::warn!("[WORKFLOW] Empty response from router for node '{}'", node.id);
+        }
+        Err(e) => {
+            tracing::warn!("[WORKFLOW] PCG Router failed for node '{}': {e}, falling back to mock", node.id);
         }
     }
 
@@ -767,7 +1351,8 @@ async fn execute_node_with_llm(node: &WorkflowNode, content: &str, previous_resu
     let output_schema = node.parameters.get("output_schema")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    generate_mock_step_result(&node.id, content, "preview", previous_results, &node.node_type, output_schema)
+    let mock_result = generate_mock_step_result(&node.id, content, "preview", previous_results, &node.node_type, output_schema);
+    (mock_result, None)
 }
 
 // ── Preview (dry-run) endpoint ───────────────────────────────────────────────
@@ -779,12 +1364,15 @@ struct PreviewNodeResult {
     node_name: String,
     node_type: String,
     output: String,
+    usage: Option<Value>,
 }
 
 /// POST /api/workflows/preview — dry-run a workflow without saving artifacts
 async fn preview_workflow(
+    State(deployment): State<DeploymentImpl>,
     Json(req): Json<PreviewWorkflowRequest>,
 ) -> Result<Json<ApiResponse<Vec<PreviewNodeResult>>>, ApiError> {
+    let pool = &deployment.db().pool;
     let content = req.content.unwrap_or_else(|| {
         "Acme Corp CEO John Smith met with TechStart Inc CTO Jane Doe to discuss a potential partnership. \
          Also present were VP Michael Chen from GlobalTech and Dr. Sarah Park from InnovateLabs. \
@@ -795,6 +1383,17 @@ async fn preview_workflow(
     let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     for conn in &req.connections {
         deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
+    }
+
+    // Build downstream output target map
+    let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for conn in &req.connections {
+        if let Some(target_node) = req.nodes.iter().find(|n| n.id == conn.target) {
+            if target_node.node_type.starts_with("output_") {
+                let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
+                downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
+            }
+        }
     }
 
     // Topological sort
@@ -831,13 +1430,24 @@ async fn preview_workflow(
             .map(|(sid, out)| (sid.as_str(), out.as_str()))
             .collect();
 
-        let output = execute_node_with_llm(node, &content, &previous, DEFAULT_MODEL).await;
+        let (output, usage_meta) = if node.node_type.starts_with("output_") {
+            // Output nodes pass through their input data unchanged
+            let input_data = previous.iter()
+                .map(|(_, result)| result.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+            (input_data, None)
+        } else {
+            let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
+            execute_node_with_llm(pool, node, &content, &previous, "", targets).await
+        };
 
         results.push(PreviewNodeResult {
             node_id: node.id.clone(),
             node_name: node.name.clone(),
             node_type: node.node_type.clone(),
             output: output.clone(),
+            usage: usage_meta,
         });
         outputs.push((node.id.clone(), output));
     }
@@ -845,24 +1455,125 @@ async fn preview_workflow(
     Ok(Json(ApiResponse::success(results)))
 }
 
-// ── Available models endpoint ────────────────────────────────────────────────
+// ── Available models endpoint (backed by PCG Router registry) ────────────────
 
 #[derive(Debug, Serialize)]
 struct AvailableModel {
     id: String,
     label: String,
     is_default: bool,
+    provider: String,
+    cost_per_million_input: i64,
+    cost_per_million_output: i64,
 }
 
-async fn list_available_models() -> Json<ApiResponse<Vec<AvailableModel>>> {
-    let models: Vec<AvailableModel> = AVAILABLE_MODELS.iter().map(|(id, label)| {
+async fn list_available_models(
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Vec<AvailableModel>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let models = PcgRouterModel::list_enabled(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to list models: {e}")))?;
+
+    let available: Vec<AvailableModel> = models.iter().enumerate().map(|(i, m)| {
         AvailableModel {
-            id: id.to_string(),
-            label: label.to_string(),
-            is_default: *id == DEFAULT_MODEL,
+            id: m.model_id.clone(),
+            label: format!("{} ({})", m.name, m.provider),
+            is_default: i == 0, // highest priority (first) is default
+            provider: m.provider.clone(),
+            cost_per_million_input: m.cost_per_million_input,
+            cost_per_million_output: m.cost_per_million_output,
         }
     }).collect();
-    Json(ApiResponse::success(models))
+
+    Ok(Json(ApiResponse::success(available)))
+}
+
+// ── Workflow Run Metrics Endpoints ────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct RecentRunsQuery {
+    workflow_id: Option<String>,
+    organization_id: Option<String>,
+    limit: Option<i64>,
+}
+
+/// GET /api/workflows/runs/recent
+async fn list_recent_runs(
+    State(deployment): State<DeploymentImpl>,
+    axum::extract::Query(params): axum::extract::Query<RecentRunsQuery>,
+) -> Result<Json<ApiResponse<Vec<WorkflowRun>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let limit = params.limit.unwrap_or(50);
+    let runs = WorkflowRun::find_recent(
+        pool,
+        limit,
+        params.workflow_id.as_deref(),
+        params.organization_id.as_deref(),
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to list runs: {e}")))?;
+    Ok(Json(ApiResponse::success(runs)))
+}
+
+/// GET /api/workflows/runs/:id
+async fn get_run_by_id(
+    Path(id): Path<String>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<WorkflowRun>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let run = WorkflowRun::find_by_id(pool, &id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to find run: {e}")))?
+        .ok_or_else(|| ApiError::NotFound("Workflow run not found".to_string()))?;
+    Ok(Json(ApiResponse::success(run)))
+}
+
+/// GET /api/workflows/runs/:id/stats
+async fn get_run_stats(
+    Path(id): Path<String>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let run = WorkflowRun::find_by_id(pool, &id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to find run: {e}")))?
+        .ok_or_else(|| ApiError::NotFound("Workflow run not found".to_string()))?;
+
+    // Get current staging record counts for live stats
+    let run_uuid = Uuid::parse_str(&id)
+        .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
+    let staging_records = WorkflowStagingRecord::find_by_run(pool, run_uuid)
+        .await
+        .unwrap_or_default();
+
+    let total = staging_records.len() as f64;
+    let approved = staging_records.iter().filter(|r| r.status == "approved" || r.status == "committed").count() as f64;
+    let rejected = staging_records.iter().filter(|r| r.status == "rejected").count() as f64;
+    let committed = staging_records.iter().filter(|r| r.status == "committed").count() as f64;
+    let duplicates = staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as f64;
+
+    let approval_rate = if total > 0.0 { approved / total } else { 0.0 };
+    let duplicate_rate = if total > 0.0 { duplicates / total } else { 0.0 };
+
+    let cost_dollars = run.total_estimated_cost_micros.unwrap_or(0) as f64 / 1_000_000.0;
+
+    Ok(Json(ApiResponse::success(json!({
+        "run": run,
+        "live_counts": {
+            "total": total as i64,
+            "approved": approved as i64,
+            "rejected": rejected as i64,
+            "committed": committed as i64,
+            "duplicates": duplicates as i64,
+            "pending": staging_records.iter().filter(|r| r.status == "pending_review").count(),
+        },
+        "rates": {
+            "approval_rate": approval_rate,
+            "duplicate_rate": duplicate_rate,
+        },
+        "cost_dollars": cost_dollars,
+    }))))
 }
 
 // ── Router ──────────────────────────────────────────────────────────────────
@@ -876,5 +1587,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/workflows/definitions/{id}", put(update_workflow_definition).delete(delete_workflow_definition))
         .route("/workflows/preview", post(preview_workflow))
         .route("/workflows/models", get(list_available_models))
+        .route("/workflows/runs/recent", get(list_recent_runs))
+        .route("/workflows/runs/{id}", get(get_run_by_id))
+        .route("/workflows/runs/{id}/stats", get(get_run_stats))
         .route("/artifacts/recent", get(list_recent_artifacts))
 }
