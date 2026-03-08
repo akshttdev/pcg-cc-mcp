@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { agentFlowsApi, wideResearchApi, workflowsApi, resolveApiUrl } from '@/lib/api';
 import type { AgentFlow, WideResearchSession, WorkflowDefinition } from '@/lib/api';
-import { WorkflowEditor } from '@/components/workflows/WorkflowEditor';
+import { WorkflowEditor, getNodeTypeDef } from '@/components/workflows/WorkflowEditor';
 
 interface AutomationDefinition {
   id: string;
@@ -712,9 +712,21 @@ function WorkflowBuilderTab() {
                 <CardContent>
                   <div className="flex items-center justify-between">
                     <div className="flex flex-wrap gap-1">
-                      {(wf.nodes ?? []).slice(0, 4).map((node: any) => (
-                        <Badge key={node.id} variant="outline" className="text-[9px] px-1.5">{node.name}</Badge>
-                      ))}
+                      {(wf.nodes ?? []).slice(0, 4).map((node: any) => {
+                        const nDef = getNodeTypeDef(node.type);
+                        const colorMap: Record<string, string> = {
+                          'bg-blue-500': 'bg-blue-500/10 text-blue-700 border-blue-500/20',
+                          'bg-purple-500': 'bg-purple-500/10 text-purple-700 border-purple-500/20',
+                          'bg-emerald-500': 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20',
+                          'bg-amber-500': 'bg-amber-500/10 text-amber-700 border-amber-500/20',
+                          'bg-orange-500': 'bg-orange-500/10 text-orange-700 border-orange-500/20',
+                          'bg-teal-500': 'bg-teal-500/10 text-teal-700 border-teal-500/20',
+                        };
+                        const badgeColor = colorMap[nDef?.color ?? ''] ?? 'bg-muted text-muted-foreground';
+                        return (
+                          <Badge key={node.id} variant="outline" className={`text-[9px] px-1.5 ${badgeColor}`}>{node.name}</Badge>
+                        );
+                      })}
                       {nodeCount > 4 && <Badge variant="outline" className="text-[9px] px-1.5">+{nodeCount - 4}</Badge>}
                     </div>
                     {!wf.is_system && (
