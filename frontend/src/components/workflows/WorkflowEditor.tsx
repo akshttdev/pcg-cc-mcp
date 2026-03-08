@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -308,6 +308,36 @@ export function WorkflowEditor({
   const [showGraph, setShowGraph] = useState(false);
   const [metadataExpanded, setMetadataExpanded] = useState(isNew);
   const [pendingDeleteNodeId, setPendingDeleteNodeId] = useState<string | null>(null);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(340);
+  const isDraggingRef = useRef(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Drag-to-resize handler for the column divider
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    const startX = e.clientX;
+    const startWidth = leftPanelWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const containerRect = bodyRef.current?.getBoundingClientRect();
+      const maxWidth = containerRect ? containerRect.width - 280 : 800;
+      const newWidth = Math.max(200, Math.min(maxWidth, startWidth + ev.clientX - startX));
+      setLeftPanelWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      isDraggingRef.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [leftPanelWidth]);
 
   const handlePreview = useCallback(async () => {
     if (nodes.length === 0) return;
@@ -382,12 +412,12 @@ export function WorkflowEditor({
         </div>
 
         {/* Body: two-panel layout like n8n */}
-        <div className="flex flex-1 min-h-0">
+        <div ref={bodyRef} className="flex flex-1 min-h-0">
           {/* Left: Canvas / Node list */}
-          <div className={cn(
-            'flex flex-col border-r',
-            selectedNodeId ? 'w-[340px] shrink-0' : 'flex-1'
-          )}>
+          <div
+            className="flex flex-col shrink-0"
+            style={{ width: selectedNodeId ? leftPanelWidth : undefined, flex: selectedNodeId ? undefined : 1 }}
+          >
             {/* Workflow metadata (collapsible) */}
             <div className="border-b bg-muted/30">
               <button
@@ -601,10 +631,19 @@ export function WorkflowEditor({
             )}
           </div>
 
+          {/* Resize handle */}
+          {selectedNodeId && (
+            <div
+              onMouseDown={startResize}
+              className="w-1 hover:w-1.5 bg-border hover:bg-primary/40 cursor-col-resize shrink-0 transition-colors"
+            />
+          )}
+          {!selectedNodeId && <div className="w-px bg-border shrink-0" />}
+
           {/* Right: Node configuration panel (n8n style) */}
           <div className={cn(
             'flex flex-col bg-muted/20',
-            selectedNodeId ? 'flex-1' : 'w-[320px]'
+            selectedNodeId ? 'flex-1 min-w-[280px]' : 'w-[320px]'
           )}>
             {selectedNode ? (
               <NodeConfigPanel
