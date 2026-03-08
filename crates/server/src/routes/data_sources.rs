@@ -124,6 +124,13 @@ async fn create_data_source(
         source
     };
 
+    // Fire any matching workflow triggers in the background
+    let trigger_pool = pool.clone();
+    let trigger_ds_id = source.id;
+    tokio::spawn(async move {
+        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id).await;
+    });
+
     Ok(Json(ApiResponse::success(source)))
 }
 
@@ -301,6 +308,13 @@ async fn upload_data_source(
             .map_err(|e| ApiError::InternalError(format!("{e}")))?
             .ok_or_else(|| ApiError::InternalError("Source not found after update".to_string()))?;
 
+        // Fire any matching workflow triggers in the background
+        let trigger_pool = pool.clone();
+        let trigger_ds_id = updated.id;
+        tokio::spawn(async move {
+            super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id).await;
+        });
+
         return Ok(Json(ApiResponse::success(updated)));
     }
 
@@ -321,6 +335,13 @@ async fn upload_data_source(
         .await
         .map_err(|e| ApiError::InternalError(format!("{e}")))?
         .ok_or_else(|| ApiError::InternalError("Source not found after update".to_string()))?;
+
+    // Fire any matching workflow triggers in the background
+    let trigger_pool = pool.clone();
+    let trigger_ds_id = updated.id;
+    tokio::spawn(async move {
+        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id).await;
+    });
 
     Ok(Json(ApiResponse::success(updated)))
 }

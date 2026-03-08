@@ -26,6 +26,7 @@ pub struct WorkflowRun {
     pub node_count: Option<i64>,
     pub llm_node_count: Option<i64>,
     pub duration_ms: Option<i64>,
+    pub content_hash: Option<String>,
     pub started_at: String,
     pub completed_at: Option<String>,
     pub created_at: String,
@@ -40,6 +41,7 @@ pub struct CreateWorkflowRun {
     pub organization_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
     pub model_used: Option<String>,
+    pub content_hash: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,8 +61,8 @@ impl WorkflowRun {
     pub async fn create(pool: &SqlitePool, data: CreateWorkflowRun) -> Result<Self, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             r#"INSERT INTO workflow_runs
-               (id, workflow_id, workflow_name, data_source_id, organization_id, project_id, model_used, status)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'running')
+               (id, workflow_id, workflow_name, data_source_id, organization_id, project_id, model_used, content_hash, status)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'running')
                RETURNING *"#,
         )
         .bind(data.id.to_string())
@@ -70,7 +72,17 @@ impl WorkflowRun {
         .bind(data.organization_id.map(|u| u.to_string()))
         .bind(data.project_id.map(|u| u.to_string()))
         .bind(&data.model_used)
+        .bind(&data.content_hash)
         .fetch_one(pool)
+        .await
+    }
+
+    pub async fn find_by_content_hash(pool: &SqlitePool, hash: &str) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Self>(
+            "SELECT * FROM workflow_runs WHERE content_hash = ?1 AND status = 'completed' ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(hash)
+        .fetch_optional(pool)
         .await
     }
 

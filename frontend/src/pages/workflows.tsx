@@ -32,6 +32,7 @@ import {
 import { agentFlowsApi, wideResearchApi, workflowsApi, resolveApiUrl } from '@/lib/api';
 import type { AgentFlow, WideResearchSession, WorkflowDefinition } from '@/lib/api';
 import { WorkflowEditor, getNodeTypeDef } from '@/components/workflows/WorkflowEditor';
+import { WorkflowTriggersPanel } from '@/components/workflows/WorkflowTriggersPanel';
 
 interface AutomationDefinition {
   id: string;
@@ -628,6 +629,8 @@ function WorkflowBuilderTab() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<WorkflowDefinition | null>(null);
+  const [triggersOpen, setTriggersOpen] = useState(false);
+  const [triggersWorkflow, setTriggersWorkflow] = useState<WorkflowDefinition | null>(null);
 
   const saveMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; description?: string; nodes: any[]; connections: any[] }) => {
@@ -729,17 +732,30 @@ function WorkflowBuilderTab() {
                       })}
                       {nodeCount > 4 && <Badge variant="outline" className="text-[9px] px-1.5">+{nodeCount - 4}</Badge>}
                     </div>
-                    {!wf.is_system && (
+                    <div className="flex items-center gap-1">
                       <button
-                        className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        className="p-1 rounded hover:bg-amber-500/10 hover:text-amber-600 transition-colors"
+                        title="Auto-Triggers"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(`Delete "${wf.name}"?`)) deleteMutation.mutate(wf.id);
+                          setTriggersWorkflow(wf);
+                          setTriggersOpen(true);
                         }}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Zap className="h-3.5 w-3.5" />
                       </button>
-                    )}
+                      {!wf.is_system && (
+                        <button
+                          className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete "${wf.name}"?`)) deleteMutation.mutate(wf.id);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -754,6 +770,13 @@ function WorkflowBuilderTab() {
         workflow={editingWorkflow}
         onSave={(data) => saveMutation.mutate(data)}
         isSaving={saveMutation.isPending}
+      />
+
+      <WorkflowTriggersPanel
+        open={triggersOpen}
+        onOpenChange={(v) => { setTriggersOpen(v); if (!v) setTriggersWorkflow(null); }}
+        workflowId={triggersWorkflow?.id ?? ''}
+        workflowName={triggersWorkflow?.name}
       />
     </div>
   );

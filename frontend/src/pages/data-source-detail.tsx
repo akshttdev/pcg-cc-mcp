@@ -70,7 +70,8 @@ export function DataSourceDetailPage() {
   const effectiveWorkflowId = selectedWorkflowId || (Array.isArray(workflows) && workflows.length > 0 ? workflows[0].id : '');
 
   const runWorkflowMutation = useMutation({
-    mutationFn: () => dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId, effectiveModel || undefined),
+    mutationFn: (opts?: { force?: boolean }) =>
+      dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId, effectiveModel || undefined, opts?.force),
     onSuccess: (data) => {
       setWorkflowResult(data);
       // Auto-open review panel if there are staged records
@@ -379,7 +380,7 @@ export function DataSourceDetailPage() {
               <Button
                 size="sm"
                 className="gap-1.5"
-                onClick={() => runWorkflowMutation.mutate()}
+                onClick={() => runWorkflowMutation.mutate({})}
                 disabled={runWorkflowMutation.isPending || !effectiveWorkflowId}
               >
                 {runWorkflowMutation.isPending ? (
@@ -414,6 +415,29 @@ export function DataSourceDetailPage() {
               <p className="text-sm text-red-700 dark:text-red-300">
                 Workflow failed: {(runWorkflowMutation.error as Error)?.message ?? 'Unknown error'}
               </p>
+            </div>
+          )}
+
+          {workflowResult?.reused && (
+            <div className="flex items-center gap-3 p-4 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-4">
+              <CheckCircle2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                  Using results from a previous identical run
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                  The same content was already processed by this workflow.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs"
+                onClick={() => runWorkflowMutation.mutate({ force: true })}
+                disabled={runWorkflowMutation.isPending}
+              >
+                Force Re-run
+              </Button>
             </div>
           )}
 
