@@ -29,12 +29,17 @@ import {
   Merge,
   Save,
   ArrowRight,
+  Eye,
+  Loader2,
+  Network,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { workflowsApi } from '@/lib/api';
 import type {
   WorkflowNode,
   WorkflowConnection,
   WorkflowDefinition,
+  PreviewNodeResult,
 } from '@/lib/api';
 
 // ── Node type registry (n8n-style) ──────────────────────────────────────────
@@ -169,6 +174,9 @@ export function WorkflowEditor({
       }
       setSelectedNodeId(null);
       setShowNodePicker(false);
+      setPreviewResults(null);
+      setShowPreview(false);
+      setShowGraph(false);
     }
   }, [open, workflow]);
 
@@ -287,9 +295,29 @@ export function WorkflowEditor({
 
   const canSave = id.trim() && name.trim() && nodes.length > 0;
 
+  // ── Preview state ────────────────────────────────────────────────────
+  const [previewResults, setPreviewResults] = useState<PreviewNodeResult[] | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [showGraph, setShowGraph] = useState(false);
+
+  const handlePreview = useCallback(async () => {
+    if (nodes.length === 0) return;
+    setIsPreviewing(true);
+    setShowPreview(true);
+    try {
+      const results = await workflowsApi.previewWorkflow({ nodes, connections });
+      setPreviewResults(results);
+    } catch (e) {
+      setPreviewResults([{ node_id: 'error', node_name: 'Error', node_type: 'error', output: String(e) }]);
+    } finally {
+      setIsPreviewing(false);
+    }
+  }, [nodes, connections]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[1100px] h-[85vh] p-0 flex flex-col">
+      <DialogContent className="max-w-[90vw] w-[1400px] h-[90vh] p-0 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-3">
@@ -303,6 +331,26 @@ export function WorkflowEditor({
             )}
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowGraph(true)}
+              disabled={nodes.length === 0}
+              className="gap-1.5"
+            >
+              <Network className="h-3.5 w-3.5" />
+              Graph
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handlePreview}
+              disabled={nodes.length === 0 || isPreviewing}
+              className="gap-1.5"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              {isPreviewing ? 'Running...' : 'Preview'}
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -501,7 +549,7 @@ export function WorkflowEditor({
           </div>
 
           {/* Right: Node configuration panel (n8n style) */}
-          <div className="w-[420px] flex flex-col bg-muted/20">
+          <div className="w-[480px] flex flex-col bg-muted/20">
             {selectedNode ? (
               <NodeConfigPanel
                 node={selectedNode}
@@ -532,8 +580,217 @@ export function WorkflowEditor({
             )}
           </div>
         </div>
+
+        {/* Preview results panel (slides up from bottom) */}
+        {showPreview && (
+          <div className="border-t bg-card max-h-[40%] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+              <div className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Preview Results</span>
+                {isPreviewing && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+              </div>
+              <button onClick={() => setShowPreview(false)} className="p-1 rounded hover:bg-muted">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <ScrollArea className="flex-1 p-4">
+              {isPreviewing && !previewResults && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Loader2 className="h-6 w-6 mx-auto mb-2 animate-spin" />
+                  <p className="text-sm">Running workflow preview...</p>
+                </div>
+              )}
+              {previewResults && (
+                <div className="space-y-3">
+                  {previewResults.map((r) => {
+                    const typeDef = getNodeTypeDef(r.node_type);
+                    return (
+                      <div key={r.node_id} className="rounded-lg border bg-card p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className={cn('w-5 h-5 rounded flex items-center justify-center text-white text-[10px]', typeDef?.color ?? 'bg-gray-500')}>
+                            {r.node_name.charAt(0)}
+                          </div>
+                          <span className="text-sm font-medium">{r.node_name}</span>
+                          <Badge variant="outline" className="text-[10px]">{r.node_type}</Badge>
+                        </div>
+                        <pre className="text-xs bg-muted/50 rounded p-2 overflow-auto max-h-[200px] whitespace-pre-wrap font-mono">
+                          {(() => {
+                            try { return JSON.stringify(JSON.parse(r.output), null, 2); }
+                            catch { return r.output; }
+                          })()}
+                        </pre>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        )}
+
       </DialogContent>
+
+      {/* Graph preview modal */}
+      <Dialog open={showGraph} onOpenChange={setShowGraph}>
+        <DialogContent className="max-w-[85vw] w-[1000px] max-h-[85vh] p-0 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b">
+            <DialogTitle className="text-lg flex items-center gap-2">
+              <Network className="h-5 w-5" />
+              Workflow Graph
+            </DialogTitle>
+          </div>
+          <div className="flex-1 overflow-auto p-6">
+            <WorkflowGraphView nodes={nodes} connections={connections} />
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
+  );
+}
+
+// ── Static graph visualization ────────────────────────────────────────────────
+
+function WorkflowGraphView({ nodes, connections }: { nodes: WorkflowNode[]; connections: WorkflowConnection[] }) {
+  // Build layout: topological layers
+  const layers = useMemo(() => {
+    const deps: Record<string, string[]> = {};
+    for (const c of connections) {
+      if (!deps[c.target]) deps[c.target] = [];
+      deps[c.target].push(c.source);
+    }
+
+    const nodeDepth: Record<string, number> = {};
+    const getDepth = (id: string, visited: Set<string> = new Set()): number => {
+      if (nodeDepth[id] !== undefined) return nodeDepth[id];
+      if (visited.has(id)) return 0;
+      visited.add(id);
+      const nodeDeps = deps[id] ?? [];
+      const depth = nodeDeps.length === 0 ? 0 : Math.max(...nodeDeps.map(d => getDepth(d, visited))) + 1;
+      nodeDepth[id] = depth;
+      return depth;
+    };
+    nodes.forEach(n => getDepth(n.id));
+
+    const maxDepth = Math.max(0, ...Object.values(nodeDepth));
+    const result: WorkflowNode[][] = [];
+    for (let d = 0; d <= maxDepth; d++) {
+      result.push(nodes.filter(n => (nodeDepth[n.id] ?? 0) === d));
+    }
+    return result;
+  }, [nodes, connections]);
+
+  if (nodes.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <Network className="h-8 w-8 mx-auto mb-2 opacity-30" />
+        <p className="text-sm">No nodes to visualize</p>
+      </div>
+    );
+  }
+
+  const nodeWidth = 160;
+  const nodeHeight = 56;
+  const layerGapX = 220;
+  const nodeGapY = 80;
+  const padX = 40;
+  const padY = 40;
+
+  const totalWidth = padX * 2 + layers.length * layerGapX;
+  const maxNodesInLayer = Math.max(1, ...layers.map(l => l.length));
+  const totalHeight = padY * 2 + maxNodesInLayer * nodeGapY;
+
+  // Compute positions
+  const nodePositions: Record<string, { x: number; y: number }> = {};
+  layers.forEach((layer, li) => {
+    const layerHeight = layer.length * nodeGapY;
+    const startY = (totalHeight - layerHeight) / 2;
+    layer.forEach((node, ni) => {
+      nodePositions[node.id] = {
+        x: padX + li * layerGapX,
+        y: startY + ni * nodeGapY,
+      };
+    });
+  });
+
+  return (
+    <div className="overflow-auto">
+      <svg width={totalWidth} height={totalHeight} className="mx-auto">
+        <defs>
+          <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6" fill="currentColor" className="text-muted-foreground" />
+          </marker>
+        </defs>
+
+        {/* Connection lines */}
+        {connections.map((conn, i) => {
+          const from = nodePositions[conn.source];
+          const to = nodePositions[conn.target];
+          if (!from || !to) return null;
+          const x1 = from.x + nodeWidth;
+          const y1 = from.y + nodeHeight / 2;
+          const x2 = to.x;
+          const y2 = to.y + nodeHeight / 2;
+          const midX = (x1 + x2) / 2;
+          return (
+            <path
+              key={i}
+              d={`M${x1},${y1} C${midX},${y1} ${midX},${y2} ${x2},${y2}`}
+              stroke="currentColor"
+              className="text-muted-foreground/50"
+              strokeWidth="2"
+              fill="none"
+              markerEnd="url(#arrowhead)"
+            />
+          );
+        })}
+
+        {/* Node boxes */}
+        {nodes.map((node) => {
+          const pos = nodePositions[node.id];
+          if (!pos) return null;
+          const typeDef = getNodeTypeDef(node.type);
+          const colorMap: Record<string, string> = {
+            'bg-blue-500': '#3b82f6', 'bg-purple-500': '#a855f7',
+            'bg-emerald-500': '#10b981', 'bg-amber-500': '#f59e0b',
+            'bg-orange-500': '#f97316', 'bg-teal-500': '#14b8a6',
+          };
+          const fill = colorMap[typeDef?.color ?? ''] ?? '#6b7280';
+          return (
+            <g key={node.id}>
+              <rect
+                x={pos.x} y={pos.y}
+                width={nodeWidth} height={nodeHeight}
+                rx="8" ry="8"
+                fill="hsl(var(--card))"
+                stroke={fill}
+                strokeWidth="2"
+              />
+              <rect
+                x={pos.x} y={pos.y}
+                width="6" height={nodeHeight}
+                rx="8" ry="0"
+                fill={fill}
+              />
+              <text
+                x={pos.x + 16} y={pos.y + 22}
+                fontSize="12" fontWeight="600"
+                fill="currentColor" className="text-foreground"
+              >
+                {node.name.length > 16 ? node.name.slice(0, 15) + '...' : node.name}
+              </text>
+              <text
+                x={pos.x + 16} y={pos.y + 40}
+                fontSize="10"
+                fill="currentColor" className="text-muted-foreground"
+              >
+                {typeDef?.label ?? node.type}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 

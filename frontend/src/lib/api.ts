@@ -5490,9 +5490,11 @@ export const dataSourcesApi = {
     return handleApiResponse<any>(response);
   },
 
-  runWorkflow: async (dataSourceId: string, workflowId: string) => {
+  runWorkflow: async (dataSourceId: string, workflowId: string, model?: string) => {
     const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows/${workflowId}/run`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
     });
     return handleApiResponse<any>(response);
   },
@@ -5532,6 +5534,8 @@ export interface WorkflowDefinition {
   nodes: WorkflowNode[];
   connections: WorkflowConnection[];
   is_system: boolean;
+  owner_type: string;  // "system", "organization", "user"
+  owner_id?: string;
 }
 
 export interface CreateWorkflowRequest {
@@ -5540,6 +5544,15 @@ export interface CreateWorkflowRequest {
   description?: string;
   nodes: WorkflowNode[];
   connections: WorkflowConnection[];
+  owner_type?: string;
+  owner_id?: string;
+}
+
+export interface PreviewNodeResult {
+  node_id: string;
+  node_name: string;
+  node_type: string;
+  output: string;
 }
 
 export interface UpdateWorkflowRequest {
@@ -5580,8 +5593,22 @@ export const workflowsApi = {
     return handleApiResponse<void>(response);
   },
 
+  previewWorkflow: async (data: { nodes: WorkflowNode[]; connections: WorkflowConnection[]; content?: string }): Promise<PreviewNodeResult[]> => {
+    const response = await makeRequest('/api/workflows/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PreviewNodeResult[]>(response);
+  },
+
   listRecentArtifacts: async () => {
     const response = await makeRequest('/api/artifacts/recent');
     return handleApiResponse<ExecutionArtifact[]>(response);
+  },
+
+  listAvailableModels: async (): Promise<{ id: string; label: string; is_default: boolean }[]> => {
+    const response = await makeRequest('/api/workflows/models');
+    return handleApiResponse<{ id: string; label: string; is_default: boolean }[]>(response);
   },
 };

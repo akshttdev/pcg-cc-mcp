@@ -1386,7 +1386,7 @@ function PipelineNodeCard({ node, isLast }: { node: PipelineNode; isLast: boolea
   );
 }
 
-function EditableWorkflowsView({ orgId: _orgId }: { orgId: string }) {
+function EditableWorkflowsView({ orgId }: { orgId: string }) {
   const queryClient = useQueryClient();
   const { data: workflows = [], isLoading } = useQuery({
     queryKey: ['workflowDefinitions'],
@@ -1406,7 +1406,11 @@ function EditableWorkflowsView({ orgId: _orgId }: { orgId: string }) {
           connections: data.connections,
         });
       } else {
-        return workflowsApi.createDefinition(data);
+        return workflowsApi.createDefinition({
+          ...data,
+          owner_type: 'organization',
+          owner_id: orgId,
+        });
       }
     },
     onSuccess: () => {

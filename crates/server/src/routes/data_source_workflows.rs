@@ -13,6 +13,16 @@ use uuid::Uuid;
 use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError};
 
+/// Default (cheapest) model for LLM workflow nodes
+const DEFAULT_MODEL: &str = "claude-haiku-4-5-20251001";
+
+/// Available models for LLM workflow execution (cheapest first)
+const AVAILABLE_MODELS: &[(&str, &str)] = &[
+    ("claude-haiku-4-5-20251001", "Claude Haiku 4.5 (fastest, cheapest)"),
+    ("claude-sonnet-4-6", "Claude Sonnet 4.6 (balanced)"),
+    ("claude-opus-4-6", "Claude Opus 4.6 (most capable)"),
+];
+
 // ── Workflow types (n8n-inspired schema) ─────────────────────────────────────
 
 /// Position on the canvas
@@ -51,7 +61,12 @@ pub struct WorkflowDefinition {
     pub nodes: Vec<WorkflowNode>,
     pub connections: Vec<WorkflowConnection>,
     pub is_system: bool,
+    #[serde(default = "default_owner_type")]
+    pub owner_type: String,     // "system", "organization", "user"
+    pub owner_id: Option<String>,
 }
+
+fn default_owner_type() -> String { "system".to_string() }
 
 // Legacy step type for backwards compat with run_workflow
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +84,8 @@ struct CreateWorkflowRequest {
     description: Option<String>,
     nodes: Vec<WorkflowNode>,
     connections: Vec<WorkflowConnection>,
+    owner_type: Option<String>,  // "organization" or "user"
+    owner_id: Option<String>,    // UUID of the owner
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +94,15 @@ struct UpdateWorkflowRequest {
     description: Option<String>,
     nodes: Option<Vec<WorkflowNode>>,
     connections: Option<Vec<WorkflowConnection>>,
+}
+
+/// Request for dry-run preview (no artifacts saved)
+#[derive(Debug, Deserialize)]
+struct PreviewWorkflowRequest {
+    nodes: Vec<WorkflowNode>,
+    connections: Vec<WorkflowConnection>,
+    /// Optional content to preview against (if not provided, uses sample text)
+    content: Option<String>,
 }
 
 /// Response for a single step execution result
@@ -180,6 +206,8 @@ fn default_analysis_workflow() -> WorkflowDefinition {
             },
         ],
         is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
     }
 }
 
@@ -198,8 +226,8 @@ async fn seed_defaults(pool: &sqlx::SqlitePool) {
     let desc = default.description.unwrap_or_default();
 
     let _ = sqlx::query(
-        r#"INSERT OR IGNORE INTO workflow_definitions (id, name, description, steps, is_system)
-           VALUES (?1, ?2, ?3, ?4, 1)"#,
+        r#"INSERT OR IGNORE INTO workflow_definitions (id, owner_type, name, description, steps, is_system)
+           VALUES (?1, 'system', ?2, ?3, ?4, 1)"#,
     )
     .bind(&default.id)
     .bind(&default.name)
@@ -209,13 +237,13 @@ async fn seed_defaults(pool: &sqlx::SqlitePool) {
     .await;
 }
 
-fn parse_workflow_from_row(id: String, name: String, description: Option<String>, steps_json: String, is_system: bool) -> WorkflowDefinition {
+fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<String>, name: String, description: Option<String>, steps_json: String, is_system: bool) -> WorkflowDefinition {
     // Try new format: {"nodes": [...], "connections": [...]}
     if let Ok(v) = serde_json::from_str::<Value>(&steps_json) {
         if v.get("nodes").is_some() {
             let nodes: Vec<WorkflowNode> = serde_json::from_value(v["nodes"].clone()).unwrap_or_default();
             let connections: Vec<WorkflowConnection> = serde_json::from_value(v["connections"].clone()).unwrap_or_default();
-            return WorkflowDefinition { id, name, description, nodes, connections, is_system };
+            return WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id };
         }
     }
 
@@ -245,32 +273,32 @@ fn parse_workflow_from_row(id: String, name: String, description: Option<String>
         }
     }
 
-    WorkflowDefinition { id, name, description, nodes, connections, is_system }
+    WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id }
 }
 
 async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<WorkflowDefinition>, sqlx::Error> {
     seed_defaults(pool).await;
 
-    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, bool)>(
-        "SELECT id, name, description, steps, is_system FROM workflow_definitions ORDER BY is_system DESC, name ASC",
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, String, bool)>(
+        "SELECT id, owner_type, owner_id, name, description, steps, is_system FROM workflow_definitions ORDER BY is_system DESC, name ASC",
     )
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(|(id, name, desc, steps, sys)| parse_workflow_from_row(id, name, desc, steps, sys)).collect())
+    Ok(rows.into_iter().map(|(id, ot, oid, name, desc, steps, sys)| parse_workflow_from_row(id, ot, oid, name, desc, steps, sys)).collect())
 }
 
 async fn load_workflow(pool: &sqlx::SqlitePool, workflow_id: &str) -> Result<Option<WorkflowDefinition>, sqlx::Error> {
     seed_defaults(pool).await;
 
-    let row = sqlx::query_as::<_, (String, String, Option<String>, String, bool)>(
-        "SELECT id, name, description, steps, is_system FROM workflow_definitions WHERE id = ?1",
+    let row = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, String, bool)>(
+        "SELECT id, owner_type, owner_id, name, description, steps, is_system FROM workflow_definitions WHERE id = ?1",
     )
     .bind(workflow_id)
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|(id, name, desc, steps, sys)| parse_workflow_from_row(id, name, desc, steps, sys)))
+    Ok(row.map(|(id, ot, oid, name, desc, steps, sys)| parse_workflow_from_row(id, ot, oid, name, desc, steps, sys)))
 }
 
 // ── Mock LLM: content-aware extraction ──────────────────────────────────────
@@ -336,9 +364,21 @@ fn extract_person_names_from_text(text: &str) -> Vec<String> {
     names
 }
 
-fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous_results: &[(&str, &str)]) -> String {
+fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous_results: &[(&str, &str)], node_type: &str, output_schema: &str) -> String {
     let context_hint = if content.is_empty() { title } else { "data source content" };
-    match step_id {
+    // Match on exact step_id first (system workflows), then use output_schema to determine mock data
+    let key = match step_id {
+        "extract_companies" | "extract_contacts" | "identify_opportunities" => step_id.to_string(),
+        _ => {
+            // For custom workflows, use output_schema to pick the right mock
+            let schema_lower = output_schema.to_lowercase();
+            if schema_lower.contains("compan") { "extract_companies".to_string() }
+            else if schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people") { "extract_contacts".to_string() }
+            else if schema_lower.contains("opportunit") || node_type == "llm_analyze" { "identify_opportunities".to_string() }
+            else { step_id.to_string() }
+        }
+    };
+    match key.as_str() {
         "extract_companies" => {
             let extracted = extract_company_names_from_text(content);
             if extracted.is_empty() {
@@ -412,11 +452,19 @@ async fn list_workflows_for_data_source(
     Ok(Json(ApiResponse::success(workflows)))
 }
 
+/// Optional body for run_workflow to specify model
+#[derive(Debug, Deserialize)]
+struct RunWorkflowRequest {
+    model: Option<String>,
+}
+
 /// POST /api/data-sources/:id/workflows/:workflow_id/run
 async fn run_workflow(
     Path((data_source_id, workflow_id)): Path<(Uuid, String)>,
     State(deployment): State<DeploymentImpl>,
+    body: Option<Json<RunWorkflowRequest>>,
 ) -> Result<Json<ApiResponse<WorkflowRunResult>>, ApiError> {
+    let model = body.and_then(|b| b.0.model).unwrap_or_else(|| DEFAULT_MODEL.to_string());
     let pool = &deployment.db().pool;
 
     let data_source = DataSource::find_by_id(pool, data_source_id)
@@ -473,7 +521,7 @@ async fn run_workflow(
             .map(|(sid, out)| (sid.as_str(), out.as_str()))
             .collect();
 
-        let output = generate_mock_step_result(&node.id, &content, title, &previous);
+        let output = execute_node_with_llm(node, &content, &previous, &model).await;
 
         let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
         let artifact_metadata = json!({
@@ -557,17 +605,23 @@ async fn create_workflow_definition(
         return Err(ApiError::BadRequest(format!("Workflow '{}' already exists", req.id)));
     }
 
+    let owner_type = req.owner_type.unwrap_or_else(|| "organization".to_string());
+    if !["organization", "user"].contains(&owner_type.as_str()) {
+        return Err(ApiError::BadRequest("owner_type must be 'organization' or 'user'".to_string()));
+    }
+
     let wf = WorkflowDefinition {
         id: req.id, name: req.name, description: req.description,
         nodes: req.nodes, connections: req.connections, is_system: false,
+        owner_type: owner_type.clone(), owner_id: req.owner_id.clone(),
     };
     let (nodes_json, connections_json) = serialize_workflow_data(&wf);
     let data = format!("{{\"nodes\":{},\"connections\":{}}}", nodes_json, connections_json);
 
     sqlx::query(
-        r#"INSERT INTO workflow_definitions (id, name, description, steps, is_system) VALUES (?1, ?2, ?3, ?4, 0)"#,
+        r#"INSERT INTO workflow_definitions (id, owner_type, owner_id, name, description, steps, is_system) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)"#,
     )
-    .bind(&wf.id).bind(&wf.name).bind(&wf.description).bind(&data)
+    .bind(&wf.id).bind(&owner_type).bind(&req.owner_id).bind(&wf.name).bind(&wf.description).bind(&data)
     .execute(pool).await
     .map_err(|e| ApiError::InternalError(format!("Failed to create workflow: {e}")))?;
 
@@ -594,6 +648,7 @@ async fn update_workflow_definition(
     let wf = WorkflowDefinition {
         id: workflow_id.clone(), name: name.clone(), description: description.clone(),
         nodes: nodes.clone(), connections: connections.clone(), is_system: existing.is_system,
+        owner_type: existing.owner_type.clone(), owner_id: existing.owner_id.clone(),
     };
     let (nodes_json, connections_json) = serialize_workflow_data(&wf);
     let data = format!("{{\"nodes\":{},\"connections\":{}}}", nodes_json, connections_json);
@@ -643,6 +698,173 @@ async fn list_recent_artifacts(
     Ok(Json(ApiResponse::success(artifacts)))
 }
 
+// ── Real LLM execution (optional, falls back to mock) ────────────────────────
+
+/// Call Anthropic API to execute a workflow node's prompt.
+/// Returns the LLM response text, or falls back to mock if no API key.
+async fn execute_node_with_llm(node: &WorkflowNode, content: &str, previous_results: &[(&str, &str)], model: &str) -> String {
+    let prompt_template = node.parameters.get("prompt_template")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Analyze the following content:\n{{content}}");
+
+    // Build the actual prompt by substituting template variables
+    let prev_text = previous_results.iter()
+        .map(|(id, result)| format!("[{}]: {}", id, result))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let prompt = prompt_template
+        .replace("{{content}}", content)
+        .replace("{{previous_results}}", &prev_text);
+
+    // Try real LLM if API key available
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
+        .ok();
+
+    if let Some(key) = api_key {
+        let client = reqwest::Client::new();
+        let body = json!({
+            "model": model,
+            "max_tokens": 2048,
+            "system": "You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only.",
+            "messages": [{"role": "user", "content": prompt}]
+        });
+
+        match client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(response) = resp.json::<Value>().await {
+                    // Extract text from Anthropic response
+                    if let Some(content_blocks) = response["content"].as_array() {
+                        let text: String = content_blocks.iter()
+                            .filter_map(|b| b["text"].as_str())
+                            .collect::<Vec<_>>()
+                            .join("");
+                        if !text.is_empty() {
+                            return text;
+                        }
+                    }
+                }
+            }
+            Ok(resp) => {
+                tracing::warn!("LLM API error {}: falling back to mock", resp.status());
+            }
+            Err(e) => {
+                tracing::warn!("LLM request failed: {e}: falling back to mock");
+            }
+        }
+    }
+
+    // Fall back to mock
+    let output_schema = node.parameters.get("output_schema")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    generate_mock_step_result(&node.id, content, "preview", previous_results, &node.node_type, output_schema)
+}
+
+// ── Preview (dry-run) endpoint ───────────────────────────────────────────────
+
+/// Response for preview node result
+#[derive(Debug, Serialize)]
+struct PreviewNodeResult {
+    node_id: String,
+    node_name: String,
+    node_type: String,
+    output: String,
+}
+
+/// POST /api/workflows/preview — dry-run a workflow without saving artifacts
+async fn preview_workflow(
+    Json(req): Json<PreviewWorkflowRequest>,
+) -> Result<Json<ApiResponse<Vec<PreviewNodeResult>>>, ApiError> {
+    let content = req.content.unwrap_or_else(|| {
+        "Acme Corp CEO John Smith met with TechStart Inc CTO Jane Doe to discuss a potential partnership. \
+         Also present were VP Michael Chen from GlobalTech and Dr. Sarah Park from InnovateLabs. \
+         The meeting covered AI integration services valued at approximately $50,000.".to_string()
+    });
+
+    // Build dependency map
+    let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for conn in &req.connections {
+        deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
+    }
+
+    // Topological sort
+    let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut ordered: Vec<&WorkflowNode> = Vec::new();
+    let mut remaining: Vec<&WorkflowNode> = req.nodes.iter().collect();
+
+    while !remaining.is_empty() {
+        let mut progress = false;
+        remaining.retain(|node| {
+            let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
+            if deps.iter().all(|d| processed.contains(d)) {
+                processed.insert(node.id.clone());
+                ordered.push(node);
+                progress = true;
+                false
+            } else {
+                true
+            }
+        });
+        if !progress {
+            for node in &remaining { ordered.push(node); }
+            break;
+        }
+    }
+
+    let mut results: Vec<PreviewNodeResult> = Vec::new();
+    let mut outputs: Vec<(String, String)> = Vec::new();
+
+    for node in &ordered {
+        let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
+        let previous: Vec<(&str, &str)> = outputs.iter()
+            .filter(|(sid, _)| deps.contains(sid))
+            .map(|(sid, out)| (sid.as_str(), out.as_str()))
+            .collect();
+
+        let output = execute_node_with_llm(node, &content, &previous, DEFAULT_MODEL).await;
+
+        results.push(PreviewNodeResult {
+            node_id: node.id.clone(),
+            node_name: node.name.clone(),
+            node_type: node.node_type.clone(),
+            output: output.clone(),
+        });
+        outputs.push((node.id.clone(), output));
+    }
+
+    Ok(Json(ApiResponse::success(results)))
+}
+
+// ── Available models endpoint ────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct AvailableModel {
+    id: String,
+    label: String,
+    is_default: bool,
+}
+
+async fn list_available_models() -> Json<ApiResponse<Vec<AvailableModel>>> {
+    let models: Vec<AvailableModel> = AVAILABLE_MODELS.iter().map(|(id, label)| {
+        AvailableModel {
+            id: id.to_string(),
+            label: label.to_string(),
+            is_default: *id == DEFAULT_MODEL,
+        }
+    }).collect();
+    Json(ApiResponse::success(models))
+}
+
 // ── Router ──────────────────────────────────────────────────────────────────
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
@@ -652,5 +874,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/data-sources/{id}/artifacts", get(list_data_source_artifacts))
         .route("/workflows/definitions", get(list_all_workflow_definitions).post(create_workflow_definition))
         .route("/workflows/definitions/{id}", put(update_workflow_definition).delete(delete_workflow_definition))
+        .route("/workflows/preview", post(preview_workflow))
+        .route("/workflows/models", get(list_available_models))
         .route("/artifacts/recent", get(list_recent_artifacts))
 }
