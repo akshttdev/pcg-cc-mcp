@@ -229,15 +229,10 @@ async fn generate_recommendation(
     // Create an agent_flow so this shows up as a tracked workflow
     sqlx::query(
         "INSERT OR IGNORE INTO agent_flows
-         (id, name, description, flow_type, status, created_at, updated_at)
-         VALUES (?, ?, ?, 'monitoring', 'executing', datetime('now','subsec'), datetime('now','subsec'))",
+         (id, task_id, flow_type, status, created_at, updated_at)
+         VALUES (?, NULL, 'monitoring', 'executing', datetime('now','subsec'), datetime('now','subsec'))",
     )
     .bind(flow_id)
-    .bind(format!("OSS Upgrade Analysis: {} {}", lib_name, version))
-    .bind(format!(
-        "Analysing {} {} release and generating upgrade recommendation for the sovereign stack.",
-        lib_name, version
-    ))
     .execute(pool)
     .await?;
 
