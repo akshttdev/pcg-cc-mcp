@@ -40,8 +40,8 @@ export function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
-            <img src="/orcha-logo.png" alt="ORCHA" className="h-10 w-auto" />
-            <span className="ml-2 text-xl font-bold tracking-wide">ORCHA</span>
+            <img src="/pcg-globe-logo.png" alt="Powerclub Global" className="h-10 w-auto" />
+            <span className="ml-2 text-xl font-bold tracking-widest uppercase" style={{ fontFamily: "'Cinzel', serif", color: '#b8952a' }}>Powerclub Global</span>
           </div>
           <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
           <CardDescription>
