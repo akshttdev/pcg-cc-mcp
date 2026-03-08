@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -28,6 +28,20 @@ import { cn } from '@/lib/utils';
 import { stagingApi } from '@/lib/api';
 import type { WorkflowStagingRecord } from '@/lib/api';
 
+// Inline confidence badge helper
+const ConfidenceBadge = ({ value }: { value: number | null }) => {
+  if (value === null || value === undefined) return null;
+  const pct = Math.round(value * 100);
+  const color = value >= 0.8 ? 'text-green-600 border-green-200'
+    : value >= 0.5 ? 'text-amber-600 border-amber-200'
+    : 'text-red-600 border-red-200';
+  return (
+    <Badge variant="outline" className={cn('text-[10px]', color)}>
+      {pct}%
+    </Badge>
+  );
+};
+
 const TARGET_TYPE_CONFIG = {
   crm_contact: { label: 'Contacts', icon: Users, color: 'text-blue-500' },
   company: { label: 'Companies', icon: Building2, color: 'text-purple-500' },
@@ -51,13 +65,30 @@ export function StagingReviewPanel({
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Record<string, any>>({});
-  const [filter, setFilter] = useState<'all' | 'valid' | 'duplicates' | 'approved' | 'rejected'>('all');
+  const [filter, setFilter] = useState<'all' | 'valid' | 'duplicates' | 'validation_issues' | 'approved' | 'rejected'>('all');
 
   const { data: records = [], isLoading } = useQuery({
     queryKey: ['staging', workflowRunId],
     queryFn: () => stagingApi.listByRun(workflowRunId),
     enabled: open && !!workflowRunId,
   });
+
+  const hasValidationErrors = useCallback((r: WorkflowStagingRecord): boolean => {
+    if (!r.validation_errors) return false;
+    try {
+      const errs = JSON.parse(r.validation_errors);
+      return Array.isArray(errs) && errs.length > 0;
+    } catch { return false; }
+  }, []);
+
+  const validationIssueCount = useMemo(() => records.filter(hasValidationErrors).length, [records, hasValidationErrors]);
+
+  const avgConfidence = useMemo(() => {
+    const withConf = records.filter(r => r.confidence !== null && r.confidence !== undefined);
+    if (withConf.length === 0) return null;
+    const sum = withConf.reduce((acc, r) => acc + (r.confidence ?? 0), 0);
+    return sum / withConf.length;
+  }, [records]);
 
   const grouped = useMemo(() => {
     let filtered = records;
@@ -67,6 +98,9 @@ export function StagingReviewPanel({
         break;
       case 'duplicates':
         filtered = records.filter(r => r.duplicate_of_id != null);
+        break;
+      case 'validation_issues':
+        filtered = records.filter(hasValidationErrors);
         break;
       case 'approved':
         filtered = records.filter(r => r.status === 'approved');
@@ -81,7 +115,7 @@ export function StagingReviewPanel({
       groups[r.target_type].push(r);
     }
     return groups;
-  }, [records, filter]);
+  }, [records, filter, hasValidationErrors]);
 
   const pendingCount = records.filter(r => r.status === 'pending_review').length;
   const approvedCount = records.filter(r => r.status === 'approved').length;
@@ -205,9 +239,23 @@ export function StagingReviewPanel({
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{records.length} total</span>
+              {avgConfidence !== null && (
+                <Badge variant="outline" className={cn('text-[10px]',
+                  avgConfidence >= 0.8 ? 'text-green-600 border-green-200'
+                    : avgConfidence >= 0.5 ? 'text-amber-600 border-amber-200'
+                    : 'text-red-600 border-red-200'
+                )}>
+                  avg {Math.round(avgConfidence * 100)}%
+                </Badge>
+              )}
               {duplicateCount > 0 && (
                 <Badge variant="outline" className="text-amber-600 border-amber-200">
                   {duplicateCount} duplicates
+                </Badge>
+              )}
+              {validationIssueCount > 0 && (
+                <Badge variant="outline" className="text-amber-600 border-amber-200">
+                  {validationIssueCount} validation issues
                 </Badge>
               )}
               <Badge variant="outline">{pendingCount} pending</Badge>
@@ -222,15 +270,24 @@ export function StagingReviewPanel({
           <div className="flex items-center gap-2 px-6 py-2 border-b bg-muted/30">
             {/* Filter tabs */}
             <div className="flex items-center gap-1 mr-2">
-              {(['all', 'valid', 'duplicates', 'approved', 'rejected'] as const).map((f) => {
+              {(['all', 'valid', 'duplicates', 'validation_issues', 'approved', 'rejected'] as const).map((f) => {
                 const counts = {
                   all: records.length,
                   valid: validPendingCount,
                   duplicates: duplicateCount,
+                  validation_issues: validationIssueCount,
                   approved: approvedCount,
                   rejected: records.filter(r => r.status === 'rejected').length,
                 };
                 if (counts[f] === 0 && f !== 'all') return null;
+                const labels: Record<string, string> = {
+                  all: 'All',
+                  valid: 'Valid',
+                  duplicates: 'Duplicates',
+                  validation_issues: 'Validation Issues',
+                  approved: 'Approved',
+                  rejected: 'Rejected',
+                };
                 return (
                   <button
                     key={f}
@@ -239,10 +296,11 @@ export function StagingReviewPanel({
                       'px-2 py-1 rounded text-xs transition-colors',
                       filter === f
                         ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-muted text-muted-foreground'
+                        : 'hover:bg-muted text-muted-foreground',
+                      f === 'validation_issues' && counts[f] > 0 && filter !== f && 'text-amber-600'
                     )}
                   >
-                    {f === 'all' ? 'All' : f === 'valid' ? 'Valid' : f === 'duplicates' ? 'Duplicates' : f.charAt(0).toUpperCase() + f.slice(1)}
+                    {labels[f]}
                     {counts[f] > 0 && ` (${counts[f]})`}
                   </button>
                 );
@@ -274,7 +332,7 @@ export function StagingReviewPanel({
                 disabled={autoApproveMutation.isPending}
               >
                 <CheckCheck className="h-3 w-3" />
-                {autoApproveMutation.isPending ? 'Approving...' : `Auto-approve ${validPendingCount} valid`}
+                {autoApproveMutation.isPending ? 'Approving...' : `Auto-approve ${validPendingCount} valid (\u226570% confidence)`}
               </Button>
             )}
 
@@ -347,6 +405,7 @@ export function StagingReviewPanel({
                             record.status === 'rejected' && 'border-red-200 bg-red-50/50 dark:bg-red-950/20 opacity-60',
                             record.status === 'committed' && 'border-blue-200 bg-blue-50/50 dark:bg-blue-950/20',
                             record.status === 'error' && 'border-red-300 bg-red-50 dark:bg-red-950/30',
+                            hasValidationErrors(record) && record.status !== 'rejected' && 'border-amber-300 bg-amber-50/30 dark:bg-amber-950/10',
                           )}
                         >
                           <div className="flex items-center gap-2">
@@ -381,6 +440,8 @@ export function StagingReviewPanel({
                             >
                               {record.status.replace('_', ' ')}
                             </Badge>
+
+                            <ConfidenceBadge value={record.confidence} />
 
                             {record.status === 'pending_review' && (
                               <div className="flex items-center gap-1">
