@@ -11,17 +11,9 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use deployment::Deployment;
+use db::models::pcg_router_model::PcgRouterModel;
 use crate::{DeploymentImpl, error::ApiError};
-
-/// Default (cheapest) model for LLM workflow nodes
-const DEFAULT_MODEL: &str = "claude-haiku-4-5-20251001";
-
-/// Available models for LLM workflow execution (cheapest first)
-const AVAILABLE_MODELS: &[(&str, &str)] = &[
-    ("claude-haiku-4-5-20251001", "Claude Haiku 4.5 (fastest, cheapest)"),
-    ("claude-sonnet-4-6", "Claude Sonnet 4.6 (balanced)"),
-    ("claude-opus-4-6", "Claude Opus 4.6 (most capable)"),
-];
+use super::pcg_router::{self, ChatMessage};
 
 // ── Workflow types (n8n-inspired schema) ─────────────────────────────────────
 
@@ -464,7 +456,7 @@ async fn run_workflow(
     State(deployment): State<DeploymentImpl>,
     body: Option<Json<RunWorkflowRequest>>,
 ) -> Result<Json<ApiResponse<WorkflowRunResult>>, ApiError> {
-    let model = body.and_then(|b| b.0.model).unwrap_or_else(|| DEFAULT_MODEL.to_string());
+    let model = body.and_then(|b| b.0.model).unwrap_or_default(); // empty = use router's highest priority
     let pool = &deployment.db().pool;
 
     let data_source = DataSource::find_by_id(pool, data_source_id)
@@ -521,7 +513,7 @@ async fn run_workflow(
             .map(|(sid, out)| (sid.as_str(), out.as_str()))
             .collect();
 
-        let output = execute_node_with_llm(node, &content, &previous, &model).await;
+        let output = execute_node_with_llm(pool, node, &content, &previous, &model).await;
 
         let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
         let artifact_metadata = json!({
@@ -698,11 +690,18 @@ async fn list_recent_artifacts(
     Ok(Json(ApiResponse::success(artifacts)))
 }
 
-// ── Real LLM execution (optional, falls back to mock) ────────────────────────
+// ── LLM execution via PCG Router (falls back to mock) ────────────────────────
 
-/// Call Anthropic API to execute a workflow node's prompt.
-/// Returns the LLM response text, or falls back to mock if no API key.
-async fn execute_node_with_llm(node: &WorkflowNode, content: &str, previous_results: &[(&str, &str)], model: &str) -> String {
+/// Execute a workflow node's LLM prompt via the PCG Router.
+/// Routes through all configured providers with priority-based fallback.
+/// Falls back to mock extraction if no models are available.
+async fn execute_node_with_llm(
+    pool: &sqlx::SqlitePool,
+    node: &WorkflowNode,
+    content: &str,
+    previous_results: &[(&str, &str)],
+    model: &str,
+) -> String {
     let prompt_template = node.parameters.get("prompt_template")
         .and_then(|v| v.as_str())
         .unwrap_or("Analyze the following content:\n{{content}}");
@@ -717,49 +716,41 @@ async fn execute_node_with_llm(node: &WorkflowNode, content: &str, previous_resu
         .replace("{{content}}", content)
         .replace("{{previous_results}}", &prev_text);
 
-    // Try real LLM if API key available
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .ok();
+    // Route through PCG Router — handles multi-provider fallback
+    let messages = vec![
+        ChatMessage {
+            role: "system".to_string(),
+            content: json!("You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only."),
+        },
+        ChatMessage {
+            role: "user".to_string(),
+            content: json!(prompt),
+        },
+    ];
 
-    if let Some(key) = api_key {
-        let client = reqwest::Client::new();
-        let body = json!({
-            "model": model,
-            "max_tokens": 2048,
-            "system": "You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only.",
-            "messages": [{"role": "user", "content": prompt}]
-        });
+    // Use per-node model override if set, otherwise use the workflow-level model
+    let node_model = node.parameters.get("model")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| if model.is_empty() { None } else { Some(model) });
 
-        match client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", &key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(response) = resp.json::<Value>().await {
-                    // Extract text from Anthropic response
-                    if let Some(content_blocks) = response["content"].as_array() {
-                        let text: String = content_blocks.iter()
-                            .filter_map(|b| b["text"].as_str())
-                            .collect::<Vec<_>>()
-                            .join("");
-                        if !text.is_empty() {
-                            return text;
-                        }
-                    }
+    match pcg_router::route_completion(pool, messages, node_model, Some(2048), None).await {
+        Ok((resp, metadata)) => {
+            tracing::info!(
+                "[WORKFLOW] Node '{}' routed via {} ({}), tokens: {:?}/{:?}",
+                node.id, metadata.model_used, metadata.provider,
+                metadata.input_tokens, metadata.output_tokens
+            );
+            // Extract text from OpenAI-format response
+            if let Some(text) = resp["choices"][0]["message"]["content"].as_str() {
+                if !text.is_empty() {
+                    return text.to_string();
                 }
             }
-            Ok(resp) => {
-                tracing::warn!("LLM API error {}: falling back to mock", resp.status());
-            }
-            Err(e) => {
-                tracing::warn!("LLM request failed: {e}: falling back to mock");
-            }
+            tracing::warn!("[WORKFLOW] Empty response from router for node '{}'", node.id);
+        }
+        Err(e) => {
+            tracing::warn!("[WORKFLOW] PCG Router failed for node '{}': {e}, falling back to mock", node.id);
         }
     }
 
@@ -783,8 +774,10 @@ struct PreviewNodeResult {
 
 /// POST /api/workflows/preview — dry-run a workflow without saving artifacts
 async fn preview_workflow(
+    State(deployment): State<DeploymentImpl>,
     Json(req): Json<PreviewWorkflowRequest>,
 ) -> Result<Json<ApiResponse<Vec<PreviewNodeResult>>>, ApiError> {
+    let pool = &deployment.db().pool;
     let content = req.content.unwrap_or_else(|| {
         "Acme Corp CEO John Smith met with TechStart Inc CTO Jane Doe to discuss a potential partnership. \
          Also present were VP Michael Chen from GlobalTech and Dr. Sarah Park from InnovateLabs. \
@@ -831,7 +824,7 @@ async fn preview_workflow(
             .map(|(sid, out)| (sid.as_str(), out.as_str()))
             .collect();
 
-        let output = execute_node_with_llm(node, &content, &previous, DEFAULT_MODEL).await;
+        let output = execute_node_with_llm(pool, node, &content, &previous, "").await;
 
         results.push(PreviewNodeResult {
             node_id: node.id.clone(),
@@ -845,24 +838,38 @@ async fn preview_workflow(
     Ok(Json(ApiResponse::success(results)))
 }
 
-// ── Available models endpoint ────────────────────────────────────────────────
+// ── Available models endpoint (backed by PCG Router registry) ────────────────
 
 #[derive(Debug, Serialize)]
 struct AvailableModel {
     id: String,
     label: String,
     is_default: bool,
+    provider: String,
+    cost_per_million_input: i64,
+    cost_per_million_output: i64,
 }
 
-async fn list_available_models() -> Json<ApiResponse<Vec<AvailableModel>>> {
-    let models: Vec<AvailableModel> = AVAILABLE_MODELS.iter().map(|(id, label)| {
+async fn list_available_models(
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Vec<AvailableModel>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let models = PcgRouterModel::list_enabled(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to list models: {e}")))?;
+
+    let available: Vec<AvailableModel> = models.iter().enumerate().map(|(i, m)| {
         AvailableModel {
-            id: id.to_string(),
-            label: label.to_string(),
-            is_default: *id == DEFAULT_MODEL,
+            id: m.model_id.clone(),
+            label: format!("{} ({})", m.name, m.provider),
+            is_default: i == 0, // highest priority (first) is default
+            provider: m.provider.clone(),
+            cost_per_million_input: m.cost_per_million_input,
+            cost_per_million_output: m.cost_per_million_output,
         }
     }).collect();
-    Json(ApiResponse::success(models))
+
+    Ok(Json(ApiResponse::success(available)))
 }
 
 // ── Router ──────────────────────────────────────────────────────────────────
