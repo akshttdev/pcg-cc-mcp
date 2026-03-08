@@ -385,8 +385,8 @@ export function WorkflowEditor({
         <div className="flex flex-1 min-h-0">
           {/* Left: Canvas / Node list */}
           <div className={cn(
-            'flex flex-col border-r transition-all',
-            showGraph ? 'flex-1' : selectedNodeId ? 'w-[340px] shrink-0' : 'flex-1'
+            'flex flex-col border-r',
+            selectedNodeId ? 'w-[340px] shrink-0' : 'flex-1'
           )}>
             {/* Workflow metadata (collapsible) */}
             <div className="border-b bg-muted/30">
