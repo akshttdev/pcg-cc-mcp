@@ -22,6 +22,8 @@ nora = { path = "../nora" }
 cinematics = { path = "../cinematics" }
 topsi = { path = "../topsi" }
 discord-bot = { path = "../discord-bot" }
+discord-bots = { path = "../discord-bots" }
+base64 = "0.21"
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["io"] }
 axum = { workspace = true }
