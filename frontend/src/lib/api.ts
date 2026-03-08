@@ -5731,4 +5731,22 @@ export const stagingApi = {
     });
     return handleApiResponse<{ committed: number; errors: number }>(response);
   },
+
+  autoApprove: async (workflowRunId: string): Promise<{ approved: number }> => {
+    const response = await makeRequest('/api/workflow-staging/auto-approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow_run_id: workflowRunId }),
+    });
+    return handleApiResponse<{ approved: number }>(response);
+  },
+
+  rejectDuplicates: async (workflowRunId: string): Promise<{ rejected: number }> => {
+    const response = await makeRequest('/api/workflow-staging/reject-duplicates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow_run_id: workflowRunId }),
+    });
+    return handleApiResponse<{ rejected: number }>(response);
+  },
 };

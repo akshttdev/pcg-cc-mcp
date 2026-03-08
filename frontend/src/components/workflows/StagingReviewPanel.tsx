@@ -51,6 +51,7 @@ export function StagingReviewPanel({
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Record<string, any>>({});
+  const [filter, setFilter] = useState<'all' | 'valid' | 'duplicates' | 'approved' | 'rejected'>('all');
 
   const { data: records = [], isLoading } = useQuery({
     queryKey: ['staging', workflowRunId],
@@ -59,17 +60,35 @@ export function StagingReviewPanel({
   });
 
   const grouped = useMemo(() => {
+    let filtered = records;
+    switch (filter) {
+      case 'valid':
+        filtered = records.filter(r => !r.duplicate_of_id && r.status === 'pending_review');
+        break;
+      case 'duplicates':
+        filtered = records.filter(r => r.duplicate_of_id != null);
+        break;
+      case 'approved':
+        filtered = records.filter(r => r.status === 'approved');
+        break;
+      case 'rejected':
+        filtered = records.filter(r => r.status === 'rejected');
+        break;
+    }
     const groups: Record<string, WorkflowStagingRecord[]> = {};
-    for (const r of records) {
+    for (const r of filtered) {
       if (!groups[r.target_type]) groups[r.target_type] = [];
       groups[r.target_type].push(r);
     }
     return groups;
-  }, [records]);
+  }, [records, filter]);
 
   const pendingCount = records.filter(r => r.status === 'pending_review').length;
   const approvedCount = records.filter(r => r.status === 'approved').length;
   const committedCount = records.filter(r => r.status === 'committed').length;
+  const duplicateCount = records.filter(r => r.duplicate_of_id != null).length;
+  const validPendingCount = records.filter(r => r.status === 'pending_review' && !r.duplicate_of_id).length;
+  const duplicatePendingCount = records.filter(r => r.status === 'pending_review' && r.duplicate_of_id != null).length;
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: any } }) =>
@@ -90,6 +109,16 @@ export function StagingReviewPanel({
 
   const batchCommitMutation = useMutation({
     mutationFn: () => stagingApi.batchCommit(workflowRunId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+  });
+
+  const autoApproveMutation = useMutation({
+    mutationFn: () => stagingApi.autoApprove(workflowRunId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+  });
+
+  const rejectDuplicatesMutation = useMutation({
+    mutationFn: () => stagingApi.rejectDuplicates(workflowRunId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
   });
 
@@ -175,6 +204,12 @@ export function StagingReviewPanel({
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{records.length} total</span>
+              {duplicateCount > 0 && (
+                <Badge variant="outline" className="text-amber-600 border-amber-200">
+                  {duplicateCount} duplicates
+                </Badge>
+              )}
               <Badge variant="outline">{pendingCount} pending</Badge>
               <Badge variant="outline" className="text-green-600 border-green-200">{approvedCount} approved</Badge>
               <Badge variant="outline" className="text-blue-600 border-blue-200">{committedCount} committed</Badge>
@@ -182,38 +217,78 @@ export function StagingReviewPanel({
           </div>
         </div>
 
-        {/* Batch actions */}
-        {pendingCount > 0 && (
+        {/* Filter tabs + smart actions toolbar */}
+        {records.length > 0 && (
           <div className="flex items-center gap-2 px-6 py-2 border-b bg-muted/30">
-            <span className="text-xs text-muted-foreground">Batch:</span>
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleApproveAll}
-              disabled={batchMutation.isPending}>
-              <CheckCheck className="h-3 w-3" /> Approve All ({pendingCount})
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive" onClick={handleRejectAll}
-              disabled={batchMutation.isPending}>
-              <XCircle className="h-3 w-3" /> Reject All
-            </Button>
+            {/* Filter tabs */}
+            <div className="flex items-center gap-1 mr-2">
+              {(['all', 'valid', 'duplicates', 'approved', 'rejected'] as const).map((f) => {
+                const counts = {
+                  all: records.length,
+                  valid: validPendingCount,
+                  duplicates: duplicateCount,
+                  approved: approvedCount,
+                  rejected: records.filter(r => r.status === 'rejected').length,
+                };
+                if (counts[f] === 0 && f !== 'all') return null;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={cn(
+                      'px-2 py-1 rounded text-xs transition-colors',
+                      filter === f
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-muted text-muted-foreground'
+                    )}
+                  >
+                    {f === 'all' ? 'All' : f === 'valid' ? 'Valid' : f === 'duplicates' ? 'Duplicates' : f.charAt(0).toUpperCase() + f.slice(1)}
+                    {counts[f] > 0 && ` (${counts[f]})`}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="flex-1" />
+
+            {/* Smart action buttons */}
+            {duplicatePendingCount > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1 text-amber-600 border-amber-200 hover:bg-amber-50"
+                onClick={() => rejectDuplicatesMutation.mutate()}
+                disabled={rejectDuplicatesMutation.isPending}
+              >
+                <XCircle className="h-3 w-3" />
+                {rejectDuplicatesMutation.isPending ? 'Removing...' : `Remove ${duplicatePendingCount} duplicates`}
+              </Button>
+            )}
+
+            {validPendingCount > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1 text-green-600 border-green-200 hover:bg-green-50"
+                onClick={() => autoApproveMutation.mutate()}
+                disabled={autoApproveMutation.isPending}
+              >
+                <CheckCheck className="h-3 w-3" />
+                {autoApproveMutation.isPending ? 'Approving...' : `Auto-approve ${validPendingCount} valid`}
+              </Button>
+            )}
+
             {approvedCount > 0 && (
-              <Button size="sm" className="h-7 text-xs gap-1" onClick={() => batchCommitMutation.mutate()}
-                disabled={batchCommitMutation.isPending}>
+              <Button
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => batchCommitMutation.mutate()}
+                disabled={batchCommitMutation.isPending}
+              >
                 <Send className="h-3 w-3" />
                 {batchCommitMutation.isPending ? 'Committing...' : `Commit ${approvedCount} to CRM`}
               </Button>
             )}
-          </div>
-        )}
-
-        {/* Also show commit button when nothing pending but some approved */}
-        {pendingCount === 0 && approvedCount > 0 && (
-          <div className="flex items-center gap-2 px-6 py-2 border-b bg-muted/30">
-            <div className="flex-1" />
-            <Button size="sm" className="h-7 text-xs gap-1" onClick={() => batchCommitMutation.mutate()}
-              disabled={batchCommitMutation.isPending}>
-              <Send className="h-3 w-3" />
-              {batchCommitMutation.isPending ? 'Committing...' : `Commit ${approvedCount} to CRM`}
-            </Button>
           </div>
         )}
 
@@ -230,6 +305,15 @@ export function StagingReviewPanel({
             {!isLoading && records.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
                 <p className="text-sm">No staged records for this workflow run.</p>
+              </div>
+            )}
+
+            {!isLoading && records.length > 0 && Object.keys(grouped).length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-sm">No records match the "{filter}" filter.</p>
+                <Button size="sm" variant="ghost" className="mt-2" onClick={() => setFilter('all')}>
+                  Show all records
+                </Button>
               </div>
             )}
 
