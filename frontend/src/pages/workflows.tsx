@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useExecutionEvents, ActiveExecution } from '@/hooks/useExecutionEvents';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import {
   Sheet,
@@ -23,9 +25,13 @@ import {
   Microscope,
   Film,
   Calendar,
+  Hammer,
+  Plus,
+  Trash2,
 } from 'lucide-react';
-import { agentFlowsApi, wideResearchApi, resolveApiUrl } from '@/lib/api';
-import type { AgentFlow, WideResearchSession } from '@/lib/api';
+import { agentFlowsApi, wideResearchApi, workflowsApi, resolveApiUrl } from '@/lib/api';
+import type { AgentFlow, WideResearchSession, WorkflowDefinition } from '@/lib/api';
+import { WorkflowEditor } from '@/components/workflows/WorkflowEditor';
 
 interface AutomationDefinition {
   id: string;
@@ -56,7 +62,7 @@ interface CinematicBrief {
 
 export function WorkflowsPage() {
   const [selectedExecution, setSelectedExecution] = useState<ActiveExecution | null>(null);
-  const [activeTab, setActiveTab] = useState('active');
+  const [activeTab, setActiveTab] = useState('builder');
 
   const [agentFlows, setAgentFlows] = useState<AgentFlow[]>([]);
   const [automations, setAutomations] = useState<AutomationDefinition[]>([]);
@@ -184,7 +190,11 @@ export function WorkflowsPage() {
       <div className="flex-1 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="border-b px-4 sm:px-6">
-            <TabsList className="tab-grid-7">
+            <TabsList className="tab-grid-8">
+              <TabsTrigger value="builder">
+                <Hammer className="h-3.5 w-3.5 mr-1" />
+                Builder
+              </TabsTrigger>
               <TabsTrigger value="active">
                 Active
                 {activeExecutions.length > 0 && (
@@ -236,6 +246,11 @@ export function WorkflowsPage() {
               </TabsTrigger>
             </TabsList>
           </div>
+
+          {/* Builder */}
+          <TabsContent value="builder" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            <WorkflowBuilderTab />
+          </TabsContent>
 
           {/* Active */}
           <TabsContent value="active" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
@@ -600,6 +615,134 @@ export function WorkflowsPage() {
           )}
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+function WorkflowBuilderTab() {
+  const queryClient = useQueryClient();
+  const { data: workflows = [], isLoading } = useQuery({
+    queryKey: ['workflowDefinitions'],
+    queryFn: () => workflowsApi.listDefinitions(),
+  });
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingWorkflow, setEditingWorkflow] = useState<WorkflowDefinition | null>(null);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: { id: string; name: string; description?: string; nodes: any[]; connections: any[] }) => {
+      if (editingWorkflow) {
+        return workflowsApi.updateDefinition(data.id, {
+          name: data.name,
+          description: data.description,
+          nodes: data.nodes,
+          connections: data.connections,
+        });
+      } else {
+        return workflowsApi.createDefinition(data);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+      setEditorOpen(false);
+      setEditingWorkflow(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => workflowsApi.deleteDefinition(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading workflows...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 max-w-[1200px] mx-auto">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Workflow Builder</h2>
+          <p className="text-sm text-muted-foreground">
+            Create and edit data processing pipelines with the n8n-style node editor.
+          </p>
+        </div>
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setEditingWorkflow(null); setEditorOpen(true); }}>
+          <Plus className="h-3.5 w-3.5" />
+          New Workflow
+        </Button>
+      </div>
+
+      {workflows.length === 0 ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <Hammer className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium">No workflows yet</p>
+          <p className="text-xs mt-1">Create your first workflow to start processing data sources.</p>
+          <Button size="sm" variant="outline" className="mt-4 gap-1.5" onClick={() => { setEditingWorkflow(null); setEditorOpen(true); }}>
+            <Plus className="h-3.5 w-3.5" />
+            Create Workflow
+          </Button>
+        </div>
+      ) : (
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {workflows.map((wf: WorkflowDefinition) => {
+            const nodeCount = wf.nodes?.length ?? 0;
+            return (
+              <Card
+                key={wf.id}
+                className="card-interactive cursor-pointer"
+                onClick={() => { setEditingWorkflow(wf); setEditorOpen(true); }}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm">{wf.name}</CardTitle>
+                    <div className="flex items-center gap-1.5">
+                      {wf.is_system && <Badge variant="secondary" className="text-[10px]">System</Badge>}
+                      <Badge variant="outline" className="text-[10px]">{nodeCount} node{nodeCount !== 1 ? 's' : ''}</Badge>
+                    </div>
+                  </div>
+                  {wf.description && <CardDescription className="text-xs line-clamp-2">{wf.description}</CardDescription>}
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap gap-1">
+                      {(wf.nodes ?? []).slice(0, 4).map((node: any) => (
+                        <Badge key={node.id} variant="outline" className="text-[9px] px-1.5">{node.name}</Badge>
+                      ))}
+                      {nodeCount > 4 && <Badge variant="outline" className="text-[9px] px-1.5">+{nodeCount - 4}</Badge>}
+                    </div>
+                    {!wf.is_system && (
+                      <button
+                        className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Delete "${wf.name}"?`)) deleteMutation.mutate(wf.id);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <WorkflowEditor
+        open={editorOpen}
+        onOpenChange={(v) => { setEditorOpen(v); if (!v) setEditingWorkflow(null); }}
+        workflow={editingWorkflow}
+        onSave={(data) => saveMutation.mutate(data)}
+        isSaving={saveMutation.isPending}
+      />
     </div>
   );
 }
