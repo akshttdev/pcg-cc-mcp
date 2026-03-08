@@ -961,58 +961,78 @@ function NodeConfigPanel({
 
           {/* Input connections */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">
+            <Label className="text-xs text-muted-foreground mb-2 block">
               Input Connections
             </Label>
-            <p className="text-[10px] text-muted-foreground mb-2">
-              Click a node to connect or disconnect it as an input.
-            </p>
-            <div className="space-y-1">
-              {allNodes
-                .filter((n) => n.id !== node.id)
-                .map((otherNode) => {
-                  const isConnected = currentInputs.includes(otherNode.id);
-                  const srcDef = getNodeTypeDef(otherNode.type);
-                  const SrcIcon = srcDef?.icon ?? Zap;
-                  return (
-                    <button
-                      key={otherNode.id}
-                      onClick={() =>
-                        isConnected
-                          ? onRemoveConnection(otherNode.id)
-                          : onAddConnection(otherNode.id)
-                      }
+            <div className="space-y-1.5">
+              {currentInputs.map((sourceId) => {
+                const sourceNode = allNodes.find((n) => n.id === sourceId);
+                const srcDef = sourceNode
+                  ? getNodeTypeDef(sourceNode.type)
+                  : undefined;
+                const SrcIcon = srcDef?.icon ?? Zap;
+                return (
+                  <div
+                    key={sourceId}
+                    className="flex items-center gap-2 rounded-md border bg-primary/5 border-primary/20 px-2 py-1.5"
+                  >
+                    <div
                       className={cn(
-                        'flex items-center gap-2 rounded-md border px-2 py-1.5 w-full text-left transition-colors',
-                        isConnected
-                          ? 'bg-primary/10 border-primary/30 hover:bg-primary/5'
-                          : 'bg-card hover:bg-muted/50 border-transparent'
+                        'w-5 h-5 rounded flex items-center justify-center text-white shrink-0',
+                        srcDef?.color ?? 'bg-gray-500'
                       )}
                     >
-                      <div
-                        className={cn(
-                          'w-5 h-5 rounded flex items-center justify-center text-white shrink-0',
-                          srcDef?.color ?? 'bg-gray-500'
-                        )}
-                      >
-                        <SrcIcon className="h-3 w-3" />
-                      </div>
-                      <span className="text-sm flex-1 truncate">
-                        {otherNode.name}
-                      </span>
-                      {isConnected ? (
-                        <Link className="h-3.5 w-3.5 text-primary shrink-0" />
-                      ) : (
-                        <Unlink className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
-                      )}
+                      <SrcIcon className="h-3 w-3" />
+                    </div>
+                    <span className="text-sm flex-1 truncate">
+                      {sourceNode?.name ?? sourceId}
+                    </span>
+                    <button
+                      onClick={() => onRemoveConnection(sourceId)}
+                      className="p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                      title="Disconnect"
+                    >
+                      <Unlink className="h-3.5 w-3.5" />
                     </button>
-                  );
-                })}
+                  </div>
+                );
+              })}
 
-              {allNodes.length <= 1 && (
+              {currentInputs.length === 0 && (
                 <p className="text-xs text-muted-foreground italic">
-                  Add more nodes to create connections.
+                  No inputs — receives raw data source content.
                 </p>
+              )}
+
+              {availableInputs.length > 0 && (
+                <Select onValueChange={(v) => onAddConnection(v)}>
+                  <SelectTrigger className="h-8 text-sm border-dashed">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Link className="h-3.5 w-3.5" />
+                      <span>Add input connection...</span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableInputs.map((n) => {
+                      const nDef = getNodeTypeDef(n.type);
+                      return (
+                        <SelectItem key={n.id} value={n.id}>
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                'w-4 h-4 rounded flex items-center justify-center text-white shrink-0 text-[10px]',
+                                nDef?.color ?? 'bg-gray-500'
+                              )}
+                            >
+                              {(nDef?.label ?? '?')[0]}
+                            </span>
+                            {n.name}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           </div>
