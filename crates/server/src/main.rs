@@ -264,6 +264,9 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
 
+    // Spawn OSS Library Listener (polls GitHub releases hourly)
+    routes::oss_listener_bg::spawn_oss_listener(deployment.db().pool.clone());
+
     // Spawn VIBE deposit watcher (polls platform revenue wallet every 30s)
     {
         let pool_for_watcher = deployment.db().pool.clone();

@@ -51,6 +51,7 @@ const SocialPage            = lazy(() => import('@/pages/social').then(m => ({ d
 const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ default: m.CrmPage })));
 const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
 const OrganizationProfilePage  = lazy(() => import('@/pages/organization-profile').then(m => ({ default: m.OrganizationProfilePage })));
+const DataSourcesPage          = lazy(() => import('@/pages/data-sources').then(m => ({ default: m.DataSourcesPage })));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
 const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-environment').then(m => ({ default: m.EmbedVirtualEnvironmentPage })));
 // MeshPage merged into Settings > Network & Mesh
@@ -69,6 +70,7 @@ const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
 const MediaLibraryPage        = lazy(() => import('@/pages/media-library').then(m => ({ default: m.MediaLibraryPage })));
 const ReviewPage              = lazy(() => import('@/pages/review').then(m => ({ default: m.ReviewPage })));
+const OssLibraryListenerPage  = lazy(() => import('@/pages/oss-library-listener').then(m => ({ default: m.OssLibraryListenerPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -310,6 +312,10 @@ function AppContent() {
                         element={<ProtectedRoute><OrganizationProfilePage /></ProtectedRoute>}
                       />
                       <Route
+                        path="/organizations/:orgId/data-sources"
+                        element={<ProtectedRoute><DataSourcesPage /></ProtectedRoute>}
+                      />
+                      <Route
                         path="/organizations/:orgId/crm/acquisition"
                         element={<ProtectedRoute><OrganizationProfilePage defaultTab="pipelines" defaultPipeline="acquisition" /></ProtectedRoute>}
                       />
@@ -364,6 +370,10 @@ function AppContent() {
                         element={<ProtectedRoute><MediaLibraryPage /></ProtectedRoute>}
                       />
                       <Route path="/review/:token" element={<ReviewPage />} />
+                      <Route
+                        path="/oss-library-listener"
+                        element={<ProtectedRoute><OssLibraryListenerPage /></ProtectedRoute>}
+                      />
                       <Route
                         path="/virtual-environment"
                         element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}

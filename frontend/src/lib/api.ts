@@ -214,6 +214,14 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
   }
 };
 
+// Axios-compatible client for pages that use apiClient.get/post/patch/delete
+export const apiClient = {
+  get: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`); const data = await r.json() as T; return { data }; },
+  post: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  patch: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  delete: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`, { method: 'DELETE' }); const data = await r.json() as T; return { data }; },
+};
+
 export interface FollowUpResponse {
   message: string;
   actual_attempt_id: string;
@@ -5256,6 +5264,52 @@ export const reviewApi = {
 
   getReviewLink: async (deliverableId: string): Promise<{ token: string; url: string; view_count: number }> => {
     const response = await makeRequest(`/api/deliverables/${deliverableId}/review-link`);
+    return handleApiResponse(response);
+  },
+};
+
+// ─── Data Sources ─────────────────────────────────────────────────────────────
+
+export interface DataSourceRecord {
+  id: string;
+  organization_id: string | null;
+  project_id: string | null;
+  created_by: string | null;
+  title: string;
+  description: string | null;
+  data_type: string;
+  file_type: string | null;
+  file_name: string | null;
+  file_path: string | null;
+  file_size_bytes: number | null;
+  file_hash: string | null;
+  metadata: string;
+  status: string;
+  processing_error: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  source_type: string;
+  content: string | null;
+}
+
+export const dataSourcesApi = {
+  listByOrganization: async (orgId: string): Promise<DataSourceRecord[]> => {
+    const response = await makeRequest(`/api/data-sources?organization_id=${orgId}`);
+    return handleApiResponse<DataSourceRecord[]>(response);
+  },
+
+  create: async (data: Partial<DataSourceRecord>): Promise<DataSourceRecord> => {
+    const response = await makeRequest('/api/data-sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DataSourceRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/data-sources/${id}`, { method: 'DELETE' });
     return handleApiResponse(response);
   },
 };

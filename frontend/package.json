@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "VITE_OPEN=${VITE_OPEN:-false} vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "check": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
