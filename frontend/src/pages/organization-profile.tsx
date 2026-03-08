@@ -525,6 +525,133 @@ function ContactCard({ contact, context }: { contact: OrgContact; context?: stri
   );
 }
 
+// ── Companies Tab ─────────────────────────────────────────────────────────────
+
+interface CompanyRecord {
+  id: string;
+  name: string;
+  domain?: string;
+  industry?: string;
+  size?: string;
+  description?: string;
+  phone?: string;
+  email?: string;
+  city?: string;
+  country?: string;
+  linkedin_url?: string;
+  tags?: string;
+  created_at?: string;
+}
+
+function CompaniesTab({ orgId }: { orgId: string }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [industryFilter, setIndustryFilter] = useState('all');
+
+  const { data: companies = [], isLoading } = useQuery<CompanyRecord[]>({
+    queryKey: ['org-companies', orgId],
+    queryFn: async () => {
+      const res = await fetch(resolveApiUrl(`/api/organizations/${orgId}/companies`), { credentials: 'include' });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data?.data ?? []);
+    },
+    staleTime: 30_000,
+  });
+
+  const industries = useMemo(() => {
+    const set = new Set<string>();
+    companies.forEach(c => { if (c.industry) set.add(c.industry); });
+    return Array.from(set).sort();
+  }, [companies]);
+
+  const filtered = useMemo(() => {
+    let result = companies;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        (c.domain && c.domain.toLowerCase().includes(q)) ||
+        (c.industry && c.industry.toLowerCase().includes(q))
+      );
+    }
+    if (industryFilter !== 'all') {
+      result = result.filter(c => c.industry === industryFilter);
+    }
+    return result;
+  }, [companies, searchQuery, industryFilter]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search companies..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {industries.length > 0 && (
+          <select
+            value={industryFilter}
+            onChange={(e) => setIndustryFilter(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="all">All Industries</option>
+            {industries.map(ind => (
+              <option key={ind} value={ind}>{ind}</option>
+            ))}
+          </select>
+        )}
+        {isLoading && (
+          <span className="text-xs text-muted-foreground">Loading companies...</span>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>{isLoading ? 'Loading companies...' : 'No companies found'}</p>
+          <p className="text-xs mt-1">Companies extracted by workflow pipelines will appear here.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filtered.map((company) => (
+            <div
+              key={company.id}
+              className="p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{company.name}</p>
+                  {company.domain && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">{company.domain}</p>
+                  )}
+                  {company.email && (
+                    <p className="text-xs text-muted-foreground truncate">{company.email}</p>
+                  )}
+                </div>
+                {company.size && (
+                  <Badge variant="outline" className="text-[10px] shrink-0">{company.size}</Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                {company.industry && (
+                  <Badge variant="secondary" className="text-[10px]">{company.industry}</Badge>
+                )}
+                {company.city && (
+                  <span className="text-[10px] text-muted-foreground">{company.city}{company.country ? `, ${company.country}` : ''}</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Projects Tab ──────────────────────────────────────────────────────────────
 
 function ProjectsTab({
@@ -2999,6 +3126,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <Contact2 className="h-4 w-4 mr-2" />
                 Contacts
               </TabsTrigger>
+              <TabsTrigger value="companies">
+                <Building2 className="h-4 w-4 mr-2" />
+                Companies
+              </TabsTrigger>
               <TabsTrigger value="projects">
                 <FolderOpen className="h-4 w-4 mr-2" />
                 Projects
@@ -3041,6 +3172,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
             <TabsContent value="contacts">
               <ContactsTab orgId={orgId} />
+            </TabsContent>
+
+            <TabsContent value="companies">
+              <CompaniesTab orgId={orgId} />
             </TabsContent>
 
             <TabsContent value="projects">
