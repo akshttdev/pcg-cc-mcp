@@ -1,13 +1,14 @@
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, State},
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
 };
 use serde_json::Value;
 use db::models::person::Person;
 use db::models::user::{
     CreateOrganization, Organization, OrganizationMember, UpdateOrganization,
 };
+use db::models::person_association::{PersonOrgContact, UpsertPersonOrgContact};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
 use utils::response::ApiResponse;
@@ -25,7 +26,7 @@ pub async fn list_organizations(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<Organization>>>, ApiError> {
     let orgs = if access_context.is_admin {
-        Organization::find_all_active(&deployment.db().pool).await?
+        Organization::find_all(&deployment.db().pool).await?
     } else {
         Organization::find_by_user(&deployment.db().pool, access_context.user_id).await?
     };
@@ -395,10 +396,89 @@ pub async fn list_data_sources(
     Ok(Json(ApiResponse::success(rows)))
 }
 
+/// PATCH /api/organizations/:id/activate — reactivate
+pub async fn activate_organization(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    if !access_context.is_admin {
+        return Err(ApiError::Forbidden("Only system admins can activate organizations".into()));
+    }
+    Organization::activate(&deployment.db().pool, id).await?;
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// PATCH /api/organizations/:id/deactivate — deactivate (hide from sidebar)
+pub async fn deactivate_organization(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    if !access_context.is_admin {
+        return Err(ApiError::Forbidden("Only system admins can deactivate organizations".into()));
+    }
+    Organization::deactivate(&deployment.db().pool, id).await?;
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// DELETE /api/organizations/:id — soft-delete (deactivate)
+pub async fn delete_organization(
+    Path(id): Path<Uuid>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    if !access_context.is_admin {
+        let role = Organization::get_user_role(&deployment.db().pool, id, access_context.user_id).await?;
+        match role.as_deref() {
+            Some("admin") => {}
+            _ => return Err(ApiError::Forbidden("Only org admins can delete organizations".into())),
+        }
+    }
+
+    Organization::deactivate(&deployment.db().pool, id).await?;
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// GET /organizations/:id/person-contacts — junction table entries (for context badges)
+async fn list_org_person_contacts(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<PersonOrgContact>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let contacts = PersonOrgContact::list_for_org(pool, id).await?;
+    Ok(Json(ApiResponse::success(contacts)))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct AddOrgPersonContactBody {
+    person_id: Uuid,
+    context: Option<String>,
+    notes: Option<String>,
+}
+
+/// POST /organizations/:id/person-contacts — link an existing person to this org
+async fn add_org_person_contact(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+    Json(data): Json<AddOrgPersonContactBody>,
+) -> Result<Json<ApiResponse<PersonOrgContact>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let upsert_data = UpsertPersonOrgContact {
+        organization_id: id,
+        context: data.context,
+        notes: data.notes,
+    };
+    let contact = PersonOrgContact::upsert(pool, data.person_id, upsert_data).await?;
+    Ok(Json(ApiResponse::success(contact)))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/organizations", get(list_organizations).post(create_organization))
-        .route("/organizations/{id}", get(get_organization).put(update_organization))
+        .route("/organizations/{id}", get(get_organization).put(update_organization).delete(delete_organization))
+        .route("/organizations/{id}/activate", patch(activate_organization))
+        .route("/organizations/{id}/deactivate", patch(deactivate_organization))
         .route(
             "/organizations/{id}/members",
             get(list_members).post(add_member),
@@ -414,4 +494,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/organizations/{id}/generate-invite", post(generate_invite))
         .route("/organizations/{id}/persons", get(get_org_persons))
         .route("/data-sources", get(list_data_sources))
+        .route(
+            "/organizations/{id}/person-contacts",
+            get(list_org_person_contacts).post(add_org_person_contact),
+        )
 }

@@ -14,6 +14,8 @@ export interface UserOrganization {
   role: 'admin' | 'member' | 'viewer';
 }
 
+export type PlatformRole = 'platform_admin' | 'operator' | 'client_user';
+
 export interface UserProfile {
   id: string;
   username: string;
@@ -22,6 +24,8 @@ export interface UserProfile {
   avatar_url: string | null;
   is_admin: boolean;
   organizations: UserOrganization[];
+  platform_roles: PlatformRole[];
+  home_organization_id?: string | null;
 }
 
 export interface LoginResponse {

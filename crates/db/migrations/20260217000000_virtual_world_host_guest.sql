@@ -22,11 +22,10 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 
 -- Promote existing device owners to host role
+-- Note: devices table may not exist yet; skip promotion (hosts can be set later)
 UPDATE users
 SET user_role = 'host'
-WHERE id IN (
-    SELECT DISTINCT owner_id FROM devices
-);
+WHERE 0;
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- Virtual Spaces: one per host, their territory in the virtual world

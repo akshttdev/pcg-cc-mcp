@@ -43,7 +43,7 @@ export type ProjectBoardSummary = {
 const CORE_BOARD_LABELS: Record<ProjectBoard['board_type'], string> = {
   default: 'Main',
   custom: 'Custom',
-  brand_assets: 'Brand Assets',
+  brand_assets: 'Brand',
   executive_assets: 'Executive',
 };
 

@@ -119,4 +119,22 @@ piper_voices/
 voices/
 voice_samples/
 .env.backup
+
+# Claude Code / MCP local config
+.claude-login.json
+.mcp.json
+
+# Test artifacts
+screenshots/
+test-project/
+test-project-cleanup/
+sprint-demo-app/
+test-results/
+
+# Extra seed DBs
+dev_assets_seed/database.db
+dev_assets_seed/duck.db
+
+# Backup migration files
+*.sql.bak
 .vercel

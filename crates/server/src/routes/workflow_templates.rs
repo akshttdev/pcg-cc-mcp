@@ -95,6 +95,7 @@ async fn convert_deal(
         organization_id: payload.organization_id,
         client_id: payload.client_id,
         folder_id: None,
+        parent_project_id: None,
     };
 
     let project = Project::create(pool, &create_project, project_id)

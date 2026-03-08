@@ -48,11 +48,21 @@ export function OAuthCallbackPage() {
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
   const redirectTimer = useRef<number>();
 
-  const projectIdFromState = useMemo(() => {
+  // Parse owner from state — new format: "owner_type/owner_id:nonce", legacy: "project_uuid:nonce"
+  const { ownerType, ownerId, projectId: projectIdFromState } = useMemo(() => {
     const stateParam = searchParams.get('state');
-    if (!stateParam) return null;
-    const [projectIdCandidate] = stateParam.split(':');
-    return projectIdCandidate || null;
+    if (!stateParam) return { ownerType: 'project', ownerId: null, projectId: null };
+    const withoutNonce = stateParam.split(':')[0];
+    if (withoutNonce.includes('/')) {
+      const [ot, oi] = withoutNonce.split('/');
+      return {
+        ownerType: ot,
+        ownerId: oi || null,
+        projectId: ot === 'project' ? oi || null : null,
+      };
+    }
+    // Legacy: bare UUID = project
+    return { ownerType: 'project', ownerId: withoutNonce, projectId: withoutNonce };
   }, [searchParams]);
 
   useEffect(() => {
@@ -107,9 +117,14 @@ export function OAuthCallbackPage() {
         setConnectedEmail(result.data?.email_address ?? null);
         setStatus('success');
         setStatusMessage('Account connected');
-        setStatusDetail('Redirecting you back to CRM…');
 
-        if (projectIdFromState) {
+        if (ownerType === 'agent' || ownerType === 'organization') {
+          setStatusDetail('Redirecting to Agent Settings…');
+          redirectTimer.current = window.setTimeout(() => {
+            navigate('/settings?tab=agents', { replace: true });
+          }, 1800);
+        } else if (projectIdFromState) {
+          setStatusDetail('Redirecting you back to CRM…');
           redirectTimer.current = window.setTimeout(() => {
             const params = new URLSearchParams();
             params.set('projectId', projectIdFromState);
@@ -142,7 +157,9 @@ export function OAuthCallbackPage() {
   }, [providerInfo, providerKey, projectIdFromState, searchParams, navigate]);
 
   const handleBackToCrm = () => {
-    if (projectIdFromState) {
+    if (ownerType === 'agent' || ownerType === 'organization') {
+      navigate('/settings?tab=agents');
+    } else if (projectIdFromState) {
       const params = new URLSearchParams();
       params.set('projectId', projectIdFromState);
       params.set('tab', 'email');
@@ -204,9 +221,9 @@ export function OAuthCallbackPage() {
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs uppercase tracking-wide text-slate-400">
-              Project:{' '}
-              {projectIdFromState ? (
-                <span className="text-white font-mono">{projectIdFromState}</span>
+              Owner:{' '}
+              {ownerId ? (
+                <span className="text-white font-mono">{ownerType}/{ownerId.slice(0, 8)}…</span>
               ) : (
                 <span className="text-slate-500">Not detected</span>
               )}

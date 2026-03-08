@@ -16,6 +16,7 @@ import { useProject } from '@/contexts/project-context';
 import { showProjectForm } from '@/lib/modals';
 import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 import { useCommandStore } from '@/stores/useCommandStore';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
@@ -69,20 +70,13 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
           </Button>
 
           {/* Logo */}
-          <div className="flex items-center gap-2.5 mr-3 sm:mr-5 cursor-pointer hover:opacity-80 transition-opacity shrink-0" onClick={() => navigate('/projects')}>
+          <div className="flex items-center mr-3 sm:mr-5 cursor-pointer hover:opacity-80 transition-opacity shrink-0" onClick={() => navigate('/projects')}>
             <img
-              src="/pcg-icon.png"
+              src="/pcg-globe-logo.png"
               alt="Powerclub Global"
               className="h-8 sm:h-9 w-auto"
             />
-            <div className="hidden sm:flex flex-col leading-none">
-              <span style={{ fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: '0.08em', fontSize: '0.85rem', color: '#b8962e' }}>
-                POWERCLUB GLOBAL
-              </span>
-              <span style={{ fontFamily: "'Cinzel', serif", fontWeight: 400, letterSpacing: '0.18em', fontSize: '0.6rem' }} className="text-muted-foreground">
-                DASHBOARD
-              </span>
-            </div>
+            <span className="ml-2 text-sm sm:text-base font-semibold hidden sm:inline tracking-widest uppercase" style={{ fontFamily: "'Cinzel', serif", color: '#b8952a' }}>Powerclub Global</span>
           </div>
 
           <div className="flex-1 min-w-0">
@@ -158,6 +152,7 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
               </>
             )}
 
+            <NotificationCenter />
             <ProfileSection />
           </div>
         </div>

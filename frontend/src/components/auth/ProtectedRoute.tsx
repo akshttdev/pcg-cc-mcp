@@ -21,7 +21,10 @@ export function ProtectedRoute({ children, adminOnly }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    // Check if there was a prior session (cookie or localStorage) to show expired message
+    const hadSession = document.cookie.includes('session_id') || localStorage.getItem('session_id');
+    const target = hadSession ? '/login?expired=1' : '/login';
+    return <Navigate to={target} replace />;
   }
 
   if (adminOnly && !user?.is_admin) {

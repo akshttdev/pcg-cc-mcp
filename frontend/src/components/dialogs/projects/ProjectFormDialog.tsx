@@ -8,6 +8,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TaskTemplateManager } from '@/components/TaskTemplateManager';
 import { ProjectFormFields } from '@/components/projects/project-form-fields';
@@ -15,15 +24,44 @@ import { CreateProject, Project, UpdateProject } from 'shared/types';
 import { projectsApi } from '@/lib/api';
 import { generateProjectNameFromPath } from '@/utils/string';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import {
+  Globe,
+  Smartphone,
+  Server,
+  Package,
+  Terminal,
+  Palette,
+  BookOpen,
+  Box,
+  FolderOpen,
+  type LucideIcon,
+} from 'lucide-react';
+
+export const PROJECT_TYPES: readonly { value: string; label: string; icon: LucideIcon }[] = [
+  { value: 'web-app', label: 'Web Application', icon: Globe },
+  { value: 'mobile-app', label: 'Mobile Application', icon: Smartphone },
+  { value: 'api', label: 'API / Backend', icon: Server },
+  { value: 'library', label: 'Library / Package', icon: Package },
+  { value: 'cli', label: 'CLI Tool', icon: Terminal },
+  { value: 'design', label: 'Design System', icon: Palette },
+  { value: 'docs', label: 'Documentation', icon: BookOpen },
+  { value: 'other', label: 'Other', icon: Box },
+  { value: 'folder', label: 'Folder / Group', icon: FolderOpen },
+] as const;
+
+export type ProjectType = (typeof PROJECT_TYPES)[number]['value'];
 
 export interface ProjectFormDialogProps {
   project?: Project | null;
+  organization_id?: string | null;
+  client_id?: string | null;
+  parent_project_id?: string | null;
 }
 
 export type ProjectFormDialogResult = 'saved' | 'canceled';
 
 export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
-  ({ project }) => {
+  ({ project, organization_id, client_id, parent_project_id }) => {
     const modal = useModal();
     const [name, setName] = useState(project?.name || '');
     const [gitRepoPath, setGitRepoPath] = useState(
@@ -40,8 +78,10 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
     const [repoMode, setRepoMode] = useState<'existing' | 'new'>('existing');
     const [parentPath, setParentPath] = useState('');
     const [folderName, setFolderName] = useState('');
+    const [projectType, setProjectType] = useState<ProjectType>('web-app');
 
     const isEditing = !!project;
+    const isContainer = projectType === 'folder';
 
     // Update form fields when project prop changes
     useEffect(() => {
@@ -87,9 +127,10 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
           dev_script: null,
           cleanup_script: null,
           copy_files: null,
-          organization_id: null,
-          client_id: null,
+          organization_id: organization_id || null,
+          client_id: client_id || null,
           folder_id: null,
+          parent_project_id: parent_project_id || null,
         };
 
         await projectsApi.create(createData);
@@ -108,31 +149,58 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
       setLoading(true);
 
       try {
-        let finalGitRepoPath = gitRepoPath;
-        if (repoMode === 'new') {
-          const effectiveParentPath = parentPath.trim();
-          const cleanFolderName = folderName.trim();
-          finalGitRepoPath = effectiveParentPath
-            ? `${effectiveParentPath}/${cleanFolderName}`.replace(/\/+/g, '/')
-            : cleanFolderName;
-        }
-        // Auto-populate name from git repo path if not provided
-        const finalName =
-          name.trim() || generateProjectNameFromPath(finalGitRepoPath);
-
         if (isEditing) {
+          let finalGitRepoPath = gitRepoPath;
+          if (repoMode === 'new') {
+            const effectiveParentPath = parentPath.trim();
+            const cleanFolderName = folderName.trim();
+            finalGitRepoPath = effectiveParentPath
+              ? `${effectiveParentPath}/${cleanFolderName}`.replace(/\/+/g, '/')
+              : cleanFolderName;
+          }
+          const finalName =
+            name.trim() || generateProjectNameFromPath(finalGitRepoPath);
+
           const updateData: UpdateProject = {
             name: finalName,
             git_repo_path: finalGitRepoPath,
-            setup_script: setupScript.trim() || null,
-            dev_script: devScript.trim() || null,
-            cleanup_script: cleanupScript.trim() || null,
-            copy_files: copyFiles.trim() || null,
+            setup_script: setupScript.trim() || undefined,
+            dev_script: devScript.trim() || undefined,
+            cleanup_script: cleanupScript.trim() || undefined,
+            copy_files: copyFiles.trim() || undefined,
           };
 
           await projectsApi.update(project!.id, updateData);
+        } else if (isContainer) {
+          // Creating a container/folder project
+          const createData: CreateProject = {
+            name: name.trim(),
+            git_repo_path: '',
+            use_existing_repo: false,
+            setup_script: null,
+            dev_script: null,
+            cleanup_script: null,
+            copy_files: null,
+            organization_id: organization_id || null,
+            client_id: client_id || null,
+            folder_id: null,
+            parent_project_id: parent_project_id || null,
+          };
+
+          await projectsApi.create(createData);
         } else {
-          // Creating new project
+          // Creating new project with git repo
+          let finalGitRepoPath = gitRepoPath;
+          if (repoMode === 'new') {
+            const effectiveParentPath = parentPath.trim();
+            const cleanFolderName = folderName.trim();
+            finalGitRepoPath = effectiveParentPath
+              ? `${effectiveParentPath}/${cleanFolderName}`.replace(/\/+/g, '/')
+              : cleanFolderName;
+          }
+          const finalName =
+            name.trim() || generateProjectNameFromPath(finalGitRepoPath);
+
           const createData: CreateProject = {
             name: finalName,
             git_repo_path: finalGitRepoPath,
@@ -141,9 +209,10 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
             dev_script: null,
             cleanup_script: null,
             copy_files: null,
-            organization_id: null,
-            client_id: null,
+            organization_id: organization_id || null,
+            client_id: client_id || null,
             folder_id: null,
+            parent_project_id: parent_project_id || null,
           };
 
           await projectsApi.create(createData);
@@ -189,7 +258,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
 
     return (
       <Dialog open={modal.visible} onOpenChange={handleOpenChange}>
-        <DialogContent className="overflow-x-hidden">
+        <DialogContent className="sm:max-w-2xl overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>
               {isEditing ? 'Edit Project' : 'Create Project'}
@@ -197,11 +266,50 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
             <DialogDescription>
               {isEditing
                 ? "Make changes to your project here. Click save when you're done."
+                : isContainer
+                ? 'Create a folder to organize projects'
                 : 'Choose your repository source'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="mx-auto w-full max-w-2xl overflow-x-hidden px-1">
+            {/* Project Type Selector (create mode only) */}
+            {!isEditing && (
+              <div className="space-y-2 mb-4">
+                <Label htmlFor="project-type">Project Type</Label>
+                <Select value={projectType} onValueChange={(v) => setProjectType(v as ProjectType)}>
+                  <SelectTrigger id="project-type" className="rounded-md bg-background">
+                    <SelectValue placeholder="Select project type">
+                      {(() => {
+                        const selected = PROJECT_TYPES.find((t) => t.value === projectType);
+                        if (!selected) return null;
+                        const Icon = selected.icon;
+                        return (
+                          <span className="flex items-center gap-2">
+                            <Icon className="h-4 w-4 text-muted-foreground" />
+                            {selected.label}
+                          </span>
+                        );
+                      })()}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROJECT_TYPES.map((type) => {
+                      const Icon = type.icon;
+                      return (
+                        <SelectItem key={type.value} value={type.value}>
+                          <span className="flex items-center gap-2">
+                            <Icon className="h-4 w-4 text-muted-foreground" />
+                            {type.label}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {isEditing ? (
               <Tabs defaultValue="general" className="w-full -mt-2">
                 <TabsList className="grid w-full grid-cols-2 mb-4">
@@ -249,6 +357,41 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
                   />
                 </TabsContent>
               </Tabs>
+            ) : isContainer ? (
+              /* Container / Folder creation form */
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="container-name">
+                    Folder Name <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="container-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Frontend Apps, Shared Libraries..."
+                    autoFocus
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This creates a folder to group related projects together.
+                  </p>
+                </div>
+                {error && (
+                  <div className="text-sm text-destructive">{error}</div>
+                )}
+                <DialogFooter>
+                  <Button variant="outline" type="button" onClick={handleCancel}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={loading || !name.trim()}
+                  >
+                    {loading ? 'Creating...' : 'Create Folder'}
+                  </Button>
+                </DialogFooter>
+              </form>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <ProjectFormFields

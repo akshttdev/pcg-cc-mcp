@@ -25,6 +25,8 @@ import {
   Tag,
   BarChart3,
   Rocket,
+  ListTodo,
+  FileText,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useDealClient } from '@/hooks/useCrmPipeline';
@@ -149,7 +151,7 @@ function PanelContent({
       </SheetHeader>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-3 px-6 py-4 border-b">
+      <div className="grid grid-cols-4 gap-2 px-6 py-4 border-b">
         <div className="text-center">
           <div className="text-xs text-muted-foreground mb-1">Amount</div>
           <div className="text-sm font-semibold text-green-600">
@@ -158,20 +160,20 @@ function PanelContent({
         </div>
         <div className="text-center">
           <div className="text-xs text-muted-foreground mb-1">Stage</div>
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-[10px] px-1">
             {deal.stage}
           </Badge>
         </div>
         <div className="text-center">
-          <div className="text-xs text-muted-foreground mb-1">Close Date</div>
-          <div className="text-sm">
-            {deal.expected_close_date
-              ? new Date(deal.expected_close_date).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })
-              : '\u2014'}
+          <div className="text-xs text-muted-foreground mb-1">Tasks</div>
+          <div className="text-sm font-semibold">
+            {(deal.task_total ?? 0) > 0 ? `${deal.task_done ?? 0}/${deal.task_total}` : '\u2014'}
+          </div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-muted-foreground mb-1">Deliverables</div>
+          <div className="text-sm font-semibold">
+            {(deal.deliverable_count ?? 0) > 0 ? deal.deliverable_count : '\u2014'}
           </div>
         </div>
       </div>
@@ -224,7 +226,16 @@ function DetailsTab({
   onDelete: (deal: CrmDealWithContact) => void;
   onConvert: () => void;
 }) {
-  const tags = deal.tags ? (typeof deal.tags === 'string' ? deal.tags.split(',') : []) : [];
+  const navigate = useNavigate();
+
+  let tags: string[] = [];
+  if (deal.tags) {
+    try { tags = JSON.parse(deal.tags); } catch { tags = deal.tags.split(',').map(t => t.trim()).filter(Boolean); }
+  }
+
+  const taskTotal = deal.task_total ?? 0;
+  const taskDone = deal.task_done ?? 0;
+  const taskPct = taskTotal > 0 ? Math.round((taskDone / taskTotal) * 100) : 0;
 
   return (
     <div className="p-6 space-y-5">
@@ -233,6 +244,54 @@ function DetailsTab({
         <div>
           <h4 className="text-xs font-medium text-muted-foreground mb-1.5">Description</h4>
           <p className="text-sm whitespace-pre-wrap">{deal.description}</p>
+        </div>
+      )}
+
+      {/* Linked Project */}
+      {deal.project_name && (
+        <div>
+          <h4 className="text-xs font-medium text-muted-foreground mb-2">Linked Project</h4>
+          <Card className="bg-muted/30">
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FolderKanban className="h-4 w-4 text-primary shrink-0" />
+                  <span className="text-sm font-medium truncate">{deal.project_name}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs shrink-0"
+                  onClick={() => navigate(`/projects/${deal.project_id}/tasks`)}
+                >
+                  Open
+                  <ExternalLink className="h-3 w-3 ml-1" />
+                </Button>
+              </div>
+              {taskTotal > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <ListTodo className="h-3 w-3" />
+                      Tasks: {taskDone}/{taskTotal} done
+                    </span>
+                    {(deal.deliverable_count ?? 0) > 0 && (
+                      <span className="flex items-center gap-1">
+                        <FileText className="h-3 w-3" />
+                        {deal.deliverable_count} deliverable{(deal.deliverable_count ?? 0) !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${taskPct === 100 ? 'bg-green-500' : 'bg-blue-500'}`}
+                      style={{ width: `${taskPct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -264,9 +323,9 @@ function DetailsTab({
           <h4 className="text-xs font-medium text-muted-foreground mb-1.5">Tags</h4>
           <div className="flex flex-wrap gap-1.5">
             {tags.map((tag) => (
-              <Badge key={tag.trim()} variant="secondary" className="text-xs">
+              <Badge key={tag} variant="secondary" className="text-xs">
                 <Tag className="h-3 w-3 mr-1" />
-                {tag.trim()}
+                {tag}
               </Badge>
             ))}
           </div>

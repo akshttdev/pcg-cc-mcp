@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Calendar, DollarSign, Mail, MoreVertical, Building2, Trash2, Edit, CheckCircle2 } from 'lucide-react';
+import { Calendar, DollarSign, Mail, MoreVertical, Building2, Trash2, Edit, CheckCircle2, Tag, ListTodo, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
 import { formatDistanceToNow } from 'date-fns';
@@ -145,6 +145,32 @@ export function CrmDealCard({ deal, onClick, onEdit, onDelete, isDragging, board
           </div>
         )}
 
+        {/* Tags */}
+        {deal.tags && (() => {
+          let tags: string[] = [];
+          try { tags = JSON.parse(deal.tags); } catch { tags = deal.tags.split(',').map(t => t.trim()).filter(Boolean); }
+          return tags.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {tags.slice(0, 3).map((tag) => (
+                <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0 gap-0.5">
+                  <Tag className="h-2.5 w-2.5" />
+                  {tag}
+                </Badge>
+              ))}
+              {tags.length > 3 && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">+{tags.length - 3}</Badge>
+              )}
+            </div>
+          ) : null;
+        })()}
+
+        {/* Description preview */}
+        {deal.description && (
+          <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+            {deal.description}
+          </p>
+        )}
+
         {/* Company */}
         {deal.contact_company && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -158,6 +184,38 @@ export function CrmDealCard({ deal, onClick, onEdit, onDelete, isDragging, board
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Mail className="h-3 w-3" />
             <span className="truncate">{deal.contact_email}</span>
+          </div>
+        )}
+
+        {/* Task + deliverable stats */}
+        {(deal.task_total ?? 0) > 0 && (
+          <div className="space-y-1 pt-1 border-t">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground flex items-center gap-1">
+                <ListTodo className="h-3 w-3" />
+                Tasks
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-medium">
+                  {deal.task_done ?? 0}/{deal.task_total}
+                </span>
+                {(deal.deliverable_count ?? 0) > 0 && (
+                  <span className="flex items-center gap-0.5 text-muted-foreground">
+                    <FileText className="h-3 w-3" />
+                    {deal.deliverable_count}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all',
+                  (deal.task_done ?? 0) === deal.task_total ? 'bg-green-500' : 'bg-blue-500'
+                )}
+                style={{ width: `${Math.round(((deal.task_done ?? 0) / (deal.task_total ?? 1)) * 100)}%` }}
+              />
+            </div>
           </div>
         )}
 

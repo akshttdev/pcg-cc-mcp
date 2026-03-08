@@ -309,3 +309,16 @@ impl IntoResponse for ApiError {
         (status_code, Json(response)).into_response()
     }
 }
+
+impl From<db::models::company::CompanyError> for ApiError {
+    fn from(err: db::models::company::CompanyError) -> Self {
+        use db::models::company::CompanyError;
+        match err {
+            CompanyError::Database(e) => ApiError::Database(e),
+            CompanyError::NotFound => ApiError::NotFound("Company not found".into()),
+            CompanyError::SlugConflict => {
+                ApiError::Conflict("A company with that slug already exists".into())
+            }
+        }
+    }
+}

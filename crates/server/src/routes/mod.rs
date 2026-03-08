@@ -15,6 +15,7 @@ pub mod artifacts;
 pub mod editron_export;
 pub mod agent_flows;
 pub mod airtable;
+pub mod apn_data;
 pub mod aptos;
 pub mod approvals;
 pub mod artifact_reviews;
@@ -48,11 +49,13 @@ pub mod task_attempts;
 pub mod task_templates;
 pub mod tasks;
 pub mod twilio;
+pub mod bot_bridge;
 pub mod users;
 pub mod autonomy;
 pub mod cinematics;
 pub mod webhooks;
 pub mod dropbox;
+pub mod quickbooks;
 pub mod wide_research;
 pub mod token_usage;
 pub mod system_metrics;
@@ -81,7 +84,13 @@ pub mod organizations;
 pub mod clients;
 pub mod project_folders;
 pub mod sidebar;
+pub mod entity_conversion;
 pub mod knowledge;
+pub mod repos;
+pub mod scratch;
+pub mod sessions;
+pub mod tags;
+pub mod notifications;
 pub mod workflow_templates;
 pub mod persons;
 pub mod proposals;
@@ -93,7 +102,6 @@ pub mod feedback;
 pub mod intelligence;
 pub mod media_library;
 pub mod review;
-pub mod quickbooks;
 pub mod pcg_router;
 pub mod oss_listener;
 pub mod oss_listener_bg;
@@ -124,6 +132,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // These routes handle sensitive data and must not be publicly accessible
     let protected_routes = Router::new()
         .merge(invitations::router(&deployment))
+        .merge(apn_data::router())
         .merge(airtable::router())
         .merge(social_accounts::router(&deployment))
         .merge(social_posts::router(&deployment))
@@ -134,6 +143,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(crm_deals::router(&deployment))
         .merge(crm_activities::router(&deployment))
         .merge(dropbox::router())
+        .merge(quickbooks::router(&deployment))
         .merge(agents::routes())
         .merge(agent_chat::routes())
         .merge(comments::router())
@@ -150,10 +160,16 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(pulse::router(&deployment))
         .merge(organizations::router(&deployment))
         .merge(clients::router(&deployment))
-        .merge(project_folders::router(&deployment))
+        // project_folders routes deprecated — projects now use parent_project_id nesting
         .merge(board_shares::router(&deployment))
         .merge(sidebar::router(&deployment))
+        .merge(entity_conversion::router(&deployment))
         .merge(knowledge::router(&deployment))
+        .merge(sessions::router(&deployment))
+        .merge(tags::router(&deployment))
+        .merge(scratch::router(&deployment))
+        .merge(repos::router(&deployment))
+        .merge(notifications::router())
         .merge(workflow_templates::router(&deployment))
         .merge(persons::router(&deployment))
         .merge(proposals::router(&deployment))
@@ -161,7 +177,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
         .merge(media_library::router(&deployment))
-        .merge(quickbooks::router(&deployment))
         .merge(pcg_router::router(&deployment))
         .merge(oss_listener::router(&deployment))
         .merge(nora::nora_routes())
@@ -187,6 +202,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .nest("/images", images::routes())
         .merge(cinematics::router(&deployment))
         .merge(twilio::twilio_routes())
+        .merge(bot_bridge::router())
         .merge(activity::router())
         .merge(aptos::router(&deployment))
         .merge(webhooks::router())
@@ -196,6 +212,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(autonomy::router(&deployment))
         .merge(agent_flows::router(&deployment))
         .merge(agent_flow_events::router(&deployment))
+        .merge(automations::router(&deployment))
         .merge(wide_research::router(&deployment))
         .merge(artifact_reviews::router(&deployment))
         .merge(task_artifacts::router(&deployment))
@@ -217,6 +234,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(pythia::router(&deployment))
+        .route("/data-sync-test", get(apn_data::apn_ping))
         .merge(protected_routes)
         .merge(admin_routes)
         .with_state(deployment);

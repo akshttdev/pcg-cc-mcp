@@ -41,8 +41,13 @@ pub struct Project {
     pub organization_id: Option<Uuid>,
     /// Client this project is for (within the organization)
     pub client_id: Option<Uuid>,
-    /// Folder this project is grouped under
+    /// Folder this project is grouped under (deprecated — use parent_project_id)
     pub folder_id: Option<Uuid>,
+    /// Parent project for nesting (max 3 levels deep). None = top-level.
+    pub parent_project_id: Option<Uuid>,
+    /// Sort order among siblings
+    #[ts(type = "number")]
+    pub sort_order: i32,
     /// Aptos wallet address registered for on-chain deposits
     pub aptos_address: Option<String>,
     /// Whether this project has been funded with on-chain VIBE
@@ -69,16 +74,27 @@ pub struct CreateProject {
     pub organization_id: Option<Uuid>,
     pub client_id: Option<Uuid>,
     pub folder_id: Option<Uuid>,
+    pub parent_project_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
 pub struct UpdateProject {
+    #[ts(optional)]
     pub name: Option<String>,
+    #[ts(optional)]
     pub git_repo_path: Option<String>,
+    #[ts(optional)]
     pub setup_script: Option<String>,
+    #[ts(optional)]
     pub dev_script: Option<String>,
+    #[ts(optional)]
     pub cleanup_script: Option<String>,
+    #[ts(optional)]
     pub copy_files: Option<String>,
+    #[ts(optional)]
+    pub organization_id: Option<String>,
+    #[ts(optional)]
+    pub client_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -109,7 +125,7 @@ impl Project {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                      organization_id, client_id, folder_id,
+                      organization_id, client_id, folder_id, parent_project_id, sort_order,
                       aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at, deleted_at
                FROM projects WHERE deleted_at IS NULL ORDER BY created_at DESC"#,
@@ -123,7 +139,7 @@ impl Project {
         sqlx::query_as::<_, Project>(
             r#"SELECT p.id, p.name, p.git_repo_path, p.setup_script, p.dev_script, p.cleanup_script, p.copy_files,
                    p.vibe_budget_limit, COALESCE(p.vibe_spent_amount, 0) as vibe_spent_amount,
-                   p.organization_id, p.client_id, p.folder_id,
+                   p.organization_id, p.client_id, p.folder_id, p.parent_project_id, p.sort_order,
                    p.aptos_address, COALESCE(p.aptos_funded, 0) as aptos_funded,
                    p.created_at, p.updated_at, p.deleted_at
             FROM projects p
@@ -144,7 +160,7 @@ impl Project {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                      organization_id, client_id, folder_id,
+                      organization_id, client_id, folder_id, parent_project_id, sort_order,
                       aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at, deleted_at
                FROM projects WHERE id = ? AND deleted_at IS NULL"#,
@@ -161,7 +177,7 @@ impl Project {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                      organization_id, client_id, folder_id,
+                      organization_id, client_id, folder_id, parent_project_id, sort_order,
                       aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at, deleted_at
                FROM projects WHERE git_repo_path = ? AND deleted_at IS NULL"#,
@@ -194,7 +210,7 @@ impl Project {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                      organization_id, client_id, folder_id,
+                      organization_id, client_id, folder_id, parent_project_id, sort_order,
                       aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at, deleted_at
                FROM projects WHERE git_repo_path = ? AND id != ? AND deleted_at IS NULL"#,
@@ -232,11 +248,11 @@ impl Project {
         project_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
         sqlx::query_as::<_, Project>(
-            r#"INSERT INTO projects (id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files, organization_id, client_id, folder_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            r#"INSERT INTO projects (id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files, organization_id, client_id, folder_id, parent_project_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                          vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                         organization_id, client_id, folder_id,
+                         organization_id, client_id, folder_id, parent_project_id, sort_order,
                          aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                          created_at, updated_at, deleted_at"#,
         )
@@ -250,6 +266,7 @@ impl Project {
         .bind(data.organization_id)
         .bind(data.client_id)
         .bind(data.folder_id)
+        .bind(data.parent_project_id)
         .fetch_one(pool)
         .await
     }
@@ -264,13 +281,16 @@ impl Project {
         dev_script: Option<String>,
         cleanup_script: Option<String>,
         copy_files: Option<String>,
+        organization_id: Option<Uuid>,
+        client_id: Option<Uuid>,
     ) -> Result<Self, sqlx::Error> {
         sqlx::query_as::<_, Project>(
-            r#"UPDATE projects SET name = ?, git_repo_path = ?, setup_script = ?, dev_script = ?, cleanup_script = ?, copy_files = ?
+            r#"UPDATE projects SET name = ?, git_repo_path = ?, setup_script = ?, dev_script = ?, cleanup_script = ?, copy_files = ?,
+               organization_id = ?, client_id = ?
                WHERE id = ? AND deleted_at IS NULL
                RETURNING id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                          vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                         organization_id, client_id, folder_id,
+                         organization_id, client_id, folder_id, parent_project_id, sort_order,
                          aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                          created_at, updated_at, deleted_at"#,
         )
@@ -280,6 +300,8 @@ impl Project {
         .bind(&dev_script)
         .bind(&cleanup_script)
         .bind(&copy_files)
+        .bind(organization_id)
+        .bind(client_id)
         .bind(id)
         .fetch_one(pool)
         .await
@@ -359,7 +381,7 @@ impl Project {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                      organization_id, client_id, folder_id,
+                      organization_id, client_id, folder_id, parent_project_id, sort_order,
                       aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at, deleted_at
                FROM projects WHERE organization_id = ? AND deleted_at IS NULL ORDER BY name ASC"#,
@@ -376,7 +398,7 @@ impl Project {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
-                      organization_id, client_id, folder_id,
+                      organization_id, client_id, folder_id, parent_project_id, sort_order,
                       aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
                       created_at, updated_at, deleted_at
                FROM projects WHERE client_id = ? AND deleted_at IS NULL ORDER BY name ASC"#,
@@ -416,5 +438,143 @@ impl Project {
         .execute(pool)
         .await?;
         Ok(())
+    }
+
+    /// Find direct children of a project
+    pub async fn find_children(
+        pool: &SqlitePool,
+        parent_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Project>(
+            r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
+                      vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
+                      organization_id, client_id, folder_id, parent_project_id, sort_order,
+                      aptos_address, COALESCE(aptos_funded, 0) as aptos_funded,
+                      created_at, updated_at, deleted_at
+               FROM projects WHERE parent_project_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, name ASC"#,
+        )
+        .bind(parent_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Set or clear the parent project (reparenting). Validates max 3-level depth.
+    pub async fn set_parent(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        parent_project_id: Option<Uuid>,
+    ) -> Result<(), ProjectError> {
+        if let Some(parent_id) = parent_project_id {
+            // Prevent circular reference
+            if parent_id == project_id {
+                return Err(ProjectError::CreateFailed(
+                    "Cannot set a project as its own parent".into(),
+                ));
+            }
+            // Validate depth: walk up from proposed parent, ensure total depth <= 3
+            if !Self::validate_depth(pool, project_id, parent_id).await? {
+                return Err(ProjectError::CreateFailed(
+                    "Maximum nesting depth of 3 levels exceeded".into(),
+                ));
+            }
+        }
+        sqlx::query(
+            "UPDATE projects SET parent_project_id = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
+        )
+        .bind(parent_project_id)
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Update the sort order of a project among its siblings
+    pub async fn reorder(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        sort_order: i32,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE projects SET sort_order = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
+        )
+        .bind(sort_order)
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Validate that nesting project_id under proposed_parent_id keeps depth <= 3.
+    /// Depth counts: level 1 = top-level, level 2 = child, level 3 = grandchild.
+    async fn validate_depth(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        proposed_parent_id: Uuid,
+    ) -> Result<bool, ProjectError> {
+        // Count ancestors of proposed_parent (including itself) to get parent depth
+        let mut ancestor_count = 1; // the proposed parent itself
+        let mut current_id = proposed_parent_id;
+        loop {
+            let parent: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
+                "SELECT parent_project_id FROM projects WHERE id = ?",
+            )
+            .bind(current_id)
+            .fetch_optional(pool)
+            .await?;
+
+            match parent {
+                Some((Some(parent_bytes),)) => {
+                    if let Ok(pid) = Uuid::from_slice(&parent_bytes) {
+                        ancestor_count += 1;
+                        if ancestor_count >= 3 {
+                            return Ok(false); // Already at depth 3, can't nest further
+                        }
+                        current_id = pid;
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        // Count max depth of descendants of project_id
+        let max_descendant_depth = Self::max_descendant_depth(pool, project_id).await?;
+
+        // Total depth = ancestors of parent + 1 (project itself) + descendant depth
+        Ok(ancestor_count + 1 + max_descendant_depth <= 3)
+    }
+
+    /// Recursively find the maximum descendant depth of a project
+    async fn max_descendant_depth(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<usize, ProjectError> {
+        #[derive(sqlx::FromRow)]
+        struct IdRow {
+            id: Vec<u8>,
+        }
+
+        let children: Vec<IdRow> = sqlx::query_as(
+            "SELECT id FROM projects WHERE parent_project_id = ?",
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await?;
+
+        if children.is_empty() {
+            return Ok(0);
+        }
+
+        let mut max_depth = 0;
+        for child in children {
+            if let Ok(child_id) = Uuid::from_slice(&child.id) {
+                let depth = Box::pin(Self::max_descendant_depth(pool, child_id)).await?;
+                if depth + 1 > max_depth {
+                    max_depth = depth + 1;
+                }
+            }
+        }
+        Ok(max_depth)
     }
 }

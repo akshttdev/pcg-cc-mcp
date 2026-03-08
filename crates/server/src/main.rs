@@ -178,6 +178,25 @@ async fn main() -> Result<(), VibeKanbanError> {
         });
     }
 
+    // Start APN Data Service (network-based project/task data serving)
+    match server::apn_data_service::APNDataServiceConfig::from_env() {
+        Ok(config) if config.enabled => {
+            tracing::info!("Starting APN Data Service (role: {:?})", config.role);
+            let mut service = server::apn_data_service::APNDataService::new(config);
+            tokio::spawn(async move {
+                if let Err(e) = service.start().await {
+                    tracing::error!("Failed to start APN Data Service: {}", e);
+                }
+            });
+        }
+        Ok(_) => {
+            tracing::info!("APN Data Service is disabled (set APN_DATA_SERVICE_ENABLED=true to enable)");
+        }
+        Err(e) => {
+            tracing::warn!("Failed to load APN Data Service config: {}", e);
+        }
+    }
+
     // Auto-start APN node in background (if enabled)
     let auto_start_apn = std::env::var("AUTO_START_APN")
         .unwrap_or_else(|_| "true".to_string())

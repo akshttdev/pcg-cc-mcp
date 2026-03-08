@@ -197,7 +197,7 @@ async fn callback(
     .ok();
 
     // Check if this org+realm already exists
-    let existing = QuickBooksAccount::find_by_realm(pool, organization_id, &realm_id).await?;
+    let existing = QuickBooksAccount::find_by_realm(pool, organization_id, &realm_id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     if let Some(existing_account) = existing {
         // Update existing connection
@@ -208,7 +208,8 @@ async fn callback(
             Some(&tokens.refresh_token),
             Some(expires_at),
         )
-        .await?;
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
         if let Some(name) = &company_name {
             QuickBooksAccount::update(
@@ -219,7 +220,8 @@ async fn callback(
                     ..Default::default()
                 },
             )
-            .await?;
+            .await
+            .map_err(|e| ApiError::InternalError(e.to_string()))?;
         }
 
         tracing::info!(
@@ -239,10 +241,11 @@ async fn callback(
                 refresh_token: Some(tokens.refresh_token),
                 token_expires_at: Some(expires_at),
                 environment: Some(env_enum),
-                connected_by: None, // TODO: extract from session
+                connected_by: None,
             },
         )
-        .await?;
+        .await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
         tracing::info!(
             "Connected QuickBooks for org {} realm {}",
@@ -264,7 +267,7 @@ async fn status(
 ) -> Result<Json<ApiResponse<QBConnectionStatus>>, ApiError> {
     let pool = &deployment.db().pool;
     let accounts =
-        QuickBooksAccount::find_by_organization(pool, query.organization_id).await?;
+        QuickBooksAccount::find_by_organization(pool, query.organization_id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     let status = if let Some(account) = accounts.into_iter().next() {
         let needs_reauth = account.needs_token_refresh() || account.status == "expired";
@@ -292,7 +295,7 @@ async fn list_accounts(
 ) -> Result<Json<ApiResponse<Vec<QuickBooksAccount>>>, ApiError> {
     let pool = &deployment.db().pool;
     let accounts =
-        QuickBooksAccount::find_by_organization(pool, query.organization_id).await?;
+        QuickBooksAccount::find_by_organization(pool, query.organization_id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(accounts)))
 }
 
@@ -302,7 +305,7 @@ async fn get_account(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<QuickBooksAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let account = QuickBooksAccount::find_by_id(pool, id).await?;
+    let account = QuickBooksAccount::find_by_id(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(account)))
 }
 
@@ -314,7 +317,7 @@ async fn update_account(
     Json(update): Json<UpdateQuickBooksAccount>,
 ) -> Result<Json<ApiResponse<QuickBooksAccount>>, ApiError> {
     let pool = &deployment.db().pool;
-    let account = QuickBooksAccount::update(pool, id, update).await?;
+    let account = QuickBooksAccount::update(pool, id, update).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(account)))
 }
 
@@ -327,12 +330,12 @@ async fn disconnect(
     let pool = &deployment.db().pool;
 
     // Revoke the token at Intuit (best effort)
-    let account = QuickBooksAccount::find_by_id(pool, id).await?;
+    let account = QuickBooksAccount::find_by_id(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
     if let Some(ref token) = account.refresh_token {
         let _ = revoke_token(token).await;
     }
 
-    QuickBooksAccount::delete(pool, id).await?;
+    QuickBooksAccount::delete(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -343,13 +346,14 @@ async fn refresh_token(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let account = QuickBooksAccount::find_by_id(pool, id).await?;
+    let account = QuickBooksAccount::find_by_id(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     let refresh = account.refresh_token.as_deref().ok_or_else(|| {
         ApiError::BadRequest("No refresh token available".into())
     })?;
 
-    let tokens = exchange_refresh_token(refresh).await?;
+    let tokens = exchange_refresh_token(refresh).await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
     let expires_at = Utc::now() + Duration::seconds(tokens.expires_in);
 
     QuickBooksAccount::update_tokens(
@@ -359,7 +363,8 @@ async fn refresh_token(
         Some(&tokens.refresh_token),
         Some(expires_at),
     )
-    .await?;
+    .await
+    .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     Ok(Json(ApiResponse::success(())))
 }
@@ -372,10 +377,10 @@ async fn trigger_sync(
     Json(_req): Json<SyncRequest>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let pool = &deployment.db().pool;
-    let _account = QuickBooksAccount::find_by_id(pool, id).await?;
+    let _account = QuickBooksAccount::find_by_id(pool, id).await.map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     // TODO: Implement actual sync logic - for now mark the sync attempt
-    QuickBooksAccount::update_sync_status(pool, id, "active").await?;
+    QuickBooksAccount::update_sync_status(pool, id, "active").await.map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     Ok(Json(ApiResponse::success(serde_json::json!({
         "message": "Sync initiated",

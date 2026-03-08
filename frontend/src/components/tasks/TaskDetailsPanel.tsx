@@ -295,8 +295,8 @@ export function TaskDetailsPanel({
             isWorkflowFollowUp: true,
           },
           stream: false,
-            model: null,
-            provider: null,
+          model: null,
+          provider: null,
         };
 
         const response = await agentsApi.chat(agent.id, request);

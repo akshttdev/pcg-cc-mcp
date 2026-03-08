@@ -22,7 +22,8 @@ pub struct Proposal {
     /// one-off | retainer | hybrid
     pub deal_type: String,
 
-    /// JSON array of person UUIDs — stakeholders on this deal
+    pub company_id: Option<Uuid>,
+    /// JSON array of contact person UUIDs: ["uuid", ...]
     pub contact_ids: String,
 
     pub sent_at: Option<DateTime<Utc>>,
@@ -42,6 +43,7 @@ pub struct CreateProposal {
     pub organization_id: Option<Uuid>,
     pub owner_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
+    pub company_id: Option<Uuid>,
     pub description: Option<String>,
     pub quote_amount_vibe: Option<i64>,
     pub deal_type: Option<String>,
@@ -58,6 +60,7 @@ pub struct UpdateProposal {
     pub lead_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
     pub owner_id: Option<Uuid>,
+    pub company_id: Option<Uuid>,
     pub contact_ids: Option<Vec<String>>,
 }
 
@@ -74,25 +77,28 @@ impl Proposal {
         let description = input.description.unwrap_or_default();
         let quote = input.quote_amount_vibe.unwrap_or(0);
         let deal_type = input.deal_type.unwrap_or_else(|| "one-off".into());
-        let contact_ids = serde_json::to_string(&input.contact_ids.unwrap_or_default())
-            .unwrap_or_else(|_| "[]".into());
+
+        let contact_ids_json = input.contact_ids
+            .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string()))
+            .unwrap_or_else(|| "[]".to_string());
 
         sqlx::query(
             r#"INSERT INTO proposals
-               (id, lead_id, organization_id, owner_id, project_id,
+               (id, lead_id, organization_id, owner_id, project_id, company_id,
                 title, description, quote_amount_vibe, deal_type, contact_ids)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         )
         .bind(id)
         .bind(input.lead_id)
         .bind(input.organization_id)
         .bind(input.owner_id)
         .bind(input.project_id)
+        .bind(input.company_id)
         .bind(&input.title)
         .bind(&description)
         .bind(quote)
         .bind(&deal_type)
-        .bind(&contact_ids)
+        .bind(&contact_ids_json)
         .execute(pool)
         .await?;
 
@@ -126,6 +132,21 @@ impl Proposal {
         qb.build_query_as::<Self>().fetch_all(pool).await
     }
 
+    pub async fn list_by_company(
+        pool: &SqlitePool,
+        company_id: Uuid,
+        limit: Option<i64>,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(
+            "SELECT * FROM proposals WHERE company_id = ? \
+             ORDER BY created_at DESC LIMIT ?",
+        )
+        .bind(company_id)
+        .bind(limit.unwrap_or(200))
+        .fetch_all(pool)
+        .await
+    }
+
     pub async fn update(
         pool: &SqlitePool,
         id: Uuid,
@@ -141,8 +162,9 @@ impl Proposal {
         if let Some(v) = input.lead_id     { qb.push(", lead_id = ").push_bind(v); }
         if let Some(v) = input.project_id  { qb.push(", project_id = ").push_bind(v); }
         if let Some(v) = input.owner_id    { qb.push(", owner_id = ").push_bind(v); }
+        if let Some(v) = input.company_id  { qb.push(", company_id = ").push_bind(v); }
         if let Some(v) = input.contact_ids {
-            let json = serde_json::to_string(&v).unwrap_or_else(|_| "[]".into());
+            let json = serde_json::to_string(&v).unwrap_or_else(|_| "[]".to_string());
             qb.push(", contact_ids = ").push_bind(json);
         }
         qb.push(" WHERE id = ").push_bind(id);

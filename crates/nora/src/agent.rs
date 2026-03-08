@@ -16,6 +16,7 @@ use db::models::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use services::services::agent_channels::{AgentChannelService, ChannelOwner};
 use services::services::media_pipeline::MediaPipelineService;
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
@@ -296,6 +297,26 @@ impl NoraAgent {
             tools.set_task_executor(executor.clone());
             tools.set_workflow_orchestrator(self.workflow_orchestrator.clone());
             tools.set_execution_engine(self.execution_engine.clone());
+
+            // Wire agent communication channels (Nora's Zoho email + future channels)
+            let channel_svc = Arc::new(AgentChannelService::new(pool.clone()));
+            let nora_owner = ChannelOwner::Agent(self.id);
+            tools.set_agent_channels(channel_svc, nora_owner);
+        }
+
+        // Stamp Nora's agent UUID into her email account owner_id (idempotent)
+        {
+            let nora_id_hex = self.id.as_simple().to_string();
+            let stamp_pool = pool.clone();
+            tokio::spawn(async move {
+                let _ = sqlx::query(
+                    "UPDATE email_accounts SET owner_id = ? \
+                     WHERE email_address = 'nora@powerclubglobal.com' AND owner_type = 'agent'"
+                )
+                .bind(&nora_id_hex)
+                .execute(&stamp_pool)
+                .await;
+            });
         }
 
         // Wire up TaskCreator to ExecutionEngine so workflow stages create board tasks
@@ -1182,10 +1203,40 @@ impl NoraAgent {
     }
 
     async fn generate_voice_response(&self, content: &str) -> Result<String> {
+        let clean = Self::strip_markdown(content);
         self.voice_engine
-            .synthesize_speech(content)
+            .synthesize_speech(&clean)
             .await
             .map_err(NoraError::VoiceEngineError)
+    }
+
+    fn strip_markdown(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '*' | '_' | '`' | '#' => {
+                    // Skip consecutive runs of the same symbol
+                    while chars.peek() == Some(&c) {
+                        chars.next();
+                    }
+                }
+                '[' => {
+                    // [label](url) → label
+                    let label: String = chars.by_ref().take_while(|&ch| ch != ']').collect();
+                    out.push_str(&label);
+                    // Consume (url) if present
+                    if chars.peek() == Some(&'(') {
+                        chars.next();
+                        while let Some(ch) = chars.next() {
+                            if ch == ')' { break; }
+                        }
+                    }
+                }
+                other => out.push(other),
+            }
+        }
+        out
     }
 
     async fn generate_follow_up_suggestions(
@@ -1588,6 +1639,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             organization_id: None,
             client_id: None,
             folder_id: None,
+            parent_project_id: None,
         };
 
         let project = executor.create_project_entry(payload).await?;
