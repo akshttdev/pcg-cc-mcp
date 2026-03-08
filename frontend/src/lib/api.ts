@@ -5562,6 +5562,15 @@ export interface UpdateWorkflowRequest {
   connections?: WorkflowConnection[];
 }
 
+export interface AvailableModel {
+  id: string;
+  label: string;
+  is_default: boolean;
+  provider: string;
+  cost_per_million_input: number;
+  cost_per_million_output: number;
+}
+
 export const workflowsApi = {
   listDefinitions: async (): Promise<WorkflowDefinition[]> => {
     const response = await makeRequest('/api/workflows/definitions');
@@ -5607,8 +5616,8 @@ export const workflowsApi = {
     return handleApiResponse<ExecutionArtifact[]>(response);
   },
 
-  listAvailableModels: async (): Promise<{ id: string; label: string; is_default: boolean }[]> => {
+  listAvailableModels: async (): Promise<AvailableModel[]> => {
     const response = await makeRequest('/api/workflows/models');
-    return handleApiResponse<{ id: string; label: string; is_default: boolean }[]>(response);
+    return handleApiResponse<AvailableModel[]>(response);
   },
 };

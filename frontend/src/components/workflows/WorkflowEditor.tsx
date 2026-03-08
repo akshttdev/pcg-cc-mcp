@@ -34,7 +34,7 @@ import {
   Network,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { workflowsApi } from '@/lib/api';
+import { workflowsApi, type AvailableModel } from '@/lib/api';
 import type {
   WorkflowNode,
   WorkflowConnection,
@@ -872,6 +872,15 @@ function NodeConfigPanel({
   const typeDef = getNodeTypeDef(node.type);
   const Icon = typeDef?.icon ?? Zap;
 
+  // Fetch available models from PCG Router for LLM nodes
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  useEffect(() => {
+    const isLLM = node.type.startsWith('llm_');
+    if (isLLM) {
+      workflowsApi.listAvailableModels().then(setAvailableModels).catch(() => {});
+    }
+  }, [node.type]);
+
   // Current inputs (nodes connected TO this node)
   const currentInputs = connections
     .filter((c) => c.target === node.id)
@@ -1014,6 +1023,34 @@ function NodeConfigPanel({
 
             {isLLMNode && (
               <div className="space-y-3">
+                {availableModels.length > 0 && (
+                  <div>
+                    <Label className="text-xs">Model Override</Label>
+                    <Select
+                      value={node.parameters.model ?? ''}
+                      onValueChange={(v) =>
+                        onUpdateParameter('model', v === '__default__' ? '' : v)
+                      }
+                    >
+                      <SelectTrigger className="h-8 text-sm mt-1">
+                        <SelectValue placeholder="Use workflow default" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__default__">
+                          Use workflow default
+                        </SelectItem>
+                        {availableModels.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.label}{m.is_default ? ' ★' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Override the default model for this node only.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <Label className="text-xs">Prompt Template</Label>
                   <Textarea
