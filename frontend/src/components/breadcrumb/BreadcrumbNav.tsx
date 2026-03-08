@@ -1,6 +1,7 @@
 import { ChevronRight, Home, ChevronsUpDown } from 'lucide-react';
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useProject } from '@/contexts/project-context';
+import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { tasksApi, organizationsApi, dataSourcesApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -25,11 +26,12 @@ export function BreadcrumbNav() {
     dataSourceId?: string;
   }>();
   const { project } = useProject();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Fetch sidebar tree for org/project switching
-  const { data: sidebarTree } = useQuery({
+  const { data: sidebarTree, isLoading: isSidebarLoading } = useQuery({
     queryKey: ['sidebarTree'],
     queryFn: () => organizationsApi.getSidebarTree(),
     staleTime: 5 * 60 * 1000,
@@ -54,30 +56,30 @@ export function BreadcrumbNav() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Derive current org from project or route
-  const currentOrg = sidebarTree
-    ? [...(sidebarTree.owned_orgs || []), ...(sidebarTree.member_orgs || [])].find((org) => {
-        if (orgId) return org.id === orgId;
-        if (project && projectId) {
-          // Find org containing this project
-          const findProject = (projects: any[]): boolean =>
-            projects.some((p: any) => p.id === projectId || findProject(p.children || []));
-          return (
-            findProject(org.internal_projects) ||
-            org.clients.some((c: any) => findProject(c.projects))
-          );
-        }
-        return false;
-      })
-    : undefined;
+  // Derive current org from route, project, or fall back to user's first org
+  const allOrgs = sidebarTree
+    ? [...(sidebarTree.owned_orgs || []), ...(sidebarTree.member_orgs || [])]
+    : [];
 
-  // Build breadcrumb items
+  const currentOrg = allOrgs.find((org) => {
+    if (orgId) return org.id === orgId;
+    if (project && projectId) {
+      const findProject = (projects: any[]): boolean =>
+        projects.some((p: any) => p.id === projectId || findProject(p.children || []));
+      return (
+        findProject(org.internal_projects) ||
+        org.clients.some((c: any) => findProject(c.projects))
+      );
+    }
+    return false;
+  })
+    // Fall back to user's home org, then first org from auth, then first from sidebar
+    ?? allOrgs.find((org) => user?.home_organization_id && org.id === user.home_organization_id)
+    ?? allOrgs.find((org) => user?.organizations?.[0] && org.id === user.organizations[0].id)
+    ?? (allOrgs.length > 0 ? allOrgs[0] : undefined);
+
+  // Build breadcrumb items — always start with org
   const items: BreadcrumbItem[] = [];
-
-  items.push({
-    label: 'Home',
-    href: '/projects',
-  });
 
   if (currentOrg && currentOrg.id) {
     items.push({
@@ -175,6 +177,14 @@ export function BreadcrumbNav() {
       '/settings': 'Settings',
       '/nora': 'Nora Command',
       '/topsi': 'Topsi Platform',
+      '/workflows': 'Workflows',
+      '/global-tasks': 'Global Tasks',
+      '/mission-control': 'Mission Control',
+      '/social-command': 'Social Command',
+      '/crm': 'CRM',
+      '/people': 'People',
+      '/companies': 'Companies',
+      '/proposals': 'Proposals',
     };
     const matchedPath = Object.keys(pageLabels).find((p) => location.pathname.startsWith(p));
     if (matchedPath) {
@@ -185,25 +195,32 @@ export function BreadcrumbNav() {
     }
   }
 
-  if (items.length <= 1) {
-    return null;
+  // Show skeleton while loading to avoid flashing incorrect org
+  if (isSidebarLoading || !user) {
+    return (
+      <nav className="flex items-center space-x-1 text-sm text-muted-foreground px-4 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <Home className="h-4 w-4" />
+        <ChevronRight className="h-4 w-4" />
+        <div className="h-4 w-28 bg-muted animate-pulse rounded" />
+      </nav>
+    );
   }
 
-  const allOrgs = sidebarTree
-    ? [...(sidebarTree.owned_orgs || []), ...(sidebarTree.member_orgs || [])]
-    : [];
+  if (items.length === 0) {
+    return null;
+  }
 
   return (
     <nav className="flex items-center space-x-1 text-sm text-muted-foreground px-4 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <Link
-        to="/projects"
+        to={currentOrg ? `/organizations/${currentOrg.id}` : '/projects'}
         className="flex items-center hover:text-foreground transition-colors"
       >
         <Home className="h-4 w-4" />
       </Link>
 
-      {items.slice(1).map((item, index) => {
-        const isLast = index === items.length - 2;
+      {items.map((item, index) => {
+        const isLast = index === items.length - 1;
         const isOrgItem = currentOrg && item.href === `/organizations/${currentOrg.id}`;
 
         return (
