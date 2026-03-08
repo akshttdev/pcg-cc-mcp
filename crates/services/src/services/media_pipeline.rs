@@ -290,52 +290,320 @@ impl MediaPipelineService {
         self.update_batch_status(batch_id, MediaBatchStatus::Downloading, None)
             .await?;
 
-        let mut batch = self.load_batch(batch_id).await?;
         let dest_dir = self.batch_dir(batch_id);
         fs::create_dir_all(&dest_dir).await?;
-        let dest_file = dest_dir.join("source.bin");
 
-        match self
-            .download_to_path(
-                &Self::normalize_dropbox_url(&request.source_url),
-                &dest_file,
-                request.checksum_required,
-            )
-            .await
-        {
-            Ok((size, checksum)) => {
-                batch.files = vec![MediaAsset {
-                    filename: dest_file
-                        .file_name()
-                        .map(|f| f.to_string_lossy().to_string())
-                        .unwrap_or_else(|| "source.bin".to_string()),
-                    relative_path: dest_file
-                        .strip_prefix(&dest_dir.parent().unwrap_or(&self.inner.root))
-                        .unwrap_or(&dest_file)
-                        .to_string_lossy()
-                        .to_string(),
-                    size_bytes: size,
-                    checksum_sha256: checksum,
-                }];
-                batch.status = MediaBatchStatus::Ready;
-                batch.updated_at = Utc::now();
-                batch.last_error = None;
-                if let Some(pool) = self.db_pool() {
-                    self.persist_media_files(pool, batch.id, &batch.files).await?;
+        // Detect Dropbox shared folder links (scl/fo/) — require API
+        let is_dropbox_folder = request.source_url.contains("dropbox.com")
+            && (request.source_url.contains("/scl/fo/")
+                || request.source_url.contains("/sh/"));
+
+        let files = if is_dropbox_folder {
+            match std::env::var("DROPBOX_ACCESS_TOKEN") {
+                Ok(token) if !token.is_empty() => {
+                    self.download_dropbox_folder(&token, &request.source_url, &dest_dir, batch_id, request.checksum_required)
+                        .await?
                 }
-                self.persist_batch(&batch).await?;
+                _ => {
+                    let err = MediaPipelineError::Io(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "Dropbox shared folder detected but DROPBOX_ACCESS_TOKEN is not set. \
+                         Generate a token at https://www.dropbox.com/developers/apps and add it to .env",
+                    ));
+                    let mut batch = self.load_batch(batch_id).await?;
+                    batch.status = MediaBatchStatus::Failed;
+                    batch.updated_at = Utc::now();
+                    batch.last_error = Some(err.to_string());
+                    self.persist_batch(&batch).await?;
+                    return Err(err);
+                }
             }
-            Err(err) => {
-                tracing::error!("Download failed for batch {}: {}", batch_id, err);
-                batch.status = MediaBatchStatus::Failed;
-                batch.updated_at = Utc::now();
-                batch.last_error = Some(err.to_string());
-                self.persist_batch(&batch).await?;
-                return Err(err);
+        } else {
+            // Individual file link — use ?dl=1 direct download
+            let dest_file = dest_dir.join("source.bin");
+            match self
+                .download_to_path(
+                    &Self::normalize_dropbox_url(&request.source_url),
+                    &dest_file,
+                    request.checksum_required,
+                )
+                .await
+            {
+                Ok((size, checksum)) => {
+                    vec![MediaAsset {
+                        filename: dest_file
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "source.bin".to_string()),
+                        relative_path: dest_file
+                            .strip_prefix(&dest_dir.parent().unwrap_or(&self.inner.root))
+                            .unwrap_or(&dest_file)
+                            .to_string_lossy()
+                            .to_string(),
+                        size_bytes: size,
+                        checksum_sha256: checksum,
+                    }]
+                }
+                Err(err) => {
+                    tracing::error!("Download failed for batch {}: {}", batch_id, err);
+                    let mut batch = self.load_batch(batch_id).await?;
+                    batch.status = MediaBatchStatus::Failed;
+                    batch.updated_at = Utc::now();
+                    batch.last_error = Some(err.to_string());
+                    self.persist_batch(&batch).await?;
+                    return Err(err);
+                }
+            }
+        };
+
+        let mut batch = self.load_batch(batch_id).await?;
+        batch.files = files;
+        batch.status = MediaBatchStatus::Ready;
+        batch.updated_at = Utc::now();
+        batch.last_error = None;
+        if let Some(pool) = self.db_pool() {
+            self.persist_media_files(pool, batch.id, &batch.files).await?;
+        }
+        self.persist_batch(&batch).await?;
+
+        Ok(())
+    }
+
+    /// Download all media files from a Dropbox shared folder link using the Content API
+    /// (sharing/get_shared_link_file). The `shared_link_url` is the top-level shared folder URL.
+    /// Each file is addressed by its relative path within that shared folder
+    /// (e.g. `/PROJECTS/CLIENT PROJECTS/Mopar Car Show 20Dec25/Interviews/Antonio Interview/MVI_00073.MP4`).
+    ///
+    /// The function scans `dest_dir` for any already-present video files so that callers
+    /// can pre-populate the directory and skip files that are already downloaded.
+    async fn download_dropbox_folder(
+        &self,
+        access_token: &str,
+        shared_link_url: &str,
+        dest_dir: &Path,
+        batch_id: Uuid,
+        checksum_required: bool,
+    ) -> Result<Vec<MediaAsset>, MediaPipelineError> {
+        use serde_json::json;
+
+        let media_extensions = ["mp4", "mov", "mxf", "avi", "mkv", "m4v", "mts", "mpg", "wmv",
+                                 "MP4", "MOV", "MXF", "AVI", "MKV", "M4V", "MTS", "MPG", "WMV"];
+        let auth_header = format!("Bearer {}", access_token);
+
+        // If the source_url is a `dropbox://` URI we cannot enumerate files from it — callers
+        // must pre-place files in `dest_dir` or provide a real https:// shared-folder link.
+        // For https:// shared-folder links we attempt to list the folder via the Dropbox API.
+        // Either way, we then download any missing video files we find.
+
+        // Collect the list of (relative_path_in_shared_folder, dest_filename) pairs to download.
+        // If the source URL is a real Dropbox https link, list the folder via files/list_folder.
+        // Otherwise, discover files that are already present in dest_dir.
+        let mut file_specs: Vec<(String, String)> = Vec::new(); // (dropbox_path, filename)
+
+        let is_real_dropbox_link = shared_link_url.starts_with("https://") &&
+            shared_link_url.contains("dropbox.com");
+
+        if is_real_dropbox_link {
+            // List the folder contents (non-recursive, top level only)
+            let list_response = self
+                .inner
+                .client
+                .post("https://api.dropboxapi.com/2/files/list_folder")
+                .header("Authorization", &auth_header)
+                .header("Content-Type", "application/json")
+                .json(&json!({
+                    "path": "",
+                    "shared_link": { "url": shared_link_url },
+                    "recursive": true,
+                    "include_media_info": false,
+                    "include_deleted": false,
+                    "include_has_explicit_shared_members": false
+                }))
+                .send()
+                .await?;
+
+            if list_response.status().is_success() {
+                let list_data: serde_json::Value = list_response.json().await?;
+                let entries = list_data
+                    .get("entries")
+                    .and_then(|e| e.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+
+                tracing::info!(
+                    "[DROPBOX] Found {} entries in shared folder {}",
+                    entries.len(),
+                    shared_link_url
+                );
+
+                for entry in &entries {
+                    let tag = entry.get(".tag").and_then(|t| t.as_str()).unwrap_or("");
+                    if tag != "file" {
+                        continue;
+                    }
+
+                    let filename = match entry.get("name").and_then(|n| n.as_str()) {
+                        Some(n) => n.to_string(),
+                        None => continue,
+                    };
+
+                    let ext = std::path::Path::new(&filename)
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("");
+
+                    let ext_lower = ext.to_lowercase();
+                    if !media_extensions.iter().any(|e| e.to_lowercase() == ext_lower) {
+                        tracing::debug!("[DROPBOX] Skipping non-media file: {}", filename);
+                        continue;
+                    }
+
+                    // path_display gives us the relative path within the shared folder
+                    let dropbox_path = entry
+                        .get("path_display")
+                        .and_then(|p| p.as_str())
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| format!("/{}", filename));
+
+                    file_specs.push((dropbox_path, filename));
+                }
+            } else {
+                let status = list_response.status();
+                let body = list_response.text().await.unwrap_or_default();
+                tracing::warn!(
+                    "[DROPBOX] list_folder returned {}: {}. Will rely on pre-placed files in dest_dir.",
+                    status,
+                    body
+                );
             }
         }
 
-        Ok(())
+        // Regardless of whether we got a listing, also collect any video files already
+        // present in dest_dir (placed there by an external downloader such as the Python script).
+        let mut pre_placed: Vec<MediaAsset> = Vec::new();
+        if let Ok(mut rd) = fs::read_dir(dest_dir).await {
+            while let Ok(Some(entry)) = rd.next_entry().await {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                let fname = path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+                let ext_lower = ext.to_lowercase();
+                if !media_extensions.iter().any(|e| e.to_lowercase() == ext_lower) {
+                    continue;
+                }
+                // Skip if we already have this file in the download list
+                if file_specs.iter().any(|(_, n)| n == &fname) {
+                    continue;
+                }
+                let size = path.metadata().map(|m| m.len()).unwrap_or(0);
+                let relative_path = format!("{}/{}", batch_id, fname);
+                pre_placed.push(MediaAsset {
+                    filename: fname,
+                    relative_path,
+                    size_bytes: size,
+                    checksum_sha256: None,
+                });
+            }
+        }
+
+        // Download files from Dropbox that are not already present
+        let mut assets = pre_placed;
+
+        for (dropbox_path, filename) in &file_specs {
+            let dest_file = dest_dir.join(filename);
+
+            // Skip if already downloaded (> 10 MB means it's not a stub)
+            if dest_file.exists() {
+                let existing_size = dest_file.metadata().map(|m| m.len()).unwrap_or(0);
+                if existing_size > 10 * 1024 * 1024 {
+                    tracing::info!(
+                        "[DROPBOX] Skipping already-downloaded file: {} ({} bytes)",
+                        filename,
+                        existing_size
+                    );
+                    let relative_path = format!("{}/{}", batch_id, filename);
+                    assets.push(MediaAsset {
+                        filename: filename.clone(),
+                        relative_path,
+                        size_bytes: existing_size,
+                        checksum_sha256: None,
+                    });
+                    continue;
+                }
+            }
+
+            tracing::info!("[DROPBOX] Downloading: {} from path {}", filename, dropbox_path);
+
+            // Use sharing/get_shared_link_file with the full path within the shared folder
+            let api_arg = serde_json::to_string(&json!({
+                "url": shared_link_url,
+                "path": dropbox_path,
+            }))?;
+
+            let dl_response = self
+                .inner
+                .client
+                .post("https://content.dropboxapi.com/2/sharing/get_shared_link_file")
+                .header("Authorization", &auth_header)
+                .header("Dropbox-API-Arg", &api_arg)
+                .send()
+                .await?;
+
+            if !dl_response.status().is_success() {
+                let status = dl_response.status();
+                let body = dl_response.text().await.unwrap_or_default();
+                tracing::warn!("[DROPBOX] Failed to download {}: {} — {}", filename, status, body);
+                continue;
+            }
+
+            let mut file = fs::File::create(&dest_file).await?;
+            let mut stream = dl_response.bytes_stream();
+            let mut total = 0u64;
+            let mut hasher = checksum_required.then_some(Sha256::new());
+
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                file.write_all(&chunk).await?;
+                total += chunk.len() as u64;
+                if let Some(h) = hasher.as_mut() {
+                    h.update(&chunk);
+                }
+            }
+            file.flush().await?;
+
+            let checksum = hasher.map(|h| format!("{:x}", h.finalize()));
+            let relative_path = format!("{}/{}", batch_id, filename);
+
+            tracing::info!("[DROPBOX] Downloaded {} ({} bytes)", filename, total);
+
+            assets.push(MediaAsset {
+                filename: filename.clone(),
+                relative_path,
+                size_bytes: total,
+                checksum_sha256: checksum,
+            });
+        }
+
+        if assets.is_empty() {
+            return Err(MediaPipelineError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "No media files found or downloaded from Dropbox shared folder: {}",
+                    shared_link_url
+                ),
+            )));
+        }
+
+        tracing::info!("[DROPBOX] Ingested {} media files from shared folder", assets.len());
+        Ok(assets)
     }
 
     async fn process_local_directory(
