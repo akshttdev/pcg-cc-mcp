@@ -265,7 +265,10 @@ async fn forward_to_provider(
 ) -> anyhow::Result<Value> {
     match model.provider.as_str() {
         "anthropic" => forward_to_anthropic(http, model, body, api_key).await,
-        "openai" | "openrouter" => forward_openai_compat(http, model, body, api_key).await,
+        "openai" | "openrouter" | "mistral" | "xai" | "deepseek" | "groq" | "cohere" | "qwen" => {
+            forward_openai_compat(http, model, body, api_key).await
+        }
+        "gemini" => forward_to_gemini(http, model, body, api_key).await,
         other => anyhow::bail!("Unknown provider: {}", other),
     }
 }
@@ -373,6 +376,41 @@ async fn forward_openai_compat(
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         anyhow::bail!("Provider {}: {}", status, text);
+    }
+
+    Ok(resp.json().await?)
+}
+
+/// Gemini OpenAI-compatible endpoint — same as openai_compat but the path
+/// is `/chat/completions` (no `/v1` prefix) because Google's compat layer
+/// already embeds the version in the base URL.
+async fn forward_to_gemini(
+    http: &reqwest::Client,
+    model: &PcgRouterModel,
+    body: &ChatCompletionRequest,
+    api_key: &str,
+) -> anyhow::Result<Value> {
+    let payload = json!({
+        "model": model.model_id,
+        "messages": body.messages,
+        "temperature": body.temperature,
+        "max_tokens": body.max_tokens.unwrap_or(model.max_output_tokens.unwrap_or(4096)),
+        "stream": false,
+    });
+
+    let url = format!("{}/chat/completions", model.base_url());
+    let resp = http
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("content-type", "application/json")
+        .json(&payload)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Gemini {}: {}", status, text);
     }
 
     Ok(resp.json().await?)
