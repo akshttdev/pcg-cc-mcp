@@ -105,6 +105,8 @@ pub mod invite_dispatch;
 pub mod companies;
 pub mod data_sources;
 pub mod data_source_workflows;
+pub mod workflow_staging;
+pub mod output_schemas;
 pub mod pcg_router;
 pub mod discord;
 
@@ -181,6 +183,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(companies::router(&deployment))
         .merge(data_sources::router(&deployment))
         .merge(data_source_workflows::router(&deployment))
+        .merge(workflow_staging::router(&deployment))
+        .merge(output_schemas::router())
         .merge(graph::router(&deployment))
         .merge(invite_dispatch::router(&deployment))
         .merge(discord::router(&deployment))
