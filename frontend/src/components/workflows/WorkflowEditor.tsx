@@ -32,6 +32,8 @@ import {
   Eye,
   Loader2,
   Network,
+  Link,
+  Unlink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { workflowsApi, type AvailableModel } from '@/lib/api';
@@ -373,7 +375,10 @@ export function WorkflowEditor({
         {/* Body: two-panel layout like n8n */}
         <div className="flex flex-1 min-h-0">
           {/* Left: Canvas / Node list */}
-          <div className="flex-1 flex flex-col border-r">
+          <div className={cn(
+            'flex flex-col border-r transition-all',
+            selectedNodeId ? 'w-[340px] shrink-0' : 'flex-1'
+          )}>
             {/* Workflow metadata */}
             <div className="px-4 py-3 border-b bg-muted/30 space-y-2">
               <div className="grid grid-cols-2 gap-3">
@@ -549,7 +554,10 @@ export function WorkflowEditor({
           </div>
 
           {/* Right: Node configuration panel (n8n style) */}
-          <div className="w-[480px] flex flex-col bg-muted/20">
+          <div className={cn(
+            'flex flex-col bg-muted/20',
+            selectedNodeId ? 'flex-1' : 'w-[320px]'
+          )}>
             {selectedNode ? (
               <NodeConfigPanel
                 node={selectedNode}
@@ -953,60 +961,57 @@ function NodeConfigPanel({
 
           {/* Input connections */}
           <div>
-            <Label className="text-xs text-muted-foreground mb-2 block">
+            <Label className="text-xs text-muted-foreground mb-1 block">
               Input Connections
             </Label>
-            <div className="space-y-1.5">
-              {currentInputs.map((sourceId) => {
-                const sourceNode = allNodes.find((n) => n.id === sourceId);
-                const srcDef = sourceNode
-                  ? getNodeTypeDef(sourceNode.type)
-                  : undefined;
-                const SrcIcon = srcDef?.icon ?? Zap;
-                return (
-                  <div
-                    key={sourceId}
-                    className="flex items-center gap-2 rounded-md border px-2 py-1.5 bg-card"
-                  >
-                    <div
+            <p className="text-[10px] text-muted-foreground mb-2">
+              Click a node to connect or disconnect it as an input.
+            </p>
+            <div className="space-y-1">
+              {allNodes
+                .filter((n) => n.id !== node.id)
+                .map((otherNode) => {
+                  const isConnected = currentInputs.includes(otherNode.id);
+                  const srcDef = getNodeTypeDef(otherNode.type);
+                  const SrcIcon = srcDef?.icon ?? Zap;
+                  return (
+                    <button
+                      key={otherNode.id}
+                      onClick={() =>
+                        isConnected
+                          ? onRemoveConnection(otherNode.id)
+                          : onAddConnection(otherNode.id)
+                      }
                       className={cn(
-                        'w-5 h-5 rounded flex items-center justify-center text-white',
-                        srcDef?.color ?? 'bg-gray-500'
+                        'flex items-center gap-2 rounded-md border px-2 py-1.5 w-full text-left transition-colors',
+                        isConnected
+                          ? 'bg-primary/10 border-primary/30 hover:bg-primary/5'
+                          : 'bg-card hover:bg-muted/50 border-transparent'
                       )}
                     >
-                      <SrcIcon className="h-3 w-3" />
-                    </div>
-                    <span className="text-sm flex-1 truncate">
-                      {sourceNode?.name ?? sourceId}
-                    </span>
-                    <button
-                      onClick={() => onRemoveConnection(sourceId)}
-                      className="p-0.5 rounded hover:bg-destructive/10 hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
+                      <div
+                        className={cn(
+                          'w-5 h-5 rounded flex items-center justify-center text-white shrink-0',
+                          srcDef?.color ?? 'bg-gray-500'
+                        )}
+                      >
+                        <SrcIcon className="h-3 w-3" />
+                      </div>
+                      <span className="text-sm flex-1 truncate">
+                        {otherNode.name}
+                      </span>
+                      {isConnected ? (
+                        <Link className="h-3.5 w-3.5 text-primary shrink-0" />
+                      ) : (
+                        <Unlink className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                      )}
                     </button>
-                  </div>
-                );
-              })}
+                  );
+                })}
 
-              {availableInputs.length > 0 && (
-                <Select onValueChange={(v) => onAddConnection(v)}>
-                  <SelectTrigger className="h-8 text-sm">
-                    <SelectValue placeholder="+ Connect input from..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableInputs.map((n) => (
-                      <SelectItem key={n.id} value={n.id}>
-                        {n.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-
-              {currentInputs.length === 0 && availableInputs.length === 0 && (
+              {allNodes.length <= 1 && (
                 <p className="text-xs text-muted-foreground italic">
-                  No inputs — this node receives raw data source content.
+                  Add more nodes to create connections.
                 </p>
               )}
             </div>
