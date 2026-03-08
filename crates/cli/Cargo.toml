@@ -17,7 +17,6 @@ futures = "0.3"
 # CLI and terminal
 clap = { version = "4", features = ["derive", "env"] }
 rustyline = { version = "14", features = ["derive"] }
-crossterm = "0.28"
 colored = "3"
 
 # HTTP client
