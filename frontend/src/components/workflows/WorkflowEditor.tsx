@@ -34,6 +34,10 @@ import {
   Network,
   Link,
   Unlink,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  List,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { workflowsApi, type AvailableModel } from '@/lib/api';
@@ -114,7 +118,7 @@ export const NODE_TYPES = [
 
 type NodeTypeDef = (typeof NODE_TYPES)[number];
 
-function getNodeTypeDef(type: string): NodeTypeDef | undefined {
+export function getNodeTypeDef(type: string): NodeTypeDef | undefined {
   return NODE_TYPES.find((t) => t.type === type);
 }
 
@@ -302,6 +306,8 @@ export function WorkflowEditor({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
+  const [metadataExpanded, setMetadataExpanded] = useState(isNew);
+  const [pendingDeleteNodeId, setPendingDeleteNodeId] = useState<string | null>(null);
 
   const handlePreview = useCallback(async () => {
     if (nodes.length === 0) return;
@@ -335,13 +341,16 @@ export function WorkflowEditor({
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              variant="ghost"
-              onClick={() => setShowGraph(true)}
+              variant={showGraph ? 'secondary' : 'ghost'}
+              onClick={() => setShowGraph(!showGraph)}
               disabled={nodes.length === 0}
               className="gap-1.5"
             >
-              <Network className="h-3.5 w-3.5" />
-              Graph
+              {showGraph ? (
+                <><List className="h-3.5 w-3.5" />List</>
+              ) : (
+                <><Network className="h-3.5 w-3.5" />Graph</>
+              )}
             </Button>
             <Button
               size="sm"
@@ -377,179 +386,218 @@ export function WorkflowEditor({
           {/* Left: Canvas / Node list */}
           <div className={cn(
             'flex flex-col border-r transition-all',
-            selectedNodeId ? 'w-[340px] shrink-0' : 'flex-1'
+            showGraph ? 'flex-1' : selectedNodeId ? 'w-[340px] shrink-0' : 'flex-1'
           )}>
-            {/* Workflow metadata */}
-            <div className="px-4 py-3 border-b bg-muted/30 space-y-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Workflow ID
-                  </Label>
-                  <Input
-                    value={id}
-                    onChange={(e) =>
-                      setId(
-                        e.target.value
-                          .toLowerCase()
-                          .replace(/[^a-z0-9_]/g, '_')
-                      )
-                    }
-                    placeholder="my_workflow"
-                    className="h-8 text-sm mt-1"
-                    disabled={!isNew}
-                  />
+            {/* Workflow metadata (collapsible) */}
+            <div className="border-b bg-muted/30">
+              <button
+                onClick={() => setMetadataExpanded(!metadataExpanded)}
+                className="w-full flex items-center gap-2 px-4 py-2 hover:bg-muted/50 transition-colors text-left"
+              >
+                {metadataExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                )}
+                <span className="text-sm font-medium truncate flex-1">
+                  {name || 'Untitled Workflow'}
+                </span>
+                {!metadataExpanded && description && (
+                  <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                    {description}
+                  </span>
+                )}
+              </button>
+              {metadataExpanded && (
+                <div className="px-4 pb-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">
+                        Workflow ID
+                      </Label>
+                      <Input
+                        value={id}
+                        onChange={(e) =>
+                          setId(
+                            e.target.value
+                              .toLowerCase()
+                              .replace(/[^a-z0-9_]/g, '_')
+                          )
+                        }
+                        placeholder="my_workflow"
+                        className="h-8 text-sm mt-1"
+                        disabled={!isNew}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Name</Label>
+                      <Input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="My Workflow"
+                        className="h-8 text-sm mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Description
+                    </Label>
+                    <Input
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="What does this workflow do?"
+                      className="h-8 text-sm mt-1"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Name</Label>
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="My Workflow"
-                    className="h-8 text-sm mt-1"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">
-                  Description
-                </Label>
-                <Input
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="What does this workflow do?"
-                  className="h-8 text-sm mt-1"
-                />
-              </div>
+              )}
             </div>
 
-            {/* Node list (canvas representation) */}
-            <ScrollArea className="flex-1">
-              <div className="p-4 space-y-2">
-                {nodes.length === 0 && (
-                  <div className="text-center py-16 text-muted-foreground">
-                    <Zap className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">No nodes yet</p>
-                    <p className="text-xs mt-1">
-                      Add your first node to start building the workflow
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="mt-4 gap-1.5"
-                      onClick={() => setShowNodePicker(true)}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add Node
-                    </Button>
-                  </div>
-                )}
-
-                {nodes.map((node, idx) => {
-                  const typeDef = getNodeTypeDef(node.type);
-                  const Icon = typeDef?.icon ?? Zap;
-                  const inputs = getNodeInputs(node.id);
-                  const isSelected = selectedNodeId === node.id;
-
-                  return (
-                    <div key={node.id} className="relative">
-                      {/* Connection lines from inputs */}
-                      {inputs.length > 0 && (
-                        <div className="flex items-center gap-1 mb-1 ml-6 text-xs text-muted-foreground">
-                          <ArrowRight className="h-3 w-3" />
-                          from:{' '}
-                          {inputs.map((inp) => inp.name).join(', ')}
-                        </div>
-                      )}
-
-                      {/* Node card (n8n style) */}
-                      <button
-                        onClick={() =>
-                          setSelectedNodeId(isSelected ? null : node.id)
-                        }
-                        className={cn(
-                          'w-full text-left rounded-lg border-2 transition-all',
-                          'hover:shadow-md cursor-pointer',
-                          'flex items-center gap-3 p-3',
-                          isSelected
-                            ? 'border-primary shadow-md bg-accent/50'
-                            : 'border-border bg-card hover:border-primary/40'
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            'w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0',
-                            typeDef?.color ?? 'bg-gray-500'
-                          )}
+            {/* Node list or inline graph */}
+            {showGraph ? (
+              <ScrollArea className="flex-1">
+                <div className="p-4">
+                  <WorkflowGraphView
+                    nodes={nodes}
+                    connections={connections}
+                    onSelectNode={(id) => {
+                      setSelectedNodeId(id);
+                      setShowGraph(false);
+                    }}
+                  />
+                </div>
+              </ScrollArea>
+            ) : (
+              <>
+                <ScrollArea className="flex-1">
+                  <div className="p-4 space-y-2">
+                    {nodes.length === 0 && (
+                      <div className="text-center py-16 text-muted-foreground">
+                        <Zap className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                        <p className="text-sm font-medium">No nodes yet</p>
+                        <p className="text-xs mt-1">
+                          Add your first node to start building the workflow
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-4 gap-1.5"
+                          onClick={() => setShowNodePicker(true)}
                         >
-                          <Icon className="h-4.5 w-4.5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">
-                            {node.name}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {typeDef?.label ?? node.type}
-                            {node.parameters.output_schema &&
-                              ` → ${node.parameters.output_schema}`}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] px-1.5"
-                          >
-                            {idx + 1}
-                          </Badge>
+                          <Plus className="h-3.5 w-3.5" />
+                          Add Node
+                        </Button>
+                      </div>
+                    )}
+
+                    {nodes.map((node, idx) => {
+                      const typeDef = getNodeTypeDef(node.type);
+                      const Icon = typeDef?.icon ?? Zap;
+                      const inputs = getNodeInputs(node.id);
+                      const isSelected = selectedNodeId === node.id;
+
+                      return (
+                        <div key={node.id} className="relative">
+                          {/* Connection lines from inputs */}
+                          {inputs.length > 0 && (
+                            <div className="flex items-center gap-1 mb-1 ml-6 text-xs text-muted-foreground">
+                              <ArrowRight className="h-3 w-3" />
+                              from:{' '}
+                              {inputs.map((inp) => inp.name).join(', ')}
+                            </div>
+                          )}
+
+                          {/* Node card (n8n style) */}
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteNode(node.id);
-                            }}
-                            className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            onClick={() =>
+                              setSelectedNodeId(isSelected ? null : node.id)
+                            }
+                            className={cn(
+                              'w-full text-left rounded-lg border-2 transition-all',
+                              'hover:shadow-md cursor-pointer',
+                              'flex items-center gap-3 p-3',
+                              isSelected
+                                ? 'border-primary shadow-md bg-accent/50'
+                                : 'border-border bg-card hover:border-primary/40'
+                            )}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <div
+                              className={cn(
+                                'w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0',
+                                typeDef?.color ?? 'bg-gray-500'
+                              )}
+                            >
+                              <Icon className="h-4.5 w-4.5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">
+                                {node.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate">
+                                {typeDef?.label ?? node.type}
+                                {node.parameters.output_schema &&
+                                  ` → ${node.parameters.output_schema}`}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5"
+                              >
+                                {idx + 1}
+                              </Badge>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPendingDeleteNodeId(node.id);
+                                }}
+                                className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </button>
                         </div>
-                      </button>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
 
-                {/* Add node button */}
-                {nodes.length > 0 && (
-                  <div className="pt-2">
-                    {showNodePicker ? (
-                      <NodePicker
-                        onSelect={addNode}
-                        onClose={() => setShowNodePicker(false)}
-                      />
-                    ) : (
-                      <button
-                        onClick={() => setShowNodePicker(true)}
-                        className={cn(
-                          'w-full rounded-lg border-2 border-dashed border-border',
-                          'hover:border-primary/40 hover:bg-accent/30',
-                          'transition-all p-3 flex items-center justify-center gap-2',
-                          'text-sm text-muted-foreground hover:text-foreground'
+                    {/* Add node button */}
+                    {nodes.length > 0 && (
+                      <div className="pt-2">
+                        {showNodePicker ? (
+                          <NodePicker
+                            onSelect={addNode}
+                            onClose={() => setShowNodePicker(false)}
+                          />
+                        ) : (
+                          <button
+                            onClick={() => setShowNodePicker(true)}
+                            className={cn(
+                              'w-full rounded-lg border-2 border-dashed border-border',
+                              'hover:border-primary/40 hover:bg-accent/30',
+                              'transition-all p-3 flex items-center justify-center gap-2',
+                              'text-sm text-muted-foreground hover:text-foreground'
+                            )}
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Node
+                          </button>
                         )}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Node
-                      </button>
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            </ScrollArea>
+                </ScrollArea>
 
-            {showNodePicker && nodes.length === 0 && (
-              <div className="p-4 border-t">
-                <NodePicker
-                  onSelect={addNode}
-                  onClose={() => setShowNodePicker(false)}
-                />
-              </div>
+                {showNodePicker && nodes.length === 0 && (
+                  <div className="p-4 border-t">
+                    <NodePicker
+                      onSelect={addNode}
+                      onClose={() => setShowNodePicker(false)}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -639,27 +687,52 @@ export function WorkflowEditor({
 
       </DialogContent>
 
-      {/* Graph preview modal */}
-      <Dialog open={showGraph} onOpenChange={setShowGraph}>
-        <DialogContent className="max-w-[85vw] w-[1000px] max-h-[85vh] p-0 flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b">
-            <DialogTitle className="text-lg flex items-center gap-2">
-              <Network className="h-5 w-5" />
-              Workflow Graph
-            </DialogTitle>
-          </div>
-          <div className="flex-1 overflow-auto p-6">
-            <WorkflowGraphView nodes={nodes} connections={connections} />
+      {/* Delete confirmation modal */}
+      <Dialog open={!!pendingDeleteNodeId} onOpenChange={(open) => !open && setPendingDeleteNodeId(null)}>
+        <DialogContent className="max-w-sm">
+          <div className="flex flex-col items-center text-center py-2">
+            <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center mb-3">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <DialogTitle className="text-base">Delete Node</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1.5">
+              Delete <strong>{nodes.find(n => n.id === pendingDeleteNodeId)?.name ?? 'this node'}</strong>?
+              This will also remove its connections. This cannot be undone.
+            </p>
+            <div className="flex gap-2 mt-4 w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => setPendingDeleteNodeId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  if (pendingDeleteNodeId) {
+                    deleteNode(pendingDeleteNodeId);
+                    setPendingDeleteNodeId(null);
+                  }
+                }}
+              >
+                Delete
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
     </Dialog>
   );
 }
 
 // ── Static graph visualization ────────────────────────────────────────────────
 
-function WorkflowGraphView({ nodes, connections }: { nodes: WorkflowNode[]; connections: WorkflowConnection[] }) {
+function WorkflowGraphView({ nodes, connections, onSelectNode }: { nodes: WorkflowNode[]; connections: WorkflowConnection[]; onSelectNode?: (id: string) => void }) {
   // Build layout: topological layers
   const layers = useMemo(() => {
     const deps: Record<string, string[]> = {};
@@ -765,7 +838,11 @@ function WorkflowGraphView({ nodes, connections }: { nodes: WorkflowNode[]; conn
           };
           const fill = colorMap[typeDef?.color ?? ''] ?? '#6b7280';
           return (
-            <g key={node.id}>
+            <g
+              key={node.id}
+              onClick={() => onSelectNode?.(node.id)}
+              className={onSelectNode ? 'cursor-pointer' : undefined}
+            >
               <rect
                 x={pos.x} y={pos.y}
                 width={nodeWidth} height={nodeHeight}
@@ -774,6 +851,15 @@ function WorkflowGraphView({ nodes, connections }: { nodes: WorkflowNode[]; conn
                 stroke={fill}
                 strokeWidth="2"
               />
+              {onSelectNode && (
+                <rect
+                  x={pos.x} y={pos.y}
+                  width={nodeWidth} height={nodeHeight}
+                  rx="8" ry="8"
+                  fill="transparent"
+                  className="hover:fill-primary/5"
+                />
+              )}
               <rect
                 x={pos.x} y={pos.y}
                 width="6" height={nodeHeight}
@@ -1078,18 +1164,57 @@ function NodeConfigPanel({
                 )}
                 <div>
                   <Label className="text-xs">Prompt Template</Label>
+                  <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ta = document.querySelector<HTMLTextAreaElement>(`[data-prompt-node="${node.id}"]`);
+                        if (ta) {
+                          const pos = ta.selectionStart ?? ta.value.length;
+                          const before = ta.value.slice(0, pos);
+                          const after = ta.value.slice(pos);
+                          onUpdateParameter('prompt_template', before + '{{content}}' + after);
+                        } else {
+                          onUpdateParameter('prompt_template', (node.parameters.prompt_template ?? '') + '{{content}}');
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[11px] font-mono text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 transition-colors"
+                    >
+                      {'{{content}}'}
+                      <span className="text-[9px] font-sans text-muted-foreground">raw input</span>
+                    </button>
+                    {currentInputs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ta = document.querySelector<HTMLTextAreaElement>(`[data-prompt-node="${node.id}"]`);
+                          if (ta) {
+                            const pos = ta.selectionStart ?? ta.value.length;
+                            const before = ta.value.slice(0, pos);
+                            const after = ta.value.slice(pos);
+                            onUpdateParameter('prompt_template', before + '{{previous_results}}' + after);
+                          } else {
+                            onUpdateParameter('prompt_template', (node.parameters.prompt_template ?? '') + '{{previous_results}}');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 text-[11px] font-mono text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors"
+                      >
+                        {'{{previous_results}}'}
+                        <span className="text-[9px] font-sans text-muted-foreground">
+                          from {currentInputs.length} node{currentInputs.length !== 1 ? 's' : ''}
+                        </span>
+                      </button>
+                    )}
+                  </div>
                   <Textarea
+                    data-prompt-node={node.id}
                     value={node.parameters.prompt_template ?? ''}
                     onChange={(e) =>
                       onUpdateParameter('prompt_template', e.target.value)
                     }
                     placeholder={`Analyze the following content and...\n\nContent:\n{{content}}\n\nPrevious results:\n{{previous_results}}`}
-                    className="mt-1 text-sm font-mono min-h-[200px] resize-y"
+                    className="text-sm font-mono min-h-[200px] resize-y"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Use {'{{content}}'} for data source text and{' '}
-                    {'{{previous_results}}'} for upstream node outputs.
-                  </p>
                 </div>
                 <div>
                   <Label className="text-xs">Output Schema</Label>
