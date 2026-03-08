@@ -25,9 +25,11 @@ import {
   Clock,
   Users,
   AlertTriangle,
+  History,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, stagingApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
 import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
+import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
 
 export function DataSourceDetailPage() {
   const { orgId, dataSourceId } = useParams<{ orgId: string; dataSourceId: string }>();
@@ -40,6 +42,7 @@ export function DataSourceDetailPage() {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [reviewRunId, setReviewRunId] = useState<string | null>(null);
+  const [showRunHistory, setShowRunHistory] = useState(false);
 
   const { data: source, isLoading } = useQuery({
     queryKey: ['dataSource', dataSourceId],
@@ -411,6 +414,15 @@ export function DataSourceDetailPage() {
               )}
               <Button
                 size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setShowRunHistory(true)}
+              >
+                <History className="h-3.5 w-3.5" />
+                Run History
+              </Button>
+              <Button
+                size="sm"
                 className="gap-1.5"
                 onClick={() => runWorkflowMutation.mutate({})}
                 disabled={runWorkflowMutation.isPending || !effectiveWorkflowId}
@@ -701,6 +713,12 @@ export function DataSourceDetailPage() {
           workflowName={workflowResult?.workflow_name}
         />
       )}
+
+      <WorkflowRunsPanel
+        open={showRunHistory}
+        onOpenChange={setShowRunHistory}
+        organizationId={orgId}
+      />
     </div>
   );
 }

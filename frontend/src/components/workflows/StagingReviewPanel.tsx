@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { stagingApi } from '@/lib/api';
-import type { WorkflowStagingRecord } from '@/lib/api';
+import type { WorkflowStagingRecord, CommitResult } from '@/lib/api';
 
 // Inline confidence badge helper
 const ConfidenceBadge = ({ value }: { value: number | null }) => {
@@ -66,6 +66,7 @@ export function StagingReviewPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Record<string, any>>({});
   const [filter, setFilter] = useState<'all' | 'valid' | 'duplicates' | 'validation_issues' | 'approved' | 'rejected'>('all');
+  const [commitErrors, setCommitErrors] = useState<Record<string, string>>({});
 
   const { data: records = [], isLoading } = useQuery({
     queryKey: ['staging', workflowRunId],
@@ -138,12 +139,28 @@ export function StagingReviewPanel({
 
   const commitMutation = useMutation({
     mutationFn: (id: string) => stagingApi.commit(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+    onSuccess: (result: CommitResult) => {
+      if (result.error) {
+        setCommitErrors(prev => ({ ...prev, [result.id]: result.error! }));
+      }
+      queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] });
+    },
   });
 
   const batchCommitMutation = useMutation({
     mutationFn: () => stagingApi.batchCommit(workflowRunId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+    onSuccess: (result) => {
+      const newErrors: Record<string, string> = {};
+      for (const r of result.results) {
+        if (r.error) {
+          newErrors[r.id] = r.error;
+        }
+      }
+      if (Object.keys(newErrors).length > 0) {
+        setCommitErrors(prev => ({ ...prev, ...newErrors }));
+      }
+      queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] });
+    },
   });
 
   const autoApproveMutation = useMutation({
@@ -481,8 +498,10 @@ export function StagingReviewPanel({
                             )}
                           </div>
 
-                          {record.error_message && (
-                            <p className="text-xs text-red-600 mt-1">{record.error_message}</p>
+                          {(record.error_message || commitErrors[record.id]) && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {record.error_message || commitErrors[record.id]}
+                            </p>
                           )}
 
                           {(() => {
@@ -513,9 +532,25 @@ export function StagingReviewPanel({
             })}
 
             {batchCommitMutation.isSuccess && (
-              <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-4 text-center">
-                <CheckCheck className="h-5 w-5 text-green-600 mx-auto mb-1" />
-                <p className="text-sm font-medium text-green-700">Records committed successfully</p>
+              <div className={cn(
+                'rounded-lg border p-4 text-center',
+                batchCommitMutation.data?.errors
+                  ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/20'
+                  : 'border-green-200 bg-green-50 dark:bg-green-950/20'
+              )}>
+                {batchCommitMutation.data?.errors ? (
+                  <>
+                    <AlertTriangle className="h-5 w-5 text-amber-600 mx-auto mb-1" />
+                    <p className="text-sm font-medium text-amber-700">
+                      {batchCommitMutation.data.committed} committed, {batchCommitMutation.data.errors} failed
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <CheckCheck className="h-5 w-5 text-green-600 mx-auto mb-1" />
+                    <p className="text-sm font-medium text-green-700">Records committed successfully</p>
+                  </>
+                )}
               </div>
             )}
           </div>

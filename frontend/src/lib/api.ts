@@ -5844,6 +5844,19 @@ export interface WorkflowStagingRecord {
   updated_at: string;
 }
 
+export interface CommitResult {
+  id: string;
+  target_type: string;
+  created_id: string | null;
+  error: string | null;
+}
+
+export interface BatchCommitResult {
+  committed: number;
+  errors: number;
+  results: CommitResult[];
+}
+
 export const stagingApi = {
   listByRun: async (workflowRunId: string): Promise<WorkflowStagingRecord[]> => {
     const response = await makeRequest(`/api/workflow-staging?workflow_run_id=${workflowRunId}`);
@@ -5878,37 +5891,37 @@ export const stagingApi = {
     await handleApiResponse<void>(response);
   },
 
-  commit: async (id: string): Promise<{ created_id: string }> => {
+  commit: async (id: string): Promise<CommitResult> => {
     const response = await makeRequest(`/api/workflow-staging/${id}/commit`, {
       method: 'POST',
     });
-    return handleApiResponse<{ created_id: string }>(response);
+    return handleApiResponse<CommitResult>(response);
   },
 
-  batchCommit: async (workflowRunId: string): Promise<{ committed: number; errors: number }> => {
+  batchCommit: async (workflowRunId: string): Promise<BatchCommitResult> => {
     const response = await makeRequest('/api/workflow-staging/batch-commit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflow_run_id: workflowRunId }),
     });
-    return handleApiResponse<{ committed: number; errors: number }>(response);
+    return handleApiResponse<BatchCommitResult>(response);
   },
 
-  autoApprove: async (workflowRunId: string): Promise<{ approved: number }> => {
+  autoApprove: async (workflowRunId: string): Promise<{ affected: number }> => {
     const response = await makeRequest('/api/workflow-staging/auto-approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflow_run_id: workflowRunId }),
     });
-    return handleApiResponse<{ approved: number }>(response);
+    return handleApiResponse<{ affected: number }>(response);
   },
 
-  rejectDuplicates: async (workflowRunId: string): Promise<{ rejected: number }> => {
+  rejectDuplicates: async (workflowRunId: string): Promise<{ affected: number }> => {
     const response = await makeRequest('/api/workflow-staging/reject-duplicates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflow_run_id: workflowRunId }),
     });
-    return handleApiResponse<{ rejected: number }>(response);
+    return handleApiResponse<{ affected: number }>(response);
   },
 };

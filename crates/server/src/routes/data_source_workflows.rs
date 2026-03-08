@@ -1082,7 +1082,7 @@ async fn run_workflow(
     }
 
     // Create workflow run record
-    let _ = WorkflowRun::create(pool, CreateWorkflowRun {
+    if let Err(e) = WorkflowRun::create(pool, CreateWorkflowRun {
         id: workflow_run_id,
         workflow_id: workflow.id.clone(),
         workflow_name: workflow.name.clone(),
@@ -1091,7 +1091,9 @@ async fn run_workflow(
         project_id: data_source.project_id,
         model_used: if model.is_empty() { None } else { Some(model.clone()) },
         content_hash: Some(content_hash),
-    }).await;
+    }).await {
+        tracing::error!("[WORKFLOW] Failed to create workflow run record: {e}");
+    }
 
     let title = &data_source.title;
 
@@ -1270,7 +1272,11 @@ async fn run_workflow(
                         is_duplicate,
                     );
 
-                    let _ = WorkflowStagingRecord::create(pool, CreateStagingRecord {
+                    // NOTE: Records within a single run are processed sequentially in this
+                    // for loop, so intra-batch race conditions don't apply. The dedup check
+                    // + create sequence is only vulnerable to races across concurrent trigger
+                    // firings for the same data source — a known limitation with SQLite.
+                    match WorkflowStagingRecord::create(pool, CreateStagingRecord {
                         workflow_run_id,
                         workflow_id: workflow.id.clone(),
                         node_id: node.id.clone(),
@@ -1283,8 +1289,10 @@ async fn run_workflow(
                         duplicate_of_type: dup_type,
                         confidence: Some(confidence),
                         validation_errors,
-                    }).await;
-                    staged_records += 1;
+                    }).await {
+                        Ok(_) => staged_records += 1,
+                        Err(e) => tracing::error!("[WORKFLOW] Failed to create staging record: {e}"),
+                    }
                 }
             }
         }
@@ -1310,7 +1318,7 @@ async fn run_workflow(
     };
 
     // Update workflow run with final stats
-    let _ = WorkflowRun::update_on_complete(pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
+    if let Err(e) = WorkflowRun::update_on_complete(pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
         status: "completed".to_string(),
         total_input_tokens: total_input,
         total_output_tokens: total_output,
@@ -1320,7 +1328,9 @@ async fn run_workflow(
         node_count,
         llm_node_count,
         duration_ms,
-    }).await;
+    }).await {
+        tracing::error!("[WORKFLOW] Failed to update workflow run on complete: {e}");
+    }
 
     Ok(Json(ApiResponse::success(WorkflowRunResult {
         workflow_run_id,
@@ -1918,7 +1928,9 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
             );
 
             // Increment trigger count
-            let _ = WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await;
+            if let Err(e) = WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await {
+                tracing::warn!("[TRIGGER] Failed to increment trigger count for '{}': {e}", trigger_id);
+            }
 
             // Load the workflow definition
             let workflow = match load_workflow(&pool, &workflow_id).await {
@@ -1951,7 +1963,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
             let run_start = std::time::Instant::now();
 
             // Create workflow run record
-            let _ = WorkflowRun::create(&pool, CreateWorkflowRun {
+            if let Err(e) = WorkflowRun::create(&pool, CreateWorkflowRun {
                 id: workflow_run_id,
                 workflow_id: workflow.id.clone(),
                 workflow_name: workflow.name.clone(),
@@ -1960,7 +1972,10 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 project_id: data_source.project_id,
                 model_used: if model.is_empty() { None } else { Some(model.clone()) },
                 content_hash: None,
-            }).await;
+            }).await {
+                tracing::error!("[TRIGGER] Failed to create workflow run record: {e}");
+                return;
+            }
 
             let content = data_source.content.unwrap_or_default();
 
@@ -2042,7 +2057,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                     all_usage.push(usage.clone());
                 }
 
-                let _ = ExecutionArtifact::create(
+                if let Err(e) = ExecutionArtifact::create(
                     &pool,
                     CreateExecutionArtifact {
                         execution_process_id: None,
@@ -2052,7 +2067,9 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                         file_path: None,
                         metadata: Some(artifact_metadata),
                     },
-                ).await;
+                ).await {
+                    tracing::error!("[TRIGGER] Failed to create execution artifact for node '{}': {e}", node.id);
+                }
 
                 step_outputs.push((node.id.clone(), output));
             }
@@ -2099,7 +2116,10 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                                 is_duplicate,
                             );
 
-                            let _ = WorkflowStagingRecord::create(&pool, CreateStagingRecord {
+                            // NOTE: Records within a single trigger run are processed sequentially,
+                            // so intra-batch dedup races don't apply here. Cross-run races are a
+                            // known limitation with SQLite's limited concurrency.
+                            match WorkflowStagingRecord::create(&pool, CreateStagingRecord {
                                 workflow_run_id,
                                 workflow_id: workflow.id.clone(),
                                 node_id: node.id.clone(),
@@ -2112,8 +2132,10 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                                 duplicate_of_type: dup_type,
                                 confidence: Some(confidence),
                                 validation_errors,
-                            }).await;
-                            staged_records += 1;
+                            }).await {
+                                Ok(_) => staged_records += 1,
+                                Err(e) => tracing::error!("[TRIGGER] Failed to create staging record: {e}"),
+                            }
                         }
                     }
                 }
@@ -2137,7 +2159,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
             let llm_node_count = workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64;
             let duration_ms = run_start.elapsed().as_millis() as i64;
 
-            let _ = WorkflowRun::update_on_complete(&pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
+            if let Err(e) = WorkflowRun::update_on_complete(&pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
                 status: "completed".to_string(),
                 total_input_tokens: total_input,
                 total_output_tokens: total_output,
@@ -2147,7 +2169,9 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 node_count,
                 llm_node_count,
                 duration_ms,
-            }).await;
+            }).await {
+                tracing::error!("[TRIGGER] Failed to update workflow run on complete: {e}");
+            }
 
             tracing::info!(
                 "[TRIGGER] Completed trigger '{}' workflow run {} ({} records staged, {}ms)",
