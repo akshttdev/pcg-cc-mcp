@@ -411,6 +411,42 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
     Ok(task.id)
 }
 
+// ── Batch convenience endpoints ──────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct RunIdRequest {
+    workflow_run_id: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+struct BulkActionResult {
+    affected: u64,
+}
+
+/// POST /api/workflow-staging/auto-approve — approve all non-duplicate records for a run
+async fn auto_approve_valid(
+    State(deployment): State<DeploymentImpl>,
+    Json(req): Json<RunIdRequest>,
+) -> Result<Json<ApiResponse<BulkActionResult>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let affected = WorkflowStagingRecord::auto_approve_valid(pool, req.workflow_run_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to auto-approve records: {e}")))?;
+    Ok(Json(ApiResponse::success(BulkActionResult { affected })))
+}
+
+/// POST /api/workflow-staging/reject-duplicates — reject all duplicate records for a run
+async fn reject_duplicates(
+    State(deployment): State<DeploymentImpl>,
+    Json(req): Json<RunIdRequest>,
+) -> Result<Json<ApiResponse<BulkActionResult>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let affected = WorkflowStagingRecord::reject_duplicates(pool, req.workflow_run_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to reject duplicates: {e}")))?;
+    Ok(Json(ApiResponse::success(BulkActionResult { affected })))
+}
+
 // ── Router ──────────────────────────────────────────────────────────────────
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
@@ -419,6 +455,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/workflow-staging/pending", get(list_pending_records))
         .route("/workflow-staging/batch", post(batch_action))
         .route("/workflow-staging/batch-commit", post(batch_commit))
+        .route("/workflow-staging/auto-approve", post(auto_approve_valid))
+        .route("/workflow-staging/reject-duplicates", post(reject_duplicates))
         .route("/workflow-staging/{id}", get(get_staging_record).patch(update_staging_record))
         .route("/workflow-staging/{id}/commit", post(commit_single))
 }

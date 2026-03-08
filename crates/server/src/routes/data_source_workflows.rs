@@ -492,6 +492,194 @@ fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
     vec![]
 }
 
+/// Check if a CRM contact already exists by email match
+async fn check_contact_duplicate(
+    pool: &sqlx::SqlitePool,
+    record: &Value,
+    project_id: Option<Uuid>,
+) -> Option<(Uuid, String)> {
+    let project_id = project_id?;
+
+    // Try email exact match first (strongest signal)
+    if let Some(email) = record["email"].as_str().filter(|s| !s.is_empty()) {
+        // Use a direct query since we need to check by email + project_id
+        let result = sqlx::query_as::<_, (Uuid,)>(
+            "SELECT id FROM crm_contacts WHERE project_id = ?1 AND LOWER(email) = LOWER(?2) LIMIT 1"
+        )
+        .bind(project_id)
+        .bind(email)
+        .fetch_optional(pool)
+        .await
+        .ok()?;
+
+        if let Some((id,)) = result {
+            return Some((id, "crm_contacts".to_string()));
+        }
+    }
+
+    // Try name match (weaker signal — first_name + last_name)
+    let first = record["first_name"].as_str().unwrap_or("").trim();
+    let last = record["last_name"].as_str().unwrap_or("").trim();
+    if !first.is_empty() && !last.is_empty() {
+        let result = sqlx::query_as::<_, (Uuid,)>(
+            "SELECT id FROM crm_contacts WHERE project_id = ?1 AND LOWER(first_name) = LOWER(?2) AND LOWER(last_name) = LOWER(?3) LIMIT 1"
+        )
+        .bind(project_id)
+        .bind(first)
+        .bind(last)
+        .fetch_optional(pool)
+        .await
+        .ok()?;
+
+        if let Some((id,)) = result {
+            return Some((id, "crm_contacts".to_string()));
+        }
+    }
+
+    None
+}
+
+/// Check if a company already exists by name match
+async fn check_company_duplicate(
+    pool: &sqlx::SqlitePool,
+    record: &Value,
+    _organization_id: Option<Uuid>,
+) -> Option<(Uuid, String)> {
+    let name = record["name"].as_str().filter(|s| !s.is_empty())?;
+
+    // Case-insensitive name match
+    let result = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT id FROM companies WHERE LOWER(name) = LOWER(?1) LIMIT 1"
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    .ok()?;
+
+    if let Some((id,)) = result {
+        return Some((id, "companies".to_string()));
+    }
+
+    // Also try matching by website domain if available
+    if let Some(website) = record["website"].as_str().filter(|s| !s.is_empty()) {
+        let result = sqlx::query_as::<_, (Uuid,)>(
+            "SELECT id FROM companies WHERE LOWER(website) = LOWER(?1) LIMIT 1"
+        )
+        .bind(website)
+        .fetch_optional(pool)
+        .await
+        .ok()?;
+
+        if let Some((id,)) = result {
+            return Some((id, "companies".to_string()));
+        }
+    }
+
+    None
+}
+
+/// Check if a deal already exists by name + pipeline
+async fn check_deal_duplicate(
+    pool: &sqlx::SqlitePool,
+    record: &Value,
+    project_id: Option<Uuid>,
+) -> Option<(Uuid, String)> {
+    let project_id = project_id?;
+    let name = record["name"].as_str().filter(|s| !s.is_empty())?;
+
+    let result = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT id FROM crm_deals WHERE project_id = ?1 AND LOWER(name) = LOWER(?2) LIMIT 1"
+    )
+    .bind(project_id)
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    .ok()?;
+
+    if let Some((id,)) = result {
+        return Some((id, "crm_deals".to_string()));
+    }
+
+    None
+}
+
+/// Check if a task already exists by title
+async fn check_task_duplicate(
+    pool: &sqlx::SqlitePool,
+    record: &Value,
+    project_id: Option<Uuid>,
+) -> Option<(Uuid, String)> {
+    let project_id = project_id?;
+    let title = record["title"].as_str().filter(|s| !s.is_empty())?;
+
+    let result = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT id FROM tasks WHERE project_id = ?1 AND LOWER(title) = LOWER(?2) LIMIT 1"
+    )
+    .bind(project_id)
+    .bind(title)
+    .fetch_optional(pool)
+    .await
+    .ok()?;
+
+    if let Some((id,)) = result {
+        return Some((id, "tasks".to_string()));
+    }
+
+    None
+}
+
+/// Also check within the current staging batch for duplicates (same run producing duplicate records)
+async fn check_intra_batch_duplicate(
+    pool: &sqlx::SqlitePool,
+    workflow_run_id: Uuid,
+    target_type: &str,
+    record: &Value,
+) -> Option<(Uuid, String)> {
+    // For contacts: check if same email already staged in this run
+    if target_type == "crm_contact" {
+        if let Some(email) = record["email"].as_str().filter(|s| !s.is_empty()) {
+            let result = sqlx::query_as::<_, (Uuid,)>(
+                r#"SELECT id FROM workflow_output_staging
+                   WHERE workflow_run_id = ?1 AND target_type = 'crm_contact'
+                   AND json_extract(record_data, '$.email') = ?2
+                   AND status != 'rejected' LIMIT 1"#
+            )
+            .bind(workflow_run_id)
+            .bind(email)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+
+            if let Some((id,)) = result {
+                return Some((id, "workflow_output_staging".to_string()));
+            }
+        }
+    }
+
+    // For companies: check if same name already staged
+    if target_type == "company" {
+        if let Some(name) = record["name"].as_str().filter(|s| !s.is_empty()) {
+            let result = sqlx::query_as::<_, (Uuid,)>(
+                r#"SELECT id FROM workflow_output_staging
+                   WHERE workflow_run_id = ?1 AND target_type = 'company'
+                   AND LOWER(json_extract(record_data, '$.name')) = LOWER(?2)
+                   AND status != 'rejected' LIMIT 1"#
+            )
+            .bind(workflow_run_id)
+            .bind(name)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+
+            if let Some((id,)) = result {
+                return Some((id, "workflow_output_staging".to_string()));
+            }
+        }
+    }
+
+    None
+}
+
 /// POST /api/data-sources/:id/workflows/:workflow_id/run
 async fn run_workflow(
     Path((data_source_id, workflow_id)): Path<(Uuid, String)>,
@@ -651,6 +839,25 @@ async fn run_workflow(
             if let Ok(parsed) = serde_json::from_str::<Value>(output) {
                 let records = extract_records_from_output(&parsed, staging_target);
                 for record in records {
+                    // Check for duplicates against existing records
+                    let dup = match staging_target {
+                        "crm_contact" => check_contact_duplicate(pool, &record, data_source.project_id).await,
+                        "company" => check_company_duplicate(pool, &record, data_source.organization_id).await,
+                        "crm_deal" => check_deal_duplicate(pool, &record, data_source.project_id).await,
+                        "task" => check_task_duplicate(pool, &record, data_source.project_id).await,
+                        _ => None,
+                    };
+
+                    // Also check within the current batch
+                    let dup = dup.or(
+                        check_intra_batch_duplicate(pool, workflow_run_id, staging_target, &record).await
+                    );
+
+                    let (dup_id, dup_type) = match dup {
+                        Some((id, t)) => (Some(id), Some(t)),
+                        None => (None, None),
+                    };
+
                     let _ = WorkflowStagingRecord::create(pool, CreateStagingRecord {
                         workflow_run_id,
                         workflow_id: workflow.id.clone(),
@@ -660,8 +867,8 @@ async fn run_workflow(
                         project_id: data_source.project_id,
                         target_type: staging_target.to_string(),
                         record_data: record,
-                        duplicate_of_id: None,
-                        duplicate_of_type: None,
+                        duplicate_of_id: dup_id,
+                        duplicate_of_type: dup_type,
                         confidence: None,
                     }).await;
                     staged_records += 1;

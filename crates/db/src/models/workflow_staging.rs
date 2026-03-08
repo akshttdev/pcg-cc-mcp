@@ -162,4 +162,28 @@ impl WorkflowStagingRecord {
     pub fn parsed_data(&self) -> Option<Value> {
         serde_json::from_str(&self.record_data).ok()
     }
+
+    pub async fn auto_approve_valid(pool: &SqlitePool, workflow_run_id: Uuid) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"UPDATE workflow_output_staging
+               SET status = 'approved', reviewed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec')
+               WHERE workflow_run_id = ?1 AND status = 'pending_review' AND duplicate_of_id IS NULL"#
+        )
+        .bind(workflow_run_id)
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    pub async fn reject_duplicates(pool: &SqlitePool, workflow_run_id: Uuid) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            r#"UPDATE workflow_output_staging
+               SET status = 'rejected', reviewed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec')
+               WHERE workflow_run_id = ?1 AND status = 'pending_review' AND duplicate_of_id IS NOT NULL"#
+        )
+        .bind(workflow_run_id)
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
 }
