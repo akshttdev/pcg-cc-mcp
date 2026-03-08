@@ -76,7 +76,7 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
               alt="Powerclub Global"
               className="h-8 sm:h-9 w-auto"
             />
-            <span className="ml-2 text-sm sm:text-base font-semibold hidden sm:inline tracking-widest uppercase" style={{ fontFamily: "'Cinzel', serif", color: '#b8952a' }}>Powerclub Global</span>
+            <span className="ml-2 text-sm sm:text-base font-semibold hidden sm:inline tracking-widest uppercase dark:text-white" style={{ fontFamily: "'Cinzel', serif", color: '#b8952a' }}>Powerclub Global</span>
           </div>
 
           <div className="flex-1 min-w-0">
