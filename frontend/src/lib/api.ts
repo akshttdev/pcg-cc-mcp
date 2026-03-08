@@ -5630,7 +5630,72 @@ export const workflowsApi = {
     const response = await makeRequest('/api/workflows/models');
     return handleApiResponse<AvailableModel[]>(response);
   },
+
+  listRecentRuns: async (params?: { workflow_id?: string; organization_id?: string; limit?: number }): Promise<WorkflowRun[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.workflow_id) searchParams.set('workflow_id', params.workflow_id);
+    if (params?.organization_id) searchParams.set('organization_id', params.organization_id);
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    const response = await makeRequest(`/api/workflows/runs/recent${qs ? `?${qs}` : ''}`);
+    return handleApiResponse<WorkflowRun[]>(response);
+  },
+
+  getRunById: async (id: string): Promise<WorkflowRun> => {
+    const response = await makeRequest(`/api/workflows/runs/${id}`);
+    return handleApiResponse<WorkflowRun>(response);
+  },
+
+  getRunStats: async (id: string): Promise<WorkflowRunStats> => {
+    const response = await makeRequest(`/api/workflows/runs/${id}/stats`);
+    return handleApiResponse<WorkflowRunStats>(response);
+  },
 };
+
+// ── Workflow Run types ──────────────────────────────────────────────────────
+
+export interface WorkflowRun {
+  id: string;
+  workflow_id: string;
+  workflow_name: string;
+  data_source_id?: string;
+  organization_id?: string;
+  project_id?: string;
+  model_used?: string;
+  status: 'running' | 'completed' | 'failed';
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_estimated_cost_micros?: number;
+  total_records_staged?: number;
+  total_records_approved?: number;
+  total_records_rejected?: number;
+  total_records_committed?: number;
+  total_duplicates_found?: number;
+  total_validation_errors?: number;
+  node_count?: number;
+  llm_node_count?: number;
+  duration_ms?: number;
+  started_at: string;
+  completed_at?: string;
+  created_at: string;
+}
+
+export interface WorkflowRunStats {
+  run: WorkflowRun;
+  live_counts: {
+    total: number;
+    approved: number;
+    rejected: number;
+    committed: number;
+    duplicates: number;
+    pending: number;
+  };
+  rates: {
+    approval_rate: number;
+    duplicate_rate: number;
+  };
+  cost_dollars: number;
+}
 
 // ── Schema types and API ──────────────────────────────────────────────────────
 
@@ -5678,6 +5743,7 @@ export interface WorkflowStagingRecord {
   reviewed_by: string | null;
   reviewed_at: string | null;
   committed_at: string | null;
+  validation_errors: string | null;  // JSON array string of validation error messages, or null
   created_at: string;
   updated_at: string;
 }

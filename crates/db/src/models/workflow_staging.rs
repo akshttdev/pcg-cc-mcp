@@ -25,6 +25,7 @@ pub struct WorkflowStagingRecord {
     pub reviewed_by: Option<Uuid>,
     pub reviewed_at: Option<DateTime<Utc>>,
     pub committed_at: Option<DateTime<Utc>>,
+    pub validation_errors: Option<String>,  // JSON array string of validation errors, or null
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -42,18 +43,22 @@ pub struct CreateStagingRecord {
     pub duplicate_of_id: Option<Uuid>,
     pub duplicate_of_type: Option<String>,
     pub confidence: Option<f64>,
+    pub validation_errors: Option<Vec<String>>,
 }
 
 impl WorkflowStagingRecord {
     pub async fn create(pool: &SqlitePool, data: CreateStagingRecord) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
         let record_data_str = data.record_data.to_string();
+        let validation_errors_str = data.validation_errors.map(|errs| {
+            serde_json::to_string(&errs).unwrap_or_else(|_| "[]".to_string())
+        });
 
         sqlx::query_as::<_, Self>(
             r#"INSERT INTO workflow_output_staging
                (id, workflow_run_id, workflow_id, node_id, data_source_id, organization_id, project_id,
-                target_type, record_data, status, duplicate_of_id, duplicate_of_type, confidence)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'pending_review', ?10, ?11, ?12)
+                target_type, record_data, status, duplicate_of_id, duplicate_of_type, confidence, validation_errors)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'pending_review', ?10, ?11, ?12, ?13)
                RETURNING *"#,
         )
         .bind(id)
@@ -68,6 +73,7 @@ impl WorkflowStagingRecord {
         .bind(data.duplicate_of_id)
         .bind(&data.duplicate_of_type)
         .bind(data.confidence)
+        .bind(&validation_errors_str)
         .fetch_one(pool)
         .await
     }
