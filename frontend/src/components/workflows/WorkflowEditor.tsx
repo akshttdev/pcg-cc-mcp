@@ -375,6 +375,47 @@ export function WorkflowEditor({
 
   // ── Preview state ────────────────────────────────────────────────────
   const [previewResults, setPreviewResults] = useState<PreviewNodeResult[] | null>(null);
+
+  // Compute which nodes have validation issues or zero records in preview results
+  const previewWarningNodes = useMemo(() => {
+    const warnings = new Map<string, string>(); // nodeId -> warning message
+    if (!previewResults) return warnings;
+    for (const r of previewResults) {
+      try {
+        const parsed = JSON.parse(r.output);
+        // Check if output is an array of records with validation_errors
+        if (Array.isArray(parsed)) {
+          const withErrors = parsed.filter((rec: any) =>
+            rec.validation_errors && Array.isArray(rec.validation_errors) && rec.validation_errors.length > 0
+          );
+          if (withErrors.length > 0) {
+            warnings.set(r.node_id, `${withErrors.length} record${withErrors.length !== 1 ? 's' : ''} with validation issues`);
+          } else if (parsed.length === 0 && (r.node_type === 'llm_extract' || r.node_type === 'output')) {
+            warnings.set(r.node_id, 'No records extracted');
+          }
+        } else if (parsed && typeof parsed === 'object') {
+          // Check if the result object itself has validation_errors
+          if (parsed.validation_errors && Array.isArray(parsed.validation_errors) && parsed.validation_errors.length > 0) {
+            warnings.set(r.node_id, `${parsed.validation_errors.length} validation issue${parsed.validation_errors.length !== 1 ? 's' : ''}`);
+          }
+          // Check for records array inside the result
+          if (parsed.records && Array.isArray(parsed.records)) {
+            const withErrors = parsed.records.filter((rec: any) =>
+              rec.validation_errors && Array.isArray(rec.validation_errors) && rec.validation_errors.length > 0
+            );
+            if (withErrors.length > 0) {
+              warnings.set(r.node_id, `${withErrors.length} record${withErrors.length !== 1 ? 's' : ''} with validation issues`);
+            } else if (parsed.records.length === 0 && (r.node_type === 'llm_extract' || r.node_type === 'output')) {
+              warnings.set(r.node_id, 'No records extracted');
+            }
+          }
+        }
+      } catch {
+        // Not JSON, skip
+      }
+    }
+    return warnings;
+  }, [previewResults]);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
@@ -670,6 +711,15 @@ export function WorkflowEditor({
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
+                              {previewWarningNodes.has(node.id) && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 text-amber-600 border-amber-200 gap-0.5"
+                                  title={previewWarningNodes.get(node.id)}
+                                >
+                                  <AlertTriangle className="h-2.5 w-2.5" />
+                                </Badge>
+                              )}
                               <Badge
                                 variant="outline"
                                 className="text-[10px] px-1.5"
@@ -801,13 +851,22 @@ export function WorkflowEditor({
                   {previewResults.map((r) => {
                     const typeDef = getNodeTypeDef(r.node_type);
                     return (
-                      <div key={r.node_id} className="rounded-lg border bg-card p-3">
+                      <div key={r.node_id} className={cn(
+                        'rounded-lg border bg-card p-3',
+                        previewWarningNodes.has(r.node_id) && 'border-amber-300 bg-amber-50/30 dark:bg-amber-950/10'
+                      )}>
                         <div className="flex items-center gap-2 mb-2">
                           <div className={cn('w-5 h-5 rounded flex items-center justify-center text-white text-[10px]', typeDef?.color ?? 'bg-gray-500')}>
                             {r.node_name.charAt(0)}
                           </div>
                           <span className="text-sm font-medium">{r.node_name}</span>
                           <Badge variant="outline" className="text-[10px]">{r.node_type}</Badge>
+                          {previewWarningNodes.has(r.node_id) && (
+                            <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 gap-0.5">
+                              <AlertTriangle className="h-2.5 w-2.5" />
+                              {previewWarningNodes.get(r.node_id)}
+                            </Badge>
+                          )}
                         </div>
                         <pre className="text-xs bg-muted/50 rounded p-2 overflow-auto max-h-[200px] whitespace-pre-wrap font-mono">
                           {(() => {

@@ -496,6 +496,108 @@ fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
     vec![]
 }
 
+/// Compute a confidence score (0.0–1.0) for a staging record based on simple heuristics.
+/// - Start at 1.0
+/// - Subtract 0.15 for each missing required field
+/// - Subtract 0.05 for each validation error
+/// - Subtract 0.3 if marked as duplicate
+/// - Subtract 0.1 if more than half of all fields are null/empty
+/// - Floor at 0.0
+fn compute_confidence(record: &Value, target_type: &str, validation_errors: &[String], is_duplicate: bool) -> f64 {
+    let mut score: f64 = 1.0;
+
+    // Check required fields against schema
+    if let Some(schema) = super::output_schemas::get_schema_for_target(target_type) {
+        let total_fields = schema.fields.len();
+        let mut null_or_empty_count = 0;
+
+        for (name, field) in &schema.fields {
+            let value = record.get(name.as_str());
+            let is_missing = match value {
+                None => true,
+                Some(Value::Null) => true,
+                Some(Value::String(s)) => s.is_empty(),
+                _ => false,
+            };
+
+            if is_missing {
+                null_or_empty_count += 1;
+                if field.required {
+                    score -= 0.15;
+                }
+            }
+        }
+
+        // Penalize if more than half of all fields are null/empty
+        if total_fields > 0 && null_or_empty_count > total_fields / 2 {
+            score -= 0.1;
+        }
+    }
+
+    // Penalize for each validation error
+    score -= 0.05 * validation_errors.len() as f64;
+
+    // Penalize if duplicate
+    if is_duplicate {
+        score -= 0.3;
+    }
+
+    // Floor at 0.0
+    score.max(0.0)
+}
+
+/// Build a schema prompt text dynamically from output_schemas definitions.
+/// Maps output node target types to their schema definitions and generates
+/// a human-readable prompt describing the expected JSON format.
+fn build_schema_prompt_text(target_type: &str) -> Option<String> {
+    // Map output node types to schema target types
+    let schema_target = match target_type {
+        "crm_contacts" => "crm_contact",
+        "crm_companies" | "companies" => "company",
+        "crm_deals" | "deals" => "crm_deal",
+        "tasks" => "task",
+        _ => return None,
+    };
+
+    // Map to the expected JSON array key
+    let array_key = match target_type {
+        "crm_contacts" => "contacts",
+        "crm_companies" | "companies" => "companies",
+        "crm_deals" | "deals" => "deals",
+        "tasks" => "tasks",
+        _ => return None,
+    };
+
+    let schema = super::output_schemas::get_schema_for_target(schema_target)?;
+
+    let mut parts = vec![format!("Output JSON must contain a \"{}\" array.", array_key)];
+
+    let mut required_fields = Vec::new();
+    let mut optional_fields = Vec::new();
+
+    for (name, field) in &schema.fields {
+        let mut desc = format!("{} ({}", name, field.field_type);
+        if let Some(ref enums) = field.enum_values {
+            desc.push_str(&format!(", one of: {}", enums.join(", ")));
+        }
+        desc.push(')');
+        if field.required {
+            required_fields.push(desc);
+        } else {
+            optional_fields.push(format!("{} or null", desc));
+        }
+    }
+
+    if !required_fields.is_empty() {
+        parts.push(format!("Required fields: {}.", required_fields.join(", ")));
+    }
+    if !optional_fields.is_empty() {
+        parts.push(format!("Optional fields: {}.", optional_fields.join(", ")));
+    }
+
+    Some(parts.join(" "))
+}
+
 /// Validate a single record (serde_json::Value) against the TargetSchema for the given target_type.
 /// Returns Ok(()) if valid, or Err(Vec<String>) with a list of human-readable validation errors.
 fn validate_record_against_schema(record: &Value, target_type: &str) -> Result<(), Vec<String>> {
@@ -929,12 +1031,15 @@ async fn run_workflow(
 
     let content = data_source.content.clone().unwrap_or_default();
 
-    // Compute content hash for idempotency check
+    // Compute content hash for idempotency check (includes workflow structure so
+    // definition changes invalidate the cache even if the source content is unchanged)
     let content_hash = {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         let mut hasher = DefaultHasher::new();
         workflow_id.hash(&mut hasher);
+        serde_json::to_string(&workflow.nodes).unwrap_or_default().hash(&mut hasher);
+        serde_json::to_string(&workflow.connections).unwrap_or_default().hash(&mut hasher);
         content.hash(&mut hasher);
         format!("{:016x}", hasher.finish())
     };
@@ -942,17 +1047,34 @@ async fn run_workflow(
     // Check for existing completed run with same content hash (unless force=true)
     if !force {
         if let Ok(Some(existing_run)) = WorkflowRun::find_by_content_hash(pool, &content_hash).await {
-            // Return the existing run's results
+            // Return the existing run's results with reconstructed usage stats
             let existing_run_id = existing_run.id.clone();
             let staged = existing_run.total_records_staged.unwrap_or(0);
             let run_uuid = Uuid::parse_str(&existing_run_id).unwrap_or(workflow_run_id);
+
+            // Reconstruct total_usage from the stored WorkflowRun fields
+            let total_usage = {
+                let input_tokens = existing_run.total_input_tokens.unwrap_or(0);
+                let output_tokens = existing_run.total_output_tokens.unwrap_or(0);
+                let cost_micros = existing_run.total_estimated_cost_micros.unwrap_or(0);
+                if input_tokens > 0 || output_tokens > 0 || cost_micros > 0 {
+                    Some(json!({
+                        "total_input_tokens": input_tokens,
+                        "total_output_tokens": output_tokens,
+                        "total_estimated_cost_micros": cost_micros,
+                    }))
+                } else {
+                    None
+                }
+            };
+
             return Ok(Json(ApiResponse::success(WorkflowRunResult {
                 workflow_run_id: run_uuid,
                 workflow_id: existing_run.workflow_id,
                 workflow_name: existing_run.workflow_name,
                 data_source_id,
                 steps: vec![],
-                total_usage: None,
+                total_usage,
                 staged_records: staged,
                 reused: Some(true),
             })));
@@ -1140,6 +1262,14 @@ async fn run_workflow(
                         }
                     };
 
+                    let is_duplicate = dup_id.is_some();
+                    let confidence = compute_confidence(
+                        &record,
+                        staging_target,
+                        validation_errors.as_deref().unwrap_or(&[]),
+                        is_duplicate,
+                    );
+
                     let _ = WorkflowStagingRecord::create(pool, CreateStagingRecord {
                         workflow_run_id,
                         workflow_id: workflow.id.clone(),
@@ -1151,7 +1281,7 @@ async fn run_workflow(
                         record_data: record,
                         duplicate_of_id: dup_id,
                         duplicate_of_type: dup_type,
-                        confidence: None,
+                        confidence: Some(confidence),
                         validation_errors,
                     }).await;
                     staged_records += 1;
@@ -1367,16 +1497,10 @@ async fn execute_node_with_llm(
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    // Build schema text from downstream output targets
+    // Build schema text dynamically from output_schemas definitions
     let schema_text = if !target_schemas.is_empty() {
         let schemas: Vec<String> = target_schemas.iter().filter_map(|t| {
-            match t.as_str() {
-                "crm_contacts" => Some("Output JSON must contain a \"contacts\" array. Each contact object must have: first_name (required, string), last_name (required, string), email (string or null), phone (string or null), company_name (string or null), job_title (string or null), lifecycle_stage (one of: subscriber, lead, mql, sql, opportunity, customer, evangelist, churned), notes (string or null), tags (array of strings or null).".to_string()),
-                "crm_companies" | "companies" => Some("Output JSON must contain a \"companies\" array. Each company object must have: name (required, string), website (string or null), industry (string or null), description (string or null), notes (string or null).".to_string()),
-                "crm_deals" | "deals" => Some("Output JSON must contain a \"deals\" array. Each deal object must have: name (required, string), amount (number or null), currency (string, default USD), probability (number 0-100 or null), expected_close_date (ISO date string or null), notes (string or null).".to_string()),
-                "tasks" => Some("Output JSON must contain a \"tasks\" array. Each task object must have: title (required, string), description (string or null), priority (one of: critical, high, medium, low), tags (array of strings or null).".to_string()),
-                _ => None,
-            }
+            build_schema_prompt_text(t)
         }).collect();
         schemas.join("\n\n")
     } else {
@@ -1967,6 +2091,14 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                                 Err(errs) => Some(errs),
                             };
 
+                            let is_duplicate = dup_id.is_some();
+                            let confidence = compute_confidence(
+                                &record,
+                                staging_target,
+                                validation_errors.as_deref().unwrap_or(&[]),
+                                is_duplicate,
+                            );
+
                             let _ = WorkflowStagingRecord::create(&pool, CreateStagingRecord {
                                 workflow_run_id,
                                 workflow_id: workflow.id.clone(),
@@ -1978,7 +2110,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                                 record_data: record,
                                 duplicate_of_id: dup_id,
                                 duplicate_of_type: dup_type,
-                                confidence: None,
+                                confidence: Some(confidence),
                                 validation_errors,
                             }).await;
                             staged_records += 1;

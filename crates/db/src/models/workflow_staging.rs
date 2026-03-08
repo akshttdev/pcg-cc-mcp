@@ -173,7 +173,8 @@ impl WorkflowStagingRecord {
         let result = sqlx::query(
             r#"UPDATE workflow_output_staging
                SET status = 'approved', reviewed_at = datetime('now', 'subsec'), updated_at = datetime('now', 'subsec')
-               WHERE workflow_run_id = ?1 AND status = 'pending_review' AND duplicate_of_id IS NULL"#
+               WHERE workflow_run_id = ?1 AND status = 'pending_review' AND duplicate_of_id IS NULL
+                 AND (confidence IS NULL OR confidence >= 0.7)"#
         )
         .bind(workflow_run_id)
         .execute(pool)
