@@ -46,7 +46,7 @@ import {
   List,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { workflowsApi, type AvailableModel } from '@/lib/api';
+import { workflowsApi } from '@/lib/api';
 import type {
   WorkflowNode,
   WorkflowConnection,
@@ -593,23 +593,22 @@ export function WorkflowEditor({
                       className="h-8 text-sm mt-1"
                     />
                   </div>
-                </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">Default Model</Label>
-                    <Select value={defaultModel} onValueChange={setDefaultModel}>
+                    <Select value={defaultModel || '__auto__'} onValueChange={(v) => setDefaultModel(v === '__auto__' ? '' : v)}>
                       <SelectTrigger className="h-8 text-sm mt-1">
                         <SelectValue placeholder="Auto (highest priority)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Auto (highest priority)</SelectItem>
+                        <SelectItem value="__auto__">Auto (highest priority)</SelectItem>
                         {availableModels.map((m: AvailableModel) => (
                           <SelectItem key={m.id} value={m.id}>
-                            <div className="flex items-center gap-2">
+                            <span className="flex items-center gap-2">
                               <span>{m.label}</span>
                               <span className="text-muted-foreground text-xs">
                                 ${(m.cost_per_million_input / 100).toFixed(2)}/M in
                               </span>
-                            </div>
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1380,14 +1379,14 @@ function NodeConfigPanel({
                 <div>
                   <Label className="text-xs">Model</Label>
                   <Select
-                    value={node.parameters.model || ''}
-                    onValueChange={(v) => onUpdateParameter('model', v || undefined)}
+                    value={node.parameters.model || '__default__'}
+                    onValueChange={(v) => onUpdateParameter('model', v === '__default__' ? undefined : v)}
                   >
                     <SelectTrigger className="h-8 text-sm mt-1">
                       <SelectValue placeholder="Use workflow default" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Use workflow default</SelectItem>
+                      <SelectItem value="__default__">Use workflow default</SelectItem>
                       {availableModels.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
                           {m.label}
