@@ -5,6 +5,7 @@
 //! ensuring strict client data isolation.
 
 use std::sync::Arc;
+use base64::Engine as _;
 
 use axum::{
     Json, Router,
@@ -2929,16 +2930,16 @@ pub async fn link_meeting_persons(
             enrichment_append
         );
 
-        let result = crate::routes::intelligence::write_intelligence_results(
-            &pool,
-            person_uuid,
-            summary_text,
-            0.75,
-            &new_raw,
-            project_uuid,
-            &person.full_name,
+        // Append meeting context to the person's raw intelligence field.
+        // Full intelligence integration is handled separately via the /research endpoint.
+        let result: Result<(), sqlx::Error> = sqlx::query(
+            "UPDATE persons SET intelligence_raw = ?, updated_at = datetime('now','subsec') WHERE id = ?",
         )
-        .await;
+        .bind(&new_raw)
+        .bind(person_uuid)
+        .execute(&pool)
+        .await
+        .map(|_| ());
 
         if result.is_ok() {
             enriched_count += 1;

@@ -91,6 +91,7 @@ pub mod project_knowledge_source;
 // pub mod topology_route;
 pub mod workflow_template;
 pub mod person;
+pub mod person_association;
 pub mod invoice;
 pub mod proposal;
 pub mod deliverable;
@@ -100,9 +101,18 @@ pub mod media_asset;
 pub mod review_token;
 pub mod review_comment;
 pub mod person_note;
-pub mod quickbooks_account;
 pub mod pcg_router_model;
 pub mod oss_library;
+pub mod repo;
+pub mod scratch;
+pub mod session;
+pub mod tag;
+pub mod entity_conversion;
+pub mod data_source;
+pub mod scheduled_meeting;
+pub mod company;
+pub mod quickbooks_account;
+pub mod entity_graph;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

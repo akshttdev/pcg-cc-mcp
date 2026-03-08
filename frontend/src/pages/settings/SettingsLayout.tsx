@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Table2, Boxes, Network } from 'lucide-react';
+import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
@@ -42,6 +42,13 @@ const settingsNavigation: SettingsNavItem[] = [
     adminOnly: true,
   },
   {
+    path: 'organizations',
+    icon: Building2,
+    label: 'Organizations',
+    description: 'Manage all organizations',
+    adminOnly: true,
+  },
+  {
     path: 'projects',
     icon: FolderKanban,
     label: 'Projects',
@@ -77,12 +84,6 @@ const settingsNavigation: SettingsNavItem[] = [
     icon: Server,
     label: 'MCP Servers',
     description: 'Model Context Protocol servers',
-  },
-  {
-    path: 'airtable',
-    icon: Table2,
-    label: 'Airtable',
-    description: 'Connect Airtable bases for task sync',
   },
   {
     path: 'network',

@@ -98,6 +98,10 @@ pub struct CrmDealWithContact {
     pub contact_email: Option<String>,
     pub contact_company: Option<String>,
     pub contact_avatar_url: Option<String>,
+    pub project_name: Option<String>,
+    pub task_total: i64,
+    pub task_done: i64,
+    pub deliverable_count: i64,
 }
 
 /// Kanban board data structure - deals grouped by stage
@@ -440,6 +444,44 @@ impl CrmDeal {
         Ok(())
     }
 
+    /// Fetch project name + task/deliverable counts for a given project.
+    async fn fetch_project_stats(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> (Option<String>, i64, i64, i64) {
+        let project_name: Option<String> =
+            sqlx::query_scalar("SELECT name FROM projects WHERE id = ?")
+                .bind(project_id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
+
+        let task_total: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks WHERE project_id = ?")
+                .bind(project_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+
+        let task_done: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'done'",
+        )
+        .bind(project_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+        let deliverable_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM deliverables WHERE project_id = ?")
+                .bind(project_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+
+        (project_name, task_total, task_done, deliverable_count)
+    }
+
     /// Get Kanban board data for a pipeline
     pub async fn get_kanban_data(
         pool: &SqlitePool,
@@ -471,11 +513,18 @@ impl CrmDeal {
                     None
                 };
 
+                let (project_name, task_total, task_done, deliverable_count) =
+                    Self::fetch_project_stats(pool, deal.project_id).await;
+
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
                     contact_company: contact_info.as_ref().and_then(|c| c.company_name.clone()),
                     contact_avatar_url: contact_info.as_ref().and_then(|c| c.avatar_url.clone()),
+                    project_name,
+                    task_total,
+                    task_done,
+                    deliverable_count,
                     deal,
                 });
             }
@@ -568,11 +617,18 @@ impl CrmDeal {
                     None
                 };
 
+                let (project_name, task_total, task_done, deliverable_count) =
+                    Self::fetch_project_stats(pool, deal.project_id).await;
+
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
                     contact_company: contact_info.as_ref().and_then(|c| c.company_name.clone()),
                     contact_avatar_url: contact_info.as_ref().and_then(|c| c.avatar_url.clone()),
+                    project_name,
+                    task_total,
+                    task_done,
+                    deliverable_count,
                     deal,
                 });
             }

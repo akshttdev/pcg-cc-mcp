@@ -73,7 +73,16 @@ impl std::str::FromStr for OrganizationRole {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct OrgMemberUser {
+    pub username: String,
+    pub full_name: Option<String>,
+    pub email: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct OrganizationMember {
     pub id: Uuid,
@@ -81,6 +90,7 @@ pub struct OrganizationMember {
     pub user_id: Uuid,
     pub role: String,
     pub joined_at: chrono::DateTime<chrono::Utc>,
+    pub user: Option<OrgMemberUser>,
 }
 
 // Auth DTOs
@@ -238,6 +248,14 @@ impl Organization {
         .await
     }
 
+    pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Organization>(
+            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at FROM organizations ORDER BY name ASC"
+        )
+        .fetch_all(pool)
+        .await
+    }
+
     pub async fn find_all_active(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
             "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id FROM organizations WHERE is_active = 1 ORDER BY name ASC"
@@ -308,6 +326,22 @@ impl Organization {
         .await
     }
 
+    pub async fn deactivate(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE organizations SET is_active = 0, updated_at = datetime('now') WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn activate(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE organizations SET is_active = 1, updated_at = datetime('now') WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn add_member(
         pool: &SqlitePool,
         org_id: Uuid,
@@ -315,17 +349,23 @@ impl Organization {
         role: &str,
     ) -> Result<OrganizationMember, sqlx::Error> {
         let id = Uuid::new_v4();
-        sqlx::query_as::<_, OrganizationMember>(
+        sqlx::query(
             r#"INSERT INTO organization_members (id, organization_id, user_id, role)
-               VALUES (?, ?, ?, ?)
-               RETURNING id, organization_id, user_id, role, joined_at"#,
+               VALUES (?, ?, ?, ?)"#,
         )
         .bind(id)
         .bind(org_id)
         .bind(user_id)
         .bind(role)
-        .fetch_one(pool)
-        .await
+        .execute(pool)
+        .await?;
+
+        // Return member with user info via get_members helper
+        let members = Organization::get_members(pool, org_id).await?;
+        members
+            .into_iter()
+            .find(|m| m.user_id == user_id)
+            .ok_or_else(|| sqlx::Error::RowNotFound)
     }
 
     pub async fn remove_member(
@@ -345,14 +385,44 @@ impl Organization {
         pool: &SqlitePool,
         org_id: Uuid,
     ) -> Result<Vec<OrganizationMember>, sqlx::Error> {
-        sqlx::query_as::<_, OrganizationMember>(
-            r#"SELECT id, organization_id, user_id, role, joined_at
-               FROM organization_members WHERE organization_id = ?
-               ORDER BY joined_at ASC"#,
+        #[derive(sqlx::FromRow)]
+        struct MemberRow {
+            id: Uuid,
+            organization_id: Uuid,
+            user_id: Uuid,
+            role: String,
+            joined_at: chrono::DateTime<chrono::Utc>,
+            username: Option<String>,
+            full_name: Option<String>,
+            email: Option<String>,
+            avatar_url: Option<String>,
+        }
+
+        let rows = sqlx::query_as::<_, MemberRow>(
+            r#"SELECT om.id, om.organization_id, om.user_id, om.role, om.joined_at,
+                      u.username, u.full_name, u.email, u.avatar_url
+               FROM organization_members om
+               LEFT JOIN users u ON u.id = om.user_id
+               WHERE om.organization_id = ?
+               ORDER BY om.joined_at ASC"#,
         )
         .bind(org_id)
         .fetch_all(pool)
-        .await
+        .await?;
+
+        Ok(rows.into_iter().map(|r| OrganizationMember {
+            id: r.id,
+            organization_id: r.organization_id,
+            user_id: r.user_id,
+            role: r.role,
+            joined_at: r.joined_at,
+            user: r.username.map(|un| OrgMemberUser {
+                username: un,
+                full_name: r.full_name,
+                email: r.email,
+                avatar_url: r.avatar_url,
+            }),
+        }).collect())
     }
 
     pub async fn get_user_role(

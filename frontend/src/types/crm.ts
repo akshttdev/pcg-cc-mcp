@@ -57,6 +57,27 @@ export interface UpdateCrmPipeline {
   color?: string;
 }
 
+export interface CreateCrmPipelineStage {
+  pipeline_id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  position: number;
+  probability?: number;
+  is_closed?: boolean;
+  is_won?: boolean;
+}
+
+export interface UpdateCrmPipelineStage {
+  name?: string;
+  description?: string;
+  color?: string;
+  position?: number;
+  probability?: number;
+  is_closed?: boolean;
+  is_won?: boolean;
+}
+
 // Deal with contact info for Kanban display (matches backend CrmDealWithContact)
 export interface CrmDealWithContact {
   id: string;
@@ -89,6 +110,10 @@ export interface CrmDealWithContact {
   contact_email?: string;
   contact_company?: string;
   contact_avatar_url?: string;
+  project_name?: string;
+  task_total?: number;
+  task_done?: number;
+  deliverable_count?: number;
 }
 
 // Kanban board data structure
@@ -140,32 +165,6 @@ export interface UpdateCrmDeal {
 export interface MoveDealRequest {
   stage_id: string;
   position: number;
-}
-
-// Pipeline stage create/update types (used by api.ts)
-export interface CreateCrmPipelineStage {
-  pipeline_id: string;
-  name: string;
-  description?: string;
-  color?: string;
-  position: number;
-  is_closed?: boolean;
-  is_won?: boolean;
-  probability?: number;
-  auto_move_after_days?: number;
-  notify_on_enter?: boolean;
-}
-
-export interface UpdateCrmPipelineStage {
-  name?: string;
-  description?: string;
-  color?: string;
-  position?: number;
-  is_closed?: boolean;
-  is_won?: boolean;
-  probability?: number;
-  auto_move_after_days?: number;
-  notify_on_enter?: boolean;
 }
 
 // Alias for deal record as returned by list APIs

@@ -214,14 +214,6 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
   }
 };
 
-// Axios-compatible client for pages that use apiClient.get/post/patch/delete
-export const apiClient = {
-  get: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`); const data = await r.json() as T; return { data }; },
-  post: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
-  patch: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
-  delete: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`, { method: 'DELETE' }); const data = await r.json() as T; return { data }; },
-};
-
 export interface FollowUpResponse {
   message: string;
   actual_attempt_id: string;
@@ -624,6 +616,23 @@ export const projectsApi = {
       }
     );
     return handleApiResponse<BrandProfile>(response);
+  },
+
+  // Project hierarchy APIs
+  setParent: async (projectId: string, parentProjectId: string | null): Promise<void> => {
+    const response = await makeRequest(`/api/projects/${projectId}/parent`, {
+      method: 'PUT',
+      body: JSON.stringify({ parent_project_id: parentProjectId }),
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  reorder: async (projectId: string, sortOrder: number): Promise<void> => {
+    const response = await makeRequest(`/api/projects/${projectId}/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ sort_order: sortOrder }),
+    });
+    return handleApiResponse<void>(response);
   },
 };
 
@@ -2720,10 +2729,12 @@ export interface OAuthUrlResponse {
 }
 
 export const emailApi = {
-  listAccounts: async (projectId?: string, provider?: string): Promise<EmailAccountRecord[]> => {
+  listAccounts: async (projectId?: string, provider?: string, ownerType?: string, ownerId?: string): Promise<EmailAccountRecord[]> => {
     const searchParams = new URLSearchParams();
     if (projectId) searchParams.set('project_id', projectId);
     if (provider) searchParams.set('provider', provider);
+    if (ownerType) searchParams.set('owner_type', ownerType);
+    if (ownerId) searchParams.set('owner_id', ownerId);
     const query = searchParams.toString();
     const response = await makeRequest(`/api/email/accounts${query ? `?${query}` : ''}`);
     return handleApiResponse<EmailAccountRecord[]>(response);
@@ -2765,14 +2776,18 @@ export const emailApi = {
   },
 
   initiateOAuth: async (
-    projectId: string,
+    projectId: string | null,
     provider: string,
-    redirectUri: string
+    redirectUri: string,
+    ownerType?: string,
+    ownerId?: string
   ): Promise<OAuthUrlResponse> => {
     const response = await makeRequest('/api/email/oauth/initiate', {
       method: 'POST',
       body: JSON.stringify({
-        project_id: projectId,
+        ...(projectId ? { project_id: projectId } : {}),
+        ...(ownerType ? { owner_type: ownerType } : {}),
+        ...(ownerId ? { owner_id: ownerId } : {}),
         provider,
         redirect_uri: redirectUri,
       }),
@@ -2893,6 +2908,67 @@ export interface CrmContactStats {
   avg_lead_score: number;
   needs_follow_up: number;
 }
+
+// =============================================================================
+// QuickBooks API
+// =============================================================================
+
+export interface QuickBooksAccountRecord {
+  id: string;
+  organization_id: string;
+  realm_id: string;
+  company_name?: string;
+  environment: string;
+  sync_enabled: number;
+  sync_frequency_minutes: number;
+  last_sync_at?: string;
+  sync_invoices: number;
+  sync_customers: number;
+  sync_payments: number;
+  sync_expenses: number;
+  sync_time_tracking: number;
+  status: string;
+  last_error?: string;
+  metadata?: string;
+  connected_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QBConnectionStatus {
+  connected: boolean;
+  account?: QuickBooksAccountRecord;
+  needs_reauth: boolean;
+}
+
+export const quickbooksApi = {
+  getStatus: async (organizationId: string): Promise<QBConnectionStatus> => {
+    const response = await makeRequest(`/api/quickbooks/status?organization_id=${organizationId}`);
+    return handleApiResponse<QBConnectionStatus>(response);
+  },
+
+  getConnectUrl: (organizationId: string): string => {
+    return `/api/quickbooks/connect?organization_id=${organizationId}`;
+  },
+
+  disconnect: async (accountId: string): Promise<void> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  refreshToken: async (accountId: string): Promise<void> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/refresh`, { method: 'POST' });
+    return handleApiResponse<void>(response);
+  },
+
+  triggerSync: async (accountId: string): Promise<void> => {
+    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/sync`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    return handleApiResponse<void>(response);
+  },
+};
 
 export const crmApi = {
   listContacts: async (
@@ -3740,16 +3816,12 @@ export const pulseApi = {
 export interface SidebarProject {
   id: string;
   name: string;
+  is_container: boolean;
+  children: SidebarProject[];
   health_status?: string;
   active_issues_count?: number;
   knowledge_completeness?: number;
   last_activity_at?: string;
-}
-
-export interface SidebarProjectFolder {
-  id: string;
-  name: string;
-  projects: SidebarProject[];
 }
 
 export interface SidebarClient {
@@ -3760,10 +3832,7 @@ export interface SidebarClient {
   active_issues_count?: number;
   knowledge_completeness?: number;
   last_activity_at?: string;
-  crm_person_id?: string;
-  crm_confidence?: number;
   projects: SidebarProject[];
-  folders: SidebarProjectFolder[];
 }
 
 export interface SidebarSharedBoard {
@@ -3792,7 +3861,6 @@ export interface SidebarOrg {
   knowledge_completeness?: number;
   last_activity_at?: string;
   internal_projects: SidebarProject[];
-  internal_folders: SidebarProjectFolder[];
   clients: SidebarClient[];
   shared_boards: SidebarSharedBoardGroup[];
 }
@@ -3812,9 +3880,6 @@ export interface OrganizationData {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  invite_token?: string;
-  pending_owner_email?: string;
-  created_by_org_id?: string;
 }
 
 export interface ClientData {
@@ -3868,6 +3933,27 @@ export const organizationsApi = {
     return handleApiResponse<OrganizationData>(response);
   },
 
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${id}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  activate: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${id}/activate`, {
+      method: 'PATCH',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  deactivate: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${id}/deactivate`, {
+      method: 'PATCH',
+    });
+    return handleApiResponse<void>(response);
+  },
+
   // Members
   getMembers: async (orgId: string): Promise<any[]> => {
     const response = await makeRequest(`/api/organizations/${orgId}/members`);
@@ -3887,20 +3973,6 @@ export const organizationsApi = {
       method: 'DELETE',
     });
     return handleApiResponse<void>(response);
-  },
-
-  generateInvite: async (orgId: string, email?: string): Promise<{ invite_url: string }> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/generate-invite`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-    return handleApiResponse<{ invite_url: string }>(response);
-  },
-
-  getPersons: async (orgId: string): Promise<PersonRecord[]> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/persons`);
-    return handleApiResponse<PersonRecord[]>(response);
   },
 
   // Clients
@@ -3965,119 +4037,18 @@ export const organizationsApi = {
     });
     return handleApiResponse<void>(response);
   },
-};
 
-// ============================================================================
-// QuickBooks API
-// ============================================================================
-
-export interface QuickBooksAccountRecord {
-  id: string;
-  organization_id: string;
-  realm_id: string;
-  company_name?: string;
-  environment: string;
-  sync_enabled: number;
-  sync_frequency_minutes: number;
-  last_sync_at?: string;
-  sync_invoices: number;
-  sync_customers: number;
-  sync_payments: number;
-  sync_expenses: number;
-  sync_time_tracking: number;
-  status: string;
-  last_error?: string;
-  metadata?: string;
-  connected_by?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface QBConnectionStatus {
-  connected: boolean;
-  account?: QuickBooksAccountRecord;
-  needs_reauth: boolean;
-}
-
-export interface QuickBooksEntityMapRecord {
-  id: string;
-  quickbooks_account_id: string;
-  pcg_entity_type: string;
-  pcg_entity_id: string;
-  qbo_entity_type: string;
-  qbo_entity_id: string;
-  qbo_sync_token?: string;
-  last_synced_at?: string;
-  sync_direction: string;
-  sync_status: string;
-  last_error?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export const quickbooksApi = {
-  getStatus: async (organizationId: string): Promise<QBConnectionStatus> => {
-    const response = await makeRequest(`/api/quickbooks/status?organization_id=${organizationId}`);
-    return handleApiResponse<QBConnectionStatus>(response);
+  // Person-org junction (for context badges)
+  listPersonContacts: async (orgId: string): Promise<PersonOrgContact[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/person-contacts`);
+    return handleApiResponse<PersonOrgContact[]>(response);
   },
-
-  getConnectUrl: (organizationId: string): string => {
-    return `/api/quickbooks/connect?organization_id=${organizationId}`;
-  },
-
-  listAccounts: async (organizationId: string): Promise<QuickBooksAccountRecord[]> => {
-    const response = await makeRequest(`/api/quickbooks/accounts?organization_id=${organizationId}`);
-    return handleApiResponse<QuickBooksAccountRecord[]>(response);
-  },
-
-  getAccount: async (accountId: string): Promise<QuickBooksAccountRecord> => {
-    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}`);
-    return handleApiResponse<QuickBooksAccountRecord>(response);
-  },
-
-  updateAccount: async (accountId: string, data: Partial<{
-    company_name: string;
-    sync_enabled: boolean;
-    sync_frequency_minutes: number;
-    sync_invoices: boolean;
-    sync_customers: boolean;
-    sync_payments: boolean;
-    sync_expenses: boolean;
-    sync_time_tracking: boolean;
-    status: string;
-  }>): Promise<QuickBooksAccountRecord> => {
-    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}`, {
-      method: 'PATCH',
+  addPersonContact: async (orgId: string, data: { person_id: string; context?: string }): Promise<PersonOrgContact> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/person-contacts`, {
+      method: 'POST',
       body: JSON.stringify(data),
     });
-    return handleApiResponse<QuickBooksAccountRecord>(response);
-  },
-
-  disconnect: async (accountId: string): Promise<void> => {
-    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}`, {
-      method: 'DELETE',
-    });
-    return handleApiResponse<void>(response);
-  },
-
-  refreshToken: async (accountId: string): Promise<void> => {
-    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/refresh`, {
-      method: 'POST',
-    });
-    return handleApiResponse<void>(response);
-  },
-
-  triggerSync: async (accountId: string, entityTypes?: string[]): Promise<any> => {
-    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/sync`, {
-      method: 'POST',
-      body: JSON.stringify({ entity_types: entityTypes }),
-    });
-    return handleApiResponse<any>(response);
-  },
-
-  listEntityMaps: async (accountId: string): Promise<QuickBooksEntityMapRecord[]> => {
-    const response = await makeRequest(`/api/quickbooks/accounts/${accountId}/entity-map`);
-    return handleApiResponse<QuickBooksEntityMapRecord[]>(response);
+    return handleApiResponse<PersonOrgContact>(response);
   },
 };
 
@@ -4133,10 +4104,25 @@ export interface ProjectKnowledgeResponse {
   sources_by_type: Record<string, ProjectKnowledgeSource[]>;
 }
 
+export interface CreateKnowledgeSourceRequest {
+  source_type: string;
+  source_title: string;
+  source_summary?: string;
+  coverage_score?: number;
+}
+
 export const knowledgeApi = {
   getProjectKnowledge: async (projectId: string): Promise<ProjectKnowledgeResponse> => {
     const response = await makeRequest(`/api/projects/${projectId}/knowledge`);
     return handleApiResponse<ProjectKnowledgeResponse>(response);
+  },
+
+  createSource: async (projectId: string, data: CreateKnowledgeSourceRequest): Promise<ProjectKnowledgeSource> => {
+    const response = await makeRequest(`/api/projects/${projectId}/knowledge`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<ProjectKnowledgeSource>(response);
   },
 
   refreshSource: async (projectId: string, sourceId: string): Promise<void> => {
@@ -4154,52 +4140,33 @@ export const knowledgeApi = {
   },
 };
 
-export const projectFoldersApi = {
-  list: async (orgId: string): Promise<ProjectFolderData[]> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/project-folders`);
-    return handleApiResponse<ProjectFolderData[]>(response);
-  },
+// projectFoldersApi removed — projects now use parent_project_id nesting via projectsApi.setParent()
 
-  create: async (orgId: string, data: { name: string; client_id?: string }): Promise<ProjectFolderData> => {
-    const response = await makeRequest(`/api/organizations/${orgId}/project-folders`, {
+// ============================================================================
+// Entity Conversion API
+// ============================================================================
+
+export type EntityType = 'organization' | 'client' | 'project';
+
+export interface ConvertEntityRequest {
+  source_type: EntityType;
+  source_id: string;
+  target_type: EntityType;
+  target_parent_id?: string;
+}
+
+export interface ConvertEntityResponse {
+  new_id: string;
+  new_type: EntityType;
+}
+
+export const entityConversionApi = {
+  convert: async (data: ConvertEntityRequest): Promise<ConvertEntityResponse> => {
+    const response = await makeRequest('/api/entities/convert', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    return handleApiResponse<ProjectFolderData>(response);
-  },
-
-  get: async (folderId: string): Promise<ProjectFolderData> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}`);
-    return handleApiResponse<ProjectFolderData>(response);
-  },
-
-  update: async (folderId: string, data: { name?: string; sort_order?: number; is_active?: boolean }): Promise<ProjectFolderData> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-    return handleApiResponse<ProjectFolderData>(response);
-  },
-
-  delete: async (folderId: string): Promise<void> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}`, {
-      method: 'DELETE',
-    });
-    return handleApiResponse<void>(response);
-  },
-
-  addProject: async (folderId: string, projectId: string): Promise<void> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}/projects/${projectId}`, {
-      method: 'PUT',
-    });
-    return handleApiResponse<void>(response);
-  },
-
-  removeProject: async (folderId: string, projectId: string): Promise<void> => {
-    const response = await makeRequest(`/api/project-folders/${folderId}/projects/${projectId}`, {
-      method: 'DELETE',
-    });
-    return handleApiResponse<void>(response);
+    return handleApiResponse<ConvertEntityResponse>(response);
   },
 };
 
@@ -4543,29 +4510,10 @@ export interface PersonRecord {
   notes?: string;
   tags: string;
   custom_fields: string;
-  /** JSON array of {value, label} */
-  emails: string;
-  /** JSON array of {value, label} */
-  phones: string;
-  assigned_to?: string;
-  company_org_id?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ContactValue {
-  value: string;
-  label: string;
-}
-
-export interface PersonNote {
-  id: string;
-  person_id: string;
-  author_id?: string;
-  text: string;
-  status: 'open' | 'follow_up' | 'resolved' | 'pinned';
-  attachments: string;
-  proposal_id?: string;
+  /** How this person first engaged: 'email'|'instagram'|'whatsapp'|'linkedin'|'twitter'|'sms'|'phone'|'in_person' */
+  onboarding_channel?: string;
+  /** Preferred outbound contact channel */
+  preferred_contact?: string;
   created_at: string;
   updated_at: string;
 }
@@ -4585,8 +4533,45 @@ export interface PersonSocialProfile {
   updated_at: string;
 }
 
+export interface PersonCompanyRole {
+  id: string;
+  person_id: string;
+  company_id: string;
+  role: string;
+  title?: string;
+  is_primary: number;
+  start_date?: string;
+  end_date?: string;
+  notes?: string;
+  created_at: string;
+  company_name?: string;
+  company_slug?: string;
+}
+
+export interface PersonOrgContact {
+  id: string;
+  person_id: string;
+  organization_id: string;
+  context: string;
+  notes?: string;
+  added_at: string;
+  org_name?: string;
+}
+
+export interface CompanyContactMethod {
+  id: string;
+  company_id: string;
+  method_type: string;
+  label?: string;
+  value: string;
+  is_primary: number;
+  created_at: string;
+}
+
 export interface PersonWithSocials extends PersonRecord {
   social_profiles: PersonSocialProfile[];
+  company_roles: PersonCompanyRole[];
+  org_contacts: PersonOrgContact[];
 }
 
 export interface InvoiceRecord {
@@ -4627,9 +4612,6 @@ export interface CreatePersonInput {
   website?: string;
   notes?: string;
   tags?: string[];
-  emails?: ContactValue[];
-  phones?: ContactValue[];
-  assigned_to?: string;
 }
 
 export interface UpdatePersonInput {
@@ -4648,9 +4630,8 @@ export interface UpdatePersonInput {
   notes?: string;
   tags?: string[];
   intelligence_summary?: string;
-  emails?: ContactValue[];
-  phones?: ContactValue[];
-  assigned_to?: string;
+  onboarding_channel?: string;
+  preferred_contact?: string;
 }
 
 export const personsApi = {
@@ -4659,7 +4640,6 @@ export const personsApi = {
     financial_role?: string;
     lifecycle_stage?: string;
     organization_id?: string;
-    assigned_to?: string;
     q?: string;
     limit?: number;
     offset?: number;
@@ -4669,7 +4649,6 @@ export const personsApi = {
     if (params?.financial_role) qs.set('financial_role', params.financial_role);
     if (params?.lifecycle_stage) qs.set('lifecycle_stage', params.lifecycle_stage);
     if (params?.organization_id) qs.set('organization_id', params.organization_id);
-    if (params?.assigned_to) qs.set('assigned_to', params.assigned_to);
     if (params?.q) qs.set('q', params.q);
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.offset) qs.set('offset', String(params.offset));
@@ -4741,63 +4720,45 @@ export const personsApi = {
     return handleApiResponse<InvoiceRecord[]>(response);
   },
 
-  listNotes: async (id: string, status?: string): Promise<PersonNote[]> => {
-    const qs = status ? `?status=${status}` : '';
-    const response = await makeRequest(`/api/persons/${id}/notes${qs}`);
-    return handleApiResponse<PersonNote[]>(response);
+  // Company affiliations
+  listCompanies: async (id: string): Promise<PersonCompanyRole[]> => {
+    const response = await makeRequest(`/api/persons/${id}/companies`);
+    return handleApiResponse<PersonCompanyRole[]>(response);
   },
-
-  createNote: async (personId: string, data: { text: string; status?: string; proposal_id?: string }): Promise<PersonNote> => {
-    const response = await makeRequest(`/api/persons/${personId}/notes`, {
+  addCompany: async (id: string, data: { company_id: string; role?: string; title?: string; is_primary?: boolean }): Promise<PersonCompanyRole> => {
+    const response = await makeRequest(`/api/persons/${id}/companies`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, person_id: personId }),
-    });
-    return handleApiResponse<PersonNote>(response);
-  },
-
-  updateNote: async (noteId: string, data: { text?: string; status?: string; proposal_id?: string }): Promise<PersonNote> => {
-    const response = await makeRequest(`/api/person-notes/${noteId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleApiResponse<PersonNote>(response);
+    return handleApiResponse<PersonCompanyRole>(response);
   },
-
-  deleteNote: async (noteId: string): Promise<void> => {
-    const response = await makeRequest(`/api/person-notes/${noteId}`, { method: 'DELETE' });
+  updateCompanyRole: async (id: string, company_id: string, data: { role?: string; title?: string; is_primary?: boolean }): Promise<PersonCompanyRole> => {
+    const response = await makeRequest(`/api/persons/${id}/companies/${company_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PersonCompanyRole>(response);
+  },
+  removeCompany: async (id: string, company_id: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}/companies/${company_id}`, { method: 'DELETE' });
     return handleApiResponse<void>(response);
   },
 
-  provisionOrg: async (personId: string): Promise<{ org_id: string; org_name: string; slug: string }> => {
-    const response = await makeRequest(`/api/persons/${personId}/provision-org`, { method: 'POST' });
-    return handleApiResponse<{ org_id: string; org_name: string; slug: string }>(response);
+  // Org affiliations
+  listOrgs: async (id: string): Promise<PersonOrgContact[]> => {
+    const response = await makeRequest(`/api/persons/${id}/organizations`);
+    return handleApiResponse<PersonOrgContact[]>(response);
   },
-};
-
-// ── Auth ───────────────────────────────────────────────────────────────────────
-
-export const authApi = {
-  getInviteInfo: async (token: string): Promise<{ org_name: string; pending_owner_email?: string }> => {
-    const response = await fetch(`/api/auth/invite-info?token=${encodeURIComponent(token)}`);
-    return handleApiResponse<{ org_name: string; pending_owner_email?: string }>(response);
-  },
-
-  register: async (data: {
-    username: string;
-    password: string;
-    full_name: string;
-    email?: string;
-    invite_token: string;
-  }): Promise<{ user: { id: string; username: string; email: string; full_name: string; is_admin: boolean; organizations: any[] }; session_id: string }> => {
-    const response = await fetch('/api/auth/register', {
+  addOrg: async (id: string, data: { organization_id: string; context?: string }): Promise<PersonOrgContact> => {
+    const response = await makeRequest(`/api/persons/${id}/organizations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(data),
     });
-    return handleApiResponse(response);
+    return handleApiResponse<PersonOrgContact>(response);
+  },
+  removeOrg: async (id: string, org_id: string): Promise<void> => {
+    const response = await makeRequest(`/api/persons/${id}/organizations/${org_id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
   },
 };
 
@@ -4823,13 +4784,13 @@ export interface ProposalRecord {
   organization_id?: string;
   owner_id?: string;
   project_id?: string;
+  company_id?: string;
+  contact_ids: string;
   status: ProposalStatus;
   title: string;
   description: string;
   quote_amount_vibe: number;
   deal_type: DealType;
-  /** JSON array of person UUIDs */
-  contact_ids: string;
   sent_at?: string;
   seen_at?: string;
   verbal_at?: string;
@@ -4845,10 +4806,10 @@ export interface CreateProposalInput {
   organization_id?: string;
   owner_id?: string;
   project_id?: string;
+  company_id?: string;
   description?: string;
   quote_amount_vibe?: number;
   deal_type?: DealType;
-  contact_ids?: string[];
 }
 
 export interface UpdateProposalInput {
@@ -4859,7 +4820,6 @@ export interface UpdateProposalInput {
   lead_id?: string;
   project_id?: string;
   owner_id?: string;
-  contact_ids?: string[];
 }
 
 export const proposalsApi = {
@@ -4914,6 +4874,30 @@ export const proposalsApi = {
   delete: async (id: string): Promise<void> => {
     const response = await makeRequest(`/api/proposals/${id}`, { method: 'DELETE' });
     return handleApiResponse<void>(response);
+  },
+
+  scheduleMeeting: async (
+    id: string,
+    data: {
+      scheduled_at: string;
+      duration_min?: number;
+      location?: string;
+      agenda?: string;
+      channel?: string;
+      invitees: Array<{ person_id: string; channel?: string; channel_address?: string }>;
+    }
+  ): Promise<{ meeting: ScheduledMeetingRecord; dispatched: InviteDispatchResult[] }> => {
+    const response = await makeRequest(`/api/proposals/${id}/schedule-meeting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
+  },
+
+  listScheduledMeetings: async (id: string): Promise<ScheduledMeetingRecord[]> => {
+    const response = await makeRequest(`/api/proposals/${id}/scheduled-meetings`);
+    return handleApiResponse(response);
   },
 };
 
@@ -5103,6 +5087,260 @@ export interface IntelligenceStatus {
   last_run_at?: string;
 }
 
+// ============================================================
+// Companies API (knowledge-graph company entities)
+// ============================================================
+
+export interface CompanyRecord {
+  id: string;
+  name: string;
+  slug?: string | null;
+  website?: string | null;
+  industry?: string | null;
+  description?: string | null;
+  logo_url?: string | null;
+  cover_image_url?: string | null;
+  headquarters?: string | null;
+  address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  whatsapp?: string | null;
+  instagram_handle?: string | null;
+  linkedin_url?: string | null;
+  twitter_handle?: string | null;
+  facebook_url?: string | null;
+  founded_year?: number | null;
+  employee_count?: string | null;
+  tags?: string | null;
+  business_hours?: string | null;
+  notes?: string | null;
+  gmb_rating?: number | null;
+  gmb_review_count?: number | null;
+  gmb_place_id?: string | null;
+  intelligence_summary?: string | null;
+  intelligence_raw?: string | null;
+  intelligence_status: string;
+  intelligence_last_run_at?: string | null;
+  intelligence_confidence?: number | null;
+  intelligence_agent?: string | null;
+  organization_id?: string | null;
+  created_by_org_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const companiesApi = {
+  list: async (params?: { limit?: number; has_platform_org?: boolean }): Promise<CompanyRecord[]> => {
+    const qs = new URLSearchParams();
+    if (params?.limit != null) qs.set('limit', String(params.limit));
+    if (params?.has_platform_org != null) qs.set('has_platform_org', String(params.has_platform_org));
+    const response = await makeRequest(`/api/companies?${qs.toString()}`);
+    return handleApiResponse<CompanyRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<CompanyRecord> => {
+    const response = await makeRequest(`/api/companies/${id}`);
+    return handleApiResponse<CompanyRecord>(response);
+  },
+
+  create: async (data: { name: string; website?: string; industry?: string; description?: string }): Promise<CompanyRecord> => {
+    const response = await makeRequest('/api/companies', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CompanyRecord>(response);
+  },
+
+  update: async (id: string, data: Partial<CompanyRecord>): Promise<CompanyRecord> => {
+    const response = await makeRequest(`/api/companies/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CompanyRecord>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/companies/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  listProposals: async (id: string): Promise<ProposalRecord[]> => {
+    const response = await makeRequest(`/api/companies/${id}/proposals`);
+    return handleApiResponse<ProposalRecord[]>(response);
+  },
+
+  listPersons: async (id: string): Promise<PersonRecord[]> => {
+    const response = await makeRequest(`/api/companies/${id}/persons`);
+    return handleApiResponse<PersonRecord[]>(response);
+  },
+
+  getIntelligenceStatus: async (id: string): Promise<{ status: string; summary?: string; confidence: number; agent?: string; last_run_at?: string }> => {
+    const company = await companiesApi.get(id);
+    return {
+      status: company.intelligence_status,
+      summary: company.intelligence_summary ?? undefined,
+      confidence: company.intelligence_confidence ?? 0,
+      agent: company.intelligence_agent ?? undefined,
+      last_run_at: company.intelligence_last_run_at ?? undefined,
+    };
+  },
+
+  research: async (id: string): Promise<{ status: string; message: string }> => {
+    const response = await makeRequest(`/api/companies/${id}/research`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    return handleApiResponse<{ status: string; message: string }>(response);
+  },
+
+  exportAnalysis: async (id: string, companyName?: string): Promise<void> => {
+    const response = await makeRequest(`/api/companies/${id}/export-analysis`);
+    if (!response.ok) throw new Error('Export failed');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = companyName ? `PCG_Analysis_${companyName.replace(/\s+/g, '_')}.md` : 'PCG_Analysis.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  listContactMethods: async (id: string): Promise<CompanyContactMethod[]> => {
+    const response = await makeRequest(`/api/companies/${id}/contact-methods`);
+    return handleApiResponse<CompanyContactMethod[]>(response);
+  },
+  addContactMethod: async (id: string, data: { method_type: string; label?: string; value: string; is_primary?: boolean }): Promise<CompanyContactMethod> => {
+    const response = await makeRequest(`/api/companies/${id}/contact-methods`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CompanyContactMethod>(response);
+  },
+  removeContactMethod: async (id: string, method_id: string): Promise<void> => {
+    const response = await makeRequest(`/api/companies/${id}/contact-methods/${method_id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ── Scheduled Meeting types ───────────────────────────────────────────────────
+
+export interface ScheduledMeetingInviteeRecord {
+  id: string;
+  scheduled_meeting_id: string;
+  person_id: string;
+  channel: string;
+  channel_address: string;
+  status: string;
+  sent_at?: string;
+  created_at: string;
+}
+
+export interface ScheduledMeetingRecord {
+  id: string;
+  proposal_id: string;
+  scheduled_at: string;
+  duration_min: number;
+  location?: string;
+  agenda?: string;
+  channel: string;
+  invite_status: string;
+  invite_sent_at?: string;
+  notes?: string;
+  invitees: ScheduledMeetingInviteeRecord[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InviteDispatchResult {
+  person_id: string;
+  channel: string;
+  status: string;
+  message: string;
+}
+
+export const meetingsApi = {
+  publish: async (
+    sessionId: string,
+    data: {
+      project_id: string;
+      company_id?: string;
+      proposal_id?: string;
+      attendee_person_ids?: string[];
+      source_title?: string;
+    }
+  ): Promise<{ session_id: string; knowledge_source_id: string; message: string }> => {
+    const response = await makeRequest(`/api/topsi/meeting/${sessionId}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
+  },
+};
+
+// ── Discord Voice ─────────────────────────────────────────────────────────────
+
+export interface DiscordSessionSummary {
+  meeting_session_id: string;
+  guild_id: string;
+  channel_id: string;
+  channel_name: string;
+  project_id: string;
+  agent: string;
+  started_at: string;
+  elapsed_seconds: number;
+  segment_count: number;
+  participant_count: number;
+}
+
+export interface DiscordSegment {
+  id: string;
+  segment_index: number;
+  speaker_label?: string;
+  text: string;
+  confidence?: number;
+  start_time_ms: number;
+  end_time_ms: number;
+  is_topsi_addressed: boolean;
+  metadata?: string;
+  created_at: string;
+}
+
+export interface DiscordTranscript {
+  meeting_session_id: string;
+  segment_count: number;
+  segments: DiscordSegment[];
+}
+
+export const discordApi = {
+  activeSessions: async (): Promise<DiscordSessionSummary[]> => {
+    const response = await makeRequest('/api/discord/sessions');
+    return handleApiResponse<DiscordSessionSummary[]>(response);
+  },
+
+  archivedSessions: async (params?: { limit?: number; offset?: number }): Promise<any[]> => {
+    const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))).toString() : '';
+    const response = await makeRequest(`/api/discord/archive${qs}`);
+    return handleApiResponse<any[]>(response);
+  },
+
+  getTranscript: async (sessionId: string): Promise<DiscordTranscript> => {
+    const response = await makeRequest(`/api/discord/sessions/${sessionId}/transcript`);
+    return handleApiResponse<DiscordTranscript>(response);
+  },
+
+  leave: async (guildId: string): Promise<{ success: boolean; meeting_session_id: string }> => {
+    const response = await makeRequest('/api/discord/leave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guild_id: guildId }),
+    });
+    return handleApiResponse(response);
+  },
+};
+
 export const intelligenceApi = {
   triggerResearch: async (personId: string, opts?: { project_id?: string; agent_preference?: string }): Promise<{ person_id: string; status: string; message: string }> => {
     const response = await makeRequest(`/api/persons/${personId}/research`, {
@@ -5119,197 +5357,266 @@ export const intelligenceApi = {
   },
 };
 
-// ── Media Library (DAM) ───────────────────────────────────────────────────────
-
-export interface MediaAsset {
-  id: string;
-  project_id: string;
-  batch_id?: string;
-  filename: string;
-  file_path: string;
-  file_size_bytes: number;
-  mime_type: string;
-  duration_seconds?: number;
-  width?: number;
-  height?: number;
-  ai_description?: string;
-  shot_type?: string;
-  energy_level: number;
-  motion_intensity: number;
-  dominant_colors: string;
-  scene_tags: string;
-  ai_confidence: number;
-  analysis_status: 'pending' | 'running' | 'done' | 'failed';
-  created_at: string;
-  updated_at: string;
-}
-
-export const mediaApi = {
-  list: async (projectId: string, limit = 100): Promise<MediaAsset[]> => {
-    const response = await makeRequest(`/api/projects/${projectId}/media?limit=${limit}`);
-    return handleApiResponse<MediaAsset[]>(response);
-  },
-
-  search: async (projectId: string, q: string, limit = 50): Promise<MediaAsset[]> => {
-    const response = await makeRequest(
-      `/api/projects/${projectId}/media/search?q=${encodeURIComponent(q)}&limit=${limit}`
-    );
-    return handleApiResponse<MediaAsset[]>(response);
-  },
-
-  upload: async (projectId: string, formData: FormData): Promise<MediaAsset> => {
-    const response = await makeRequest(`/api/projects/${projectId}/media`, {
-      method: 'POST',
-      body: formData,
-    });
-    return handleApiResponse<MediaAsset>(response);
-  },
-
-  get: async (id: string): Promise<MediaAsset> => {
-    const response = await makeRequest(`/api/media/${id}`);
-    return handleApiResponse<MediaAsset>(response);
-  },
-
-  delete: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/media/${id}`, { method: 'DELETE' });
-    return handleApiResponse<void>(response);
-  },
-
-  triggerAnalysis: async (id: string): Promise<MediaAsset> => {
-    const response = await makeRequest(`/api/media/${id}/analyze`, { method: 'POST' });
-    return handleApiResponse<MediaAsset>(response);
-  },
-};
-
-// ── Client Review ─────────────────────────────────────────────────────────────
-
-export interface ReviewToken {
-  id: string;
-  token: string;
-  deliverable_id: string;
-  created_by?: string;
-  expires_at?: string;
-  view_count: number;
-  is_active: boolean;
-  created_at: string;
-}
-
-export interface ReviewComment {
-  id: string;
-  deliverable_id: string;
-  token_id?: string;
-  timecode_seconds?: number;
-  author_name: string;
-  author_email?: string;
-  content: string;
-  is_resolved: boolean;
-  resolved_by?: string;
-  resolved_at?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ReviewData {
-  token: ReviewToken;
-  deliverable: {
-    id: string;
-    project_id: string;
-    title: string;
-    description: string;
-    deliverable_type: string;
-    status: string;
-    working_file_url?: string;
-    final_link?: string;
-    due_date?: string;
-    delivered_at?: string;
-    created_at: string;
-    updated_at: string;
-    revision_rounds_allowed: number;
-    revision_rounds_used: number;
-  };
-  comments: ReviewComment[];
-}
-
-export const reviewApi = {
-  getData: async (token: string): Promise<ReviewData> => {
-    const response = await makeRequest(`/api/review/${token}/data`);
-    return handleApiResponse<ReviewData>(response);
-  },
-
-  addComment: async (
-    token: string,
-    data: {
-      author_name?: string;
-      author_email?: string;
-      content: string;
-      timecode_seconds?: number;
-    }
-  ): Promise<ReviewComment> => {
-    const response = await makeRequest(`/api/review/${token}/comments`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    return handleApiResponse<ReviewComment>(response);
-  },
-
-  resolve: async (token: string, commentId: string): Promise<ReviewComment> => {
-    const response = await makeRequest(`/api/review/${token}/comments/${commentId}/resolve`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    return handleApiResponse<ReviewComment>(response);
-  },
-
-  getReviewLink: async (deliverableId: string): Promise<{ token: string; url: string; view_count: number }> => {
-    const response = await makeRequest(`/api/deliverables/${deliverableId}/review-link`);
-    return handleApiResponse(response);
-  },
-};
-
-// ─── Data Sources ─────────────────────────────────────────────────────────────
+// ============================================================================
+// Data Sources API
+// ============================================================================
 
 export interface DataSourceRecord {
   id: string;
-  organization_id: string | null;
-  project_id: string | null;
-  created_by: string | null;
+  organization_id?: string;
+  project_id?: string;
+  created_by?: string;
   title: string;
-  description: string | null;
+  description?: string;
   data_type: string;
-  file_type: string | null;
-  file_name: string | null;
-  file_path: string | null;
-  file_size_bytes: number | null;
-  file_hash: string | null;
-  metadata: string;
+  /** "file", "text", or "integration" */
+  source_type: string;
+  file_type?: string;
+  /** Raw text content (for source_type = "text") */
+  content?: string;
+  file_name?: string;
+  file_path?: string;
+  file_size_bytes?: number;
+  file_hash?: string;
+  metadata: string; // JSON string
   status: string;
-  processing_error: string | null;
+  processing_error?: string;
   created_at: string;
   updated_at: string;
-  archived_at: string | null;
-  source_type: string;
-  content: string | null;
+  archived_at?: string;
 }
+
+export interface CreateDataSourceRequest {
+  organization_id?: string;
+  project_id?: string;
+  title: string;
+  description?: string;
+  data_type: string;
+  /** "file", "text", or "integration" */
+  source_type?: string;
+  file_type?: string;
+  /** Raw text content (for source_type = "text") */
+  content?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateDataSourceRequest {
+  title?: string;
+  description?: string;
+  data_type?: string;
+  source_type?: string;
+  content?: string;
+  metadata?: string;
+  status?: string;
+  processing_error?: string;
+}
+
+export const SOURCE_TYPE_OPTIONS = [
+  { value: 'text', label: 'Text (copy/paste)' },
+  { value: 'file', label: 'File Upload' },
+  { value: 'integration', label: 'Integration' },
+] as const;
+
+export const DATA_TYPE_OPTIONS = [
+  { value: 'conversation', label: 'Conversation' },
+  { value: 'document', label: 'Document' },
+  { value: 'transcript', label: 'Transcript' },
+  { value: 'report', label: 'Report' },
+  { value: 'dataset', label: 'Dataset' },
+  { value: 'media', label: 'Media' },
+  { value: 'other', label: 'Other' },
+] as const;
 
 export const dataSourcesApi = {
   listByOrganization: async (orgId: string): Promise<DataSourceRecord[]> => {
-    const response = await makeRequest(`/api/data-sources?organization_id=${orgId}`);
+    const response = await makeRequest(`/api/organizations/${orgId}/data-sources`);
     return handleApiResponse<DataSourceRecord[]>(response);
   },
 
-  create: async (data: Partial<DataSourceRecord>): Promise<DataSourceRecord> => {
+  listByProject: async (projectId: string): Promise<DataSourceRecord[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/data-sources`);
+    return handleApiResponse<DataSourceRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<DataSourceRecord> => {
+    const response = await makeRequest(`/api/data-sources/${id}`);
+    return handleApiResponse<DataSourceRecord>(response);
+  },
+
+  create: async (data: CreateDataSourceRequest): Promise<DataSourceRecord> => {
     const response = await makeRequest('/api/data-sources', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<DataSourceRecord>(response);
+  },
+
+  upload: async (formData: FormData): Promise<DataSourceRecord> => {
+    const response = await fetch(resolveApiUrl('/api/data-sources/upload'), {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new ApiError(`Failed to upload data source: ${errorText}`, response.status, response);
+    }
+    const result = await response.json();
+    return result.data as DataSourceRecord;
+  },
+
+  update: async (id: string, data: UpdateDataSourceRequest): Promise<DataSourceRecord> => {
+    const response = await makeRequest(`/api/data-sources/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     });
     return handleApiResponse<DataSourceRecord>(response);
   },
 
   delete: async (id: string): Promise<void> => {
-    const response = await makeRequest(`/api/data-sources/${id}`, { method: 'DELETE' });
-    return handleApiResponse(response);
+    const response = await makeRequest(`/api/data-sources/${id}`, {
+      method: 'DELETE',
+    });
+    await handleApiResponse<void>(response);
   },
+
+  getMetadataTemplate: async (dataType: string): Promise<Record<string, unknown>> => {
+    const response = await makeRequest(`/api/data-sources/metadata-template/${dataType}`);
+    return handleApiResponse<Record<string, unknown>>(response);
+  },
+
+  getWorkflows: async (dataSourceId: string) => {
+    const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows`);
+    return handleApiResponse<any>(response);
+  },
+
+  runWorkflow: async (dataSourceId: string, workflowId: string, model?: string) => {
+    const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows/${workflowId}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  getArtifacts: async (dataSourceId: string) => {
+    const response = await makeRequest(`/api/data-sources/${dataSourceId}/artifacts`);
+    return handleApiResponse<any[]>(response);
+  },
+};
+
+// ── Workflow types ──────────────────────────────────────────────────────────
+
+export interface WorkflowNodePosition {
+  x: number;
+  y: number;
+}
+
+export interface WorkflowNode {
+  id: string;
+  name: string;
+  type: string;
+  parameters: Record<string, any>;
+  position: WorkflowNodePosition;
+}
+
+export interface WorkflowConnection {
+  source: string;
+  target: string;
+  source_output?: number;
+  target_input?: number;
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection[];
+  is_system: boolean;
+  owner_type: string;  // "system", "organization", "user"
+  owner_id?: string;
+}
+
+export interface CreateWorkflowRequest {
+  id: string;
+  name: string;
+  description?: string;
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection[];
+  owner_type?: string;
+  owner_id?: string;
+}
+
+export interface PreviewNodeResult {
+  node_id: string;
+  node_name: string;
+  node_type: string;
+  output: string;
+}
+
+export interface UpdateWorkflowRequest {
+  name?: string;
+  description?: string;
+  nodes?: WorkflowNode[];
+  connections?: WorkflowConnection[];
+}
+
+export const workflowsApi = {
+  listDefinitions: async (): Promise<WorkflowDefinition[]> => {
+    const response = await makeRequest('/api/workflows/definitions');
+    return handleApiResponse<WorkflowDefinition[]>(response);
+  },
+
+  createDefinition: async (data: CreateWorkflowRequest): Promise<WorkflowDefinition> => {
+    const response = await makeRequest('/api/workflows/definitions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowDefinition>(response);
+  },
+
+  updateDefinition: async (id: string, data: UpdateWorkflowRequest): Promise<WorkflowDefinition> => {
+    const response = await makeRequest(`/api/workflows/definitions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowDefinition>(response);
+  },
+
+  deleteDefinition: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/workflows/definitions/${id}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  previewWorkflow: async (data: { nodes: WorkflowNode[]; connections: WorkflowConnection[]; content?: string }): Promise<PreviewNodeResult[]> => {
+    const response = await makeRequest('/api/workflows/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<PreviewNodeResult[]>(response);
+  },
+
+  listRecentArtifacts: async () => {
+    const response = await makeRequest('/api/artifacts/recent');
+    return handleApiResponse<ExecutionArtifact[]>(response);
+  },
+
+  listAvailableModels: async (): Promise<{ id: string; label: string; is_default: boolean }[]> => {
+    const response = await makeRequest('/api/workflows/models');
+    return handleApiResponse<{ id: string; label: string; is_default: boolean }[]>(response);
+  },
+};
+
+// Axios-compatible client for pages that use apiClient.get/post/patch/delete
+export const apiClient = {
+  get: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`); const data = await r.json() as T; return { data }; },
+  post: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  patch: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  delete: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`, { method: 'DELETE' }); const data = await r.json() as T; return { data }; },
 };

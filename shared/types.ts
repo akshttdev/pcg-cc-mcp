@@ -26,21 +26,29 @@ organization_id: string | null,
  */
 client_id: string | null, 
 /**
- * Folder this project is grouped under
+ * Folder this project is grouped under (deprecated -- use parent_project_id)
  */
-folder_id: string | null, 
+folder_id: string | null,
+/**
+ * Parent project for nesting (max 3 levels deep). None = top-level.
+ */
+parent_project_id: string | null,
+/**
+ * Sort order among siblings
+ */
+sort_order: number,
 /**
  * Aptos wallet address registered for on-chain deposits
  */
-aptos_address: string | null, 
+aptos_address: string | null,
 /**
  * Whether this project has been funded with on-chain VIBE
  */
 aptos_funded: boolean, created_at: Date, updated_at: Date, };
 
-export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, organization_id: string | null, client_id: string | null, folder_id: string | null, };
+export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, organization_id: string | null, client_id: string | null, folder_id: string | null, parent_project_id: string | null, };
 
-export type UpdateProject = { name: string | null, git_repo_path: string | null, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, };
+export type UpdateProject = { name?: string, git_repo_path?: string, setup_script?: string, dev_script?: string, cleanup_script?: string, copy_files?: string, organization_id?: string, client_id?: string, };
 
 export type ProjectPod = { id: string, project_id: string, title: string, description: string, status: string, lead: string | null, created_at: Date, updated_at: Date, };
 
@@ -140,7 +148,7 @@ vibe_cost: bigint | null,
 /**
  * Model used for the most recent vibe transaction on this task
  */
-vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
+vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, archived_at?: string | null,
 /**
  * Base64 encoded screenshot image for bug reports
  */
@@ -374,7 +382,7 @@ conflicted_files: Array<string>, };
 
 export type ConflictOp = "rebase" | "merge" | "cherry_pick" | "revert";
 
-export type TaskAttempt = { id: string, task_id: string, container_ref: string | null, branch: string | null, base_branch: string, executor: string, worktree_deleted: boolean, setup_completed_at: string | null, created_at: string, updated_at: string, };
+export type TaskAttempt = { id: string, task_id: string, container_ref: string | null, branch: string | null, base_branch: string, executor: string, worktree_deleted: boolean, setup_completed_at: string | null, archived: boolean, pinned: boolean, name: string | null, seen_at: string | null, created_at: string, updated_at: string, };
 
 export type ExecutionProcess = { id: string, task_attempt_id: string, run_reason: ExecutionProcessRunReason, executor_action: ExecutorAction, 
 /**
@@ -530,7 +538,11 @@ export type AddProjectMemberRequest = { user_id: string, role: string, };
 
 export type UpdateMemberRoleRequest = { role: string, };
 
-export type ProjectAccessResponse = { has_access: boolean, role: string | null, can_read: boolean, can_write: boolean, can_manage_members: boolean, can_delete: boolean, };
+export type ProjectAccessResponse = { has_access: boolean, role: string | null, can_read: boolean, can_write: boolean, can_manage_members: boolean, can_delete: boolean, 
+/**
+ * "full" = sees all tasks, "assigned_only" = sees only their assigned tasks
+ */
+access_scope: string, platform_roles: Array<string>, };
 
 export type MyProjectItem = { project_id: string, project_name: string, role: string, granted_at: string, };
 
@@ -740,11 +752,11 @@ stream: boolean,
 /**
  * Optional model override (e.g. "llama3.2:3b", "gpt-4o", "claude-sonnet-4")
  */
-model: string | null, 
+model?: string | null,
 /**
  * Optional provider override ("ollama", "openai", "anthropic")
  */
-provider: string | null, };
+provider?: string | null, };
 
 export type AgentChatResponse = { 
 /**
@@ -788,14 +800,16 @@ export type ProjectKnowledgeResponse = { project_id: string, completeness: Proje
 
 export type SidebarTree = { owned_orgs: Array<SidebarOrg>, member_orgs: Array<SidebarOrg>, };
 
-export type SidebarOrg = { id: string, name: string, slug: string, role: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, internal_projects: Array<SidebarProject>, internal_folders: Array<SidebarProjectFolder>, clients: Array<SidebarClient>, shared_boards: Array<SidebarSharedBoardGroup>, };
+export type SidebarOrg = { id: string, name: string, slug: string, role: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, internal_projects: Array<SidebarProject>, clients: Array<SidebarClient>, shared_boards: Array<SidebarSharedBoardGroup>, };
 
-export type SidebarClient = { id: string, name: string, slug: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, projects: Array<SidebarProject>, folders: Array<SidebarProjectFolder>, };
+export type SidebarClient = { id: string, name: string, slug: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, projects: Array<SidebarProject>, };
 
-export type SidebarProject = { id: string, name: string, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, };
-
-export type SidebarProjectFolder = { id: string, name: string, projects: Array<SidebarProject>, };
+export type SidebarProject = { id: string, name: string, is_container: boolean, children: Array<SidebarProject>, health_status: string | null, active_issues_count: bigint | null, knowledge_completeness: number | null, last_activity_at: string | null, };
 
 export type SidebarSharedBoardGroup = { source_org_id: string, source_org_name: string, share_type: string, boards: Array<SidebarSharedBoard>, };
 
 export type SidebarSharedBoard = { board_id: string, board_name: string, project_id: string, project_name: string, permission: string, share_type: string, };
+
+export type ConvertEntityRequest = { source_type: string, source_id: string, target_type: string, target_parent_id: string | null, };
+
+export type ConvertEntityResponse = { new_id: string, new_type: string, };

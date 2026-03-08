@@ -1,6 +1,6 @@
 // Auth Context for managing user authentication state
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { UserProfile, login as apiLogin, logout as apiLogout, getCurrentUser } from '../lib/auth-api';
+import { UserProfile, PlatformRole, login as apiLogin, logout as apiLogout, getCurrentUser } from '../lib/auth-api';
 import { useEquipmentStore } from '../stores/useEquipmentStore';
 
 interface AuthContextType {
@@ -10,6 +10,9 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  hasRole: (role: PlatformRole) => boolean;
+  isOperator: boolean;
+  isClientUser: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,9 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       const currentUser = await getCurrentUser();
       setUser(currentUser);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to check session:', error);
       setUser(null);
+      // Show session expired message if we had a stored session
+      const hadSession = document.cookie.includes('session_id') || localStorage.getItem('session_id');
+      if (hadSession) {
+        localStorage.removeItem('session_id');
+        // Clear the expired cookie
+        document.cookie = 'session_id=; Path=/; Max-Age=0';
+      }
     } finally {
       setIsLoading(false);
     }
@@ -74,6 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await checkSession();
   }
 
+  const hasRole = (role: PlatformRole) =>
+    user?.platform_roles?.includes(role) ?? false;
+
   const value: AuthContextType = {
     user,
     isLoading,
@@ -81,6 +94,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     refreshUser,
+    hasRole,
+    isOperator: hasRole('operator'),
+    isClientUser: hasRole('client_user'),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

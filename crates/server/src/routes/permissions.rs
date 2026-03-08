@@ -115,6 +115,9 @@ pub struct ProjectAccessResponse {
     pub can_write: bool,
     pub can_manage_members: bool,
     pub can_delete: bool,
+    /// "full" = sees all tasks, "assigned_only" = sees only their assigned tasks
+    pub access_scope: String,
+    pub platform_roles: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, TS, FromRow)]
@@ -444,24 +447,36 @@ async fn check_project_access(
 ) -> Result<ResponseJson<ApiResponse<ProjectAccessResponse>>, ApiError> {
     let pool = deployment.db().pool.clone();
 
-    let role_opt = context.get_project_role(&pool, &project_id).await?;
+    // Use hierarchical check which includes task-assignment tier
+    let access_result = context
+        .check_project_access_hierarchical(&pool, &project_id, crate::middleware::ProjectRole::Viewer)
+        .await;
 
-    let response = match role_opt {
-        Some(role) => ProjectAccessResponse {
+    let access_scope = context
+        .get_project_access_scope(&pool, &project_id)
+        .await
+        .unwrap_or("assigned_only");
+
+    let response = match access_result {
+        Ok(role) => ProjectAccessResponse {
             has_access: true,
             role: Some(role.to_string()),
             can_read: role.can_read(),
             can_write: role.can_write(),
             can_manage_members: role.can_manage_members(),
             can_delete: role.can_delete(),
+            access_scope: access_scope.to_string(),
+            platform_roles: context.platform_roles.clone(),
         },
-        None => ProjectAccessResponse {
+        Err(_) => ProjectAccessResponse {
             has_access: false,
             role: None,
             can_read: false,
             can_write: false,
             can_manage_members: false,
             can_delete: false,
+            access_scope: "none".to_string(),
+            platform_roles: context.platform_roles.clone(),
         },
     };
 

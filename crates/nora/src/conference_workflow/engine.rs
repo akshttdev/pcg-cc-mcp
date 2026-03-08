@@ -579,6 +579,7 @@ impl ConferenceWorkflowEngine {
                             custom_properties: Some(task_custom_props),
                             scheduled_start: publish_due,
                             scheduled_end: review_due,
+                            screenshot: None,
                         },
                         Uuid::new_v4(),
                     )
@@ -667,6 +668,7 @@ impl ConferenceWorkflowEngine {
                             custom_properties: Some(task_custom_props),
                             scheduled_start: publish_due,
                             scheduled_end: None,
+                            screenshot: None,
                         },
                         Uuid::new_v4(),
                     )
@@ -772,6 +774,7 @@ impl ConferenceWorkflowEngine {
                             custom_properties: Some(task_custom_props),
                             scheduled_start: publish_due,
                             scheduled_end: None,
+                            screenshot: None,
                         },
                         Uuid::new_v4(),
                     )

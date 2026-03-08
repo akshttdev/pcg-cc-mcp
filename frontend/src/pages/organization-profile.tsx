@@ -3,11 +3,43 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   Building2,
   Users,
@@ -25,6 +57,7 @@ import {
   X,
   Search,
   BookOpen,
+  Brain,
   Share2,
   MessageSquare,
   FileText,
@@ -39,24 +72,24 @@ import {
   Facebook,
   Youtube,
   Inbox,
+  Database,
+  Plus,
+  MoreHorizontal,
+  Trash2,
+  Upload,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  GitBranch,
+  Clock,
+  ChevronDown,
+  ChevronRight,
   Plug,
+  Mail,
+  RefreshCw,
   CheckCircle2,
   AlertCircle,
-  Clock,
-  Settings2,
   Loader2,
-  Unplug,
-  Receipt,
-  Wallet,
-  Timer,
-  CreditCard,
-  UserCircle,
-  Building,
-  Copy,
-  Check,
-  Brain,
-  RefreshCw,
-  Database,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -65,19 +98,35 @@ import {
   knowledgeApi,
   socialApi,
   tasksApi,
+  emailApi,
   quickbooksApi,
-  personsApi,
-  pulseApi,
+  airtableApi,
+  githubAuthApi,
+  discordApi,
+  type DiscordSessionSummary,
   type OrganizationData,
   type ClientData,
   type CrmActivityRecord,
-  type PersonRecord,
   type ProjectKnowledgeResponse,
+  type ProjectKnowledgeSource,
   type SocialAccountRecord,
   type SocialMentionRecord,
+  type PersonOrgContact,
+  dataSourcesApi,
+  workflowsApi,
+  resolveApiUrl,
+  type DataSourceRecord,
+  type UpdateDataSourceRequest,
+  type ExecutionArtifact,
+  DATA_TYPE_OPTIONS,
+  type EmailAccountRecord,
 } from '@/lib/api';
+import { useUserSystem } from '@/components/config-provider';
+import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
+import type { WorkflowDefinition } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
+import { useOrgContacts, type OrgContact } from '@/hooks/useOrgContacts';
 import { LIFECYCLE_STAGE_INFO, type LifecycleStage } from '@/types/crm';
 import type { PipelineType } from '@/types/crm';
 
@@ -224,10 +273,10 @@ function OverviewTab({
           { label: 'Pipelines', icon: Target, tab: 'pipelines', color: 'text-amber-500' },
           { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
           { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
-          { label: 'Intelligence', icon: Brain, tab: 'intelligence', color: 'text-violet-500' },
-          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
-          { label: 'Leads', icon: UserCircle, tab: 'leads', color: 'text-orange-500' },
+          { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
+          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
           { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
+          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
         ].map(({ label, icon: Icon, tab, color }) => (
           <button
             key={tab}
@@ -337,31 +386,39 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
 // ── Contacts Tab ──────────────────────────────────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
+  const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
 
-  const { data: persons = [], isLoading } = useQuery<PersonRecord[]>({
-    queryKey: ['org-persons-full', orgId],
-    queryFn: () => organizationsApi.getPersons(orgId),
+  const { data: personContacts = [] } = useQuery<PersonOrgContact[]>({
+    queryKey: ['org-person-contacts', orgId],
+    queryFn: () => organizationsApi.listPersonContacts(orgId),
     enabled: !!orgId,
+    staleTime: 60_000,
   });
 
+  // Build a lookup map: person_id → context
+  const contextMap = useMemo(
+    () => Object.fromEntries(personContacts.map(pc => [pc.person_id, pc.context])),
+    [personContacts]
+  );
+
   const filtered = useMemo(() => {
-    let result = persons;
+    let result = contacts;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
-        p =>
-          p.full_name.toLowerCase().includes(q) ||
-          (p.email && p.email.toLowerCase().includes(q)) ||
-          (p.company_name && p.company_name.toLowerCase().includes(q))
+        c =>
+          (c.full_name && c.full_name.toLowerCase().includes(q)) ||
+          (c.email && c.email.toLowerCase().includes(q)) ||
+          (c.company_name && c.company_name.toLowerCase().includes(q))
       );
     }
     if (stageFilter !== 'all') {
-      result = result.filter(p => p.lifecycle_stage === stageFilter);
+      result = result.filter(c => c.lifecycle_stage === stageFilter);
     }
     return result;
-  }, [persons, searchQuery, stageFilter]);
+  }, [contacts, searchQuery, stageFilter]);
 
   const stageInfo = LIFECYCLE_STAGE_INFO;
 
@@ -387,22 +444,20 @@ function ContactsTab({ orgId }: { orgId: string }) {
             <option key={key} value={key}>{info.label}</option>
           ))}
         </select>
+        {isLoading && (
+          <span className="text-xs text-muted-foreground">Loading contacts…</span>
+        )}
       </div>
 
-      {isLoading ? (
+      {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>Loading contacts…</p>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>No contacts found</p>
+          <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((person) => (
-            <PersonContactCard key={person.id} person={person} />
+          {filtered.map((contact) => (
+            <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
           ))}
         </div>
       )}
@@ -410,30 +465,40 @@ function ContactsTab({ orgId }: { orgId: string }) {
   );
 }
 
-function PersonContactCard({ person }: { person: PersonRecord }) {
-  const stageInfo = LIFECYCLE_STAGE_INFO[person.lifecycle_stage as LifecycleStage];
+const CONTEXT_COLORS: Record<string, string> = {
+  client:  'bg-green-100 text-green-700',
+  vendor:  'bg-orange-100 text-orange-700',
+  partner: 'bg-purple-100 text-purple-700',
+  prospect:'bg-blue-100 text-blue-700',
+  contact: 'bg-gray-100 text-gray-600',
+};
+
+function ContactCard({ contact, context }: { contact: OrgContact; context?: string }) {
+  const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
 
   return (
     <Link
-      to={`/people/${person.id}`}
+      to={`/people/${contact.id}`}
       className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate group-hover:text-foreground">{person.full_name}</p>
-          {person.email && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{person.email}</p>
+          <p className="text-sm font-medium truncate group-hover:text-foreground">
+            {contact.full_name || 'Unnamed'}
+          </p>
+          {contact.job_title && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.job_title}</p>
           )}
-          {person.company_name && (
-            <p className="text-xs text-muted-foreground truncate">{person.company_name}</p>
+          {contact.email && (
+            <p className="text-xs text-muted-foreground truncate">{contact.email}</p>
           )}
-          {person.job_title && (
-            <p className="text-xs text-muted-foreground truncate">{person.job_title}</p>
+          {contact.company_name && (
+            <p className="text-xs text-muted-foreground truncate">{contact.company_name}</p>
           )}
         </div>
-        {person.lead_score > 0 && (
+        {contact.lead_score > 0 && (
           <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 shrink-0">
-            {person.lead_score}
+            {contact.lead_score}
           </span>
         )}
       </div>
@@ -447,9 +512,14 @@ function PersonContactCard({ person }: { person: PersonRecord }) {
             {stageInfo.label}
           </Badge>
         )}
-        <Badge variant="outline" className="text-[10px] capitalize">
-          {person.person_type}
-        </Badge>
+        {contact.person_type && (
+          <Badge variant="outline" className="text-[10px] capitalize">{contact.person_type}</Badge>
+        )}
+        {context && context !== 'contact' && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded capitalize font-medium ${CONTEXT_COLORS[context] ?? CONTEXT_COLORS.contact}`}>
+            {context}
+          </span>
+        )}
       </div>
     </Link>
   );
@@ -573,7 +643,7 @@ function ProjectRow({ project, folderName }: { project: any; folderName?: string
   );
 }
 
-// ── Intelligence Tab (Social + Knowledge + Pulse) ─────────────────────────────
+// ── Knowledge Tab ─────────────────────────────────────────────────────────────
 
 const SOURCE_TYPE_META: Record<string, { label: string; icon: typeof BookOpen }> = {
   conversation: { label: 'Conversations', icon: MessageSquare },
@@ -584,13 +654,1100 @@ const SOURCE_TYPE_META: Record<string, { label: string; icon: typeof BookOpen }>
   topology_snapshot: { label: 'Topology Snapshots', icon: Network },
 };
 
-function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+// ── Add Data Source Dialog ────────────────────────────────────────────────────
+
+function AddDataSourceDialog({
+  orgId,
+  projectEntries,
+  open,
+  onOpenChange,
+  editingSource,
+}: {
+  orgId: string;
+  projectEntries: { id: string; name: string }[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  editingSource?: DataSourceRecord | null;
+}) {
+  const queryClient = useQueryClient();
+  const isEdit = !!editingSource;
+
+  const [selectedProject, setSelectedProject] = useState<string>(editingSource?.project_id ?? '__none__');
+  const [sourceType, setSourceType] = useState<string>(editingSource?.source_type ?? 'text');
+  const [dataType, setDataType] = useState<string>(editingSource?.data_type ?? 'conversation');
+  const [title, setTitle] = useState(editingSource?.title ?? '');
+  const [description, setDescription] = useState(editingSource?.description ?? '');
+  const [content, setContent] = useState(editingSource?.content ?? '');
+  const [file, setFile] = useState<File | null>(null);
+
+  // Reset form when dialog opens/closes or editingSource changes
+  const resetForm = () => {
+    setSelectedProject(editingSource?.project_id ?? '__none__');
+    setSourceType(editingSource?.source_type ?? 'text');
+    setDataType(editingSource?.data_type ?? 'conversation');
+    setTitle(editingSource?.title ?? '');
+    setDescription(editingSource?.description ?? '');
+    setContent(editingSource?.content ?? '');
+    setFile(null);
+  };
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const projId = selectedProject !== '__none__' ? selectedProject : undefined;
+      if (sourceType === 'file' && file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', title.trim());
+        formData.append('data_type', dataType);
+        if (description.trim()) formData.append('description', description.trim());
+        if (projId) formData.append('project_id', projId);
+        formData.append('organization_id', orgId);
+        return dataSourcesApi.upload(formData);
+      }
+      return dataSourcesApi.create({
+        organization_id: orgId,
+        project_id: projId,
+        title: title.trim(),
+        description: description.trim() || undefined,
+        data_type: dataType,
+        source_type: sourceType,
+        content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      onOpenChange(false);
+      resetForm();
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: UpdateDataSourceRequest) =>
+      dataSourcesApi.update(editingSource!.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      onOpenChange(false);
+    },
+  });
+
+  const handleSubmit = () => {
+    if (!title.trim()) return;
+    if (isEdit) {
+      updateMutation.mutate({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        data_type: dataType,
+        source_type: sourceType,
+        content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+      });
+    } else {
+      createMutation.mutate();
+    }
+  };
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            {isEdit ? 'Edit Data Source' : 'Add Data Source'}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {/* Source type radio */}
+          <div className="space-y-2">
+            <Label>Source</Label>
+            <RadioGroup
+              value={sourceType}
+              onValueChange={setSourceType}
+              className="flex gap-4"
+            >
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="text" id="st-text" />
+                <Label htmlFor="st-text" className="text-sm font-normal cursor-pointer">Text</Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="file" id="st-file" />
+                <Label htmlFor="st-file" className="text-sm font-normal cursor-pointer">File Upload</Label>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <RadioGroupItem value="integration" id="st-integration" />
+                <Label htmlFor="st-integration" className="text-sm font-normal cursor-pointer">Integration</Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Title</Label>
+            <Input
+              placeholder="e.g. Client kickoff call notes"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Data Type</Label>
+            <Select value={dataType} onValueChange={setDataType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DATA_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Description (optional)</Label>
+            <Textarea
+              placeholder="Brief description of this data source..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+            />
+          </div>
+
+          {/* Conditional input based on source type */}
+          {sourceType === 'text' && (
+            <div className="space-y-2">
+              <Label>Content</Label>
+              <Textarea
+                placeholder="Paste or type your content here..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={6}
+                className="font-mono text-xs"
+              />
+            </div>
+          )}
+          {sourceType === 'file' && !isEdit && (
+            <div className="space-y-2">
+              <Label>File</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  className="text-xs"
+                />
+                {file && (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {(file.size / 1024).toFixed(0)} KB
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          {sourceType === 'integration' && (
+            <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+              Integration sources are populated automatically from connected services.
+            </div>
+          )}
+
+          {projectEntries.length > 0 && (
+            <div className="space-y-2">
+              <Label>Project (optional)</Label>
+              <Select value={selectedProject} onValueChange={setSelectedProject}>
+                <SelectTrigger>
+                  <SelectValue placeholder="No project (org-level)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No project (org-level)</SelectItem>
+                  {projectEntries.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!title.trim() || isPending}>
+            {isPending ? (isEdit ? 'Saving...' : 'Adding...') : (isEdit ? 'Save' : 'Add Source')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Delete Confirmation Dialog ───────────────────────────────────────────────
+
+function DeleteConfirmDialog({
+  open,
+  onOpenChange,
+  sourceName,
+  onConfirm,
+  isPending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  sourceName: string;
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <Trash2 className="h-4 w-4" />
+            Delete Data Source
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Are you sure you want to delete <strong>{sourceName}</strong>? This action cannot be undone.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+            {isPending ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Data Sources View ────────────────────────────────────────────────────────
+
+type SortField = 'title' | 'data_type' | 'status' | 'created_at';
+type SortDir = 'asc' | 'desc';
+
+function DataSourcesView({
+  orgId,
+  projectEntries,
+}: {
+  orgId: string;
+  projectEntries: { id: string; name: string }[];
+}) {
+  const queryClient = useQueryClient();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editingSource, setEditingSource] = useState<DataSourceRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DataSourceRecord | null>(null);
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  const { data: sources = [], isLoading } = useQuery({
+    queryKey: ['dataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    staleTime: 30_000,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => dataSourcesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
+      setDeleteTarget(null);
+    },
+  });
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+  };
+
+  const sorted = useMemo(() => {
+    const arr = [...sources];
+    arr.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'title': cmp = a.title.localeCompare(b.title); break;
+        case 'data_type': cmp = a.data_type.localeCompare(b.data_type); break;
+        case 'status': cmp = a.status.localeCompare(b.status); break;
+        case 'created_at': cmp = a.created_at.localeCompare(b.created_at); break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [sources, sortField, sortDir]);
+
+  const dataTypeLabel = (dt: string) =>
+    DATA_TYPE_OPTIONS.find(o => o.value === dt)?.label ?? dt;
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const statusBadge = (status: string) => {
+    const variants: Record<string, string> = {
+      ready: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+      processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    };
+    return (
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${variants[status] ?? 'bg-muted text-muted-foreground'}`}>
+        {status}
+      </span>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Database className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Data Sources</h2>
+          <Badge variant="secondary">{sources.length}</Badge>
+        </div>
+        <Button size="sm" onClick={() => { setEditingSource(null); setAddOpen(true); }} className="gap-1">
+          <Plus className="h-3.5 w-3.5" />
+          Add Data Source
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-12 text-muted-foreground text-sm">Loading data sources...</div>
+      ) : sorted.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Database className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>No data sources yet</p>
+          <Button variant="outline" size="sm" className="mt-4 gap-1" onClick={() => setAddOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Add your first data source
+          </Button>
+        </div>
+      ) : (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('title')}>
+                  <span className="flex items-center gap-1">Title <SortIcon field="title" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none w-[120px]" onClick={() => toggleSort('data_type')}>
+                  <span className="flex items-center gap-1">Type <SortIcon field="data_type" /></span>
+                </TableHead>
+                <TableHead className="w-[100px]">Source</TableHead>
+                <TableHead className="cursor-pointer select-none w-[80px]" onClick={() => toggleSort('status')}>
+                  <span className="flex items-center gap-1">Status <SortIcon field="status" /></span>
+                </TableHead>
+                <TableHead className="cursor-pointer select-none w-[110px]" onClick={() => toggleSort('created_at')}>
+                  <span className="flex items-center gap-1">Created <SortIcon field="created_at" /></span>
+                </TableHead>
+                <TableHead className="w-[40px]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sorted.map((source) => (
+                <TableRow key={source.id}>
+                  <TableCell>
+                    <div className="min-w-0">
+                      <Link to={`/organizations/${orgId}/data-sources/${source.id}`} className="text-sm font-medium truncate hover:underline block">{source.title}</Link>
+                      {source.description && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{source.description}</p>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-[10px]">{dataTypeLabel(source.data_type)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {source.source_type === 'file' && source.file_name ? (
+                        <>
+                          <Upload className="h-3 w-3 shrink-0" />
+                          <span className="truncate max-w-[60px]">{source.file_name}</span>
+                          {source.file_size_bytes != null && (
+                            <span className="shrink-0">({formatFileSize(source.file_size_bytes)})</span>
+                          )}
+                        </>
+                      ) : source.source_type === 'file' ? (
+                        <>
+                          <Upload className="h-3 w-3 shrink-0" />
+                          <span>File</span>
+                        </>
+                      ) : source.source_type === 'text' ? (
+                        <>
+                          <FileText className="h-3 w-3 shrink-0" />
+                          <span>Text</span>
+                        </>
+                      ) : (
+                        <>
+                          <Database className="h-3 w-3 shrink-0" />
+                          <span>Integration</span>
+                        </>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>{statusBadge(source.status)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{formatDate(source.created_at)}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => { setEditingSource(source); setAddOpen(true); }}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleteTarget(source)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      <AddDataSourceDialog
+        orgId={orgId}
+        projectEntries={projectEntries}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        editingSource={editingSource}
+      />
+
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
+        sourceName={deleteTarget?.title ?? ''}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+        isPending={deleteMutation.isPending}
+      />
+    </div>
+  );
+}
+
+// ── Artifacts View ──────────────────────────────────────────────────────────
+
+function ArtifactsView({ orgId }: { orgId: string }) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const { data: artifacts = [], isLoading } = useQuery({
+    queryKey: ['recentArtifacts'],
+    queryFn: () => workflowsApi.listRecentArtifacts(),
+  });
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const parseContent = (content?: string) => {
+    if (!content) return null;
+    try { return JSON.parse(content); } catch { return content; }
+  };
+
+  const renderValue = (val: any): React.ReactNode => {
+    if (val === null || val === undefined) return <span className="text-muted-foreground italic">null</span>;
+    if (typeof val === 'string') return <span className="text-sm">{val}</span>;
+    if (typeof val === 'number' || typeof val === 'boolean') return <span className="text-sm font-mono">{String(val)}</span>;
+    if (Array.isArray(val)) {
+      return (
+        <div className="ml-3 space-y-1">
+          {val.map((item, i) => (
+            <div key={i} className="text-sm border-l-2 border-border/50 pl-2">
+              {typeof item === 'object' ? renderValue(item) : String(item)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (typeof val === 'object') {
+      return (
+        <div className="ml-3 space-y-1">
+          {Object.entries(val).map(([k, v]) => (
+            <div key={k}>
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{k.replace(/_/g, ' ')}: </span>
+              {typeof v === 'object' && v !== null ? renderValue(v) : <span className="text-sm">{String(v ?? '')}</span>}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return <span>{String(val)}</span>;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading artifacts...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <FileText className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Artifacts</h2>
+        <Badge variant="secondary">{artifacts.length}</Badge>
+      </div>
+
+      {artifacts.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No artifacts generated yet.</p>
+          <p className="text-xs mt-1">Run a workflow on a data source to generate artifacts.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {artifacts.map((artifact: ExecutionArtifact) => {
+            const isExpanded = expandedIds.has(artifact.id);
+            const meta = artifact.metadata ? (() => { try { return JSON.parse(artifact.metadata); } catch { return {}; } })() : {};
+            const content = parseContent(artifact.content ?? undefined);
+
+            return (
+              <Card key={artifact.id} className="bg-card/80 border-border/50">
+                <button
+                  className="flex items-center justify-between w-full p-4 text-left hover:bg-muted/30 transition-colors"
+                  onClick={() => toggleExpand(artifact.id)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{artifact.title || 'Untitled Artifact'}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Badge variant="outline" className="text-[10px]">{artifact.artifact_type}</Badge>
+                        {meta.step_id && <span className="text-xs text-muted-foreground">{meta.step_id.replace(/_/g, ' ')}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0 ml-2 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(artifact.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </button>
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t">
+                    <div className="mt-3">
+                      {content ? renderValue(content) : <p className="text-sm text-muted-foreground italic">No content.</p>}
+                    </div>
+                    {meta.data_source_id && (
+                      <div className="mt-3 pt-2 border-t border-border/30">
+                        <Link
+                          to={`/organizations/${orgId}/data-sources/${meta.data_source_id}`}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          View source data source
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Workflows Management View ───────────────────────────────────────────────
+
+interface PipelineNode {
+  id: string;
+  label: string;
+  agent?: string;
+  type: 'agent' | 'human' | 'parallel' | 'tool';
+  description: string;
+  tools?: string[];
+  parallel?: boolean;
+}
+
+interface PipelineBlueprint {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  color: string;
+  nodes: PipelineNode[];
+}
+
+const CONFERENCE_PIPELINE: PipelineBlueprint = {
+  id: 'conference_research',
+  name: 'Conference Research',
+  description: 'Full pipeline: conference intel → speaker/brand/side-event research (parallel) → article writing → QA → social publishing.',
+  category: 'Research',
+  color: 'blue',
+  nodes: [
+    { id: 'conf_intel', label: 'Conference Intel', agent: 'Scout', type: 'agent', description: 'Research event, venue, organizers, agenda, and key themes.' },
+    { id: 'speaker_res', label: 'Speaker Research', agent: 'Scout', type: 'parallel', description: 'Profile each speaker in parallel — bio, publications, LinkedIn, social presence.', parallel: true },
+    { id: 'brand_res', label: 'Brand Research', agent: 'Scout', type: 'parallel', description: 'Profile sponsors and brands in parallel — positioning, news, key contacts.', parallel: true },
+    { id: 'prod_team', label: 'Production Team', agent: 'Scout', type: 'agent', description: 'Identify AV production companies, photographers, and crew.' },
+    { id: 'comp_intel', label: 'Competitive Intel', agent: 'Scout', type: 'agent', description: 'Analyze competing events, positioning, and attendee overlap.' },
+    { id: 'side_events', label: 'Side Events Discovery', agent: 'Scout', type: 'parallel', description: 'Discover Lu.ma, Eventbrite, and Partiful side events in parallel.', parallel: true },
+    { id: 'articles', label: 'Article Writing', agent: 'Astra', type: 'agent', description: 'Write thought-leadership articles per speaker using research context.' },
+    { id: 'qa', label: 'QA Review', agent: 'Astra', type: 'agent', description: 'Quality-check all content for accuracy, tone, and brand alignment.' },
+    { id: 'social', label: 'Social Publishing', agent: 'Creative', type: 'agent', description: 'Schedule and publish posts across connected social accounts.' },
+  ],
+};
+
+const EDITRON_PIPELINE: PipelineBlueprint = {
+  id: 'editron',
+  name: 'Editron Production',
+  description: 'Video production pipeline: intake → scene detection (Maci) → audio/music (Sonix) → colour → assembly → review → export.',
+  category: 'Production',
+  color: 'amber',
+  nodes: [
+    { id: 'intake', label: 'Intake & Indexing', agent: 'Nora', type: 'agent', description: 'Receive footage from Nora task, generate proxy files for fast editing.', tools: ['FFmpeg', 'Proxy Manager'] },
+    { id: 'scene', label: 'Scene Detection', agent: 'Maci', type: 'agent', description: 'Shot selection via visual QC — detect scenes, label content, rank clips by quality.', tools: ['Maci', 'Visual QC'] },
+    { id: 'music', label: 'Music & Sound', agent: 'Sonix', type: 'tool', description: 'Audio engineering: music recommendations, loudness normalization, compression. Libraries: Artlist, Epidemic Sound, Soundstripe.', tools: ['Sonix', 'Artlist', 'Epidemic Sound', 'Soundstripe'] },
+    { id: 'color', label: 'Colour Grading', agent: 'Editron', type: 'tool', description: 'Apply LUT and colour grade presets matched to project brand guide.', tools: ['Colour Engine', 'LUTs'] },
+    { id: 'assembly', label: 'Edit Assembly', agent: 'Editron', type: 'agent', description: 'Assemble timeline — clips, transitions, music sync, markers. Output Premiere .prproj.', tools: ['Edit Assembly', 'Premiere Bridge'] },
+    { id: 'review', label: 'Human Review', agent: undefined, type: 'human', description: 'Creative director reviews cut, provides revision notes.' },
+    { id: 'export', label: 'Export & Deliver', agent: 'Editron', type: 'tool', description: 'Final encode via Media Encoder or FFmpeg. Deliver to client asset folder.', tools: ['Media Encoder', 'FFmpeg'] },
+  ],
+};
+
+const STATIC_PIPELINES = [CONFERENCE_PIPELINE, EDITRON_PIPELINE];
+
+const AGENT_COLORS: Record<string, string> = {
+  Scout: 'bg-blue-500/15 border-blue-500/40 text-blue-400',
+  Astra: 'bg-purple-500/15 border-purple-500/40 text-purple-400',
+  Creative: 'bg-pink-500/15 border-pink-500/40 text-pink-400',
+  Maci: 'bg-orange-500/15 border-orange-500/40 text-orange-400',
+  Sonix: 'bg-green-500/15 border-green-500/40 text-green-400',
+  Nora: 'bg-indigo-500/15 border-indigo-500/40 text-indigo-400',
+  Editron: 'bg-amber-500/15 border-amber-500/40 text-amber-400',
+  human: 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400',
+};
+
+function PipelineNodeCard({ node, isLast }: { node: PipelineNode; isLast: boolean }) {
+  const agentKey = node.type === 'human' ? 'human' : (node.agent ?? '');
+  const colorClass = AGENT_COLORS[agentKey] ?? 'bg-muted/50 border-border text-muted-foreground';
+
+  return (
+    <div className="flex items-start gap-0">
+      <div className={`relative border rounded-lg p-3 w-44 shrink-0 ${colorClass}`}>
+        {node.parallel && (
+          <div className="absolute -top-2 right-2">
+            <Badge variant="outline" className="text-[10px] px-1 py-0">parallel</Badge>
+          </div>
+        )}
+        <div className="font-medium text-sm leading-tight mb-1">{node.label}</div>
+        {node.agent && (
+          <div className="text-[10px] opacity-70 mb-1.5">{node.agent}</div>
+        )}
+        {node.type === 'human' && (
+          <div className="text-[10px] opacity-70 mb-1.5">Human Gate</div>
+        )}
+        <div className="text-[10px] opacity-60 leading-snug line-clamp-3">{node.description}</div>
+        {node.tools && node.tools.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {node.tools.map((t) => (
+              <span key={t} className="text-[9px] bg-black/20 rounded px-1 py-0.5">{t}</span>
+            ))}
+          </div>
+        )}
+      </div>
+      {!isLast && (
+        <div className="flex items-center self-center shrink-0 px-1">
+          <div className="w-6 h-px bg-border" />
+          <svg width="8" height="8" viewBox="0 0 8 8" className="text-muted-foreground shrink-0">
+            <path d="M0 4h6M3 1l3 3-3 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditableWorkflowsView({ orgId }: { orgId: string }) {
+  const queryClient = useQueryClient();
+  const { data: workflows = [], isLoading } = useQuery({
+    queryKey: ['workflowDefinitions'],
+    queryFn: () => workflowsApi.listDefinitions(),
+  });
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingWorkflow, setEditingWorkflow] = useState<WorkflowDefinition | null>(null);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: { id: string; name: string; description?: string; nodes: any[]; connections: any[] }) => {
+      if (editingWorkflow) {
+        return workflowsApi.updateDefinition(data.id, {
+          name: data.name,
+          description: data.description,
+          nodes: data.nodes,
+          connections: data.connections,
+        });
+      } else {
+        return workflowsApi.createDefinition({
+          ...data,
+          owner_type: 'organization',
+          owner_id: orgId,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+      setEditorOpen(false);
+      setEditingWorkflow(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => workflowsApi.deleteDefinition(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflowDefinitions'] });
+    },
+  });
+
+  const openNew = () => {
+    setEditingWorkflow(null);
+    setEditorOpen(true);
+  };
+
+  const openEdit = (wf: WorkflowDefinition) => {
+    setEditingWorkflow(wf);
+    setEditorOpen(true);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading workflows...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <GitBranch className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Workflows</h2>
+          <Badge variant="secondary">{workflows.length}</Badge>
+        </div>
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={openNew}>
+          <Plus className="h-3.5 w-3.5" />
+          New Workflow
+        </Button>
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        Workflows are data processing pipelines that extract structured information from data sources.
+        Run them from any data source detail page.
+      </p>
+
+      {workflows.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">No workflows defined yet.</p>
+          <Button size="sm" variant="outline" className="mt-3 gap-1.5" onClick={openNew}>
+            <Plus className="h-3.5 w-3.5" />
+            Create your first workflow
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {workflows.map((wf: WorkflowDefinition) => {
+            const nodeCount = wf.nodes?.length ?? 0;
+            return (
+              <Card
+                key={wf.id}
+                className="bg-card/80 border-border/50 hover:border-primary/30 transition-colors cursor-pointer"
+                onClick={() => openEdit(wf)}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <GitBranch className="h-4 w-4 text-purple-500" />
+                      <CardTitle className="text-base">{wf.name}</CardTitle>
+                      {wf.is_system && (
+                        <Badge variant="secondary" className="text-[10px]">System</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{nodeCount} node{nodeCount !== 1 ? 's' : ''}</Badge>
+                      {!wf.is_system && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete workflow "${wf.name}"?`)) {
+                              deleteMutation.mutate(wf.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {wf.description && (
+                    <CardDescription className="text-xs">{wf.description}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {(wf.nodes ?? []).map((node: any, idx: number) => {
+                      const inputs = (wf.connections ?? []).filter((c: any) => c.target === node.id);
+                      return (
+                        <div
+                          key={node.id}
+                          className="flex items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-xs"
+                        >
+                          <div className="w-4 h-4 rounded bg-primary/20 flex items-center justify-center text-[9px] font-bold">
+                            {idx + 1}
+                          </div>
+                          <span>{node.name}</span>
+                          {inputs.length > 0 && (
+                            <span className="text-muted-foreground">
+                              ({inputs.length} input{inputs.length !== 1 ? 's' : ''})
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <WorkflowEditorComponent
+        open={editorOpen}
+        onOpenChange={(v) => { setEditorOpen(v); if (!v) setEditingWorkflow(null); }}
+        workflow={editingWorkflow}
+        onSave={(data) => saveMutation.mutate(data)}
+        isSaving={saveMutation.isPending}
+      />
+    </div>
+  );
+}
+
+function PipelineView({ pipeline }: { pipeline: PipelineBlueprint }) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm text-muted-foreground">{pipeline.description}</p>
+        <div className="flex gap-3 mt-2 flex-wrap text-xs text-muted-foreground">
+          {['Scout', 'Astra', 'Maci', 'Sonix', 'Editron', 'Creative', 'Nora'].map((agent) => {
+            if (!pipeline.nodes.some((n) => n.agent === agent)) return null;
+            const c = AGENT_COLORS[agent] ?? '';
+            return (
+              <span key={agent} className={`inline-flex items-center gap-1 border rounded px-1.5 py-0.5 ${c}`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
+                {agent}
+              </span>
+            );
+          })}
+          {pipeline.nodes.some((n) => n.type === 'human') && (
+            <span className={`inline-flex items-center gap-1 border rounded px-1.5 py-0.5 ${AGENT_COLORS.human}`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
+              Human Gate
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="overflow-x-auto pb-2">
+        <div className="flex items-start gap-0 min-w-max">
+          {pipeline.nodes.map((node, i) => (
+            <PipelineNodeCard key={node.id} node={node} isLast={i === pipeline.nodes.length - 1} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplatePipelineView({ template }: { template: any }) {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">{template.description}</p>
+      <div className="space-y-6">
+        {(template.phases ?? []).map((phase: any, pi: number) => (
+          <div key={phase.name}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium shrink-0">{pi + 1}</div>
+              <div>
+                <div className="font-medium text-sm">{phase.name}</div>
+                <div className="text-xs text-muted-foreground">{phase.description}</div>
+              </div>
+              {phase.is_recurring && <Badge variant="outline" className="text-xs ml-auto">Recurring</Badge>}
+            </div>
+            <div className="overflow-x-auto pb-1 pl-8">
+              <div className="flex items-start gap-0 min-w-max">
+                {(phase.tasks ?? []).map((task: any, ti: number) => {
+                  const agentKey = task.task_type === 'human_review' ? 'human' : (task.agent_role ?? '');
+                  const colorClass = AGENT_COLORS[agentKey] ?? (task.task_type === 'human_review' ? AGENT_COLORS.human : 'bg-muted/50 border-border text-muted-foreground');
+                  const isLast = ti === phase.tasks.length - 1;
+                  return (
+                    <div key={task.title} className="flex items-start gap-0">
+                      <div className={`border rounded-lg p-2.5 w-40 shrink-0 ${colorClass}`}>
+                        {task.requires_approval && (
+                          <div className="text-[9px] mb-1 opacity-60">⛔ Gate</div>
+                        )}
+                        <div className="font-medium text-xs leading-tight mb-1">{task.title}</div>
+                        {task.agent_role && (
+                          <div className="text-[10px] opacity-60 capitalize">{task.agent_role}</div>
+                        )}
+                        {task.task_type === 'human_review' && (
+                          <div className="text-[10px] opacity-60">Human Review</div>
+                        )}
+                        {task.tags?.length > 0 && (
+                          <div className="flex flex-wrap gap-0.5 mt-1.5">
+                            {task.tags.slice(0, 2).map((t: string) => (
+                              <span key={t} className="text-[9px] bg-black/20 rounded px-1">{t}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {!isLast && (
+                        <div className="flex items-center self-center shrink-0 px-1">
+                          <div className="w-5 h-px bg-border" />
+                          <svg width="8" height="8" viewBox="0 0 8 8" className="text-muted-foreground shrink-0">
+                            <path d="M0 4h6M3 1l3 3-3 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ['workflowTemplates'],
+    queryFn: () =>
+      fetch(resolveApiUrl('/api/workflow-templates'), { credentials: 'include' })
+        .then((r) => r.json())
+        .then((res) => res?.data ?? []),
+  });
+
+  const allPipelines: Array<{ id: string; name: string; category: string; source: 'template' | 'static'; data: any }> = [
+    ...(templates as any[]).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      category: t.client_type === 'foundation_build' ? 'Client Engagement' : 'Client Engagement',
+      source: 'template' as const,
+      data: t,
+    })),
+    ...STATIC_PIPELINES.map((p) => ({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      source: 'static' as const,
+      data: p,
+    })),
+  ];
+
+  const selectedPipeline = allPipelines.find((p) => p.id === selected) ?? allPipelines[0] ?? null;
+
+  return (
+    <div className="flex gap-4 h-full min-h-[500px]">
+      {/* Sidebar */}
+      <div className="w-52 shrink-0 space-y-1">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 px-1">Workflows</div>
+        {allPipelines.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setSelected(p.id)}
+            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+              (selectedPipeline?.id === p.id)
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+            }`}
+          >
+            <div className="font-medium leading-tight">{p.name}</div>
+            <div className="text-[10px] opacity-60 mt-0.5">{p.category}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Pipeline canvas */}
+      <div className="flex-1 min-w-0 border border-border/50 rounded-xl bg-card/40 p-4 overflow-auto">
+        {selectedPipeline ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <GitBranch className="h-5 w-5 text-muted-foreground shrink-0" />
+              <div>
+                <h3 className="font-semibold">{selectedPipeline.name}</h3>
+                <div className="text-xs text-muted-foreground">{selectedPipeline.category}</div>
+              </div>
+            </div>
+            {selectedPipeline.source === 'static'
+              ? <PipelineView pipeline={selectedPipeline.data as PipelineBlueprint} />
+              : <TemplatePipelineView template={selectedPipeline.data} />
+            }
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground">
+            <div className="text-center">
+              <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">Select a workflow to view its pipeline</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+function KnowledgeTab({
+  orgId,
+  projectEntries,
+  view,
+}: {
+  orgId: string;
+  projectEntries: { id: string; name: string }[];
+  view?: string | null;
+}) {
   const knowledgeQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['projectKnowledge', entry.id],
       queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
       staleTime: 60_000,
-      enabled: projectEntries.length > 0,
     })),
   });
 
@@ -604,6 +1761,7 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
     let totalCoverage = 0;
     let coverageCount = 0;
     const sourcesByProject: { projectName: string; projectId: string; data: ProjectKnowledgeResponse }[] = [];
+    const byType: Record<string, { source: ProjectKnowledgeSource; projectName: string; projectId: string }[]> = {};
 
     knowledgeQueries.forEach((q, i) => {
       if (!q.data) return;
@@ -617,12 +1775,115 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
       if (q.data.total_sources > 0) {
         sourcesByProject.push({ projectName: entry.name, projectId: entry.id, data: q.data });
       }
+      Object.entries(q.data.sources_by_type).forEach(([type, sources]) => {
+        if (!byType[type]) byType[type] = [];
+        sources.forEach(s => byType[type].push({ source: s, projectName: entry.name, projectId: entry.id }));
+      });
     });
 
     const avgCompleteness = coverageCount > 0 ? Math.round((totalCoverage / coverageCount) * 100) : 0;
-    return { totalSources, staleSources, avgCompleteness, sourcesByProject };
+    return { totalSources, staleSources, avgCompleteness, sourcesByProject, byType };
   }, [knowledgeQueries, projectEntries]);
 
+  // Deep view: "datasources" shows the new data sources table; others filter knowledge by type
+  if (view && view !== 'overview') {
+    if (view === 'datasources') {
+      return (
+        <DataSourcesView
+          orgId={orgId}
+          projectEntries={projectEntries}
+        />
+      );
+    }
+
+    if (view === 'artifacts') {
+      return <ArtifactsView orgId={orgId} />;
+    }
+
+    if (view === 'workflows') {
+      return (
+        <div className="space-y-8">
+          <EditableWorkflowsView orgId={orgId} />
+          <div className="border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Network className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Pipeline Blueprints</h2>
+              <Badge variant="secondary" className="text-[10px]">Legacy</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Agent-based pipeline templates for client engagements and production workflows. These are read-only blueprints — use the workflow editor above to build custom pipelines.
+            </p>
+            <LegacyPipelinesView orgId={orgId} />
+          </div>
+        </div>
+      );
+    }
+
+    const typeKey =
+      view === 'conversations' ? 'conversation'
+      : view === 'pulse'      ? 'pulse_content'
+      : view === 'topology'   ? 'topology_snapshot'
+      : null;
+    const items = typeKey ? (aggregated.byType[typeKey] || []) : [];
+    const meta = typeKey ? SOURCE_TYPE_META[typeKey] : null;
+    const Icon = meta?.icon ?? BookOpen;
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Icon className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">{meta?.label ?? view}</h2>
+          <Badge variant="secondary">{items.length}</Badge>
+          {isLoading && (
+            <span className="text-xs text-muted-foreground ml-2">
+              Loading {loadedCount}/{projectEntries.length} projects…
+            </span>
+          )}
+        </div>
+        {items.length === 0 && !isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Icon className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>No {meta?.label.toLowerCase() ?? view} indexed yet</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {items.map(({ source, projectName, projectId }) => (
+              <Card key={source.id} className="bg-card/80 backdrop-blur-sm border-border/50">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{source.source_title}</p>
+                      {source.source_summary && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.source_summary}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <Link
+                          to={`/projects/${projectId}/knowledge`}
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                          {projectName}
+                        </Link>
+                        {source.is_stale && (
+                          <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">stale</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <Progress value={Math.round(source.coverage_score * 100)} className="w-16 h-1.5 mb-1" />
+                      <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}%</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Overview (default)
   return (
     <div className="space-y-6">
       {/* Summary cards */}
@@ -645,7 +1906,9 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
           <CardContent>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold">{aggregated.totalSources}</span>
-              <span className="text-sm text-muted-foreground">across {projectEntries.length} projects</span>
+              <span className="text-sm text-muted-foreground">
+                across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -661,6 +1924,28 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
         </Card>
       </div>
 
+      {/* Source type breakdown pills */}
+      {aggregated.totalSources > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {Object.entries(SOURCE_TYPE_META).map(([type, meta]) => {
+            const count = (aggregated.byType[type] || []).length;
+            if (count === 0) return null;
+            const Icon = meta.icon;
+            return (
+              <Card key={type} className="bg-card/80 backdrop-blur-sm border-border/50">
+                <CardContent className="p-3 flex items-center gap-3">
+                  <Icon className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="font-semibold text-sm">{count}</p>
+                    <p className="text-xs text-muted-foreground">{meta.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {isLoading && (
         <p className="text-xs text-muted-foreground">Loading {loadedCount}/{projectEntries.length} projects...</p>
       )}
@@ -669,7 +1954,14 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
       {aggregated.sourcesByProject.length === 0 && !isLoading ? (
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>No knowledge sources indexed yet</p>
+          <p>
+            {projectEntries.length === 0
+              ? 'No projects loaded — navigate to a project to index knowledge'
+              : 'No knowledge sources indexed yet'}
+          </p>
+          <p className="text-xs mt-1 opacity-70">
+            Use the sidebar Intelligence links to browse by category
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -727,6 +2019,8 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
   );
 }
 
+// ── Social Tab ────────────────────────────────────────────────────────────────
+
 const PLATFORM_ICONS: Record<string, typeof Linkedin> = {
   linkedin: Linkedin,
   instagram: Instagram,
@@ -743,7 +2037,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   youtube: 'text-[#FF0000]',
 };
 
-function SocialSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+function SocialTab({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
   const accountQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['social-accounts', entry.id],
@@ -957,652 +2251,556 @@ function SocialSection({ projectEntries }: { projectEntries: { id: string; name:
   );
 }
 
-// ── Pulse Section (used inside IntelligenceTab) ───────────────────────────────
+// ── Integrations Tab ─────────────────────────────────────────────────────────
 
-function PulseSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
-  const alertQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['pulse-alerts-org', entry.id],
-      queryFn: () => pulseApi.getAlerts(entry.id, 20),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const contentQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['pulse-content-org', entry.id],
-      queryFn: () => pulseApi.getLatestContent(entry.id, 10),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const aggregated = useMemo(() => {
-    const allAlerts: any[] = [];
-    const allContent: any[] = [];
-
-    alertQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      q.data.forEach((a: any) => allAlerts.push({ ...a, _projectName: entry.name }));
-    });
-
-    contentQueries.forEach((q, i) => {
-      if (!q.data?.items) return;
-      const entry = projectEntries[i];
-      q.data.items.forEach((c: any) => allContent.push({ ...c, _projectName: entry.name }));
-    });
-
-    allAlerts.sort((a, b) => new Date(b.triggered_at || b.created_at).getTime() - new Date(a.triggered_at || a.created_at).getTime());
-    allContent.sort((a, b) => new Date(b.collected_at || b.created_at).getTime() - new Date(a.collected_at || a.created_at).getTime());
-
-    const unacknowledged = allAlerts.filter(a => !a.acknowledged_at).length;
-
-    return { alerts: allAlerts.slice(0, 20), content: allContent.slice(0, 20), unacknowledged };
-  }, [alertQueries, contentQueries, projectEntries]);
-
+function IntegrationCard({
+  accent,
+  icon: Icon,
+  name,
+  description,
+  status,
+  statusLabel,
+  actions,
+  extra,
+}: {
+  accent: string;
+  icon: React.ElementType;
+  name: string;
+  description: string;
+  status: 'connected' | 'warning' | 'disconnected';
+  statusLabel?: string;
+  actions: React.ReactNode;
+  extra?: React.ReactNode;
+}) {
+  const barColor = status === 'connected' ? '#22c55e' : status === 'warning' ? '#f59e0b' : '#6b728040';
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Unacknowledged Alerts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className={`text-2xl font-bold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
-              {aggregated.unacknowledged}
-            </span>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Recent Signals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-bold">{aggregated.content.length}</span>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              Recent Alerts
-              {aggregated.unacknowledged > 0 && (
-                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {aggregated.alerts.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>No alerts</p>
+    <Card className="border-border/60 bg-card/80 overflow-hidden">
+      <div className="flex items-stretch">
+        <div className="w-1 shrink-0" style={{ backgroundColor: barColor }} />
+        <div className="flex-1 p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${accent}18`, border: `1px solid ${accent}30` }}>
+                <Icon className="h-5 w-5" style={{ color: accent }} />
               </div>
-            ) : (
-              <ScrollArea className="h-[300px]">
-                <div className="space-y-2 pr-3">
-                  {aggregated.alerts.map((alert: any) => (
-                    <div
-                      key={alert.id}
-                      className={`p-3 rounded-lg border border-border/50 ${!alert.acknowledged_at ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{alert.rule_name || 'Alert'}</p>
-                          {alert.message && (
-                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{alert.message}</p>
-                          )}
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="outline" className="text-[9px]">{alert._projectName}</Badge>
-                            <span className="text-[10px] text-muted-foreground">
-                              {formatDate(alert.triggered_at || alert.created_at)}
-                            </span>
-                          </div>
-                        </div>
-                        {!alert.acknowledged_at && (
-                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1" />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Radio className="h-4 w-4 text-blue-500" />
-              Latest Signals
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {aggregated.content.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Radio className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>No signals collected yet</p>
-              </div>
-            ) : (
-              <ScrollArea className="h-[300px]">
-                <div className="space-y-2 pr-3">
-                  {aggregated.content.map((item: any) => (
-                    <div key={item.id} className="p-3 rounded-lg border border-border/50">
-                      <p className="text-sm font-medium line-clamp-2">{item.title || item.content_preview || 'Signal'}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-[9px]">{item._projectName}</Badge>
-                        {item.source_name && (
-                          <span className="text-[10px] text-muted-foreground">{item.source_name}</span>
-                        )}
-                        <span className="text-[10px] text-muted-foreground ml-auto">
-                          {formatDate(item.collected_at || item.created_at)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-// ── Intelligence Tab (Social + Knowledge + Pulse combined) ────────────────────
-
-function IntelligenceTab({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
-  const [view, setView] = useState<'social' | 'knowledge' | 'pulse'>('social');
-
-  const viewOptions = [
-    { key: 'social' as const, label: 'Social', icon: Share2 },
-    { key: 'knowledge' as const, label: 'Knowledge Graph', icon: BookOpen },
-    { key: 'pulse' as const, label: 'Pulse Signals', icon: Radio },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit">
-        {viewOptions.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setView(key)}
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-              view === key
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {view === 'social' && <SocialSection projectEntries={projectEntries} />}
-      {view === 'knowledge' && <KnowledgeSection projectEntries={projectEntries} />}
-      {view === 'pulse' && <PulseSection projectEntries={projectEntries} />}
-    </div>
-  );
-}
-
-// ── Leads Tab ─────────────────────────────────────────────────────────────────
-
-function LeadsTab({ orgId }: { orgId: string }) {
-  const queryClient = useQueryClient();
-  const [inviteUrls, setInviteUrls] = useState<Record<string, string>>({});
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [inviteEmail, setInviteEmail] = useState<Record<string, string>>({});
-
-  const { data: leads = [], isLoading } = useQuery<PersonRecord[]>({
-    queryKey: ['org-leads', orgId],
-    queryFn: () => personsApi.list({ organization_id: orgId, limit: 200 }),
-    enabled: !!orgId,
-  });
-
-  const provisionMutation = useMutation({
-    mutationFn: (personId: string) => personsApi.provisionOrg(personId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-leads', orgId] });
-    },
-  });
-
-  const generateInviteMutation = useMutation({
-    mutationFn: ({ companyOrgId, email }: { companyOrgId: string; email?: string }) =>
-      organizationsApi.generateInvite(companyOrgId, email || undefined),
-    onSuccess: (data, variables) => {
-      setInviteUrls((prev) => ({ ...prev, [variables.companyOrgId]: data.invite_url }));
-    },
-  });
-
-  function copyUrl(orgId: string, url: string) {
-    navigator.clipboard.writeText(url);
-    setCopiedId(orgId);
-    setTimeout(() => setCopiedId(null), 2000);
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
-        Loading leads…
-      </div>
-    );
-  }
-
-  if (leads.length === 0) {
-    return (
-      <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-        <CardContent className="py-12 text-center text-muted-foreground">
-          <UserCircle className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p>No leads found for this organisation.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {leads.map((person) => (
-        <Card key={person.id} className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardContent className="py-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-semibold shrink-0">
-                  {person.full_name[0].toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <Link
-                    to={`/people/${person.id}`}
-                    className="text-sm font-medium hover:underline truncate block"
-                  >
-                    {person.full_name}
-                  </Link>
-                  {person.company_name && (
-                    <p className="text-xs text-muted-foreground">{person.company_name}</p>
-                  )}
-                  {person.job_title && (
-                    <p className="text-xs text-muted-foreground">{person.job_title}</p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                <Badge variant="outline" className="text-xs capitalize">
-                  {person.lifecycle_stage}
-                </Badge>
-                {person.lead_score > 0 && (
-                  <Badge variant="secondary" className="text-xs">
-                    Score {person.lead_score}
-                  </Badge>
-                )}
-              </div>
-            </div>
-
-            {/* Provision / Invite actions */}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {!person.company_org_id ? (
-                person.company_name ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs"
-                    disabled={provisionMutation.isPending}
-                    onClick={() => provisionMutation.mutate(person.id)}
-                  >
-                    <Building className="h-3 w-3 mr-1" />
-                    Provision Company Profile
-                  </Button>
-                ) : (
-                  <span className="text-xs text-muted-foreground italic">
-                    No company name — set one to provision.
-                  </span>
-                )
-              ) : (
-                <>
-                  <Link to={`/organizations/${person.company_org_id}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                    <Building className="h-3 w-3" />
-                    View company org
-                  </Link>
-                  {!inviteUrls[person.company_org_id] ? (
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="email"
-                        placeholder="Email (optional)"
-                        className="h-7 text-xs w-44"
-                        value={inviteEmail[person.company_org_id] ?? ''}
-                        onChange={(e) =>
-                          setInviteEmail((prev) => ({ ...prev, [person.company_org_id!]: e.target.value }))
-                        }
-                      />
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="text-xs h-7"
-                        disabled={generateInviteMutation.isPending}
-                        onClick={() =>
-                          generateInviteMutation.mutate({
-                            companyOrgId: person.company_org_id!,
-                            email: inviteEmail[person.company_org_id!] || undefined,
-                          })
-                        }
-                      >
-                        Generate Invite
-                      </Button>
-                    </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">{name}</span>
+                  {status === 'connected' ? (
+                    <Badge className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-emerald-200">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />{statusLabel ?? 'Connected'}
+                    </Badge>
+                  ) : status === 'warning' ? (
+                    <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200">
+                      <AlertCircle className="h-3 w-3 mr-1" />{statusLabel ?? 'Reauthorize'}
+                    </Badge>
                   ) : (
-                    <div className="flex items-center gap-1 max-w-full">
-                      <Input
-                        readOnly
-                        value={inviteUrls[person.company_org_id]}
-                        className="h-7 text-xs flex-1 min-w-0"
-                      />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2"
-                        onClick={() => copyUrl(person.company_org_id!, inviteUrls[person.company_org_id!])}
-                      >
-                        {copiedId === person.company_org_id ? (
-                          <Check className="h-3 w-3 text-green-500" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </Button>
-                    </div>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Not connected</Badge>
                   )}
-                </>
-              )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+            <div className="flex items-center gap-2 shrink-0">{actions}</div>
+          </div>
+          {extra}
+        </div>
+      </div>
+    </Card>
   );
 }
-
-// ── Members Tab ───────────────────────────────────────────────────────────────
-
-// ── Integrations Tab ────────────────────────────────────────────────────────
 
 function IntegrationsTab({ orgId }: { orgId: string }) {
-  const [disconnecting, setDisconnecting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const queryClient = useQueryClient();
+  const [connectingEmail, setConnectingEmail] = useState<string | null>(null);
+  const [qbSyncing, setQbSyncing] = useState(false);
+  const [qbDisconnecting, setQbDisconnecting] = useState(false);
 
-  const { data: qbStatus, isLoading: qbLoading, refetch: refetchQB } = useQuery({
-    queryKey: ['quickbooks-status', orgId],
+  // ── Email accounts (Gmail / Zoho) ─────────────────────────────────────────
+  const { data: emailAccounts = [], isLoading: emailLoading } = useQuery<EmailAccountRecord[]>({
+    queryKey: ['email-accounts-org', orgId],
+    queryFn: () => emailApi.listAccounts(undefined, undefined, 'organization', orgId),
+    staleTime: 30_000,
+  });
+
+  const handleEmailConnect = async (provider: string) => {
+    setConnectingEmail(provider);
+    try {
+      const redirectUri = `${window.location.origin}/oauth/${provider}/callback`;
+      const { auth_url } = await emailApi.initiateOAuth(null, provider, redirectUri, 'organization', orgId);
+      window.location.href = auth_url;
+    } catch {
+      setConnectingEmail(null);
+    }
+  };
+
+  const handleEmailDisconnect = async (id: string) => {
+    if (!confirm('Disconnect this email account?')) return;
+    await emailApi.deleteAccount(id);
+    queryClient.invalidateQueries({ queryKey: ['email-accounts-org', orgId] });
+  };
+
+  const handleEmailSync = async (id: string) => {
+    await emailApi.triggerSync(id);
+    queryClient.invalidateQueries({ queryKey: ['email-accounts-org', orgId] });
+  };
+
+  // ── QuickBooks ────────────────────────────────────────────────────────────
+  const { data: qbStatus, isLoading: qbLoading, refetch: refetchQb } = useQuery({
+    queryKey: ['qb-status-org', orgId],
     queryFn: () => quickbooksApi.getStatus(orgId),
     staleTime: 30_000,
   });
 
-  const handleConnect = () => {
-    const url = quickbooksApi.getConnectUrl(orgId);
-    window.location.href = url;
-  };
+  const handleQbConnect = () => { window.location.href = quickbooksApi.getConnectUrl(orgId); };
 
-  const handleDisconnect = async () => {
+  const handleQbDisconnect = async () => {
     if (!qbStatus?.account?.id) return;
     if (!confirm('Disconnect QuickBooks? Entity mappings will be removed.')) return;
-    setDisconnecting(true);
-    try {
-      await quickbooksApi.disconnect(qbStatus.account.id);
-      refetchQB();
-    } catch (e) {
-      console.error('Failed to disconnect QuickBooks:', e);
-    } finally {
-      setDisconnecting(false);
-    }
+    setQbDisconnecting(true);
+    try { await quickbooksApi.disconnect(qbStatus.account.id); refetchQb(); }
+    finally { setQbDisconnecting(false); }
   };
 
-  const handleSync = async () => {
+  const handleQbSync = async () => {
     if (!qbStatus?.account?.id) return;
-    setSyncing(true);
-    try {
-      await quickbooksApi.triggerSync(qbStatus.account.id);
-      refetchQB();
-    } catch (e) {
-      console.error('Sync failed:', e);
-    } finally {
-      setSyncing(false);
-    }
+    setQbSyncing(true);
+    try { await quickbooksApi.triggerSync(qbStatus?.account.id); refetchQb(); }
+    finally { setQbSyncing(false); }
   };
 
-  const handleRefreshToken = async () => {
+  const handleQbRefresh = async () => {
     if (!qbStatus?.account?.id) return;
+    try { await quickbooksApi.refreshToken(qbStatus.account.id); refetchQb(); }
+    catch { /* ignore */ }
+  };
+
+  // ── Airtable ──────────────────────────────────────────────────────────────
+  const { config, updateAndSaveConfig } = useUserSystem();
+  const [airtableToken, setAirtableToken] = useState(config?.airtable?.token ?? '');
+  const [airtableVerifying, setAirtableVerifying] = useState(false);
+  const [airtableError, setAirtableError] = useState<string | null>(null);
+  const isAirtableConnected = !!(config?.airtable?.token);
+
+  const handleAirtableSave = async () => {
+    if (!airtableToken) { setAirtableError('Enter your Personal Access Token'); return; }
+    setAirtableVerifying(true);
+    setAirtableError(null);
     try {
-      await quickbooksApi.refreshToken(qbStatus.account.id);
-      refetchQB();
-    } catch (e) {
-      console.error('Token refresh failed:', e);
+      const result = await airtableApi.verifyCredentials({ token: airtableToken });
+      if (result.valid) {
+        await updateAndSaveConfig({ airtable: { ...(config?.airtable ?? {}), token: airtableToken, user_email: result.user_email ?? null } as never });
+      } else {
+        setAirtableError('Token is invalid. Check permissions and try again.');
+      }
+    } catch (e: unknown) {
+      setAirtableError(e instanceof Error ? e.message : 'Verification failed');
+    } finally {
+      setAirtableVerifying(false);
     }
   };
 
-  const qbAccount = qbStatus?.account;
+  const handleAirtableDisconnect = async () => {
+    if (!confirm('Remove Airtable connection?')) return;
+    await updateAndSaveConfig({ airtable: { ...(config?.airtable ?? {}), token: '', user_email: null } as never });
+    setAirtableToken('');
+  };
+
+  const qbConnected = !qbLoading && !!qbStatus?.connected;
+  const qbNeedsReauth = !qbLoading && !!qbStatus?.needs_reauth;
+
+  const emailSections: { provider: string; label: string; accent: string; desc: string }[] = [
+    { provider: 'gmail',  label: 'Gmail',      accent: '#EA4335', desc: 'Unified inbox, Nora email access, and contact sync.' },
+    { provider: 'zoho',   label: 'Zoho Mail',  accent: '#C8202B', desc: 'Zoho Mail + CRM sync — operations and pipeline in lock-step.' },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-8">
       <div>
         <h2 className="text-lg font-semibold">Organization Integrations</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Connect external services at the organization level. These integrations are shared across all projects.
+          Org-level connections shared across all projects. Projects, users, and agents have their own independently configurable integrations.
         </p>
       </div>
 
-      {/* Accounting & Finance Section */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-50 to-blue-100">
-            <Wallet className="h-4 w-4 text-emerald-600" />
-          </span>
-          <div>
-            <h3 className="text-sm font-semibold">Accounting & Finance</h3>
-            <p className="text-xs text-muted-foreground">Invoicing, expenses, and cost tracking</p>
-          </div>
-        </div>
+      {/* ── Email ── */}
+      <section className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</h3>
+        {emailLoading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading…</div>}
+        {emailSections.map(({ provider, label, accent, desc }) => {
+          const account = emailAccounts.find(a => a.provider === provider);
+          const isConn = account?.status === 'active';
+          const isWarn = account?.status === 'needs_reauth';
+          return (
+            <IntegrationCard
+              key={provider}
+              accent={accent}
+              icon={Mail}
+              name={label}
+              description={account ? account.email_address : desc}
+              status={isConn ? 'connected' : isWarn ? 'warning' : 'disconnected'}
+              actions={
+                account ? (
+                  <>
+                    <button className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1" onClick={() => handleEmailSync(account.id)}>
+                      <RefreshCw className="h-3 w-3" />Sync
+                    </button>
+                    <button className="h-7 px-2.5 text-xs text-muted-foreground hover:text-destructive flex items-center gap-1" onClick={() => handleEmailDisconnect(account.id)}>
+                      <Trash2 className="h-3 w-3" />Remove
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5 disabled:opacity-50"
+                    disabled={connectingEmail === provider}
+                    onClick={() => handleEmailConnect(provider)}
+                  >
+                    {connectingEmail === provider ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plug className="h-3 w-3" />}
+                    Connect
+                  </button>
+                )
+              }
+              extra={account?.last_sync_at ? <p className="text-[11px] text-muted-foreground">Last sync {new Date(account.last_sync_at).toLocaleString()}</p> : undefined}
+            />
+          );
+        })}
+      </section>
 
-        {/* QuickBooks Card */}
-        <Card className="border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden">
-          <div className="flex items-stretch">
-            {/* Left accent bar */}
-            <div className={`w-1 shrink-0 ${
-              qbLoading ? 'bg-muted' :
-              qbStatus?.connected ? 'bg-emerald-500' :
-              qbStatus?.needs_reauth ? 'bg-amber-500' :
-              'bg-muted-foreground/20'
-            }`} />
+      {/* ── Accounting ── */}
+      <section className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Accounting & Finance</h3>
+        <IntegrationCard
+          accent="#2CA01C"
+          icon={FileText}
+          name="QuickBooks Online"
+          description={qbStatus?.account?.company_name ?? 'Sync invoices, customers, payments, and expenses with QuickBooks.'}
+          status={qbConnected ? 'connected' : qbNeedsReauth ? 'warning' : 'disconnected'}
+          statusLabel={qbConnected ? qbStatus?.account?.company_name ? 'Connected' : 'Connected' : undefined}
+          actions={
+            qbLoading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> :
+            qbConnected ? (
+              <>
+                <button className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1 disabled:opacity-50" onClick={handleQbSync} disabled={qbSyncing}>
+                  {qbSyncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}Sync
+                </button>
+                <button className="h-7 px-2.5 text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 disabled:opacity-50" onClick={handleQbDisconnect} disabled={qbDisconnecting}>
+                  <Trash2 className="h-3 w-3" />Disconnect
+                </button>
+              </>
+            ) : qbNeedsReauth ? (
+              <button className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1" onClick={handleQbRefresh}>
+                <RefreshCw className="h-3 w-3" />Reauthorize
+              </button>
+            ) : (
+              <button className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5" onClick={handleQbConnect}>
+                <Plug className="h-3 w-3" />Connect
+              </button>
+            )
+          }
+          extra={qbConnected && qbStatus?.account?.last_sync_at
+            ? <p className="text-[11px] text-muted-foreground">Last sync {new Date(qbStatus.account.last_sync_at).toLocaleString()}</p>
+            : undefined
+          }
+        />
+      </section>
 
-            <div className="flex-1 p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  {/* QB Logo placeholder */}
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#2CA01C]/10 border border-[#2CA01C]/20">
-                    <Receipt className="h-5 w-5 text-[#2CA01C]" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-semibold">QuickBooks Online</h4>
-                      {qbLoading ? (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                          Checking
-                        </Badge>
-                      ) : qbStatus?.connected ? (
-                        <Badge className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-emerald-200">
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                          Connected
-                        </Badge>
-                      ) : qbStatus?.needs_reauth ? (
-                        <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200">
-                          <AlertCircle className="h-3 w-3 mr-1" />
-                          Reauthorize
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                          Not connected
-                        </Badge>
-                      )}
-                    </div>
-                    {qbAccount?.company_name ? (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {qbAccount.company_name}
-                        <span className="text-muted-foreground/60 ml-1.5">
-                          Realm {qbAccount.realm_id}
-                        </span>
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Sync invoices, customers, expenses & orchestrator costs with QuickBooks
-                      </p>
-                    )}
-                  </div>
+      {/* ── Productivity ── */}
+      <section className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Productivity & Data</h3>
+
+        {/* Airtable */}
+        <IntegrationCard
+          accent="#FF0000"
+          icon={FileText}
+          name="Airtable"
+          description={isAirtableConnected && config?.airtable?.user_email ? config.airtable.user_email : 'Connect Airtable with a Personal Access Token to give Nora and agents access to your bases.'}
+          status={isAirtableConnected ? 'connected' : 'disconnected'}
+          actions={
+            isAirtableConnected ? (
+              <button className="h-7 px-2.5 text-xs text-muted-foreground hover:text-destructive flex items-center gap-1" onClick={handleAirtableDisconnect}>
+                <Trash2 className="h-3 w-3" />Remove
+              </button>
+            ) : null
+          }
+          extra={
+            !isAirtableConnected ? (
+              <div className="space-y-2 pt-1">
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={airtableToken}
+                    onChange={e => setAirtableToken(e.target.value)}
+                    placeholder="patXXXXXXXXXXXXXX"
+                    className="flex-1 h-8 px-3 text-xs border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <button
+                    className="h-8 px-3 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5 disabled:opacity-50"
+                    onClick={handleAirtableSave}
+                    disabled={airtableVerifying || !airtableToken}
+                  >
+                    {airtableVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                    Verify & Save
+                  </button>
                 </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2">
-                  {!qbLoading && qbStatus?.connected && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSync}
-                        disabled={syncing}
-                        className="h-8 text-xs"
-                      >
-                        {syncing ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                        )}
-                        Sync
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleDisconnect}
-                        disabled={disconnecting}
-                        className="h-8 text-xs text-muted-foreground hover:text-destructive"
-                      >
-                        <Unplug className="h-3.5 w-3.5 mr-1.5" />
-                        Disconnect
-                      </Button>
-                    </>
-                  )}
-                  {!qbLoading && qbStatus?.needs_reauth && (
-                    <Button size="sm" onClick={handleRefreshToken} className="h-8 text-xs">
-                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                      Reauthorize
-                    </Button>
-                  )}
-                  {!qbLoading && !qbStatus?.connected && !qbStatus?.needs_reauth && (
-                    <Button size="sm" onClick={handleConnect} className="h-8 text-xs">
-                      <Plug className="h-3.5 w-3.5 mr-1.5" />
-                      Connect QuickBooks
-                    </Button>
-                  )}
-                </div>
+                {airtableError && <p className="text-[11px] text-destructive">{airtableError}</p>}
+                <p className="text-[11px] text-muted-foreground">
+                  Create a token at <span className="text-primary">airtable.com/create/tokens</span> with <code className="bg-muted px-1 rounded">data.records:read</code> + <code className="bg-muted px-1 rounded">schema.bases:read</code> scopes.
+                </p>
               </div>
+            ) : undefined
+          }
+        />
 
-              {/* Connected: Show sync scope & stats */}
-              {qbAccount && qbStatus?.connected && (
-                <div className="mt-4 pt-4 border-t border-border/40">
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    {[
-                      { key: 'invoices', label: 'Invoices', icon: Receipt, enabled: qbAccount.sync_invoices === 1 },
-                      { key: 'customers', label: 'Customers', icon: Contact2, enabled: qbAccount.sync_customers === 1 },
-                      { key: 'payments', label: 'Payments', icon: CreditCard, enabled: qbAccount.sync_payments === 1 },
-                      { key: 'expenses', label: 'Expenses', icon: Wallet, enabled: qbAccount.sync_expenses === 1 },
-                      { key: 'time', label: 'Time Tracking', icon: Timer, enabled: qbAccount.sync_time_tracking === 1 },
-                    ].map(({ key, label, icon: ScopeIcon, enabled }) => (
-                      <div
-                        key={key}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
-                          enabled
-                            ? 'border-emerald-200/60 bg-emerald-50/50 text-emerald-700'
-                            : 'border-border/40 bg-muted/30 text-muted-foreground'
-                        }`}
-                      >
-                        <ScopeIcon className="h-3.5 w-3.5 shrink-0" />
-                        <span className="font-medium">{label}</span>
-                        {enabled ? (
-                          <CheckCircle2 className="h-3 w-3 ml-auto shrink-0" />
-                        ) : (
-                          <span className="ml-auto text-[10px] opacity-60">Off</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+        {/* Dropbox */}
+        <IntegrationCard
+          accent="#0061FF"
+          icon={FileText}
+          name="Dropbox"
+          description="Connect Dropbox folders as knowledge sources and asset storage for projects."
+          status="disconnected"
+          statusLabel="Coming soon"
+          actions={
+            <span className="text-[11px] text-muted-foreground italic">Configure per-project</span>
+          }
+        />
 
-                  <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {qbAccount.last_sync_at
-                        ? `Last synced ${new Date(qbAccount.last_sync_at).toLocaleString()}`
-                        : 'Never synced'}
-                    </span>
-                    <span className="text-muted-foreground/40">|</span>
-                    <span>
-                      Environment: <span className="font-medium capitalize">{qbAccount.environment}</span>
-                    </span>
-                    <span className="text-muted-foreground/40">|</span>
-                    <span>
-                      Sync every <span className="font-medium">{qbAccount.sync_frequency_minutes}m</span>
-                    </span>
-                  </div>
+        {/* OneDrive */}
+        <IntegrationCard
+          accent="#0078D4"
+          icon={FileText}
+          name="OneDrive"
+          description="Access Microsoft OneDrive files as knowledge sources and shared asset storage across projects."
+          status="disconnected"
+          statusLabel="Coming soon"
+          actions={
+            <span className="text-[11px] text-muted-foreground italic">Not yet configured</span>
+          }
+        />
 
-                  {qbAccount.last_error && (
-                    <div className="mt-3 flex items-start gap-2 text-xs text-amber-700 bg-amber-50 rounded-lg p-2.5 border border-amber-200/60">
-                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                      <span>{qbAccount.last_error}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </Card>
-      </div>
+        {/* GitHub */}
+        <IntegrationCard
+          accent="#24292e"
+          icon={FileText}
+          name="GitHub"
+          description="Link repositories to projects. Agents can read code, create PRs, and browse issues."
+          status="disconnected"
+          statusLabel="Coming soon"
+          actions={
+            <span className="text-[11px] text-muted-foreground italic">Configure per-project</span>
+          }
+        />
+      </section>
 
-      {/* Future: More org-level integrations */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-50 to-purple-100">
-            <Settings2 className="h-4 w-4 text-slate-600" />
-          </span>
-          <div>
-            <h3 className="text-sm font-semibold">More Integrations</h3>
-            <p className="text-xs text-muted-foreground">Additional org-level services coming soon</p>
-          </div>
-        </div>
+      {/* ── Social ── */}
+      <SocialSection />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {[
-            { name: 'Stripe', desc: 'Payment processing & billing', icon: CreditCard, color: 'text-purple-500' },
-            { name: 'Xero', desc: 'Alternative accounting platform', icon: Receipt, color: 'text-blue-500' },
-            { name: 'HubSpot', desc: 'CRM & marketing automation', icon: Target, color: 'text-orange-500' },
-          ].map(({ name, desc, icon: PlaceholderIcon, color }) => (
-            <Card key={name} className="border-dashed border-border/40 bg-muted/20">
-              <CardContent className="flex items-center gap-3 py-4 px-4">
-                <PlaceholderIcon className={`h-5 w-5 ${color} opacity-40`} />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground/60">{name}</p>
-                  <p className="text-xs text-muted-foreground/40">{desc}</p>
-                </div>
-                <Badge variant="outline" className="text-[10px] text-muted-foreground/40 border-border/30">
-                  Soon
-                </Badge>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
+      {/* ── Communication ── */}
+      <CommunicationSection />
+
+      {/* ── Commerce ── */}
+      <section className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Commerce</h3>
+        <IntegrationCard
+          accent="#635BFF"
+          icon={DollarSign}
+          name="Stripe"
+          description="Sync payments, subscriptions, and invoices. Enable Stripe billing for clients."
+          status="disconnected"
+          statusLabel="Coming soon"
+          actions={<span className="text-[11px] text-muted-foreground italic">Not yet configured</span>}
+        />
+        <IntegrationCard
+          accent="#96BF48"
+          icon={Boxes}
+          name="Shopify"
+          description="Connect your Shopify store for order and product data access by agents."
+          status="disconnected"
+          statusLabel="Coming soon"
+          actions={<span className="text-[11px] text-muted-foreground italic">Not yet configured</span>}
+        />
+        <IntegrationCard
+          accent="#7C3AED"
+          icon={DollarSign}
+          name="VIBE Wallet"
+          description="Manage on-chain VIBE token balances and project funding via the Aptos network."
+          status="connected"
+          statusLabel="Active"
+          actions={
+            <Link to="/settings/wallet" className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5">
+              <ExternalLink className="h-3 w-3" />Wallet Settings
+            </Link>
+          }
+        />
+      </section>
+
+      {/* ── Development ── */}
+      <DevelopmentSection />
     </div>
   );
 }
+
+// ── Social Section ────────────────────────────────────────────────────────────
+function SocialSection() {
+  const socialPlatforms: { name: string; icon: React.ElementType; accent: string; desc: string }[] = [
+    { name: 'Instagram',  icon: Instagram,    accent: '#E1306C', desc: 'Schedule posts, track mentions, and monitor engagement.' },
+    { name: 'LinkedIn',   icon: Linkedin,     accent: '#0A66C2', desc: 'Company page management, posts, and B2B lead tracking.' },
+    { name: 'X / Twitter', icon: Twitter,    accent: '#000000', desc: 'Post scheduling, mention monitoring, and DM management.' },
+    { name: 'Facebook',   icon: Facebook,     accent: '#1877F2', desc: 'Page management, ads integration, and audience insights.' },
+    { name: 'YouTube',    icon: Youtube,      accent: '#FF0000', desc: 'Channel analytics, comment monitoring, and content sync.' },
+    { name: 'TikTok',     icon: Share2,       accent: '#010101', desc: 'Video scheduling and performance analytics.' },
+    { name: 'Threads',    icon: MessageSquare, accent: '#101010', desc: 'Thread management and audience engagement.' },
+    { name: 'Bluesky',    icon: Share2,       accent: '#0085FF', desc: 'Decentralised social — post scheduling and monitoring.' },
+    { name: 'Pinterest',  icon: Share2,       accent: '#E60023', desc: 'Pin management, board sync, and product catalogue.' },
+  ];
+
+  return (
+    <section className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Social Media</h3>
+      <p className="text-xs text-muted-foreground">
+        Social accounts are connected per-project to keep brand identities scoped. Visit a project's settings to connect individual platforms.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {socialPlatforms.map(({ name, icon: Icon, accent, desc }) => (
+          <div
+            key={name}
+            className="flex items-start gap-3 p-3 rounded-lg border border-border/60 bg-card/60"
+          >
+            <div className="w-1 self-stretch rounded-full shrink-0" style={{ background: accent }} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <Icon className="h-4 w-4 shrink-0" style={{ color: accent }} />
+                <span className="text-sm font-medium">{name}</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{desc}</p>
+            </div>
+            <span className="text-[11px] text-muted-foreground italic shrink-0 mt-0.5">Per-project</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ── Communication Section ────────────────────────────────────────────────────
+function CommunicationSection() {
+  const { data: discordSessions = [] } = useQuery<DiscordSessionSummary[]>({
+    queryKey: ['discord-active-sessions'],
+    queryFn: () => discordApi.activeSessions(),
+    staleTime: 30_000,
+  });
+
+  return (
+    <section className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Communication</h3>
+
+      {/* Discord */}
+      <IntegrationCard
+        accent="#5865F2"
+        icon={MessageSquare}
+        name="Discord"
+        description={
+          discordSessions.length > 0
+            ? `${discordSessions.length} active voice session${discordSessions.length !== 1 ? 's' : ''} — Nora is listening`
+            : 'Nora joins voice channels and transcribes meetings. Configure in bot settings.'
+        }
+        status={discordSessions.length > 0 ? 'connected' : 'disconnected'}
+        statusLabel={discordSessions.length > 0 ? 'Active' : 'Idle'}
+        actions={
+          <Link to="/discord" className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5">
+            <ExternalLink className="h-3 w-3" />Manage Sessions
+          </Link>
+        }
+        extra={
+          discordSessions.length > 0 ? (
+            <div className="space-y-1 pt-1">
+              {discordSessions.slice(0, 3).map(s => (
+                <p key={s.meeting_session_id} className="text-[11px] text-muted-foreground">
+                  #{s.channel_name} · {s.guild_id}
+                </p>
+              ))}
+            </div>
+          ) : undefined
+        }
+      />
+
+      {/* Twilio */}
+      <IntegrationCard
+        accent="#F22F46"
+        icon={Radio}
+        name="Twilio (Nora Phone)"
+        description="Nora answers inbound calls and SMS. Outbound calling for CRM outreach."
+        status="connected"
+        statusLabel="Active"
+        actions={
+          <span className="text-[11px] text-muted-foreground italic">Managed via environment config</span>
+        }
+      />
+    </section>
+  );
+}
+
+// ── Development Section ───────────────────────────────────────────────────────
+function DevelopmentSection() {
+  const { data: ghStatus } = useQuery<string>({
+    queryKey: ['github-token-status'],
+    queryFn: () => githubAuthApi.checkGithubToken() as unknown as Promise<string>,
+    staleTime: 60_000,
+  });
+
+  const ghConnected = ghStatus === 'VALID';
+
+  return (
+    <section className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Development</h3>
+
+      {/* GitHub */}
+      <IntegrationCard
+        accent="#24292e"
+        icon={FileText}
+        name="GitHub"
+        description={ghConnected ? 'GitHub account connected — agents can read repos, create PRs, and browse issues.' : 'Link your GitHub account so agents can read repos, create PRs, and browse issues.'}
+        status={ghConnected ? 'connected' : 'disconnected'}
+        actions={
+          ghConnected ? (
+            <span className="text-[11px] text-muted-foreground italic">Connected via agent settings</span>
+          ) : (
+            <Link to="/settings/agents" className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5">
+              <Plug className="h-3 w-3" />Connect in Agent Settings
+            </Link>
+          )
+        }
+      />
+
+      {/* Virtual Environment */}
+      <IntegrationCard
+        accent="#06B6D4"
+        icon={Boxes}
+        name="Virtual Environment"
+        description="Sandboxed containers for agent code execution, shell access, and file operations."
+        status="connected"
+        statusLabel="Active"
+        actions={
+          <Link to="/virtual-environment" className="h-7 px-2.5 text-xs border rounded-md hover:bg-accent flex items-center gap-1.5">
+            <ExternalLink className="h-3 w-3" />Open
+          </Link>
+        }
+      />
+
+      {/* Zapier / Webhooks placeholder */}
+      <IntegrationCard
+        accent="#FF4A00"
+        icon={Network}
+        name="Zapier / Webhooks"
+        description="Connect any external tool via Zapier automations or custom HTTP webhooks."
+        status="disconnected"
+        statusLabel="Coming soon"
+        actions={<span className="text-[11px] text-muted-foreground italic">Not yet configured</span>}
+      />
+    </section>
+  );
+}
+
+// ── Members Tab ───────────────────────────────────────────────────────────────
 
 function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
   const { data: members = [] } = useQuery<OrgMember[]>({
@@ -1664,12 +2862,14 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
   const tabFromUrl = searchParams.get('tab') || defaultTab || 'overview';
   const pipelineFromUrl = searchParams.get('pipeline') || defaultPipeline;
   const clientFilter = searchParams.get('client');
+  const viewFromUrl = searchParams.get('view');
 
   const setTab = (tab: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('tab', tab);
     if (tab !== 'pipelines') params.delete('pipeline');
     if (tab !== 'projects') params.delete('client');
+    if (tab !== 'knowledge') params.delete('view');
     setSearchParams(params, { replace: true });
   };
 
@@ -1710,12 +2910,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     staleTime: 60_000,
   });
 
-  const { data: orgPersons = [] } = useQuery<PersonRecord[]>({
-    queryKey: ['org-persons', orgId],
-    queryFn: () => personsApi.list({ organization_id: orgId!, limit: 500 }),
-    enabled: !!orgId,
-    staleTime: 60_000,
-  });
+  const { contacts } = useOrgContacts(orgId);
 
   const sidebarOrg = sidebarTree
     ? [...(sidebarTree.owned_orgs || []), ...(sidebarTree.member_orgs || [])].find(o => o.id === orgId)
@@ -1723,13 +2918,11 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
   const allProjects = useMemo(() => {
     if (!sidebarOrg) return [];
+    const collectProjects = (projects: any[]): any[] =>
+      projects.flatMap((p: any) => [p, ...collectProjects(p.children || [])]);
     return [
-      ...(sidebarOrg.internal_projects || []),
-      ...(sidebarOrg.internal_folders || []).flatMap((f: any) => f.projects),
-      ...(sidebarOrg.clients || []).flatMap((c: any) => [
-        ...(c.projects || []),
-        ...(c.folders || []).flatMap((f: any) => f.projects),
-      ]),
+      ...collectProjects(sidebarOrg.internal_projects || []),
+      ...(sidebarOrg.clients || []).flatMap((c: any) => collectProjects(c.projects || [])),
     ];
   }, [sidebarOrg]);
 
@@ -1811,21 +3004,21 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <FolderOpen className="h-4 w-4 mr-2" />
                 Projects
               </TabsTrigger>
-              <TabsTrigger value="intelligence">
+              <TabsTrigger value="social">
+                <Share2 className="h-4 w-4 mr-2" />
+                Social
+              </TabsTrigger>
+              <TabsTrigger value="knowledge">
                 <Brain className="h-4 w-4 mr-2" />
                 Intelligence
-              </TabsTrigger>
-              <TabsTrigger value="integrations">
-                <Plug className="h-4 w-4 mr-2" />
-                Integrations
               </TabsTrigger>
               <TabsTrigger value="members">
                 <Users className="h-4 w-4 mr-2" />
                 Members
               </TabsTrigger>
-              <TabsTrigger value="leads">
-                <UserCircle className="h-4 w-4 mr-2" />
-                Leads
+              <TabsTrigger value="integrations">
+                <Plug className="h-4 w-4 mr-2" />
+                Integrations
               </TabsTrigger>
             </TabsList>
             <Link
@@ -1846,7 +3039,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 memberCount={members.length}
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
-                contactCount={orgPersons.length}
+                contactCount={contacts.length}
                 onSwitchTab={setTab}
               />
             </TabsContent>
@@ -1868,20 +3061,24 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               />
             </TabsContent>
 
-            <TabsContent value="intelligence">
-              <IntelligenceTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
+            <TabsContent value="social">
+              <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
             </TabsContent>
 
-            <TabsContent value="integrations">
-              <IntegrationsTab orgId={orgId} />
+            <TabsContent value="knowledge">
+              <KnowledgeTab
+                orgId={orgId!}
+                projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
+                view={viewFromUrl}
+              />
             </TabsContent>
 
             <TabsContent value="members">
               <MembersTab orgId={orgId} orgName={org.name} />
             </TabsContent>
 
-            <TabsContent value="leads">
-              <LeadsTab orgId={orgId} />
+            <TabsContent value="integrations">
+              <IntegrationsTab orgId={orgId} />
             </TabsContent>
           </Tabs>
         </div>

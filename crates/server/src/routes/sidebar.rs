@@ -36,17 +36,8 @@ pub struct SidebarOrg {
     pub knowledge_completeness: Option<f64>,
     pub last_activity_at: Option<String>,
     pub internal_projects: Vec<SidebarProject>,
-    pub internal_folders: Vec<SidebarProjectFolder>,
     pub clients: Vec<SidebarClient>,
     pub shared_boards: Vec<SidebarSharedBoardGroup>,
-}
-
-#[derive(Debug, Serialize, TS)]
-#[ts(export)]
-pub struct SidebarProjectFolder {
-    pub id: String,
-    pub name: String,
-    pub projects: Vec<SidebarProject>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -82,7 +73,6 @@ pub struct SidebarClient {
     pub crm_person_id: Option<String>,
     pub crm_confidence: Option<f64>,
     pub projects: Vec<SidebarProject>,
-    pub folders: Vec<SidebarProjectFolder>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -90,6 +80,8 @@ pub struct SidebarClient {
 pub struct SidebarProject {
     pub id: String,
     pub name: String,
+    pub is_container: bool,
+    pub children: Vec<SidebarProject>,
     pub health_status: Option<String>,
     pub active_issues_count: Option<i64>,
     pub knowledge_completeness: Option<f64>,
@@ -113,19 +105,14 @@ struct ClientRow {
     crm_confidence: Option<f64>,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 struct ProjectRow {
     id: Vec<u8>,
     name: String,
+    git_repo_path: String,
     client_id: Option<Vec<u8>>,
-    folder_id: Option<Vec<u8>>,
-}
-
-#[derive(Debug, sqlx::FromRow)]
-struct FolderRow {
-    id: Vec<u8>,
-    name: String,
-    client_id: Option<Vec<u8>>,
+    parent_project_id: Option<Vec<u8>>,
+    sort_order: i32,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -142,6 +129,16 @@ struct SharedBoardRow {
 
 fn uuid_from_bytes(bytes: &[u8]) -> Option<Uuid> {
     Uuid::from_slice(bytes).ok()
+}
+
+/// Collect all SidebarProject references recursively (for health rollup)
+fn collect_all_projects(projects: &[SidebarProject]) -> Vec<&SidebarProject> {
+    let mut result = Vec::new();
+    for p in projects {
+        result.push(p);
+        result.extend(collect_all_projects(&p.children));
+    }
+    result
 }
 
 /// Rollup health across a collection of projects:
@@ -206,6 +203,38 @@ fn rollup_health(
     )
 }
 
+/// Build a recursive project tree from a flat list of ProjectRow items.
+/// Returns top-level projects (those with parent_project_id matching the given filter).
+fn build_project_tree(
+    project_rows: &[ProjectRow],
+    health_map: &std::collections::HashMap<String, ProjectHealthSummary>,
+    parent_id: Option<&[u8]>,
+) -> Vec<SidebarProject> {
+    let mut projects: Vec<SidebarProject> = project_rows
+        .iter()
+        .filter(|p| p.parent_project_id.as_deref() == parent_id)
+        .filter_map(|proj| {
+            let proj_uuid = uuid_from_bytes(&proj.id)?;
+            let proj_id = proj_uuid.to_string();
+            let health = health_map.get(&proj_id);
+            let children = build_project_tree(project_rows, health_map, Some(&proj.id));
+            let is_container = proj.git_repo_path.is_empty() || proj.git_repo_path.starts_with("container:");
+            Some(SidebarProject {
+                id: proj_id,
+                name: proj.name.clone(),
+                is_container,
+                children,
+                health_status: health.map(|h| h.health_status.clone()),
+                active_issues_count: health.map(|h| h.active_issues_count),
+                knowledge_completeness: health.map(|h| h.knowledge_completeness),
+                last_activity_at: health.and_then(|h| h.last_activity_at.clone()),
+            })
+        })
+        .collect();
+    projects.sort_by(|a, b| a.name.cmp(&b.name));
+    projects
+}
+
 /// GET /api/sidebar/tree
 pub async fn get_sidebar_tree(
     Extension(access_context): Extension<AccessContext>,
@@ -253,10 +282,12 @@ pub async fn get_sidebar_tree(
         };
         let org_id_bytes = org_id.as_bytes().to_vec();
 
-        // Get projects for this org (now including folder_id)
+        // Get projects for this org (with parent_project_id for tree building)
         let project_rows: Vec<ProjectRow> = if access_context.is_admin {
             sqlx::query_as::<_, ProjectRow>(
-                r#"SELECT id, name, client_id, folder_id FROM projects WHERE organization_id = ? AND deleted_at IS NULL ORDER BY name ASC"#,
+                r#"SELECT id, name, git_repo_path, client_id, parent_project_id, sort_order
+                   FROM projects WHERE organization_id = ? AND deleted_at IS NULL
+                   ORDER BY sort_order ASC, name ASC"#,
             )
             .bind(&org_id_bytes)
             .fetch_all(pool)
@@ -264,13 +295,14 @@ pub async fn get_sidebar_tree(
             .unwrap_or_default()
         } else {
             sqlx::query_as::<_, ProjectRow>(
-                r#"SELECT DISTINCT p.id, p.name, p.client_id, p.folder_id FROM projects p
+                r#"SELECT DISTINCT p.id, p.name, p.git_repo_path, p.client_id, p.parent_project_id, p.sort_order
+                   FROM projects p
                    WHERE p.organization_id = ? AND p.deleted_at IS NULL AND (
                        p.id IN (SELECT pm.project_id FROM project_members pm WHERE pm.user_id = ?)
                        OR p.organization_id IN (SELECT om.organization_id FROM organization_members om WHERE om.user_id = ?)
                        OR p.client_id IN (SELECT cm.client_id FROM client_members cm WHERE cm.user_id = ?)
                    )
-                   ORDER BY p.name ASC"#,
+                   ORDER BY p.sort_order ASC, p.name ASC"#,
             )
             .bind(&org_id_bytes)
             .bind(&user_id_bytes)
@@ -295,130 +327,37 @@ pub async fn get_sidebar_tree(
         .await
         .unwrap_or_default();
 
-        // Get folders for this org
-        let folder_rows: Vec<FolderRow> = sqlx::query_as::<_, FolderRow>(
-            r#"SELECT id, name, client_id FROM project_folders
-               WHERE organization_id = ? AND is_active = 1
-               ORDER BY sort_order ASC, name ASC"#,
-        )
-        .bind(&org_id_bytes)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
-
         // Batch fetch health data for all projects in this org
         let all_project_ids: Vec<Vec<u8>> = project_rows.iter().map(|p| p.id.clone()).collect();
         let health_map = ProjectKnowledgeSource::get_health_batch(pool, &all_project_ids)
             .await
             .unwrap_or_default();
 
-        // Helper to build SidebarProject with health data
-        let make_sidebar_proj = |proj: &ProjectRow| -> Option<SidebarProject> {
-            let proj_uuid = uuid_from_bytes(&proj.id)?;
-            let proj_id = proj_uuid.to_string();
-            let health = health_map.get(&proj_id);
-            Some(SidebarProject {
-                id: proj_id,
-                name: proj.name.clone(),
-                health_status: health.map(|h| h.health_status.clone()),
-                active_issues_count: health.map(|h| h.active_issues_count),
-                knowledge_completeness: health.map(|h| h.knowledge_completeness),
-                last_activity_at: health.and_then(|h| h.last_activity_at.clone()),
-            })
-        };
-
-        // Separate projects by client_id and folder_id
-        let mut internal_loose_projects: Vec<SidebarProject> = Vec::new();
-        let mut internal_folder_projects: std::collections::HashMap<Vec<u8>, Vec<SidebarProject>> =
-            std::collections::HashMap::new();
-        let mut client_loose_projects: std::collections::HashMap<Vec<u8>, Vec<SidebarProject>> =
-            std::collections::HashMap::new();
-        let mut client_folder_projects: std::collections::HashMap<Vec<u8>, Vec<SidebarProject>> =
-            std::collections::HashMap::new();
-
-        for proj in &project_rows {
-            let sidebar_proj = match make_sidebar_proj(proj) {
-                Some(sp) => sp,
-                None => continue,
-            };
-
-            match (&proj.client_id, &proj.folder_id) {
-                (Some(cid), Some(fid)) => {
-                    // Client project in a folder
-                    client_folder_projects
-                        .entry(fid.clone())
-                        .or_default()
-                        .push(sidebar_proj);
-                    // Also ensure client gets a reference even if empty later
-                    client_loose_projects.entry(cid.clone()).or_default();
-                }
-                (Some(cid), None) => {
-                    // Client project, no folder
-                    client_loose_projects
-                        .entry(cid.clone())
-                        .or_default()
-                        .push(sidebar_proj);
-                }
-                (None, Some(fid)) => {
-                    // Internal project in a folder
-                    internal_folder_projects
-                        .entry(fid.clone())
-                        .or_default()
-                        .push(sidebar_proj);
-                }
-                (None, None) => {
-                    // Internal project, no folder
-                    internal_loose_projects.push(sidebar_proj);
-                }
-            }
-        }
-
-        // Build internal folders (folders with no client_id)
-        let internal_folders: Vec<SidebarProjectFolder> = folder_rows
+        // Split projects by client_id for tree building
+        let internal_project_rows: Vec<ProjectRow> = project_rows
             .iter()
-            .filter(|f| f.client_id.is_none())
-            .filter_map(|f| {
-                let fid_str = uuid_from_bytes(&f.id)?.to_string();
-                let projects = internal_folder_projects
-                    .remove(&f.id)
-                    .unwrap_or_default();
-                Some(SidebarProjectFolder {
-                    id: fid_str,
-                    name: f.name.clone(),
-                    projects,
-                })
-            })
+            .filter(|p| p.client_id.is_none())
+            .cloned()
             .collect();
+        let internal_projects = build_project_tree(
+            &internal_project_rows,
+            &health_map,
+            None,
+        );
 
-        // Build sidebar clients with folders
+        // Build sidebar clients with nested project trees
         let clients: Vec<SidebarClient> = client_rows
             .iter()
             .map(|cr| {
-                let projects = client_loose_projects
-                    .remove(&cr.id)
-                    .unwrap_or_default();
-
-                // Get folders belonging to this client
-                let folders: Vec<SidebarProjectFolder> = folder_rows
+                let client_project_rows: Vec<ProjectRow> = project_rows
                     .iter()
-                    .filter(|f| f.client_id.as_ref() == Some(&cr.id))
-                    .filter_map(|f| {
-                        let fid_str = uuid_from_bytes(&f.id)?.to_string();
-                        let folder_projects = client_folder_projects
-                            .remove(&f.id)
-                            .unwrap_or_default();
-                        Some(SidebarProjectFolder {
-                            id: fid_str,
-                            name: f.name.clone(),
-                            projects: folder_projects,
-                        })
-                    })
+                    .filter(|p| p.client_id.as_ref() == Some(&cr.id))
+                    .cloned()
                     .collect();
+                let projects = build_project_tree(&client_project_rows, &health_map, None);
 
-                // Rollup health for client: worst status, summed issues, avg knowledge
-                let all_client_projects: Vec<&SidebarProject> = projects.iter()
-                    .chain(folders.iter().flat_map(|f| f.projects.iter()))
-                    .collect();
+                // Rollup health for client
+                let all_client_projects = collect_all_projects(&projects);
                 let (client_health, client_issues, client_kc, client_activity) =
                     rollup_health(&all_client_projects);
 
@@ -437,7 +376,6 @@ pub async fn get_sidebar_tree(
                         .map(|u| u.to_string()),
                     crm_confidence: cr.crm_confidence,
                     projects,
-                    folders,
                 }
             })
             .collect();
@@ -494,12 +432,9 @@ pub async fn get_sidebar_tree(
         let shared_boards: Vec<SidebarSharedBoardGroup> = shared_groups.into_values().collect();
 
         // Rollup health for org: worst status across all projects
-        let all_org_projects: Vec<&SidebarProject> = internal_loose_projects.iter()
-            .chain(internal_folders.iter().flat_map(|f| f.projects.iter()))
-            .chain(clients.iter().flat_map(|c| {
-                c.projects.iter()
-                    .chain(c.folders.iter().flat_map(|f| f.projects.iter()))
-            }))
+        let all_org_projects: Vec<&SidebarProject> = collect_all_projects(&internal_projects)
+            .into_iter()
+            .chain(clients.iter().flat_map(|c| collect_all_projects(&c.projects)))
             .collect();
         let (org_health, org_issues, org_kc, org_activity) = rollup_health(&all_org_projects);
 
@@ -512,8 +447,7 @@ pub async fn get_sidebar_tree(
             active_issues_count: org_issues,
             knowledge_completeness: org_kc,
             last_activity_at: org_activity,
-            internal_projects: internal_loose_projects,
-            internal_folders,
+            internal_projects,
             clients,
             shared_boards,
         };
@@ -529,10 +463,11 @@ pub async fn get_sidebar_tree(
     // (orphaned projects they have direct access to)
     if !access_context.is_admin {
         let orphan_projects: Vec<ProjectRow> = sqlx::query_as::<_, ProjectRow>(
-            r#"SELECT DISTINCT p.id, p.name, p.client_id, p.folder_id FROM projects p
+            r#"SELECT DISTINCT p.id, p.name, p.git_repo_path, p.client_id, p.parent_project_id, p.sort_order
+               FROM projects p
                INNER JOIN project_members pm ON pm.project_id = p.id
                WHERE pm.user_id = ? AND p.organization_id IS NULL AND p.deleted_at IS NULL
-               ORDER BY p.name ASC"#,
+               ORDER BY p.sort_order ASC, p.name ASC"#,
         )
         .bind(&user_id_bytes)
         .fetch_all(pool)
@@ -545,25 +480,11 @@ pub async fn get_sidebar_tree(
                 .await
                 .unwrap_or_default();
 
-            let internal_projects: Vec<SidebarProject> = orphan_projects
-                .iter()
-                .filter_map(|p| {
-                    let uid = uuid_from_bytes(&p.id)?;
-                    let pid = uid.to_string();
-                    let health = orphan_health.get(&pid);
-                    Some(SidebarProject {
-                        id: pid,
-                        name: p.name.clone(),
-                        health_status: health.map(|h| h.health_status.clone()),
-                        active_issues_count: health.map(|h| h.active_issues_count),
-                        knowledge_completeness: health.map(|h| h.knowledge_completeness),
-                        last_activity_at: health.and_then(|h| h.last_activity_at.clone()),
-                    })
-                })
-                .collect();
+            let internal_projects = build_project_tree(&orphan_projects, &orphan_health, None);
 
+            let all_projects = collect_all_projects(&internal_projects);
             let (orph_health, orph_issues, orph_kc, orph_activity) =
-                rollup_health(&internal_projects.iter().collect::<Vec<_>>());
+                rollup_health(&all_projects);
 
             member_orgs.push(SidebarOrg {
                 id: String::new(),
@@ -575,7 +496,6 @@ pub async fn get_sidebar_tree(
                 knowledge_completeness: orph_kc,
                 last_activity_at: orph_activity,
                 internal_projects,
-                internal_folders: vec![],
                 clients: vec![],
                 shared_boards: vec![],
             });

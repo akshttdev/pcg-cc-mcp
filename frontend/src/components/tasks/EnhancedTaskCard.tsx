@@ -10,6 +10,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
 import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   CheckCircle,
   Copy,
   Edit,
@@ -30,7 +33,7 @@ import { cn } from '@/lib/utils';
 import { AgentFlowBadges } from './AgentFlowBadges';
 import { ExecutionSummaryInline } from './ExecutionSummaryInline';
 import type { TaskWithAttemptStatus, ExecutionArtifact, ArtifactType, AgentFlowEvent } from 'shared/types';
-import type { AgentFlow } from '@/lib/api';
+import type { AgentFlow, UserListItem } from '@/lib/api';
 
 type Task = TaskWithAttemptStatus;
 
@@ -62,6 +65,7 @@ interface EnhancedTaskCardProps {
   onSendMessage?: (message: string, agentName?: string) => Promise<string>;
   defaultMode?: TaskCardMode;
   showSessionLayer?: boolean;
+  usersMap?: Map<string, UserListItem>;
 }
 
 // Derive card mode from task or primary artifact
@@ -101,6 +105,38 @@ const modeIcons: Record<TaskCardMode, React.ReactNode> = {
   media: <Video className="h-3 w-3" />,
   compact: <Code className="h-3 w-3" />,
 };
+
+function PriorityBadge({ priority }: { priority: string }) {
+  switch (priority) {
+    case 'critical':
+      return (
+        <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400 border border-red-200 dark:border-red-800" title="Critical">
+          <AlertTriangle className="h-2.5 w-2.5" />
+          <span>Critical</span>
+        </span>
+      );
+    case 'high':
+      return (
+        <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200 dark:border-orange-800" title="High">
+          <ArrowUp className="h-2.5 w-2.5" />
+          <span>High</span>
+        </span>
+      );
+    case 'low':
+      return (
+        <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700" title="Low">
+          <ArrowDown className="h-2.5 w-2.5" />
+          <span>Low</span>
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800" title="Medium">
+          <span>Medium</span>
+        </span>
+      );
+  }
+}
 
 // Artifact preview component
 function ArtifactPreview({
@@ -198,6 +234,7 @@ export function EnhancedTaskCard({
   artifacts = [],
   workflowEvents = [],
   defaultMode,
+  usersMap,
 }: EnhancedTaskCardProps) {
   const cardMode = deriveCardMode(task, primaryArtifact, defaultMode);
   const isAgentActive = task.has_in_progress_attempt;
@@ -249,33 +286,105 @@ export function EnhancedTaskCard({
       isOpen={isOpen}
       forwardedRef={localRef}
     >
-      {/* Header row */}
-      <div className="flex flex-1 gap-2 items-center min-w-0">
-        {/* Checkbox for selection mode */}
-        {selectionMode && (
+      {/* Card content */}
+      <div className="flex flex-col gap-1.5 min-w-0">
+        {/* Title row */}
+        <div className="flex items-start gap-2 min-w-0">
+          {/* Checkbox for selection mode */}
+          {selectionMode && (
+            <div
+              className="pt-0.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelection?.(task.id);
+              }}
+            >
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onToggleSelection?.(task.id)}
+              />
+            </div>
+          )}
+
+          {/* Mode indicator */}
+          <Badge variant="outline" className="h-5 px-1.5 gap-1 shrink-0">
+            {modeIcons[cardMode]}
+          </Badge>
+
+          <h4 className="flex-1 min-w-0 line-clamp-2 font-light text-sm">
+            {task.title}
+          </h4>
+
+          {/* Actions Menu */}
           <div
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleSelection?.(task.id);
-            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={() => onToggleSelection?.(task.id)}
-            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 hover:bg-muted shrink-0"
+                >
+                  <MoreHorizontal className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEdit(task)}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+                {onDuplicate && (
+                  <DropdownMenuItem onClick={() => onDuplicate(task)}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Duplicate
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => onDelete(task.id)}
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        )}
+        </div>
 
-        {/* Mode indicator */}
-        <Badge variant="outline" className="h-5 px-1.5 gap-1">
-          {modeIcons[cardMode]}
-        </Badge>
+        {/* Meta row: priority + assignee */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center flex-wrap gap-1">
+            {/* Priority Badge */}
+            <PriorityBadge priority={task.priority} />
+          </div>
+          {/* Assignee */}
+          {task.assignee_id && (() => {
+            const assignee = usersMap?.get(task.assignee_id);
+            const displayName = assignee?.full_name || assignee?.username || assignee?.email || task.assignee_id;
+            const initials = assignee?.full_name
+              ? assignee.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+              : (assignee?.username?.[0] || displayName[0] || '?').toUpperCase();
+            return (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div
+                  className="h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300 border border-violet-200 dark:border-violet-800"
+                  title={displayName}
+                >
+                  {initials}
+                </div>
+                <span className="text-xs text-muted-foreground truncate max-w-[80px]">
+                  {assignee?.full_name || assignee?.username || assignee?.email || 'Unassigned'}
+                </span>
+              </div>
+            );
+          })()}
+        </div>
 
-        <h4 className="flex-1 min-w-0 line-clamp-2 font-light text-sm">
-          {task.title}
-        </h4>
-
-        <div className="flex items-center space-x-1">
+        {/* Status indicators row */}
+        <div className="flex items-center flex-wrap gap-1">
           {/* In Progress Spinner */}
           {task.has_in_progress_attempt && (
             <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
@@ -322,43 +431,6 @@ export function EnhancedTaskCard({
               )}
             </div>
           )}
-          {/* Actions Menu */}
-          <div
-            onPointerDown={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 hover:bg-muted"
-                >
-                  <MoreHorizontal className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(task)}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-                {onDuplicate && (
-                  <DropdownMenuItem onClick={() => onDuplicate(task)}>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Duplicate
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  onClick={() => onDelete(task.id)}
-                  className="text-destructive"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         </div>
       </div>
 

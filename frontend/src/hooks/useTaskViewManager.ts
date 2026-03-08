@@ -6,6 +6,7 @@ interface NavigateOptions {
   fullscreen?: boolean;
   replace?: boolean;
   state?: unknown;
+  preserveSearch?: boolean;
 }
 
 /**
@@ -47,9 +48,12 @@ export function useTaskViewManager() {
       const fullscreenSuffix =
         (options?.fullscreen ?? isFullscreen) ? '/full' : '';
 
-      return `${baseUrl}${attemptUrl}${fullscreenSuffix}`;
+      // Preserve search params (like board filter) if requested
+      const searchParams = options?.preserveSearch !== false ? location.search : '';
+
+      return `${baseUrl}${attemptUrl}${fullscreenSuffix}${searchParams}`;
     },
-    [isFullscreen]
+    [isFullscreen, location.search]
   );
 
   const navigateToTask = useCallback(

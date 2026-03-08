@@ -60,7 +60,8 @@ impl std::str::FromStr for PipelineType {
 #[ts(export)]
 pub struct CrmPipeline {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
     pub name: String,
     pub description: Option<String>,
     pub pipeline_type: String,

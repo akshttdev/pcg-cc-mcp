@@ -293,7 +293,7 @@ impl Task {
   )                                 AS "vibe_model: String"
 
 FROM tasks t
-WHERE t.project_id = $1
+WHERE t.project_id = $1 AND t.deleted_at IS NULL
 ORDER BY t.created_at DESC"#,
             project_id
         )
@@ -376,7 +376,7 @@ ORDER BY t.created_at DESC"#,
                 scheduled_end as "scheduled_end: DateTime<Utc>",
                 screenshot
                FROM tasks
-               WHERE id = $1"#,
+               WHERE id = $1 AND deleted_at IS NULL"#,
             id
         )
         .fetch_optional(pool)
@@ -413,7 +413,7 @@ ORDER BY t.created_at DESC"#,
                 scheduled_end as "scheduled_end: DateTime<Utc>",
                 screenshot
                FROM tasks
-               WHERE rowid = $1"#,
+               WHERE rowid = $1 AND deleted_at IS NULL"#,
             rowid
         )
         .fetch_optional(pool)
@@ -454,7 +454,7 @@ ORDER BY t.created_at DESC"#,
                 scheduled_end as "scheduled_end: DateTime<Utc>",
                 screenshot
                FROM tasks
-               WHERE id = $1 AND project_id = $2"#,
+               WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL"#,
             id,
             project_id
         )
@@ -571,7 +571,7 @@ ORDER BY t.created_at DESC"#,
                    scheduled_start = $19,
                    scheduled_end = $20,
                    updated_at = datetime('now', 'subsec')
-               WHERE id = $1 AND project_id = $2
+               WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL
                RETURNING
                 id as "id!: Uuid",
                 project_id as "project_id!: Uuid",
@@ -655,7 +655,7 @@ ORDER BY t.created_at DESC"#,
     ) -> Result<(), sqlx::Error> {
         // Get existing collaborators
         let record = sqlx::query!(
-            r#"SELECT collaborators FROM tasks WHERE id = $1"#,
+            r#"SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL"#,
             task_id
         )
         .fetch_optional(pool)
@@ -709,7 +709,7 @@ ORDER BY t.created_at DESC"#,
         project_id: Uuid,
     ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query!(
-            "SELECT id as \"id!: Uuid\" FROM tasks WHERE id = $1 AND project_id = $2",
+            "SELECT id as \"id!: Uuid\" FROM tasks WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL",
             id,
             project_id
         )
@@ -752,7 +752,7 @@ ORDER BY t.created_at DESC"#,
                 scheduled_end as "scheduled_end: DateTime<Utc>",
                 screenshot
                FROM tasks
-               WHERE parent_task_attempt = $1
+               WHERE parent_task_attempt = $1 AND deleted_at IS NULL
                ORDER BY created_at DESC"#,
             attempt_id,
         )
@@ -829,6 +829,7 @@ ORDER BY t.created_at DESC"#,
                FROM tasks
                WHERE assignee_id = $1
                AND status != 'completed'
+               AND deleted_at IS NULL
                ORDER BY
                  CASE priority
                    WHEN 'urgent' THEN 0

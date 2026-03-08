@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use services::services::agent_channels::{AgentChannelService, ChannelOwner};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 use ts_rs::TS;
@@ -218,6 +219,8 @@ pub struct TopsiAgent {
     pub access_control: Arc<AccessControl>,
     /// Database connection
     pub db: Option<SqlitePool>,
+    /// Agent communication channels (email, future SMS/chat)
+    pub channel_service: Option<Arc<AgentChannelService>>,
     /// Project topologies (indexed by project_id)
     topologies: Arc<RwLock<indexmap::IndexMap<Uuid, TopologyGraph>>>,
     /// Initialization timestamp
@@ -287,6 +290,7 @@ impl TopsiAgent {
             config,
             access_control,
             db: None,
+            channel_service: None,
             topologies: Arc::new(RwLock::new(indexmap::IndexMap::new())),
             initialized_at: Utc::now(),
             active: Arc::new(RwLock::new(false)),
@@ -303,8 +307,15 @@ impl TopsiAgent {
         if let Err(e) = self.access_control.sync_from_database(&pool).await {
             tracing::error!("Failed to sync Topsi access control from database: {}", e);
         }
+        // Wire agent communication channels (Topsi's own agent-scoped email)
+        self.channel_service = Some(Arc::new(AgentChannelService::new(pool.clone())));
         self.db = Some(pool);
         self
+    }
+
+    /// Get the channel service with Topsi's agent identity as owner.
+    pub fn channel_owner(&self) -> ChannelOwner {
+        ChannelOwner::Agent(self.id)
     }
 
     /// Attach a task execution bridge for triggering agent execution
@@ -1267,6 +1278,7 @@ impl TopsiAgent {
             organization_id: None,
             client_id: None,
             folder_id: None,
+            parent_project_id: None,
         };
 
         let project = Project::create(pool, &create_project, project_id)
@@ -1508,6 +1520,7 @@ impl TopsiAgent {
                     organization_id: None,
                     client_id: None,
                     folder_id: None,
+                    parent_project_id: None,
                 };
 
                 let new_project_id = uuid::Uuid::new_v4();

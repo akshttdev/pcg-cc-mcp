@@ -1,4 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, lazy, Suspense } from 'react';
+const ProposalCreateModal = lazy(() =>
+  import('@/components/dialogs/ProposalCreateModal').then((m) => ({ default: m.ProposalCreateModal }))
+);
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -198,6 +201,7 @@ function DroppableColumn({
 export function ProposalsPage() {
   const queryClient = useQueryClient();
   const [activeProposal, setActiveProposal] = useState<ProposalRecord | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const { data: proposals = [], isLoading } = useQuery({
     queryKey: ['proposals'],
@@ -269,7 +273,7 @@ export function ProposalsPage() {
             {totalSigned === 0 && 'Pipeline overview — drag cards to advance stages'}
           </p>
         </div>
-        <Button size="sm" onClick={() => toast.info('New proposal form coming soon')}>
+        <Button size="sm" onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4 mr-1" />
           New Proposal
         </Button>
@@ -332,6 +336,13 @@ export function ProposalsPage() {
           <ScrollBar orientation="horizontal" />
         </ScrollArea>
       )}
+
+      <Suspense fallback={null}>
+        <ProposalCreateModal
+          open={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+        />
+      </Suspense>
     </div>
   );
 }
