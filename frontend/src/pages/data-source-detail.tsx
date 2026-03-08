@@ -23,8 +23,10 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Users,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
+import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
 
 export function DataSourceDetailPage() {
   const { orgId, dataSourceId } = useParams<{ orgId: string; dataSourceId: string }>();
@@ -36,6 +38,7 @@ export function DataSourceDetailPage() {
   const [workflowResult, setWorkflowResult] = useState<any>(null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
+  const [reviewRunId, setReviewRunId] = useState<string | null>(null);
 
   const { data: source, isLoading } = useQuery({
     queryKey: ['dataSource', dataSourceId],
@@ -70,6 +73,10 @@ export function DataSourceDetailPage() {
     mutationFn: () => dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId, effectiveModel || undefined),
     onSuccess: (data) => {
       setWorkflowResult(data);
+      // Auto-open review panel if there are staged records
+      if (data.workflow_run_id && data.staged_records > 0) {
+        setReviewRunId(data.workflow_run_id);
+      }
       queryClient.invalidateQueries({ queryKey: ['dataSourceArtifacts', dataSourceId] });
     },
   });
@@ -358,7 +365,7 @@ export function DataSourceDetailPage() {
                   onValueChange={setSelectedModel}
                 >
                   <SelectTrigger className="h-8 w-[240px] text-xs">
-                    <SelectValue placeholder="Select model" />
+                    <SelectValue placeholder="Use workflow default" />
                   </SelectTrigger>
                   <SelectContent>
                     {availableModels.map((m) => (
@@ -407,6 +414,20 @@ export function DataSourceDetailPage() {
               <p className="text-sm text-red-700 dark:text-red-300">
                 Workflow failed: {(runWorkflowMutation.error as Error)?.message ?? 'Unknown error'}
               </p>
+            </div>
+          )}
+
+          {workflowResult?.staged_records > 0 && (
+            <div className="mb-4">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setReviewRunId(workflowResult.workflow_run_id)}
+              >
+                <Users className="h-3.5 w-3.5" />
+                Review {workflowResult.staged_records} staged records
+              </Button>
             </div>
           )}
 
@@ -573,6 +594,15 @@ export function DataSourceDetailPage() {
             })}
           </CardContent>
         </Card>
+      )}
+
+      {reviewRunId && (
+        <StagingReviewPanel
+          open={!!reviewRunId}
+          onOpenChange={(open) => !open && setReviewRunId(null)}
+          workflowRunId={reviewRunId}
+          workflowName={workflowResult?.workflow_name}
+        />
       )}
     </div>
   );

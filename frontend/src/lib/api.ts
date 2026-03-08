@@ -5536,6 +5536,7 @@ export interface WorkflowDefinition {
   is_system: boolean;
   owner_type: string;  // "system", "organization", "user"
   owner_id?: string;
+  default_model?: string;
 }
 
 export interface CreateWorkflowRequest {
@@ -5546,6 +5547,7 @@ export interface CreateWorkflowRequest {
   connections: WorkflowConnection[];
   owner_type?: string;
   owner_id?: string;
+  default_model?: string;
 }
 
 export interface PreviewNodeResult {
@@ -5553,6 +5555,13 @@ export interface PreviewNodeResult {
   node_name: string;
   node_type: string;
   output: string;
+  usage?: {
+    model_used?: string;
+    provider?: string;
+    input_tokens?: number;
+    output_tokens?: number;
+    estimated_cost_micros?: number;
+  };
 }
 
 export interface UpdateWorkflowRequest {
@@ -5560,6 +5569,16 @@ export interface UpdateWorkflowRequest {
   description?: string;
   nodes?: WorkflowNode[];
   connections?: WorkflowConnection[];
+  default_model?: string;
+}
+
+export interface AvailableModel {
+  id: string;
+  label: string;
+  is_default: boolean;
+  provider: string;
+  cost_per_million_input: number;
+  cost_per_million_output: number;
 }
 
 export const workflowsApi = {
@@ -5607,8 +5626,109 @@ export const workflowsApi = {
     return handleApiResponse<ExecutionArtifact[]>(response);
   },
 
-  listAvailableModels: async (): Promise<{ id: string; label: string; is_default: boolean }[]> => {
+  listAvailableModels: async (): Promise<AvailableModel[]> => {
     const response = await makeRequest('/api/workflows/models');
-    return handleApiResponse<{ id: string; label: string; is_default: boolean }[]>(response);
+    return handleApiResponse<AvailableModel[]>(response);
+  },
+};
+
+// ── Schema types and API ──────────────────────────────────────────────────────
+
+export interface FieldDef {
+  type: string;
+  required: boolean;
+  description: string;
+  enum_values?: string[];
+  format?: string;
+}
+
+export interface TargetSchema {
+  target_type: string;
+  description: string;
+  fields: Record<string, FieldDef>;
+}
+
+export const schemasApi = {
+  list: async (): Promise<{ target_type: string; description: string; icon: string }[]> => {
+    const response = await makeRequest('/api/schemas');
+    return response.json();
+  },
+
+  get: async (targetType: string): Promise<TargetSchema> => {
+    const response = await makeRequest(`/api/schemas/${targetType}`);
+    return response.json();
+  },
+};
+
+export interface WorkflowStagingRecord {
+  id: string;
+  workflow_run_id: string;
+  workflow_id: string;
+  node_id: string;
+  data_source_id: string | null;
+  organization_id: string | null;
+  project_id: string | null;
+  target_type: 'crm_contact' | 'company' | 'crm_deal' | 'task';
+  record_data: string;  // JSON string
+  status: 'pending_review' | 'approved' | 'rejected' | 'committed' | 'error';
+  duplicate_of_id: string | null;
+  duplicate_of_type: string | null;
+  confidence: number | null;
+  error_message: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  committed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const stagingApi = {
+  listByRun: async (workflowRunId: string): Promise<WorkflowStagingRecord[]> => {
+    const response = await makeRequest(`/api/workflow-staging?workflow_run_id=${workflowRunId}`);
+    return handleApiResponse<WorkflowStagingRecord[]>(response);
+  },
+
+  listPending: async (organizationId: string): Promise<WorkflowStagingRecord[]> => {
+    const response = await makeRequest(`/api/workflow-staging/pending?organization_id=${organizationId}`);
+    return handleApiResponse<WorkflowStagingRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<WorkflowStagingRecord> => {
+    const response = await makeRequest(`/api/workflow-staging/${id}`);
+    return handleApiResponse<WorkflowStagingRecord>(response);
+  },
+
+  update: async (id: string, data: { status?: string; record_data?: any }): Promise<WorkflowStagingRecord> => {
+    const response = await makeRequest(`/api/workflow-staging/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowStagingRecord>(response);
+  },
+
+  batchAction: async (ids: string[], action: 'approve' | 'reject'): Promise<void> => {
+    const response = await makeRequest('/api/workflow-staging/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, action }),
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  commit: async (id: string): Promise<{ created_id: string }> => {
+    const response = await makeRequest(`/api/workflow-staging/${id}/commit`, {
+      method: 'POST',
+    });
+    return handleApiResponse<{ created_id: string }>(response);
+  },
+
+  batchCommit: async (workflowRunId: string): Promise<{ committed: number; errors: number }> => {
+    const response = await makeRequest('/api/workflow-staging/batch-commit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow_run_id: workflowRunId }),
+    });
+    return handleApiResponse<{ committed: number; errors: number }>(response);
   },
 };

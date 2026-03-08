@@ -1,0 +1,352 @@
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Users,
+  Building2,
+  Handshake,
+  ListTodo,
+  Check,
+  X,
+  CheckCheck,
+  XCircle,
+  Loader2,
+  AlertTriangle,
+  Send,
+  Edit3,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { stagingApi } from '@/lib/api';
+import type { WorkflowStagingRecord } from '@/lib/api';
+
+const TARGET_TYPE_CONFIG = {
+  crm_contact: { label: 'Contacts', icon: Users, color: 'text-blue-500' },
+  company: { label: 'Companies', icon: Building2, color: 'text-purple-500' },
+  crm_deal: { label: 'Deals', icon: Handshake, color: 'text-green-500' },
+  task: { label: 'Tasks', icon: ListTodo, color: 'text-orange-500' },
+} as const;
+
+interface StagingReviewPanelProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  workflowRunId: string;
+  workflowName?: string;
+}
+
+export function StagingReviewPanel({
+  open,
+  onOpenChange,
+  workflowRunId,
+  workflowName,
+}: StagingReviewPanelProps) {
+  const queryClient = useQueryClient();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<Record<string, any>>({});
+
+  const { data: records = [], isLoading } = useQuery({
+    queryKey: ['staging', workflowRunId],
+    queryFn: () => stagingApi.listByRun(workflowRunId),
+    enabled: open && !!workflowRunId,
+  });
+
+  const grouped = useMemo(() => {
+    const groups: Record<string, WorkflowStagingRecord[]> = {};
+    for (const r of records) {
+      if (!groups[r.target_type]) groups[r.target_type] = [];
+      groups[r.target_type].push(r);
+    }
+    return groups;
+  }, [records]);
+
+  const pendingCount = records.filter(r => r.status === 'pending_review').length;
+  const approvedCount = records.filter(r => r.status === 'approved').length;
+  const committedCount = records.filter(r => r.status === 'committed').length;
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: any } }) =>
+      stagingApi.update(id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+  });
+
+  const batchMutation = useMutation({
+    mutationFn: ({ ids, action }: { ids: string[]; action: 'approve' | 'reject' }) =>
+      stagingApi.batchAction(ids, action),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+  });
+
+  const commitMutation = useMutation({
+    mutationFn: (id: string) => stagingApi.commit(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+  });
+
+  const batchCommitMutation = useMutation({
+    mutationFn: () => stagingApi.batchCommit(workflowRunId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+  });
+
+  const handleApprove = (id: string) => updateMutation.mutate({ id, data: { status: 'approved' } });
+  const handleReject = (id: string) => updateMutation.mutate({ id, data: { status: 'rejected' } });
+
+  const handleApproveAll = () => {
+    const pendingIds = records.filter(r => r.status === 'pending_review').map(r => r.id);
+    if (pendingIds.length > 0) batchMutation.mutate({ ids: pendingIds, action: 'approve' });
+  };
+
+  const handleRejectAll = () => {
+    const pendingIds = records.filter(r => r.status === 'pending_review').map(r => r.id);
+    if (pendingIds.length > 0) batchMutation.mutate({ ids: pendingIds, action: 'reject' });
+  };
+
+  const handleStartEdit = (record: WorkflowStagingRecord) => {
+    try {
+      setEditData(JSON.parse(record.record_data));
+      setEditingId(record.id);
+    } catch {
+      setEditData({});
+      setEditingId(record.id);
+    }
+  };
+
+  const handleSaveEdit = (id: string) => {
+    updateMutation.mutate({ id, data: { record_data: editData } });
+    setEditingId(null);
+  };
+
+  const renderRecordFields = (record: WorkflowStagingRecord) => {
+    let data: Record<string, any> = {};
+    try { data = JSON.parse(record.record_data); } catch { return null; }
+
+    if (editingId === record.id) {
+      return (
+        <div className="space-y-2 mt-2">
+          {Object.entries(editData).map(([key, value]) => (
+            <div key={key} className="flex items-center gap-2">
+              <Label className="text-[10px] text-muted-foreground w-24 shrink-0 text-right">{key}</Label>
+              <Input
+                value={typeof value === 'string' ? value : JSON.stringify(value) || ''}
+                onChange={(e) => setEditData(prev => ({ ...prev, [key]: e.target.value }))}
+                className="h-7 text-xs"
+              />
+            </div>
+          ))}
+          <div className="flex gap-2 justify-end mt-2">
+            <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="h-6 text-xs">Cancel</Button>
+            <Button size="sm" onClick={() => handleSaveEdit(record.id)} className="h-6 text-xs">Save</Button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2">
+        {Object.entries(data).map(([key, value]) => {
+          if (value === null || value === undefined) return null;
+          const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+          return (
+            <div key={key} className="flex items-baseline gap-1.5 py-0.5">
+              <span className="text-[10px] text-muted-foreground shrink-0">{key}:</span>
+              <span className="text-xs truncate">{displayValue}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[900px] w-full max-h-[85vh] p-0 flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div>
+            <DialogTitle className="text-lg">Review Staged Records</DialogTitle>
+            {workflowName && (
+              <p className="text-sm text-muted-foreground mt-0.5">{workflowName}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant="outline">{pendingCount} pending</Badge>
+              <Badge variant="outline" className="text-green-600 border-green-200">{approvedCount} approved</Badge>
+              <Badge variant="outline" className="text-blue-600 border-blue-200">{committedCount} committed</Badge>
+            </div>
+          </div>
+        </div>
+
+        {/* Batch actions */}
+        {pendingCount > 0 && (
+          <div className="flex items-center gap-2 px-6 py-2 border-b bg-muted/30">
+            <span className="text-xs text-muted-foreground">Batch:</span>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleApproveAll}
+              disabled={batchMutation.isPending}>
+              <CheckCheck className="h-3 w-3" /> Approve All ({pendingCount})
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive" onClick={handleRejectAll}
+              disabled={batchMutation.isPending}>
+              <XCircle className="h-3 w-3" /> Reject All
+            </Button>
+            <div className="flex-1" />
+            {approvedCount > 0 && (
+              <Button size="sm" className="h-7 text-xs gap-1" onClick={() => batchCommitMutation.mutate()}
+                disabled={batchCommitMutation.isPending}>
+                <Send className="h-3 w-3" />
+                {batchCommitMutation.isPending ? 'Committing...' : `Commit ${approvedCount} to CRM`}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Also show commit button when nothing pending but some approved */}
+        {pendingCount === 0 && approvedCount > 0 && (
+          <div className="flex items-center gap-2 px-6 py-2 border-b bg-muted/30">
+            <div className="flex-1" />
+            <Button size="sm" className="h-7 text-xs gap-1" onClick={() => batchCommitMutation.mutate()}
+              disabled={batchCommitMutation.isPending}>
+              <Send className="h-3 w-3" />
+              {batchCommitMutation.isPending ? 'Committing...' : `Commit ${approvedCount} to CRM`}
+            </Button>
+          </div>
+        )}
+
+        {/* Records list */}
+        <ScrollArea className="flex-1">
+          <div className="p-6 space-y-6">
+            {isLoading && (
+              <div className="text-center py-12 text-muted-foreground">
+                <Loader2 className="h-6 w-6 mx-auto mb-2 animate-spin" />
+                <p className="text-sm">Loading staged records...</p>
+              </div>
+            )}
+
+            {!isLoading && records.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-sm">No staged records for this workflow run.</p>
+              </div>
+            )}
+
+            {Object.entries(grouped).map(([targetType, groupRecords]) => {
+              const config = TARGET_TYPE_CONFIG[targetType as keyof typeof TARGET_TYPE_CONFIG];
+              if (!config) return null;
+              const Icon = config.icon;
+
+              return (
+                <div key={targetType}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Icon className={cn('h-4 w-4', config.color)} />
+                    <h3 className="text-sm font-medium">{config.label}</h3>
+                    <Badge variant="outline" className="text-[10px]">{groupRecords.length}</Badge>
+                  </div>
+
+                  <div className="space-y-2">
+                    {groupRecords.map((record) => {
+                      let data: Record<string, any> = {};
+                      try { data = JSON.parse(record.record_data); } catch {}
+                      const displayName = data.first_name
+                        ? `${data.first_name} ${data.last_name || ''}`
+                        : data.name || data.title || 'Untitled';
+
+                      return (
+                        <div
+                          key={record.id}
+                          className={cn(
+                            'rounded-lg border p-3',
+                            record.status === 'approved' && 'border-green-200 bg-green-50/50 dark:bg-green-950/20',
+                            record.status === 'rejected' && 'border-red-200 bg-red-50/50 dark:bg-red-950/20 opacity-60',
+                            record.status === 'committed' && 'border-blue-200 bg-blue-50/50 dark:bg-blue-950/20',
+                            record.status === 'error' && 'border-red-300 bg-red-50 dark:bg-red-950/30',
+                          )}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium flex-1">{displayName}</span>
+
+                            {record.duplicate_of_id && (
+                              <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 gap-1">
+                                <AlertTriangle className="h-2.5 w-2.5" /> Potential duplicate
+                              </Badge>
+                            )}
+
+                            <Badge
+                              variant="outline"
+                              className={cn('text-[10px]', {
+                                'text-amber-600 border-amber-200': record.status === 'pending_review',
+                                'text-green-600 border-green-200': record.status === 'approved',
+                                'text-red-600 border-red-200': record.status === 'rejected',
+                                'text-blue-600 border-blue-200': record.status === 'committed',
+                                'text-red-700 border-red-300': record.status === 'error',
+                              })}
+                            >
+                              {record.status.replace('_', ' ')}
+                            </Badge>
+
+                            {record.status === 'pending_review' && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleStartEdit(record)}
+                                  className="p-1 rounded hover:bg-muted transition-colors"
+                                  title="Edit"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />
+                                </button>
+                                <button
+                                  onClick={() => handleApprove(record.id)}
+                                  className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900 transition-colors"
+                                  title="Approve"
+                                >
+                                  <Check className="h-3.5 w-3.5 text-green-600" />
+                                </button>
+                                <button
+                                  onClick={() => handleReject(record.id)}
+                                  className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
+                                  title="Reject"
+                                >
+                                  <X className="h-3.5 w-3.5 text-red-500" />
+                                </button>
+                              </div>
+                            )}
+
+                            {record.status === 'approved' && (
+                              <button
+                                onClick={() => commitMutation.mutate(record.id)}
+                                className="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
+                                title="Commit to CRM"
+                                disabled={commitMutation.isPending}
+                              >
+                                <Send className="h-3.5 w-3.5 text-blue-500" />
+                              </button>
+                            )}
+                          </div>
+
+                          {record.error_message && (
+                            <p className="text-xs text-red-600 mt-1">{record.error_message}</p>
+                          )}
+
+                          {renderRecordFields(record)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {batchCommitMutation.isSuccess && (
+              <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-4 text-center">
+                <CheckCheck className="h-5 w-5 text-green-600 mx-auto mb-1" />
+                <p className="text-sm font-medium text-green-700">Records committed successfully</p>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}

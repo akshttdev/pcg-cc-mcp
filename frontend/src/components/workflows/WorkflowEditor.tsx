@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,11 @@ import {
   Eye,
   Loader2,
   Network,
+  Cpu,
+  Users,
+  Building2,
+  Handshake,
+  ListTodo,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { workflowsApi } from '@/lib/api';
@@ -40,11 +46,21 @@ import type {
   WorkflowConnection,
   WorkflowDefinition,
   PreviewNodeResult,
+  AvailableModel,
 } from '@/lib/api';
 
 // ── Node type registry (n8n-style) ──────────────────────────────────────────
 
-export const NODE_TYPES = [
+interface NodeTypeDefinition {
+  type: string;
+  label: string;
+  description: string;
+  icon: any;
+  color: string;
+  defaultParameters: Record<string, any>;
+}
+
+export const NODE_TYPES: NodeTypeDefinition[] = [
   {
     type: 'llm_extract',
     label: 'LLM Extract',
@@ -108,11 +124,53 @@ export const NODE_TYPES = [
       merge_strategy: 'combine',
     },
   },
-] as const;
+  {
+    type: 'output_crm_contacts',
+    label: 'Output: CRM Contacts',
+    description: 'Send extracted contacts to CRM',
+    icon: Users,
+    color: 'bg-emerald-600',
+    defaultParameters: {
+      target_type: 'crm_contact',
+      on_duplicate: 'flag_for_review',
+    },
+  },
+  {
+    type: 'output_crm_companies',
+    label: 'Output: Companies',
+    description: 'Send extracted companies to company records',
+    icon: Building2,
+    color: 'bg-emerald-600',
+    defaultParameters: {
+      target_type: 'company',
+      on_duplicate: 'flag_for_review',
+    },
+  },
+  {
+    type: 'output_crm_deals',
+    label: 'Output: CRM Deals',
+    description: 'Create deals/opportunities in CRM pipeline',
+    icon: Handshake,
+    color: 'bg-emerald-600',
+    defaultParameters: {
+      target_type: 'crm_deal',
+      on_duplicate: 'flag_for_review',
+    },
+  },
+  {
+    type: 'output_tasks',
+    label: 'Output: Tasks',
+    description: 'Create tasks from workflow results',
+    icon: ListTodo,
+    color: 'bg-emerald-600',
+    defaultParameters: {
+      target_type: 'task',
+      on_duplicate: 'skip',
+    },
+  },
+];
 
-type NodeTypeDef = (typeof NODE_TYPES)[number];
-
-function getNodeTypeDef(type: string): NodeTypeDef | undefined {
+function getNodeTypeDef(type: string): NodeTypeDefinition | undefined {
   return NODE_TYPES.find((t) => t.type === type);
 }
 
@@ -128,6 +186,7 @@ interface WorkflowEditorProps {
     description?: string;
     nodes: WorkflowNode[];
     connections: WorkflowConnection[];
+    default_model?: string;
   }) => void;
   isSaving?: boolean;
 }
@@ -148,9 +207,19 @@ export function WorkflowEditor({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
+  const [defaultModel, setDefaultModel] = useState('');
+
   // Nodes and connections
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [connections, setConnections] = useState<WorkflowConnection[]>([]);
+
+  // Fetch available models
+  const { data: availableModels = [] } = useQuery({
+    queryKey: ['workflowModels'],
+    queryFn: () => workflowsApi.listAvailableModels(),
+    staleTime: 60 * 60 * 1000,
+    enabled: open,
+  });
 
   // UI state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -163,12 +232,14 @@ export function WorkflowEditor({
         setId(workflow.id);
         setName(workflow.name);
         setDescription(workflow.description || '');
+        setDefaultModel(workflow?.default_model || '');
         setNodes(structuredClone(workflow.nodes));
         setConnections(structuredClone(workflow.connections));
       } else {
         setId('');
         setName('');
         setDescription('');
+        setDefaultModel('');
         setNodes([]);
         setConnections([]);
       }
@@ -290,8 +361,9 @@ export function WorkflowEditor({
       description: description.trim() || undefined,
       nodes,
       connections,
+      default_model: defaultModel || undefined,
     });
-  }, [id, name, description, nodes, connections, onSave]);
+  }, [id, name, description, nodes, connections, defaultModel, onSave]);
 
   const canSave = id.trim() && name.trim() && nodes.length > 0;
 
@@ -416,6 +488,27 @@ export function WorkflowEditor({
                   className="h-8 text-sm mt-1"
                 />
               </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Default Model</Label>
+                <Select value={defaultModel} onValueChange={setDefaultModel}>
+                  <SelectTrigger className="h-8 text-sm mt-1">
+                    <SelectValue placeholder="Auto (highest priority)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Auto (highest priority)</SelectItem>
+                    {availableModels.map((m: AvailableModel) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{m.label}</span>
+                          <span className="text-muted-foreground text-xs">
+                            ${(m.cost_per_million_input / 100).toFixed(2)}/M in
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Node list (canvas representation) */}
@@ -487,6 +580,11 @@ export function WorkflowEditor({
                             {typeDef?.label ?? node.type}
                             {node.parameters.output_schema &&
                               ` → ${node.parameters.output_schema}`}
+                            {node.parameters.model && (
+                              <Badge variant="outline" className="ml-1.5 text-[9px] px-1">
+                                {node.parameters.model.split('/').pop()?.replace(/-/g, ' ') || node.parameters.model}
+                              </Badge>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
@@ -555,6 +653,7 @@ export function WorkflowEditor({
                 node={selectedNode}
                 allNodes={nodes}
                 connections={connections}
+                availableModels={availableModels}
                 onUpdate={(updates) => updateNode(selectedNode.id, updates)}
                 onUpdateParameter={(key, value) =>
                   updateNodeParameter(selectedNode.id, key, value)
@@ -620,6 +719,17 @@ export function WorkflowEditor({
                             catch { return r.output; }
                           })()}
                         </pre>
+                        {r.usage && (
+                          <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                            {r.usage.model_used && <span>Model: {r.usage.model_used}</span>}
+                            {r.usage.provider && <span>Provider: {r.usage.provider}</span>}
+                            {r.usage.input_tokens != null && <span>In: {r.usage.input_tokens.toLocaleString()}</span>}
+                            {r.usage.output_tokens != null && <span>Out: {r.usage.output_tokens.toLocaleString()}</span>}
+                            {r.usage.estimated_cost_micros != null && (
+                              <span>Cost: ${(r.usage.estimated_cost_micros / 1_000_000).toFixed(4)}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -754,6 +864,7 @@ function WorkflowGraphView({ nodes, connections }: { nodes: WorkflowNode[]; conn
             'bg-blue-500': '#3b82f6', 'bg-purple-500': '#a855f7',
             'bg-emerald-500': '#10b981', 'bg-amber-500': '#f59e0b',
             'bg-orange-500': '#f97316', 'bg-teal-500': '#14b8a6',
+            'bg-green-500': '#22c55e', 'bg-emerald-600': '#059669',
           };
           const fill = colorMap[typeDef?.color ?? ''] ?? '#6b7280';
           return (
@@ -803,6 +914,9 @@ function NodePicker({
   onSelect: (type: string) => void;
   onClose: () => void;
 }) {
+  const processingNodes = NODE_TYPES.filter(nt => !nt.type.startsWith('output_'));
+  const outputNodes = NODE_TYPES.filter(nt => nt.type.startsWith('output_'));
+
   return (
     <div className="rounded-lg border bg-card shadow-lg p-2 space-y-1">
       <div className="flex items-center justify-between px-2 pb-1">
@@ -816,7 +930,7 @@ function NodePicker({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      {NODE_TYPES.map((nt) => {
+      {processingNodes.map((nt) => {
         const Icon = nt.icon;
         return (
           <button
@@ -844,6 +958,42 @@ function NodePicker({
           </button>
         );
       })}
+      {outputNodes.length > 0 && (
+        <>
+          <div className="border-t my-1" />
+          <div className="px-2 py-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Outputs</span>
+          </div>
+          {outputNodes.map((nt) => {
+            const Icon = nt.icon;
+            return (
+              <button
+                key={nt.type}
+                onClick={() => onSelect(nt.type)}
+                className={cn(
+                  'w-full flex items-center gap-3 rounded-md px-2 py-2',
+                  'hover:bg-accent transition-colors text-left'
+                )}
+              >
+                <div
+                  className={cn(
+                    'w-8 h-8 rounded-md flex items-center justify-center text-white shrink-0',
+                    nt.color
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{nt.label}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {nt.description}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
@@ -854,6 +1004,7 @@ function NodeConfigPanel({
   node,
   allNodes,
   connections,
+  availableModels,
   onUpdate,
   onUpdateParameter,
   onAddConnection,
@@ -863,6 +1014,7 @@ function NodeConfigPanel({
   node: WorkflowNode;
   allNodes: WorkflowNode[];
   connections: WorkflowConnection[];
+  availableModels: AvailableModel[];
   onUpdate: (updates: Partial<WorkflowNode>) => void;
   onUpdateParameter: (key: string, value: any) => void;
   onAddConnection: (sourceId: string) => void;
@@ -1014,6 +1166,29 @@ function NodeConfigPanel({
 
             {isLLMNode && (
               <div className="space-y-3">
+                {/* Model selection */}
+                <div>
+                  <Label className="text-xs">Model</Label>
+                  <Select
+                    value={node.parameters.model || ''}
+                    onValueChange={(v) => onUpdateParameter('model', v || undefined)}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-1">
+                      <SelectValue placeholder="Use workflow default" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Use workflow default</SelectItem>
+                      {availableModels.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Override the workflow's default model for this node.
+                  </p>
+                </div>
                 <div>
                   <Label className="text-xs">Prompt Template</Label>
                   <Textarea
@@ -1095,6 +1270,45 @@ function NodeConfigPanel({
                     </SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {node.type.startsWith('output_') && (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs">Target</Label>
+                  <div className="mt-1 text-sm text-muted-foreground bg-muted/50 rounded px-2 py-1.5">
+                    {node.type === 'output_crm_contacts' && 'CRM Contacts'}
+                    {node.type === 'output_crm_companies' && 'Companies'}
+                    {node.type === 'output_crm_deals' && 'CRM Deals'}
+                    {node.type === 'output_tasks' && 'Tasks'}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">On Duplicate</Label>
+                  <Select
+                    value={node.parameters.on_duplicate || 'flag_for_review'}
+                    onValueChange={(v) => onUpdateParameter('on_duplicate', v)}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="flag_for_review">Flag for review</SelectItem>
+                      <SelectItem value="skip">Skip duplicates</SelectItem>
+                      <SelectItem value="update_existing">Update existing</SelectItem>
+                      <SelectItem value="create_anyway">Create anyway</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    What to do when a matching record already exists.
+                  </p>
+                </div>
+                <div className="rounded-md border border-dashed border-muted-foreground/30 p-2.5 bg-muted/20">
+                  <p className="text-[10px] text-muted-foreground">
+                    Connect an LLM node as input. The schema for the target type will be automatically injected into the upstream LLM prompt so it produces correctly formatted output.
+                  </p>
+                </div>
               </div>
             )}
           </div>
