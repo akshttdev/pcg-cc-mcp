@@ -120,6 +120,8 @@ struct WorkflowRunResult {
     steps: Vec<StepResult>,
     total_usage: Option<Value>,
     staged_records: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reused: Option<bool>,
 }
 
 // ── Default workflow seed ────────────────────────────────────────────────────
@@ -461,6 +463,7 @@ async fn list_workflows_for_data_source(
 #[derive(Debug, Deserialize)]
 struct RunWorkflowRequest {
     model: Option<String>,
+    force: Option<bool>,
 }
 
 /// Extract individual records from LLM output JSON
@@ -584,7 +587,71 @@ fn value_type_name(v: &Value) -> &'static str {
     }
 }
 
-/// Check if a CRM contact already exists by email match
+/// Compute Levenshtein distance between two strings
+fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a_len = a.len();
+    let b_len = b.len();
+    if a_len == 0 { return b_len; }
+    if b_len == 0 { return a_len; }
+
+    let mut prev: Vec<usize> = (0..=b_len).collect();
+    let mut curr = vec![0usize; b_len + 1];
+
+    for (i, ca) in a.chars().enumerate() {
+        curr[0] = i + 1;
+        for (j, cb) in b.chars().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            curr[j + 1] = (prev[j] + cost)
+                .min(prev[j + 1] + 1)
+                .min(curr[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[b_len]
+}
+
+/// Fuzzy name match: lowercases, trims whitespace, then checks Levenshtein distance.
+/// Returns true if distance <= 2 for short names (<=6 chars) or >80% similarity.
+fn fuzzy_name_match(a: &str, b: &str) -> bool {
+    let a = a.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ");
+    let b = b.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ");
+    if a == b { return true; }
+    let dist = levenshtein_distance(&a, &b);
+    let max_len = a.len().max(b.len());
+    if max_len == 0 { return true; }
+    if max_len <= 6 {
+        dist <= 2
+    } else {
+        let similarity = 1.0 - (dist as f64 / max_len as f64);
+        similarity > 0.8
+    }
+}
+
+/// Normalize a company name by stripping common suffixes and trimming
+fn normalize_company_name(name: &str) -> String {
+    let suffixes = [
+        " incorporated", " corporation", " company", " limited",
+        " inc.", " inc", " llc.", " llc", " ltd.", " ltd",
+        " corp.", " corp", " co.", " co", " l.l.c.", " l.l.c",
+        " plc", " gmbh", " ag", " s.a.", " sa",
+    ];
+    let mut normalized = name.to_lowercase().trim().to_string();
+    // Strip trailing punctuation like commas
+    normalized = normalized.trim_end_matches(',').trim().to_string();
+    for suffix in &suffixes {
+        if normalized.ends_with(suffix) {
+            let new_len = normalized.len() - suffix.len();
+            normalized.truncate(new_len);
+            normalized = normalized.trim().to_string();
+            break; // Only strip one suffix
+        }
+    }
+    // Collapse extra whitespace
+    normalized.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Check if a CRM contact already exists by email, phone, linkedin, or fuzzy name match.
+/// Returns (existing_id, match_type) where match_type indicates what matched.
 async fn check_contact_duplicate(
     pool: &sqlx::SqlitePool,
     record: &Value,
@@ -594,7 +661,6 @@ async fn check_contact_duplicate(
 
     // Try email exact match first (strongest signal)
     if let Some(email) = record["email"].as_str().filter(|s| !s.is_empty()) {
-        // Use a direct query since we need to check by email + project_id
         let result = sqlx::query_as::<_, (Uuid,)>(
             "SELECT id FROM crm_contacts WHERE project_id = ?1 AND LOWER(email) = LOWER(?2) LIMIT 1"
         )
@@ -605,51 +671,91 @@ async fn check_contact_duplicate(
         .ok()?;
 
         if let Some((id,)) = result {
-            return Some((id, "crm_contacts".to_string()));
+            return Some((id, "email".to_string()));
         }
     }
 
-    // Try name match (weaker signal — first_name + last_name)
-    let first = record["first_name"].as_str().unwrap_or("").trim();
-    let last = record["last_name"].as_str().unwrap_or("").trim();
-    if !first.is_empty() && !last.is_empty() {
+    // Try phone/mobile match
+    for field in &["phone", "mobile"] {
+        if let Some(phone) = record[*field].as_str().filter(|s| !s.is_empty()) {
+            let result = sqlx::query_as::<_, (Uuid,)>(
+                "SELECT id FROM crm_contacts WHERE project_id = ?1 AND (phone = ?2 OR mobile = ?2) LIMIT 1"
+            )
+            .bind(project_id)
+            .bind(phone.trim())
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+
+            if let Some((id,)) = result {
+                return Some((id, "phone".to_string()));
+            }
+        }
+    }
+
+    // Try LinkedIn URL exact match
+    if let Some(linkedin) = record["linkedin_url"].as_str().filter(|s| !s.is_empty()) {
         let result = sqlx::query_as::<_, (Uuid,)>(
-            "SELECT id FROM crm_contacts WHERE project_id = ?1 AND LOWER(first_name) = LOWER(?2) AND LOWER(last_name) = LOWER(?3) LIMIT 1"
+            "SELECT id FROM crm_contacts WHERE project_id = ?1 AND LOWER(linkedin_url) = LOWER(?2) LIMIT 1"
         )
         .bind(project_id)
-        .bind(first)
-        .bind(last)
+        .bind(linkedin)
         .fetch_optional(pool)
         .await
         .ok()?;
 
         if let Some((id,)) = result {
-            return Some((id, "crm_contacts".to_string()));
+            return Some((id, "linkedin".to_string()));
+        }
+    }
+
+    // Try fuzzy name match (first_name + last_name)
+    let first = record["first_name"].as_str().unwrap_or("").trim();
+    let last = record["last_name"].as_str().unwrap_or("").trim();
+    if !first.is_empty() && !last.is_empty() {
+        // Fetch candidate contacts with the same project_id that have names
+        let candidates = sqlx::query_as::<_, (Uuid, String, String)>(
+            "SELECT id, first_name, last_name FROM crm_contacts WHERE project_id = ?1 AND first_name IS NOT NULL AND last_name IS NOT NULL"
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await
+        .ok()?;
+
+        let full_name = format!("{} {}", first, last);
+        for (id, existing_first, existing_last) in &candidates {
+            let existing_full = format!("{} {}", existing_first, existing_last);
+            if fuzzy_name_match(&full_name, &existing_full) {
+                return Some((*id, "name".to_string()));
+            }
         }
     }
 
     None
 }
 
-/// Check if a company already exists by name match
+/// Check if a company already exists by normalized name or website match
 async fn check_company_duplicate(
     pool: &sqlx::SqlitePool,
     record: &Value,
     _organization_id: Option<Uuid>,
 ) -> Option<(Uuid, String)> {
     let name = record["name"].as_str().filter(|s| !s.is_empty())?;
+    let normalized_input = normalize_company_name(name);
 
-    // Case-insensitive name match
-    let result = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM companies WHERE LOWER(name) = LOWER(?1) LIMIT 1"
+    // Fetch all companies and compare with normalized names
+    let companies = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT id, name FROM companies"
     )
-    .bind(name)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await
     .ok()?;
 
-    if let Some((id,)) = result {
-        return Some((id, "companies".to_string()));
+    for (id, existing_name) in &companies {
+        let normalized_existing = normalize_company_name(existing_name);
+        if normalized_input == normalized_existing {
+            return Some((*id, "companies".to_string()));
+        }
     }
 
     // Also try matching by website domain if available
@@ -727,7 +833,7 @@ async fn check_intra_batch_duplicate(
     target_type: &str,
     record: &Value,
 ) -> Option<(Uuid, String)> {
-    // For contacts: check if same email already staged in this run
+    // For contacts: check if same email or phone already staged in this run
     if target_type == "crm_contact" {
         if let Some(email) = record["email"].as_str().filter(|s| !s.is_empty()) {
             let result = sqlx::query_as::<_, (Uuid,)>(
@@ -746,25 +852,50 @@ async fn check_intra_batch_duplicate(
                 return Some((id, "workflow_output_staging".to_string()));
             }
         }
+
+        // Also check phone/mobile within the batch
+        for field in &["phone", "mobile"] {
+            if let Some(phone) = record[*field].as_str().filter(|s| !s.is_empty()) {
+                let phone_trimmed = phone.trim();
+                let result = sqlx::query_as::<_, (Uuid,)>(
+                    r#"SELECT id FROM workflow_output_staging
+                       WHERE workflow_run_id = ?1 AND target_type = 'crm_contact'
+                       AND (json_extract(record_data, '$.phone') = ?2 OR json_extract(record_data, '$.mobile') = ?2)
+                       AND status != 'rejected' LIMIT 1"#
+                )
+                .bind(workflow_run_id)
+                .bind(phone_trimmed)
+                .fetch_optional(pool)
+                .await
+                .ok()?;
+
+                if let Some((id,)) = result {
+                    return Some((id, "workflow_output_staging".to_string()));
+                }
+            }
+        }
     }
 
-    // For companies: check if same name already staged
+    // For companies: check if normalized name already staged
     if target_type == "company" {
         if let Some(name) = record["name"].as_str().filter(|s| !s.is_empty()) {
-            let result = sqlx::query_as::<_, (Uuid,)>(
-                r#"SELECT id FROM workflow_output_staging
+            let normalized_input = normalize_company_name(name);
+            // Fetch all staged company names in this batch and compare normalized
+            let staged = sqlx::query_as::<_, (Uuid, String)>(
+                r#"SELECT id, json_extract(record_data, '$.name') as staged_name
+                   FROM workflow_output_staging
                    WHERE workflow_run_id = ?1 AND target_type = 'company'
-                   AND LOWER(json_extract(record_data, '$.name')) = LOWER(?2)
-                   AND status != 'rejected' LIMIT 1"#
+                   AND status != 'rejected'"#
             )
             .bind(workflow_run_id)
-            .bind(name)
-            .fetch_optional(pool)
+            .fetch_all(pool)
             .await
             .ok()?;
 
-            if let Some((id,)) = result {
-                return Some((id, "workflow_output_staging".to_string()));
+            for (id, staged_name) in &staged {
+                if normalize_company_name(staged_name) == normalized_input {
+                    return Some((*id, "workflow_output_staging".to_string()));
+                }
             }
         }
     }
@@ -778,7 +909,10 @@ async fn run_workflow(
     State(deployment): State<DeploymentImpl>,
     body: Option<Json<RunWorkflowRequest>>,
 ) -> Result<Json<ApiResponse<WorkflowRunResult>>, ApiError> {
-    let request_model = body.and_then(|b| b.0.model);
+    let (request_model, force) = match body {
+        Some(Json(req)) => (req.model, req.force.unwrap_or(false)),
+        None => (None, false),
+    };
     let pool = &deployment.db().pool;
     let workflow_run_id = Uuid::new_v4();
     let run_start = std::time::Instant::now();
@@ -793,6 +927,38 @@ async fn run_workflow(
 
     let model = request_model.or(workflow.default_model.clone()).unwrap_or_default();
 
+    let content = data_source.content.clone().unwrap_or_default();
+
+    // Compute content hash for idempotency check
+    let content_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        workflow_id.hash(&mut hasher);
+        content.hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
+    };
+
+    // Check for existing completed run with same content hash (unless force=true)
+    if !force {
+        if let Ok(Some(existing_run)) = WorkflowRun::find_by_content_hash(pool, &content_hash).await {
+            // Return the existing run's results
+            let existing_run_id = existing_run.id.clone();
+            let staged = existing_run.total_records_staged.unwrap_or(0);
+            let run_uuid = Uuid::parse_str(&existing_run_id).unwrap_or(workflow_run_id);
+            return Ok(Json(ApiResponse::success(WorkflowRunResult {
+                workflow_run_id: run_uuid,
+                workflow_id: existing_run.workflow_id,
+                workflow_name: existing_run.workflow_name,
+                data_source_id,
+                steps: vec![],
+                total_usage: None,
+                staged_records: staged,
+                reused: Some(true),
+            })));
+        }
+    }
+
     // Create workflow run record
     let _ = WorkflowRun::create(pool, CreateWorkflowRun {
         id: workflow_run_id,
@@ -802,9 +968,9 @@ async fn run_workflow(
         organization_id: data_source.organization_id,
         project_id: data_source.project_id,
         model_used: if model.is_empty() { None } else { Some(model.clone()) },
+        content_hash: Some(content_hash),
     }).await;
 
-    let content = data_source.content.unwrap_or_default();
     let title = &data_source.title;
 
     // Build dependency map from connections
@@ -1034,6 +1200,7 @@ async fn run_workflow(
         steps: step_results,
         total_usage,
         staged_records,
+        reused: None,
     })))
 }
 
@@ -1574,6 +1741,288 @@ async fn get_run_stats(
         },
         "cost_dollars": cost_dollars,
     }))))
+}
+
+// ── Auto-trigger helper ─────────────────────────────────────────────────────
+
+/// Check for matching workflow triggers and run them in the background.
+/// Called after a new data source is created. Non-blocking — spawns tokio tasks.
+pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_id: Uuid) {
+    use db::models::workflow_trigger::WorkflowTrigger;
+
+    let ds = match DataSource::find_by_id(&pool, data_source_id).await {
+        Ok(Some(ds)) => ds,
+        _ => return,
+    };
+
+    let org_id = ds.organization_id.map(|u| u.to_string());
+    let proj_id = ds.project_id.map(|u| u.to_string());
+
+    let triggers = match WorkflowTrigger::find_matching_triggers(
+        &pool,
+        &ds.data_type,
+        org_id.as_deref(),
+        proj_id.as_deref(),
+    ).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("[TRIGGER] Failed to find matching triggers for ds {}: {}", data_source_id, e);
+            return;
+        }
+    };
+
+    if triggers.is_empty() {
+        return;
+    }
+
+    tracing::info!(
+        "[TRIGGER] Found {} matching trigger(s) for data source {} (type={})",
+        triggers.len(), data_source_id, ds.data_type
+    );
+
+    for trigger in triggers {
+        let pool = pool.clone();
+        let ds_id = data_source_id;
+        let trigger_id = trigger.id.clone();
+        let workflow_id = trigger.workflow_id.clone();
+        let model_override = trigger.model_override.clone();
+
+        tokio::spawn(async move {
+            tracing::info!(
+                "[TRIGGER] Firing trigger '{}' (workflow={}) for data source {}",
+                trigger_id, workflow_id, ds_id
+            );
+
+            // Increment trigger count
+            let _ = WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await;
+
+            // Load the workflow definition
+            let workflow = match load_workflow(&pool, &workflow_id).await {
+                Ok(Some(wf)) => wf,
+                Ok(None) => {
+                    tracing::error!("[TRIGGER] Workflow '{}' not found for trigger '{}'", workflow_id, trigger_id);
+                    return;
+                }
+                Err(e) => {
+                    tracing::error!("[TRIGGER] Failed to load workflow '{}': {}", workflow_id, e);
+                    return;
+                }
+            };
+
+            // Determine model
+            let model = model_override
+                .or(workflow.default_model.clone())
+                .unwrap_or_default();
+
+            // Load data source
+            let data_source = match DataSource::find_by_id(&pool, ds_id).await {
+                Ok(Some(ds)) => ds,
+                _ => {
+                    tracing::error!("[TRIGGER] Data source {} not found", ds_id);
+                    return;
+                }
+            };
+
+            let workflow_run_id = uuid::Uuid::new_v4();
+            let run_start = std::time::Instant::now();
+
+            // Create workflow run record
+            let _ = WorkflowRun::create(&pool, CreateWorkflowRun {
+                id: workflow_run_id,
+                workflow_id: workflow.id.clone(),
+                workflow_name: workflow.name.clone(),
+                data_source_id: Some(ds_id),
+                organization_id: data_source.organization_id,
+                project_id: data_source.project_id,
+                model_used: if model.is_empty() { None } else { Some(model.clone()) },
+                content_hash: None,
+            }).await;
+
+            let content = data_source.content.unwrap_or_default();
+
+            // Build dependency map
+            let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+            for conn in &workflow.connections {
+                deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
+            }
+
+            // Topological sort
+            let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut ordered_nodes: Vec<&WorkflowNode> = Vec::new();
+            let mut remaining: Vec<&WorkflowNode> = workflow.nodes.iter().collect();
+
+            while !remaining.is_empty() {
+                let mut progress = false;
+                remaining.retain(|node| {
+                    let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
+                    if deps.iter().all(|d| processed.contains(d)) {
+                        processed.insert(node.id.clone());
+                        ordered_nodes.push(node);
+                        progress = true;
+                        false
+                    } else {
+                        true
+                    }
+                });
+                if !progress {
+                    for node in &remaining {
+                        ordered_nodes.push(node);
+                    }
+                    break;
+                }
+            }
+
+            // Build downstream output target map
+            let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+            for conn in &workflow.connections {
+                if let Some(target_node) = workflow.nodes.iter().find(|n| n.id == conn.target) {
+                    if target_node.node_type.starts_with("output_") {
+                        let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
+                        downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
+                    }
+                }
+            }
+
+            let mut step_outputs: Vec<(String, String)> = Vec::new();
+            let mut all_usage: Vec<serde_json::Value> = Vec::new();
+            let mut staged_records: i64 = 0;
+
+            for node in &ordered_nodes {
+                let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
+                let previous: Vec<(&str, &str)> = step_outputs.iter()
+                    .filter(|(sid, _)| deps.contains(sid))
+                    .map(|(sid, out)| (sid.as_str(), out.as_str()))
+                    .collect();
+
+                let (output, usage_meta) = if node.node_type.starts_with("output_") {
+                    let input_data = previous.iter()
+                        .map(|(_, result)| result.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    (input_data, None)
+                } else {
+                    let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
+                    execute_node_with_llm(&pool, node, &content, &previous, &model, targets).await
+                };
+
+                let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
+                let mut artifact_metadata = serde_json::json!({
+                    "data_source_id": ds_id.to_string(),
+                    "workflow_id": workflow.id,
+                    "step_id": node.id,
+                    "step_index": step_index,
+                    "trigger_id": trigger_id,
+                });
+                if let Some(usage) = &usage_meta {
+                    artifact_metadata["usage"] = usage.clone();
+                    all_usage.push(usage.clone());
+                }
+
+                let _ = ExecutionArtifact::create(
+                    &pool,
+                    CreateExecutionArtifact {
+                        execution_process_id: None,
+                        artifact_type: ArtifactType::ResearchReport,
+                        title: format!("{} - {} [auto]", workflow.name, node.name),
+                        content: Some(output.clone()),
+                        file_path: None,
+                        metadata: Some(artifact_metadata),
+                    },
+                ).await;
+
+                step_outputs.push((node.id.clone(), output));
+            }
+
+            // Create staging records for output nodes
+            for node in ordered_nodes.iter().filter(|n| n.node_type.starts_with("output_")) {
+                let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
+                let staging_target = match target_type {
+                    "crm_contacts" => "crm_contact",
+                    "crm_companies" => "company",
+                    "crm_deals" => "crm_deal",
+                    "tasks" => "task",
+                    _ => continue,
+                };
+
+                if let Some((_, output)) = step_outputs.iter().find(|(id, _)| id == &node.id) {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(output) {
+                        let records = extract_records_from_output(&parsed, staging_target);
+                        for record in records {
+                            let dup = match staging_target {
+                                "crm_contact" => check_contact_duplicate(&pool, &record, data_source.project_id).await,
+                                "company" => check_company_duplicate(&pool, &record, data_source.organization_id).await,
+                                "crm_deal" => check_deal_duplicate(&pool, &record, data_source.project_id).await,
+                                "task" => check_task_duplicate(&pool, &record, data_source.project_id).await,
+                                _ => None,
+                            };
+                            let dup = dup.or(
+                                check_intra_batch_duplicate(&pool, workflow_run_id, staging_target, &record).await
+                            );
+                            let (dup_id, dup_type) = match dup {
+                                Some((id, t)) => (Some(id), Some(t)),
+                                None => (None, None),
+                            };
+                            let validation_errors = match validate_record_against_schema(&record, staging_target) {
+                                Ok(()) => None,
+                                Err(errs) => Some(errs),
+                            };
+
+                            let _ = WorkflowStagingRecord::create(&pool, CreateStagingRecord {
+                                workflow_run_id,
+                                workflow_id: workflow.id.clone(),
+                                node_id: node.id.clone(),
+                                data_source_id: Some(ds_id),
+                                organization_id: data_source.organization_id,
+                                project_id: data_source.project_id,
+                                target_type: staging_target.to_string(),
+                                record_data: record,
+                                duplicate_of_id: dup_id,
+                                duplicate_of_type: dup_type,
+                                confidence: None,
+                                validation_errors,
+                            }).await;
+                            staged_records += 1;
+                        }
+                    }
+                }
+            }
+
+            // Aggregate stats
+            let mut total_input: i64 = 0;
+            let mut total_output: i64 = 0;
+            let mut total_cost: i64 = 0;
+            for u in &all_usage {
+                total_input += u["input_tokens"].as_i64().unwrap_or(0);
+                total_output += u["output_tokens"].as_i64().unwrap_or(0);
+                total_cost += u["estimated_cost_micros"].as_i64().unwrap_or(0);
+            }
+
+            let duplicates_found = {
+                let staging_records = WorkflowStagingRecord::find_by_run(&pool, workflow_run_id).await.unwrap_or_default();
+                staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as i64
+            };
+            let node_count = workflow.nodes.len() as i64;
+            let llm_node_count = workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64;
+            let duration_ms = run_start.elapsed().as_millis() as i64;
+
+            let _ = WorkflowRun::update_on_complete(&pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
+                status: "completed".to_string(),
+                total_input_tokens: total_input,
+                total_output_tokens: total_output,
+                total_estimated_cost_micros: total_cost,
+                total_records_staged: staged_records,
+                total_duplicates_found: duplicates_found,
+                node_count,
+                llm_node_count,
+                duration_ms,
+            }).await;
+
+            tracing::info!(
+                "[TRIGGER] Completed trigger '{}' workflow run {} ({} records staged, {}ms)",
+                trigger_id, workflow_run_id, staged_records, duration_ms
+            );
+        });
+    }
 }
 
 // ── Router ──────────────────────────────────────────────────────────────────

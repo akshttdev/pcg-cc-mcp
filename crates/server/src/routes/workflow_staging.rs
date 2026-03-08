@@ -17,11 +17,11 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
-use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
+use db::models::workflow_staging::WorkflowStagingRecord;
 use db::models::crm_contact::{CrmContact, CreateCrmContact, ContactSource, LifecycleStage};
-use db::models::company::{Company, CreateCompany};
+use db::models::company::Company;
 use db::models::crm_deal::{CrmDeal, CreateCrmDeal};
-use db::models::crm_pipeline::{CrmPipeline, CrmPipelineStage};
+use db::models::crm_pipeline::{CrmPipeline, CrmPipelineStage, CreateCrmPipeline, PipelineType, CreateCrmPipelineStage};
 use db::models::task::{Task, CreateTask, Priority};
 
 // ── Query params ────────────────────────────────────────────────────────────
@@ -274,6 +274,9 @@ async fn commit_contact(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
         .as_array()
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
 
+    // Build source traceability custom_fields, merging with any existing custom_fields from data
+    let custom_fields = build_source_custom_fields(record, &data);
+
     let create = CreateCrmContact {
         project_id,
         first_name: data["first_name"].as_str().map(|s| s.to_string()),
@@ -281,7 +284,7 @@ async fn commit_contact(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
         email: data["email"].as_str().map(|s| s.to_string()),
         phone: data["phone"].as_str().map(|s| s.to_string()),
         mobile: data["mobile"].as_str().map(|s| s.to_string()),
-        avatar_url: None,
+        avatar_url: data["avatar_url"].as_str().map(|s| s.to_string()),
         company_name: data["company_name"].as_str().map(|s| s.to_string()),
         job_title: data["job_title"].as_str().map(|s| s.to_string()),
         department: data["department"].as_str().map(|s| s.to_string()),
@@ -291,12 +294,38 @@ async fn commit_contact(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
         source: Some(ContactSource::Workflow),
         lifecycle_stage,
         tags,
-        custom_fields: None,
+        custom_fields,
         zoho_contact_id: None,
         gmail_contact_id: None,
     };
 
     let contact = CrmContact::create(pool, create).await.map_err(|e| e.to_string())?;
+
+    // Auto-link: if company_name is present, find or create the Company record
+    if let Some(company_name) = data["company_name"].as_str() {
+        if !company_name.trim().is_empty() {
+            let company_website = data["website"].as_str().map(|s| s.to_string());
+            match Company::find_or_create(pool, company_name, record.organization_id, company_website).await {
+                Ok(company) => {
+                    tracing::info!(
+                        contact_id = %contact.id,
+                        company_id = %company.id,
+                        company_name = company_name,
+                        "Auto-linked contact to company"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        contact_id = %contact.id,
+                        company_name = company_name,
+                        error = %e,
+                        "Failed to auto-link contact to company"
+                    );
+                }
+            }
+        }
+    }
+
     Ok(contact.id)
 }
 
@@ -312,6 +341,31 @@ async fn commit_company(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
     )
     .await
     .map_err(|e| e.to_string())?;
+
+    // Update additional fields if present in record data (find_or_create only sets name/website)
+    let has_extra_fields = data["industry"].as_str().is_some()
+        || data["description"].as_str().is_some()
+        || data["logo_url"].as_str().is_some()
+        || data["headquarters"].as_str().is_some();
+
+    if has_extra_fields {
+        use db::models::company::UpdateCompany;
+        let update = UpdateCompany {
+            industry: data["industry"].as_str().map(|s| s.to_string()),
+            description: data["description"].as_str().map(|s| s.to_string()),
+            logo_url: data["logo_url"].as_str().map(|s| s.to_string()),
+            headquarters: data["headquarters"].as_str().map(|s| s.to_string()),
+            ..Default::default()
+        };
+        if let Err(e) = Company::update(pool, company.id, update).await {
+            tracing::warn!(
+                company_id = %company.id,
+                error = %e,
+                "Failed to update company with additional fields from workflow"
+            );
+        }
+    }
+
     Ok(company.id)
 }
 
@@ -338,16 +392,37 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         let first_stage_id = stages.first().map(|s| s.id);
         (Some(p.id), first_stage_id)
     } else {
-        (None, None)
+        // No pipeline exists — create a default "Sales Pipeline" for this project
+        tracing::warn!(
+            project_id = %project_id,
+            "No pipeline found for project, creating default Sales Pipeline"
+        );
+        match create_default_sales_pipeline(pool, project_id).await {
+            Ok((pid, sid)) => (Some(pid), sid),
+            Err(e) => {
+                tracing::error!(
+                    project_id = %project_id,
+                    error = %e,
+                    "Failed to create default Sales Pipeline — deal will have no pipeline"
+                );
+                (None, None)
+            }
+        }
     };
+
+    // Auto-link: look up CRM contact by email or name within the same project
+    let crm_contact_id = resolve_deal_contact(pool, project_id, &data).await;
 
     let tags: Option<Vec<String>> = data["tags"]
         .as_array()
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
 
+    // Build source traceability custom_fields, merging with any existing custom_fields from data
+    let custom_fields = build_source_custom_fields(record, &data);
+
     let create = CreateCrmDeal {
         project_id,
-        crm_contact_id: None,
+        crm_contact_id,
         crm_pipeline_id: pipeline_id,
         crm_stage_id: stage_id,
         name,
@@ -356,7 +431,7 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         currency: data["currency"].as_str().map(|s| s.to_string()),
         expected_close_date: data["expected_close_date"].as_str().map(|s| s.to_string()),
         tags,
-        custom_fields: None,
+        custom_fields,
     };
 
     let deal = CrmDeal::create(pool, create).await.map_err(|e| e.to_string())?;
@@ -382,6 +457,20 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         .as_array()
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
 
+    // Build source traceability as custom_properties
+    let custom_properties = {
+        let mut props = if let Some(existing) = data["custom_properties"].as_object() {
+            existing.clone()
+        } else {
+            serde_json::Map::new()
+        };
+        if let Some(ds_id) = &record.data_source_id {
+            props.insert("source_data_source_id".to_string(), serde_json::json!(ds_id.to_string()));
+        }
+        props.insert("source_workflow_run_id".to_string(), serde_json::json!(record.workflow_run_id.to_string()));
+        Some(Value::Object(props))
+    };
+
     let task_id = Uuid::new_v4();
     let create = CreateTask {
         project_id,
@@ -401,7 +490,7 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         parent_task_id: None,
         tags,
         due_date: None,
-        custom_properties: None,
+        custom_properties,
         scheduled_start: None,
         scheduled_end: None,
         screenshot: None,
@@ -409,6 +498,141 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
 
     let task = Task::create(pool, &create, task_id).await.map_err(|e| e.to_string())?;
     Ok(task.id)
+}
+
+// ── Helper functions ──────────────────────────────────────────────────────
+
+/// Build custom_fields JSON with source traceability info, merging with any existing custom_fields.
+fn build_source_custom_fields(record: &WorkflowStagingRecord, data: &Value) -> Option<Value> {
+    let mut fields = if let Some(existing) = data["custom_fields"].as_object() {
+        existing.clone()
+    } else {
+        serde_json::Map::new()
+    };
+
+    if let Some(ds_id) = &record.data_source_id {
+        fields.insert("source_data_source_id".to_string(), serde_json::json!(ds_id.to_string()));
+    }
+    fields.insert("source_workflow_run_id".to_string(), serde_json::json!(record.workflow_run_id.to_string()));
+
+    Some(Value::Object(fields))
+}
+
+/// Resolve a CRM contact for a deal by looking up contact_email or contact_name in the project.
+async fn resolve_deal_contact(pool: &SqlitePool, project_id: Uuid, data: &Value) -> Option<Uuid> {
+    // Try by email first
+    if let Some(email) = data["contact_email"].as_str() {
+        if !email.trim().is_empty() {
+            match CrmContact::find_by_email(pool, project_id, email).await {
+                Ok(Some(contact)) => {
+                    tracing::info!(
+                        deal_contact_email = email,
+                        contact_id = %contact.id,
+                        "Auto-linked deal to contact by email"
+                    );
+                    return Some(contact.id);
+                }
+                Ok(None) => {
+                    tracing::debug!(
+                        deal_contact_email = email,
+                        "No contact found with email for deal auto-link"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        deal_contact_email = email,
+                        error = %e,
+                        "Error looking up contact by email for deal"
+                    );
+                }
+            }
+        }
+    }
+
+    // Fallback: try by contact_name (search by full_name)
+    if let Some(name) = data["contact_name"].as_str() {
+        if !name.trim().is_empty() {
+            let search_params = db::models::crm_contact::ContactSearchParams {
+                project_id,
+                query: Some(name.to_string()),
+                lifecycle_stage: None,
+                company_name: None,
+                tags: None,
+                min_lead_score: None,
+                limit: Some(1),
+                offset: None,
+            };
+            match CrmContact::search(pool, search_params).await {
+                Ok(contacts) if !contacts.is_empty() => {
+                    tracing::info!(
+                        deal_contact_name = name,
+                        contact_id = %contacts[0].id,
+                        "Auto-linked deal to contact by name"
+                    );
+                    return Some(contacts[0].id);
+                }
+                Ok(_) => {
+                    tracing::debug!(
+                        deal_contact_name = name,
+                        "No contact found with name for deal auto-link"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        deal_contact_name = name,
+                        error = %e,
+                        "Error searching contact by name for deal"
+                    );
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Create a default Sales Pipeline with standard stages for a project.
+async fn create_default_sales_pipeline(pool: &SqlitePool, project_id: Uuid) -> Result<(Uuid, Option<Uuid>), String> {
+    let pipeline = CrmPipeline::create(pool, CreateCrmPipeline {
+        project_id,
+        name: "Sales Pipeline".to_string(),
+        description: Some("Auto-created by workflow commit".to_string()),
+        pipeline_type: PipelineType::Sales,
+        icon: Some("trending-up".to_string()),
+        color: Some("#3B82F6".to_string()),
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let default_stages = vec![
+        ("Lead", "#3B82F6", 0, false, false, 10),
+        ("Qualified", "#F59E0B", 1, false, false, 30),
+        ("Proposal", "#8B5CF6", 2, false, false, 60),
+        ("Won", "#22C55E", 3, true, true, 100),
+        ("Lost", "#9CA3AF", 4, true, false, 0),
+    ];
+
+    let mut first_stage_id = None;
+    for (name, color, position, is_closed, is_won, probability) in default_stages {
+        let stage = CrmPipelineStage::create(pool, CreateCrmPipelineStage {
+            pipeline_id: pipeline.id,
+            name: name.to_string(),
+            description: None,
+            color: color.to_string(),
+            position,
+            is_closed: Some(is_closed),
+            is_won: Some(is_won),
+            probability,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if first_stage_id.is_none() {
+            first_stage_id = Some(stage.id);
+        }
+    }
+
+    Ok((pipeline.id, first_stage_id))
 }
 
 // ── Batch convenience endpoints ──────────────────────────────────────────

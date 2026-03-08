@@ -5490,11 +5490,11 @@ export const dataSourcesApi = {
     return handleApiResponse<any>(response);
   },
 
-  runWorkflow: async (dataSourceId: string, workflowId: string, model?: string) => {
+  runWorkflow: async (dataSourceId: string, workflowId: string, model?: string, force?: boolean) => {
     const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows/${workflowId}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model }),
+      body: JSON.stringify({ model, force }),
     });
     return handleApiResponse<any>(response);
   },
@@ -5675,6 +5675,7 @@ export interface WorkflowRun {
   node_count?: number;
   llm_node_count?: number;
   duration_ms?: number;
+  content_hash?: string;
   started_at: string;
   completed_at?: string;
   created_at: string;
@@ -5696,6 +5697,101 @@ export interface WorkflowRunStats {
   };
   cost_dollars: number;
 }
+
+// ── Workflow Trigger types ──────────────────────────────────────────────────
+
+export interface WorkflowTrigger {
+  id: string;
+  workflow_id: string;
+  name: string;
+  enabled: boolean;
+  trigger_type: 'data_source_created' | 'data_source_updated' | 'scheduled';
+  filter_data_source_types: string | null;  // JSON array
+  filter_organization_id: string | null;
+  filter_project_id: string | null;
+  filter_tags: string | null;  // JSON array
+  model_override: string | null;
+  auto_approve: boolean;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateWorkflowTrigger {
+  workflow_id: string;
+  name: string;
+  trigger_type?: string;
+  filter_data_source_types?: string[];
+  filter_organization_id?: string;
+  filter_project_id?: string;
+  filter_tags?: string[];
+  model_override?: string;
+  auto_approve?: boolean;
+}
+
+export interface UpdateWorkflowTrigger {
+  name?: string;
+  enabled?: boolean;
+  trigger_type?: string;
+  filter_data_source_types?: string[];
+  filter_organization_id?: string;
+  filter_project_id?: string;
+  filter_tags?: string[];
+  model_override?: string;
+  auto_approve?: boolean;
+}
+
+export const triggersApi = {
+  list: async (workflowId?: string): Promise<WorkflowTrigger[]> => {
+    const params = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : '';
+    const response = await makeRequest(`/api/workflows/triggers${params}`);
+    return handleApiResponse<WorkflowTrigger[]>(response);
+  },
+
+  get: async (id: string): Promise<WorkflowTrigger> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}`);
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  create: async (data: CreateWorkflowTrigger): Promise<WorkflowTrigger> => {
+    const response = await makeRequest('/api/workflows/triggers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  update: async (id: string, data: UpdateWorkflowTrigger): Promise<WorkflowTrigger> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}`, {
+      method: 'DELETE',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  toggle: async (id: string): Promise<WorkflowTrigger> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}/toggle`, {
+      method: 'POST',
+    });
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  check: async (dataSourceId: string): Promise<WorkflowTrigger[]> => {
+    const response = await makeRequest('/api/workflows/triggers/check', {
+      method: 'POST',
+      body: JSON.stringify({ data_source_id: dataSourceId }),
+    });
+    return handleApiResponse<WorkflowTrigger[]>(response);
+  },
+};
 
 // ── Schema types and API ──────────────────────────────────────────────────────
 
