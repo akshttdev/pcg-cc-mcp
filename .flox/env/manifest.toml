@@ -24,6 +24,8 @@ sqlx-cli.pkg-path = "sqlx-cli"
 cmake.pkg-path = "cmake"
 libopus.pkg-path = "libopus"
 pkg-config.pkg-path = "pkg-config"
+sccache.pkg-path = "sccache"
+lld.pkg-path = "lld"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 
@@ -36,6 +38,7 @@ pkg-config.pkg-path = "pkg-config"
 ORCHA_USERNAME = "Sirak"
 SQLX_OFFLINE = "true"
 PCG_SERVER_URL = "http://localhost:3000"
+RUSTC_WRAPPER = "sccache"
 
 
 ## Activation Hook ---------------------------------------------------
