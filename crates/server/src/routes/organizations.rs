@@ -396,6 +396,44 @@ pub async fn list_data_sources(
     Ok(Json(ApiResponse::success(rows)))
 }
 
+/// GET /api/organizations/:id/data-sources
+pub async fn list_org_data_sources(
+    Path(id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Vec<Value>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let org_bytes = id.as_bytes().as_slice().to_vec();
+    let rows: Vec<Value> = sqlx::query_scalar::<_, String>(
+        r#"SELECT json_object(
+            'id', lower(hex(id)),
+            'organization_id', lower(hex(organization_id)),
+            'project_id', lower(hex(project_id)),
+            'created_by', lower(hex(created_by)),
+            'title', title,
+            'description', description,
+            'data_type', data_type,
+            'file_type', file_type,
+            'file_name', file_name,
+            'file_path', file_path,
+            'file_size_bytes', file_size_bytes,
+            'metadata', metadata,
+            'status', status,
+            'source_type', source_type,
+            'created_at', created_at,
+            'updated_at', updated_at
+        ) FROM data_sources
+        WHERE organization_id = ? AND archived_at IS NULL
+        ORDER BY created_at DESC"#,
+    )
+    .bind(org_bytes)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .filter_map(|s| serde_json::from_str(&s).ok())
+    .collect();
+    Ok(Json(ApiResponse::success(rows)))
+}
+
 /// PATCH /api/organizations/:id/activate — reactivate
 pub async fn activate_organization(
     Path(id): Path<Uuid>,
@@ -493,6 +531,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/organizations/{id}/generate-invite", post(generate_invite))
         .route("/organizations/{id}/persons", get(get_org_persons))
+        .route("/organizations/{id}/data-sources", get(list_org_data_sources))
         .route("/data-sources", get(list_data_sources))
         .route(
             "/organizations/{id}/person-contacts",
