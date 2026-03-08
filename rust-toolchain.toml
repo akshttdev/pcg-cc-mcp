@@ -7,6 +7,5 @@ components = [
     "rust-src",
     "rust-std",
     "cargo",
-    "rustc-codegen-cranelift-preview",
 ]
 profile = "default"
