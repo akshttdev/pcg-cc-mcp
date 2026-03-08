@@ -160,12 +160,12 @@ export function detectWakeWord(text, agentName) {
 export async function callAgent(serverPort, agentName, message, projectId, sessionId, participantCtx = '') {
   const endpoint = agentName.toLowerCase() === 'topsi' ? 'topsi' : 'nora';
   const identities = {
-    nora: `You are Nora, PowerClub Global's Executive AI Agent. You are speaking via Discord voice.`,
+    nora: `You are Nora, PowerClub Global's Executive AI Agent. You are speaking via Discord voice. British English.`,
     topsi: `You are Topsi, PowerClub Global's technical AI agent. You are speaking via Discord voice.`,
   };
   const identity = identities[agentName.toLowerCase()] ?? `You are ${agentName}, a PowerClub Global AI agent.`;
   const contextPart = participantCtx ? ` ${participantCtx}` : '';
-  const prefix = `[DISCORD VOICE CALL — ${identity}${contextPart} Voice only. 1-3 sentences max. No markdown. British English.]`;
+  const prefix = `[DISCORD VOICE CALL — ${identity}${contextPart} Voice only. 1-3 sentences max. No markdown.]`;
 
   const res = await fetch(`http://127.0.0.1:${serverPort}/api/internal/${endpoint}/chat`, {
     method: 'POST',
@@ -196,18 +196,44 @@ export async function callAgent(serverPort, agentName, message, projectId, sessi
  * Synthesize text to an MP3 buffer.
  * Tries ElevenLabs first, falls back to OpenAI TTS.
  */
-// Voice IDs per agent — matches the Rust server voice config
-const ELEVENLABS_VOICES = {
-  nora: process.env.ELEVENLABS_NORA_VOICE_ID ?? 'ZtcPZrt9K4w8e1OB9M6w', // Mia Moore - British Studio Presenter
-  topsi: process.env.ELEVENLABS_TOPSI_VOICE_ID ?? 'EXAVITQu4vr4xnSDxMaL', // Bella - warm, friendly
-};
+// Nora uses ElevenLabs (Mia Moore — British Studio Presenter)
+// Topsi uses Chatterbox (local, matches dashboard config)
+const ELEVENLABS_NORA_VOICE = process.env.ELEVENLABS_NORA_VOICE_ID ?? 'ZtcPZrt9K4w8e1OB9M6w';
+const CHATTERBOX_URL = process.env.CHATTERBOX_URL ?? 'http://localhost:8102';
 
 export async function synthesizeTts(text, agentName = 'nora') {
+  const agent = agentName.toLowerCase();
+
+  // ── Topsi: Piper TTS (en_GB-semaine-medium, prudence speaker) ────────────
+  // Matches the dashboard voice: computer-sounding semaine female voice
+  if (agent === 'topsi') {
+    try {
+      const res = await fetch(`${CHATTERBOX_URL.replace(/\/$/, '')}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          speaker_id: 'prudence',
+          speed: 1.0,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (res.ok) {
+        console.log('[TTS] Piper semaine/prudence (Topsi)');
+        return Buffer.from(await res.arrayBuffer());
+      }
+      console.warn(`[TTS] Piper returned ${res.status}`);
+    } catch (e) {
+      console.warn('[TTS] Piper failed:', e.message);
+    }
+    throw new Error('Piper TTS unavailable for Topsi — is it running on port 8102?');
+  }
+
+  // ── Nora: ElevenLabs (Mia Moore) ─────────────────────────────────────────
   const elKey = process.env.ELEVENLABS_API_KEY;
   if (elKey) {
-    const voiceId = ELEVENLABS_VOICES[agentName.toLowerCase()] ?? ELEVENLABS_VOICES.nora;
     try {
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_NORA_VOICE}`, {
         method: 'POST',
         headers: {
           'xi-api-key': elKey,
@@ -220,33 +246,15 @@ export async function synthesizeTts(text, agentName = 'nora') {
           voice_settings: { stability: 0.5, similarity_boost: 0.75 },
         }),
       });
-      if (res.ok) return Buffer.from(await res.arrayBuffer());
+      if (res.ok) {
+        console.log('[TTS] ElevenLabs Mia Moore (Nora)');
+        return Buffer.from(await res.arrayBuffer());
+      }
+      console.warn(`[TTS] ElevenLabs returned ${res.status}`);
     } catch (e) {
       console.warn('[TTS] ElevenLabs failed:', e.message);
     }
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (apiKey) {
-    try {
-      const res = await fetch('https://api.openai.com/v1/audio/speech', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'tts-1',
-          input: text,
-          voice: 'nova',
-          response_format: 'mp3',
-        }),
-      });
-      if (res.ok) return Buffer.from(await res.arrayBuffer());
-    } catch (e) {
-      console.warn('[TTS] OpenAI TTS failed:', e.message);
-    }
-  }
-
-  throw new Error('No TTS provider configured — set ELEVENLABS_API_KEY or OPENAI_API_KEY');
+  throw new Error('No TTS provider available for Nora — check ELEVENLABS_API_KEY');
 }
