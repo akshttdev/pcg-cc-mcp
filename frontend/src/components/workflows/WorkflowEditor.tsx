@@ -34,6 +34,8 @@ import {
   Loader2,
   Network,
   Cpu,
+  Link,
+  Unlink,
   Users,
   Building2,
   Handshake,
@@ -445,7 +447,10 @@ export function WorkflowEditor({
         {/* Body: two-panel layout like n8n */}
         <div className="flex flex-1 min-h-0">
           {/* Left: Canvas / Node list */}
-          <div className="flex-1 flex flex-col border-r">
+          <div className={cn(
+            'flex flex-col border-r transition-all',
+            selectedNodeId ? 'w-[340px] shrink-0' : 'flex-1'
+          )}>
             {/* Workflow metadata */}
             <div className="px-4 py-3 border-b bg-muted/30 space-y-2">
               <div className="grid grid-cols-2 gap-3">
@@ -647,7 +652,10 @@ export function WorkflowEditor({
           </div>
 
           {/* Right: Node configuration panel (n8n style) */}
-          <div className="w-[480px] flex flex-col bg-muted/20">
+          <div className={cn(
+            'flex flex-col bg-muted/20',
+            selectedNodeId ? 'flex-1' : 'w-[320px]'
+          )}>
             {selectedNode ? (
               <NodeConfigPanel
                 node={selectedNode}
@@ -1109,11 +1117,11 @@ function NodeConfigPanel({
                 return (
                   <div
                     key={sourceId}
-                    className="flex items-center gap-2 rounded-md border px-2 py-1.5 bg-card"
+                    className="flex items-center gap-2 rounded-md border bg-primary/5 border-primary/20 px-2 py-1.5"
                   >
                     <div
                       className={cn(
-                        'w-5 h-5 rounded flex items-center justify-center text-white',
+                        'w-5 h-5 rounded flex items-center justify-center text-white shrink-0',
                         srcDef?.color ?? 'bg-gray-500'
                       )}
                     >
@@ -1124,33 +1132,50 @@ function NodeConfigPanel({
                     </span>
                     <button
                       onClick={() => onRemoveConnection(sourceId)}
-                      className="p-0.5 rounded hover:bg-destructive/10 hover:text-destructive"
+                      className="p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                      title="Disconnect"
                     >
-                      <X className="h-3 w-3" />
+                      <Unlink className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 );
               })}
 
-              {availableInputs.length > 0 && (
-                <Select onValueChange={(v) => onAddConnection(v)}>
-                  <SelectTrigger className="h-8 text-sm">
-                    <SelectValue placeholder="+ Connect input from..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableInputs.map((n) => (
-                      <SelectItem key={n.id} value={n.id}>
-                        {n.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {currentInputs.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">
+                  No inputs — receives raw data source content.
+                </p>
               )}
 
-              {currentInputs.length === 0 && availableInputs.length === 0 && (
-                <p className="text-xs text-muted-foreground italic">
-                  No inputs — this node receives raw data source content.
-                </p>
+              {availableInputs.length > 0 && (
+                <Select onValueChange={(v) => onAddConnection(v)}>
+                  <SelectTrigger className="h-8 text-sm border-dashed">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Link className="h-3.5 w-3.5" />
+                      <span>Add input connection...</span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableInputs.map((n) => {
+                      const nDef = getNodeTypeDef(n.type);
+                      return (
+                        <SelectItem key={n.id} value={n.id}>
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                'w-4 h-4 rounded flex items-center justify-center text-white shrink-0 text-[10px]',
+                                nDef?.color ?? 'bg-gray-500'
+                              )}
+                            >
+                              {(nDef?.label ?? '?')[0]}
+                            </span>
+                            {n.name}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           </div>
