@@ -39,6 +39,10 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
+          <div className="flex items-center justify-center mb-4">
+            <img src="/orcha-logo.png" alt="ORCHA" className="h-10 w-auto" />
+            <span className="ml-2 text-xl font-bold tracking-wide">ORCHA</span>
+          </div>
           <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
           <CardDescription>
             Enter your credentials to access your dashboard

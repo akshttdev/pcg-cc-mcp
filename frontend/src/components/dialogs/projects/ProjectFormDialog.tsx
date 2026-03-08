@@ -258,7 +258,7 @@ export const ProjectFormDialog = NiceModal.create<ProjectFormDialogProps>(
 
     return (
       <Dialog open={modal.visible} onOpenChange={handleOpenChange}>
-        <DialogContent className="overflow-x-hidden">
+        <DialogContent className="sm:max-w-2xl overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>
               {isEditing ? 'Edit Project' : 'Create Project'}
