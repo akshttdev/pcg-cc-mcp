@@ -101,6 +101,8 @@ pub mod review_token;
 pub mod review_comment;
 pub mod person_note;
 pub mod quickbooks_account;
+pub mod pcg_router_model;
+pub mod oss_library;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

@@ -44,6 +44,8 @@ import {
   Receipt,
   ExternalLink,
   Image,
+  Headphones,
+  PackageSearch,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -100,6 +102,17 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'Settings', icon: Settings, to: '/settings', id: 'settings' },
+];
+
+// Management nav — admin-only, collapsible
+const MANAGEMENT_NAV_ITEMS: NavItem[] = [
+  { label: 'People', icon: Users, to: '/people', id: 'people', adminOnly: true },
+  { label: 'Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
+  { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
+  { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
+  { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
+  { label: 'Discord Voice', icon: Headphones, to: '/discord', id: 'discord', adminOnly: true },
+  { label: 'Library Listener', icon: PackageSearch, to: '/oss-library-listener', id: 'oss-library-listener', adminOnly: true },
 ];
 
 // Global views - admin only, collapsible
@@ -1286,6 +1299,7 @@ export function Sidebar({ className }: SidebarProps) {
   };
 
   const [globalViewsExpanded, setGlobalViewsExpanded] = useState(false);
+  const [managementExpanded, setManagementExpanded] = useState(false);
 
   // Filter navigation items based on user role
   const filteredPrimaryNav = PRIMARY_NAV_ITEMS.filter((item) => {
@@ -1367,6 +1381,43 @@ export function Sidebar({ className }: SidebarProps) {
                           isActive && "sidebar-nav-item-active"
                         )}
                       >
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
+
+      {/* Management - Admin Only */}
+      {isAdmin && (
+        <div className="border-b border-border/40">
+          <Collapsible open={managementExpanded} onOpenChange={setManagementExpanded}>
+            <CollapsibleTrigger asChild>
+              <div className="sidebar-nav-item mx-3 my-1.5 justify-between">
+                <div className="flex items-center gap-2.5">
+                  <LayoutDashboard className="h-4 w-4" />
+                  <span>Management</span>
+                </div>
+                {managementExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-3 pb-2">
+              <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
+                {MANAGEMENT_NAV_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.to;
+                  return (
+                    <Link key={item.id} to={item.to}>
+                      <div className={cn("sidebar-nav-item text-xs py-1", isActive && "sidebar-nav-item-active")}>
                         <Icon className="h-3.5 w-3.5" />
                         {item.label}
                       </div>

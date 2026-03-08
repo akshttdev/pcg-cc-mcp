@@ -56,6 +56,7 @@ import {
   Check,
   Brain,
   RefreshCw,
+  Database,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -1792,7 +1793,8 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
       <div className="flex-1 overflow-auto">
         <div className="max-w-[1600px] mx-auto px-6 py-5">
           <Tabs value={tabFromUrl} onValueChange={setTab}>
-            <TabsList className="mb-6">
+            <div className="flex items-center justify-between mb-6">
+            <TabsList>
               <TabsTrigger value="overview">
                 <LayoutGrid className="h-4 w-4 mr-2" />
                 Overview
@@ -1826,6 +1828,14 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 Leads
               </TabsTrigger>
             </TabsList>
+            <Link
+              to={`/organizations/${orgId}/data-sources`}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground border rounded-md px-3 py-1.5 transition-colors"
+            >
+              <Database className="h-3.5 w-3.5" />
+              Data Library
+            </Link>
+            </div>
 
             <TabsContent value="overview">
               <OverviewTab

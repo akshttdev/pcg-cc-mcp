@@ -3,6 +3,7 @@ use axum::{
     extract::{Path, Query, State},
     routing::{delete, get, post, put},
 };
+use serde_json::Value;
 use db::models::person::Person;
 use db::models::user::{
     CreateOrganization, Organization, OrganizationMember, UpdateOrganization,
@@ -350,6 +351,50 @@ pub async fn get_org_persons(
     Ok(Json(ApiResponse::success(persons)))
 }
 
+/// GET /api/data-sources?organization_id=<uuid>
+pub async fn list_data_sources(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<Vec<Value>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let rows: Vec<Value> = if let Some(org_id) = params.get("organization_id") {
+        let org_uuid = Uuid::parse_str(org_id)
+            .map_err(|_| ApiError::BadRequest("Invalid organization_id".into()))?;
+        let org_bytes = org_uuid.as_bytes().as_slice().to_vec();
+        sqlx::query_scalar::<_, String>(
+            r#"SELECT json_object(
+                'id', lower(hex(id)),
+                'organization_id', lower(hex(organization_id)),
+                'project_id', lower(hex(project_id)),
+                'created_by', lower(hex(created_by)),
+                'title', title,
+                'description', description,
+                'data_type', data_type,
+                'file_type', file_type,
+                'file_name', file_name,
+                'file_path', file_path,
+                'file_size_bytes', file_size_bytes,
+                'metadata', metadata,
+                'status', status,
+                'source_type', source_type,
+                'created_at', created_at,
+                'updated_at', updated_at
+            ) FROM data_sources
+            WHERE organization_id = ? AND archived_at IS NULL
+            ORDER BY created_at DESC"#,
+        )
+        .bind(org_bytes)
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .filter_map(|s| serde_json::from_str(&s).ok())
+        .collect()
+    } else {
+        vec![]
+    };
+    Ok(Json(ApiResponse::success(rows)))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/organizations", get(list_organizations).post(create_organization))
@@ -368,4 +413,5 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/organizations/{id}/generate-invite", post(generate_invite))
         .route("/organizations/{id}/persons", get(get_org_persons))
+        .route("/data-sources", get(list_data_sources))
 }
