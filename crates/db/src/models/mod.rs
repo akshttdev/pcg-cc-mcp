@@ -106,6 +106,7 @@ pub mod scheduled_meeting;
 pub mod company;
 pub mod quickbooks_account;
 pub mod entity_graph;
+pub mod pcg_router_model;
 // Topology modules need SQLX prepared queries — commented out for offline builds
 // pub mod topology_node;
 // pub mod topology_edge;
