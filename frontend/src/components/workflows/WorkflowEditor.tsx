@@ -40,7 +40,7 @@ import {
   ListTodo,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { workflowsApi } from '@/lib/api';
+import { workflowsApi, type AvailableModel } from '@/lib/api';
 import type {
   WorkflowNode,
   WorkflowConnection,
