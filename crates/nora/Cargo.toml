@@ -31,8 +31,6 @@ reqwest = { version = "0.11", features = ["json", "multipart", "stream"] }
 bytes = "1.5"
 services = { path = "../services" }
 
-# Audio processing (for voice capabilities)
-tokio-tungstenite = "0.20"
 base64 = "0.21"
 uuid = { version = "1.0", features = ["v4"] }
 
@@ -61,7 +59,6 @@ async-trait = "0.1"
 # External API integrations
 lettre = { version = "0.11", default-features = false, features = ["builder", "tokio1-rustls-tls", "smtp-transport", "pool"] }
 google-calendar3 = "5.0"
-yup-oauth2 = "10.0"
 
 # LRU cache for LLM response caching
 moka = { version = "0.12", features = ["future"] }
@@ -71,4 +68,3 @@ moka = { version = "0.12", features = ["future"] }
 # For now, we'll use base64 for audio data encoding/decoding
 
 [dev-dependencies]
-tokio-test = "0.4"

@@ -47,4 +47,3 @@ indexmap = { version = "2.0", features = ["serde"] }
 nora = { path = "../nora" }
 
 [dev-dependencies]
-tokio-test = "0.4"
