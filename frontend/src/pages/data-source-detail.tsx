@@ -24,7 +24,7 @@ import {
   ChevronRight,
   Clock,
 } from 'lucide-react';
-import { dataSourcesApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
+import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
 
 export function DataSourceDetailPage() {
   const { orgId, dataSourceId } = useParams<{ orgId: string; dataSourceId: string }>();
@@ -35,6 +35,7 @@ export function DataSourceDetailPage() {
   const [expandedArtifacts, setExpandedArtifacts] = useState<Set<string>>(new Set());
   const [workflowResult, setWorkflowResult] = useState<any>(null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>('');
 
   const { data: source, isLoading } = useQuery({
     queryKey: ['dataSource', dataSourceId],
@@ -54,11 +55,19 @@ export function DataSourceDetailPage() {
     enabled: !!dataSourceId,
   });
 
+  const { data: availableModels } = useQuery({
+    queryKey: ['workflowModels'],
+    queryFn: () => workflowsApi.listAvailableModels(),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const effectiveModel = selectedModel || availableModels?.find((m) => m.is_default)?.id || '';
+
   // Auto-select first workflow when loaded
   const effectiveWorkflowId = selectedWorkflowId || (Array.isArray(workflows) && workflows.length > 0 ? workflows[0].id : '');
 
   const runWorkflowMutation = useMutation({
-    mutationFn: () => dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId),
+    mutationFn: () => dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId, effectiveModel || undefined),
     onSuccess: (data) => {
       setWorkflowResult(data);
       queryClient.invalidateQueries({ queryKey: ['dataSourceArtifacts', dataSourceId] });
@@ -338,6 +347,23 @@ export function DataSourceDetailPage() {
                     {workflows.map((wf: any) => (
                       <SelectItem key={wf.id} value={wf.id}>
                         {wf.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {Array.isArray(availableModels) && availableModels.length > 0 && (
+                <Select
+                  value={effectiveModel}
+                  onValueChange={setSelectedModel}
+                >
+                  <SelectTrigger className="h-8 w-[240px] text-xs">
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
