@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,17 @@ import {
   Eye,
   Loader2,
   Network,
+  Cpu,
+  Link,
+  Unlink,
+  Users,
+  Building2,
+  Handshake,
+  ListTodo,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  List,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { workflowsApi } from '@/lib/api';
@@ -40,11 +52,21 @@ import type {
   WorkflowConnection,
   WorkflowDefinition,
   PreviewNodeResult,
+  AvailableModel,
 } from '@/lib/api';
 
 // ── Node type registry (n8n-style) ──────────────────────────────────────────
 
-export const NODE_TYPES = [
+interface NodeTypeDefinition {
+  type: string;
+  label: string;
+  description: string;
+  icon: any;
+  color: string;
+  defaultParameters: Record<string, any>;
+}
+
+export const NODE_TYPES: NodeTypeDefinition[] = [
   {
     type: 'llm_extract',
     label: 'LLM Extract',
@@ -108,11 +130,53 @@ export const NODE_TYPES = [
       merge_strategy: 'combine',
     },
   },
-] as const;
+  {
+    type: 'output_crm_contacts',
+    label: 'Output: CRM Contacts',
+    description: 'Send extracted contacts to CRM',
+    icon: Users,
+    color: 'bg-emerald-600',
+    defaultParameters: {
+      target_type: 'crm_contact',
+      on_duplicate: 'flag_for_review',
+    },
+  },
+  {
+    type: 'output_crm_companies',
+    label: 'Output: Companies',
+    description: 'Send extracted companies to company records',
+    icon: Building2,
+    color: 'bg-emerald-600',
+    defaultParameters: {
+      target_type: 'company',
+      on_duplicate: 'flag_for_review',
+    },
+  },
+  {
+    type: 'output_crm_deals',
+    label: 'Output: CRM Deals',
+    description: 'Create deals/opportunities in CRM pipeline',
+    icon: Handshake,
+    color: 'bg-emerald-600',
+    defaultParameters: {
+      target_type: 'crm_deal',
+      on_duplicate: 'flag_for_review',
+    },
+  },
+  {
+    type: 'output_tasks',
+    label: 'Output: Tasks',
+    description: 'Create tasks from workflow results',
+    icon: ListTodo,
+    color: 'bg-emerald-600',
+    defaultParameters: {
+      target_type: 'task',
+      on_duplicate: 'skip',
+    },
+  },
+];
 
-type NodeTypeDef = (typeof NODE_TYPES)[number];
-
-function getNodeTypeDef(type: string): NodeTypeDef | undefined {
+export function getNodeTypeDef(type: string): NodeTypeDefinition | undefined {
   return NODE_TYPES.find((t) => t.type === type);
 }
 
@@ -128,6 +192,7 @@ interface WorkflowEditorProps {
     description?: string;
     nodes: WorkflowNode[];
     connections: WorkflowConnection[];
+    default_model?: string;
   }) => void;
   isSaving?: boolean;
 }
@@ -148,9 +213,19 @@ export function WorkflowEditor({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
+  const [defaultModel, setDefaultModel] = useState('');
+
   // Nodes and connections
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [connections, setConnections] = useState<WorkflowConnection[]>([]);
+
+  // Fetch available models
+  const { data: availableModels = [] } = useQuery({
+    queryKey: ['workflowModels'],
+    queryFn: () => workflowsApi.listAvailableModels(),
+    staleTime: 60 * 60 * 1000,
+    enabled: open,
+  });
 
   // UI state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -163,12 +238,14 @@ export function WorkflowEditor({
         setId(workflow.id);
         setName(workflow.name);
         setDescription(workflow.description || '');
+        setDefaultModel(workflow?.default_model || '');
         setNodes(structuredClone(workflow.nodes));
         setConnections(structuredClone(workflow.connections));
       } else {
         setId('');
         setName('');
         setDescription('');
+        setDefaultModel('');
         setNodes([]);
         setConnections([]);
       }
@@ -290,8 +367,9 @@ export function WorkflowEditor({
       description: description.trim() || undefined,
       nodes,
       connections,
+      default_model: defaultModel || undefined,
     });
-  }, [id, name, description, nodes, connections, onSave]);
+  }, [id, name, description, nodes, connections, defaultModel, onSave]);
 
   const canSave = id.trim() && name.trim() && nodes.length > 0;
 
@@ -300,6 +378,38 @@ export function WorkflowEditor({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
+  const [metadataExpanded, setMetadataExpanded] = useState(isNew);
+  const [pendingDeleteNodeId, setPendingDeleteNodeId] = useState<string | null>(null);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(340);
+  const isDraggingRef = useRef(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Drag-to-resize handler for the column divider
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    const startX = e.clientX;
+    const startWidth = leftPanelWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const containerRect = bodyRef.current?.getBoundingClientRect();
+      const maxWidth = containerRect ? containerRect.width - 280 : 800;
+      const newWidth = Math.max(200, Math.min(maxWidth, startWidth + ev.clientX - startX));
+      setLeftPanelWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      isDraggingRef.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [leftPanelWidth]);
 
   const handlePreview = useCallback(async () => {
     if (nodes.length === 0) return;
@@ -333,13 +443,16 @@ export function WorkflowEditor({
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              variant="ghost"
-              onClick={() => setShowGraph(true)}
+              variant={showGraph ? 'secondary' : 'ghost'}
+              onClick={() => setShowGraph(!showGraph)}
               disabled={nodes.length === 0}
               className="gap-1.5"
             >
-              <Network className="h-3.5 w-3.5" />
-              Graph
+              {showGraph ? (
+                <><List className="h-3.5 w-3.5" />List</>
+              ) : (
+                <><Network className="h-3.5 w-3.5" />Graph</>
+              )}
             </Button>
             <Button
               size="sm"
@@ -371,190 +484,271 @@ export function WorkflowEditor({
         </div>
 
         {/* Body: two-panel layout like n8n */}
-        <div className="flex flex-1 min-h-0">
+        <div ref={bodyRef} className="flex flex-1 min-h-0">
           {/* Left: Canvas / Node list */}
-          <div className="flex-1 flex flex-col border-r">
-            {/* Workflow metadata */}
-            <div className="px-4 py-3 border-b bg-muted/30 space-y-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-muted-foreground">
-                    Workflow ID
-                  </Label>
-                  <Input
-                    value={id}
-                    onChange={(e) =>
-                      setId(
-                        e.target.value
-                          .toLowerCase()
-                          .replace(/[^a-z0-9_]/g, '_')
-                      )
-                    }
-                    placeholder="my_workflow"
-                    className="h-8 text-sm mt-1"
-                    disabled={!isNew}
-                  />
+          <div
+            className="flex flex-col shrink-0"
+            style={{ width: selectedNodeId ? leftPanelWidth : undefined, flex: selectedNodeId ? undefined : 1 }}
+          >
+            {/* Workflow metadata (collapsible) */}
+            <div className="border-b bg-muted/30">
+              <button
+                onClick={() => setMetadataExpanded(!metadataExpanded)}
+                className="w-full flex items-center gap-2 px-4 py-2 hover:bg-muted/50 transition-colors text-left"
+              >
+                {metadataExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                )}
+                <span className="text-sm font-medium truncate flex-1">
+                  {name || 'Untitled Workflow'}
+                </span>
+                {!metadataExpanded && description && (
+                  <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                    {description}
+                  </span>
+                )}
+              </button>
+              {metadataExpanded && (
+                <div className="px-4 pb-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">
+                        Workflow ID
+                      </Label>
+                      <Input
+                        value={id}
+                        onChange={(e) =>
+                          setId(
+                            e.target.value
+                              .toLowerCase()
+                              .replace(/[^a-z0-9_]/g, '_')
+                          )
+                        }
+                        placeholder="my_workflow"
+                        className="h-8 text-sm mt-1"
+                        disabled={!isNew}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Name</Label>
+                      <Input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="My Workflow"
+                        className="h-8 text-sm mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Description
+                    </Label>
+                    <Input
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="What does this workflow do?"
+                      className="h-8 text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Default Model</Label>
+                    <Select value={defaultModel || '__auto__'} onValueChange={(v) => setDefaultModel(v === '__auto__' ? '' : v)}>
+                      <SelectTrigger className="h-8 text-sm mt-1">
+                        <SelectValue placeholder="Auto (highest priority)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__auto__">Auto (highest priority)</SelectItem>
+                        {availableModels.map((m: AvailableModel) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            <span className="flex items-center gap-2">
+                              <span>{m.label}</span>
+                              <span className="text-muted-foreground text-xs">
+                                ${(m.cost_per_million_input / 100).toFixed(2)}/M in
+                              </span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Name</Label>
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="My Workflow"
-                    className="h-8 text-sm mt-1"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">
-                  Description
-                </Label>
-                <Input
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="What does this workflow do?"
-                  className="h-8 text-sm mt-1"
-                />
-              </div>
+              )}
             </div>
 
-            {/* Node list (canvas representation) */}
-            <ScrollArea className="flex-1">
-              <div className="p-4 space-y-2">
-                {nodes.length === 0 && (
-                  <div className="text-center py-16 text-muted-foreground">
-                    <Zap className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">No nodes yet</p>
-                    <p className="text-xs mt-1">
-                      Add your first node to start building the workflow
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="mt-4 gap-1.5"
-                      onClick={() => setShowNodePicker(true)}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add Node
-                    </Button>
-                  </div>
-                )}
-
-                {nodes.map((node, idx) => {
-                  const typeDef = getNodeTypeDef(node.type);
-                  const Icon = typeDef?.icon ?? Zap;
-                  const inputs = getNodeInputs(node.id);
-                  const isSelected = selectedNodeId === node.id;
-
-                  return (
-                    <div key={node.id} className="relative">
-                      {/* Connection lines from inputs */}
-                      {inputs.length > 0 && (
-                        <div className="flex items-center gap-1 mb-1 ml-6 text-xs text-muted-foreground">
-                          <ArrowRight className="h-3 w-3" />
-                          from:{' '}
-                          {inputs.map((inp) => inp.name).join(', ')}
-                        </div>
-                      )}
-
-                      {/* Node card (n8n style) */}
-                      <button
-                        onClick={() =>
-                          setSelectedNodeId(isSelected ? null : node.id)
-                        }
-                        className={cn(
-                          'w-full text-left rounded-lg border-2 transition-all',
-                          'hover:shadow-md cursor-pointer',
-                          'flex items-center gap-3 p-3',
-                          isSelected
-                            ? 'border-primary shadow-md bg-accent/50'
-                            : 'border-border bg-card hover:border-primary/40'
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            'w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0',
-                            typeDef?.color ?? 'bg-gray-500'
-                          )}
+            {/* Node list or inline graph */}
+            {showGraph ? (
+              <ScrollArea className="flex-1">
+                <div className="p-4">
+                  <WorkflowGraphView
+                    nodes={nodes}
+                    connections={connections}
+                    onSelectNode={(id) => {
+                      setSelectedNodeId(id);
+                      setShowGraph(false);
+                    }}
+                  />
+                </div>
+              </ScrollArea>
+            ) : (
+              <>
+                <ScrollArea className="flex-1">
+                  <div className="p-4 space-y-2">
+                    {nodes.length === 0 && (
+                      <div className="text-center py-16 text-muted-foreground">
+                        <Zap className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                        <p className="text-sm font-medium">No nodes yet</p>
+                        <p className="text-xs mt-1">
+                          Add your first node to start building the workflow
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-4 gap-1.5"
+                          onClick={() => setShowNodePicker(true)}
                         >
-                          <Icon className="h-4.5 w-4.5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">
-                            {node.name}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {typeDef?.label ?? node.type}
-                            {node.parameters.output_schema &&
-                              ` → ${node.parameters.output_schema}`}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] px-1.5"
-                          >
-                            {idx + 1}
-                          </Badge>
+                          <Plus className="h-3.5 w-3.5" />
+                          Add Node
+                        </Button>
+                      </div>
+                    )}
+
+                    {nodes.map((node, idx) => {
+                      const typeDef = getNodeTypeDef(node.type);
+                      const Icon = typeDef?.icon ?? Zap;
+                      const inputs = getNodeInputs(node.id);
+                      const isSelected = selectedNodeId === node.id;
+
+                      return (
+                        <div key={node.id} className="relative">
+                          {/* Connection lines from inputs */}
+                          {inputs.length > 0 && (
+                            <div className="flex items-center gap-1 mb-1 ml-6 text-xs text-muted-foreground">
+                              <ArrowRight className="h-3 w-3" />
+                              from:{' '}
+                              {inputs.map((inp) => inp.name).join(', ')}
+                            </div>
+                          )}
+
+                          {/* Node card (n8n style) */}
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteNode(node.id);
-                            }}
-                            className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            onClick={() =>
+                              setSelectedNodeId(isSelected ? null : node.id)
+                            }
+                            className={cn(
+                              'w-full text-left rounded-lg border-2 transition-all',
+                              'hover:shadow-md cursor-pointer',
+                              'flex items-center gap-3 p-3',
+                              isSelected
+                                ? 'border-primary shadow-md bg-accent/50'
+                                : 'border-border bg-card hover:border-primary/40'
+                            )}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <div
+                              className={cn(
+                                'w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0',
+                                typeDef?.color ?? 'bg-gray-500'
+                              )}
+                            >
+                              <Icon className="h-4.5 w-4.5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">
+                                {node.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate">
+                                {typeDef?.label ?? node.type}
+                                {node.parameters.output_schema &&
+                                  ` → ${node.parameters.output_schema}`}
+                                {node.parameters.model && (
+                                  <Badge variant="outline" className="ml-1.5 text-[9px] px-1">
+                                    {node.parameters.model.split('/').pop()?.replace(/-/g, ' ') || node.parameters.model}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5"
+                              >
+                                {idx + 1}
+                              </Badge>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPendingDeleteNodeId(node.id);
+                                }}
+                                className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </button>
                         </div>
-                      </button>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
 
-                {/* Add node button */}
-                {nodes.length > 0 && (
-                  <div className="pt-2">
-                    {showNodePicker ? (
-                      <NodePicker
-                        onSelect={addNode}
-                        onClose={() => setShowNodePicker(false)}
-                      />
-                    ) : (
-                      <button
-                        onClick={() => setShowNodePicker(true)}
-                        className={cn(
-                          'w-full rounded-lg border-2 border-dashed border-border',
-                          'hover:border-primary/40 hover:bg-accent/30',
-                          'transition-all p-3 flex items-center justify-center gap-2',
-                          'text-sm text-muted-foreground hover:text-foreground'
+                    {/* Add node button */}
+                    {nodes.length > 0 && (
+                      <div className="pt-2">
+                        {showNodePicker ? (
+                          <NodePicker
+                            onSelect={addNode}
+                            onClose={() => setShowNodePicker(false)}
+                          />
+                        ) : (
+                          <button
+                            onClick={() => setShowNodePicker(true)}
+                            className={cn(
+                              'w-full rounded-lg border-2 border-dashed border-border',
+                              'hover:border-primary/40 hover:bg-accent/30',
+                              'transition-all p-3 flex items-center justify-center gap-2',
+                              'text-sm text-muted-foreground hover:text-foreground'
+                            )}
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Node
+                          </button>
                         )}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Node
-                      </button>
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            </ScrollArea>
+                </ScrollArea>
 
-            {showNodePicker && nodes.length === 0 && (
-              <div className="p-4 border-t">
-                <NodePicker
-                  onSelect={addNode}
-                  onClose={() => setShowNodePicker(false)}
-                />
-              </div>
+                {showNodePicker && nodes.length === 0 && (
+                  <div className="p-4 border-t">
+                    <NodePicker
+                      onSelect={addNode}
+                      onClose={() => setShowNodePicker(false)}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
 
+          {/* Resize handle */}
+          {selectedNodeId && (
+            <div
+              onMouseDown={startResize}
+              className="w-1 hover:w-1.5 bg-border hover:bg-primary/40 cursor-col-resize shrink-0 transition-colors"
+            />
+          )}
+          {!selectedNodeId && <div className="w-px bg-border shrink-0" />}
+
           {/* Right: Node configuration panel (n8n style) */}
-          <div className="w-[480px] flex flex-col bg-muted/20">
+          <div className={cn(
+            'flex flex-col bg-muted/20',
+            selectedNodeId ? 'flex-1 min-w-[280px]' : 'w-[320px]'
+          )}>
             {selectedNode ? (
               <NodeConfigPanel
                 node={selectedNode}
                 allNodes={nodes}
                 connections={connections}
+                availableModels={availableModels}
                 onUpdate={(updates) => updateNode(selectedNode.id, updates)}
                 onUpdateParameter={(key, value) =>
                   updateNodeParameter(selectedNode.id, key, value)
@@ -620,6 +814,17 @@ export function WorkflowEditor({
                             catch { return r.output; }
                           })()}
                         </pre>
+                        {r.usage && (
+                          <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                            {r.usage.model_used && <span>Model: {r.usage.model_used}</span>}
+                            {r.usage.provider && <span>Provider: {r.usage.provider}</span>}
+                            {r.usage.input_tokens != null && <span>In: {r.usage.input_tokens.toLocaleString()}</span>}
+                            {r.usage.output_tokens != null && <span>Out: {r.usage.output_tokens.toLocaleString()}</span>}
+                            {r.usage.estimated_cost_micros != null && (
+                              <span>Cost: ${(r.usage.estimated_cost_micros / 1_000_000).toFixed(4)}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -631,27 +836,52 @@ export function WorkflowEditor({
 
       </DialogContent>
 
-      {/* Graph preview modal */}
-      <Dialog open={showGraph} onOpenChange={setShowGraph}>
-        <DialogContent className="max-w-[85vw] w-[1000px] max-h-[85vh] p-0 flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b">
-            <DialogTitle className="text-lg flex items-center gap-2">
-              <Network className="h-5 w-5" />
-              Workflow Graph
-            </DialogTitle>
-          </div>
-          <div className="flex-1 overflow-auto p-6">
-            <WorkflowGraphView nodes={nodes} connections={connections} />
+      {/* Delete confirmation modal */}
+      <Dialog open={!!pendingDeleteNodeId} onOpenChange={(open) => !open && setPendingDeleteNodeId(null)}>
+        <DialogContent className="max-w-sm">
+          <div className="flex flex-col items-center text-center py-2">
+            <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center mb-3">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <DialogTitle className="text-base">Delete Node</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1.5">
+              Delete <strong>{nodes.find(n => n.id === pendingDeleteNodeId)?.name ?? 'this node'}</strong>?
+              This will also remove its connections. This cannot be undone.
+            </p>
+            <div className="flex gap-2 mt-4 w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => setPendingDeleteNodeId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  if (pendingDeleteNodeId) {
+                    deleteNode(pendingDeleteNodeId);
+                    setPendingDeleteNodeId(null);
+                  }
+                }}
+              >
+                Delete
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
     </Dialog>
   );
 }
 
 // ── Static graph visualization ────────────────────────────────────────────────
 
-function WorkflowGraphView({ nodes, connections }: { nodes: WorkflowNode[]; connections: WorkflowConnection[] }) {
+function WorkflowGraphView({ nodes, connections, onSelectNode }: { nodes: WorkflowNode[]; connections: WorkflowConnection[]; onSelectNode?: (id: string) => void }) {
   // Build layout: topological layers
   const layers = useMemo(() => {
     const deps: Record<string, string[]> = {};
@@ -754,10 +984,15 @@ function WorkflowGraphView({ nodes, connections }: { nodes: WorkflowNode[]; conn
             'bg-blue-500': '#3b82f6', 'bg-purple-500': '#a855f7',
             'bg-emerald-500': '#10b981', 'bg-amber-500': '#f59e0b',
             'bg-orange-500': '#f97316', 'bg-teal-500': '#14b8a6',
+            'bg-green-500': '#22c55e', 'bg-emerald-600': '#059669',
           };
           const fill = colorMap[typeDef?.color ?? ''] ?? '#6b7280';
           return (
-            <g key={node.id}>
+            <g
+              key={node.id}
+              onClick={() => onSelectNode?.(node.id)}
+              className={onSelectNode ? 'cursor-pointer' : undefined}
+            >
               <rect
                 x={pos.x} y={pos.y}
                 width={nodeWidth} height={nodeHeight}
@@ -766,6 +1001,15 @@ function WorkflowGraphView({ nodes, connections }: { nodes: WorkflowNode[]; conn
                 stroke={fill}
                 strokeWidth="2"
               />
+              {onSelectNode && (
+                <rect
+                  x={pos.x} y={pos.y}
+                  width={nodeWidth} height={nodeHeight}
+                  rx="8" ry="8"
+                  fill="transparent"
+                  className="hover:fill-primary/5"
+                />
+              )}
               <rect
                 x={pos.x} y={pos.y}
                 width="6" height={nodeHeight}
@@ -803,6 +1047,9 @@ function NodePicker({
   onSelect: (type: string) => void;
   onClose: () => void;
 }) {
+  const processingNodes = NODE_TYPES.filter(nt => !nt.type.startsWith('output_'));
+  const outputNodes = NODE_TYPES.filter(nt => nt.type.startsWith('output_'));
+
   return (
     <div className="rounded-lg border bg-card shadow-lg p-2 space-y-1">
       <div className="flex items-center justify-between px-2 pb-1">
@@ -816,7 +1063,7 @@ function NodePicker({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      {NODE_TYPES.map((nt) => {
+      {processingNodes.map((nt) => {
         const Icon = nt.icon;
         return (
           <button
@@ -844,6 +1091,42 @@ function NodePicker({
           </button>
         );
       })}
+      {outputNodes.length > 0 && (
+        <>
+          <div className="border-t my-1" />
+          <div className="px-2 py-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Outputs</span>
+          </div>
+          {outputNodes.map((nt) => {
+            const Icon = nt.icon;
+            return (
+              <button
+                key={nt.type}
+                onClick={() => onSelect(nt.type)}
+                className={cn(
+                  'w-full flex items-center gap-3 rounded-md px-2 py-2',
+                  'hover:bg-accent transition-colors text-left'
+                )}
+              >
+                <div
+                  className={cn(
+                    'w-8 h-8 rounded-md flex items-center justify-center text-white shrink-0',
+                    nt.color
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{nt.label}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {nt.description}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
@@ -854,6 +1137,7 @@ function NodeConfigPanel({
   node,
   allNodes,
   connections,
+  availableModels,
   onUpdate,
   onUpdateParameter,
   onAddConnection,
@@ -863,6 +1147,7 @@ function NodeConfigPanel({
   node: WorkflowNode;
   allNodes: WorkflowNode[];
   connections: WorkflowConnection[];
+  availableModels: AvailableModel[];
   onUpdate: (updates: Partial<WorkflowNode>) => void;
   onUpdateParameter: (key: string, value: any) => void;
   onAddConnection: (sourceId: string) => void;
@@ -957,11 +1242,11 @@ function NodeConfigPanel({
                 return (
                   <div
                     key={sourceId}
-                    className="flex items-center gap-2 rounded-md border px-2 py-1.5 bg-card"
+                    className="flex items-center gap-2 rounded-md border bg-primary/5 border-primary/20 px-2 py-1.5"
                   >
                     <div
                       className={cn(
-                        'w-5 h-5 rounded flex items-center justify-center text-white',
+                        'w-5 h-5 rounded flex items-center justify-center text-white shrink-0',
                         srcDef?.color ?? 'bg-gray-500'
                       )}
                     >
@@ -972,33 +1257,50 @@ function NodeConfigPanel({
                     </span>
                     <button
                       onClick={() => onRemoveConnection(sourceId)}
-                      className="p-0.5 rounded hover:bg-destructive/10 hover:text-destructive"
+                      className="p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                      title="Disconnect"
                     >
-                      <X className="h-3 w-3" />
+                      <Unlink className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 );
               })}
 
-              {availableInputs.length > 0 && (
-                <Select onValueChange={(v) => onAddConnection(v)}>
-                  <SelectTrigger className="h-8 text-sm">
-                    <SelectValue placeholder="+ Connect input from..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableInputs.map((n) => (
-                      <SelectItem key={n.id} value={n.id}>
-                        {n.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {currentInputs.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">
+                  No inputs — receives raw data source content.
+                </p>
               )}
 
-              {currentInputs.length === 0 && availableInputs.length === 0 && (
-                <p className="text-xs text-muted-foreground italic">
-                  No inputs — this node receives raw data source content.
-                </p>
+              {availableInputs.length > 0 && (
+                <Select onValueChange={(v) => onAddConnection(v)}>
+                  <SelectTrigger className="h-8 text-sm border-dashed">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Link className="h-3.5 w-3.5" />
+                      <span>Add input connection...</span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableInputs.map((n) => {
+                      const nDef = getNodeTypeDef(n.type);
+                      return (
+                        <SelectItem key={n.id} value={n.id}>
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                'w-4 h-4 rounded flex items-center justify-center text-white shrink-0 text-[10px]',
+                                nDef?.color ?? 'bg-gray-500'
+                              )}
+                            >
+                              {(nDef?.label ?? '?')[0]}
+                            </span>
+                            {n.name}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           </div>
@@ -1014,20 +1316,82 @@ function NodeConfigPanel({
 
             {isLLMNode && (
               <div className="space-y-3">
+                {/* Model selection */}
+                <div>
+                  <Label className="text-xs">Model</Label>
+                  <Select
+                    value={node.parameters.model || '__default__'}
+                    onValueChange={(v) => onUpdateParameter('model', v === '__default__' ? undefined : v)}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-1">
+                      <SelectValue placeholder="Use workflow default" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__default__">Use workflow default</SelectItem>
+                      {availableModels.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Override the workflow's default model for this node.
+                  </p>
+                </div>
                 <div>
                   <Label className="text-xs">Prompt Template</Label>
+                  <div className="flex flex-wrap gap-1 mt-1.5 mb-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ta = document.querySelector<HTMLTextAreaElement>(`[data-prompt-node="${node.id}"]`);
+                        if (ta) {
+                          const pos = ta.selectionStart ?? ta.value.length;
+                          const before = ta.value.slice(0, pos);
+                          const after = ta.value.slice(pos);
+                          onUpdateParameter('prompt_template', before + '{{content}}' + after);
+                        } else {
+                          onUpdateParameter('prompt_template', (node.parameters.prompt_template ?? '') + '{{content}}');
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 text-[11px] font-mono text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 transition-colors"
+                    >
+                      {'{{content}}'}
+                      <span className="text-[9px] font-sans text-muted-foreground">raw input</span>
+                    </button>
+                    {currentInputs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ta = document.querySelector<HTMLTextAreaElement>(`[data-prompt-node="${node.id}"]`);
+                          if (ta) {
+                            const pos = ta.selectionStart ?? ta.value.length;
+                            const before = ta.value.slice(0, pos);
+                            const after = ta.value.slice(pos);
+                            onUpdateParameter('prompt_template', before + '{{previous_results}}' + after);
+                          } else {
+                            onUpdateParameter('prompt_template', (node.parameters.prompt_template ?? '') + '{{previous_results}}');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 text-[11px] font-mono text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors"
+                      >
+                        {'{{previous_results}}'}
+                        <span className="text-[9px] font-sans text-muted-foreground">
+                          from {currentInputs.length} node{currentInputs.length !== 1 ? 's' : ''}
+                        </span>
+                      </button>
+                    )}
+                  </div>
                   <Textarea
+                    data-prompt-node={node.id}
                     value={node.parameters.prompt_template ?? ''}
                     onChange={(e) =>
                       onUpdateParameter('prompt_template', e.target.value)
                     }
                     placeholder={`Analyze the following content and...\n\nContent:\n{{content}}\n\nPrevious results:\n{{previous_results}}`}
-                    className="mt-1 text-sm font-mono min-h-[200px] resize-y"
+                    className="text-sm font-mono min-h-[200px] resize-y"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Use {'{{content}}'} for data source text and{' '}
-                    {'{{previous_results}}'} for upstream node outputs.
-                  </p>
                 </div>
                 <div>
                   <Label className="text-xs">Output Schema</Label>
@@ -1095,6 +1459,45 @@ function NodeConfigPanel({
                     </SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {node.type.startsWith('output_') && (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs">Target</Label>
+                  <div className="mt-1 text-sm text-muted-foreground bg-muted/50 rounded px-2 py-1.5">
+                    {node.type === 'output_crm_contacts' && 'CRM Contacts'}
+                    {node.type === 'output_crm_companies' && 'Companies'}
+                    {node.type === 'output_crm_deals' && 'CRM Deals'}
+                    {node.type === 'output_tasks' && 'Tasks'}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">On Duplicate</Label>
+                  <Select
+                    value={node.parameters.on_duplicate || 'flag_for_review'}
+                    onValueChange={(v) => onUpdateParameter('on_duplicate', v)}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="flag_for_review">Flag for review</SelectItem>
+                      <SelectItem value="skip">Skip duplicates</SelectItem>
+                      <SelectItem value="update_existing">Update existing</SelectItem>
+                      <SelectItem value="create_anyway">Create anyway</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    What to do when a matching record already exists.
+                  </p>
+                </div>
+                <div className="rounded-md border border-dashed border-muted-foreground/30 p-2.5 bg-muted/20">
+                  <p className="text-[10px] text-muted-foreground">
+                    Connect an LLM node as input. The schema for the target type will be automatically injected into the upstream LLM prompt so it produces correctly formatted output.
+                  </p>
+                </div>
               </div>
             )}
           </div>

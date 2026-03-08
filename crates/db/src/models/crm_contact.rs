@@ -28,6 +28,7 @@ pub enum ContactSource {
     Api,
     ZohoSync,
     GmailSync,
+    Workflow,
 }
 
 impl std::fmt::Display for ContactSource {
@@ -42,6 +43,7 @@ impl std::fmt::Display for ContactSource {
             ContactSource::Api => "api",
             ContactSource::ZohoSync => "zoho_sync",
             ContactSource::GmailSync => "gmail_sync",
+            ContactSource::Workflow => "workflow",
         };
         write!(f, "{}", s)
     }
