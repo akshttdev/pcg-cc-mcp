@@ -3,6 +3,10 @@
 [build]
 rustc-wrapper = "sccache"
 
+# Enable cranelift codegen backend selection in Cargo.toml profiles
+[unstable]
+codegen-backend = true
+
 # ── macOS ─────────────────────────────────────────────────────────
 # Set macOS deployment target to avoid linker warnings
 # Use Rust project defaults: 10.12 for x86_64, 11.0 for aarch64
