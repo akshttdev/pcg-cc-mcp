@@ -49,6 +49,7 @@ import {
   Globe,
   GitBranch,
   Headphones,
+  Workflow,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -124,6 +125,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi', adminOnly: true },
   { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse', adminOnly: true },
   { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
+  { label: 'Workflows', icon: Workflow, to: '/workflows', id: 'workflows', adminOnly: true },
 ];
 
 // Primary navigation - workspace destinations
@@ -1644,7 +1646,7 @@ export function Sidebar({ className }: SidebarProps) {
                 projectId={projectId}
                 orgId={orgIdFromPath}
                 isAdmin={isAdmin}
-                homeOrgId={user?.home_organization_id}
+                homeOrgId={user?.home_organization_id || user?.organizations?.[0]?.id}
                 expandedProjects={expandedProjects}
                 onToggleProject={toggleProject}
                 queryClient={queryClient}
