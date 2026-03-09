@@ -469,6 +469,9 @@
   .tab-grid-8 {
     @apply grid grid-cols-4 sm:grid-cols-8 w-full;
   }
+  .tab-grid-10 {
+    @apply grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-10 w-full;
+  }
 
   /* ── Skeleton shimmer ────────────────────────────────────────────────────── */
   .skeleton-shimmer {

@@ -5490,11 +5490,11 @@ export const dataSourcesApi = {
     return handleApiResponse<any>(response);
   },
 
-  runWorkflow: async (dataSourceId: string, workflowId: string, model?: string) => {
+  runWorkflow: async (dataSourceId: string, workflowId: string, model?: string, force?: boolean) => {
     const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows/${workflowId}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model }),
+      body: JSON.stringify({ model, force }),
     });
     return handleApiResponse<any>(response);
   },
@@ -5675,6 +5675,7 @@ export interface WorkflowRun {
   node_count?: number;
   llm_node_count?: number;
   duration_ms?: number;
+  content_hash?: string;
   started_at: string;
   completed_at?: string;
   created_at: string;
@@ -5696,6 +5697,101 @@ export interface WorkflowRunStats {
   };
   cost_dollars: number;
 }
+
+// ── Workflow Trigger types ──────────────────────────────────────────────────
+
+export interface WorkflowTrigger {
+  id: string;
+  workflow_id: string;
+  name: string;
+  enabled: boolean;
+  trigger_type: 'data_source_created' | 'data_source_updated' | 'scheduled';
+  filter_data_source_types: string | null;  // JSON array
+  filter_organization_id: string | null;
+  filter_project_id: string | null;
+  filter_tags: string | null;  // JSON array
+  model_override: string | null;
+  auto_approve: boolean;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateWorkflowTrigger {
+  workflow_id: string;
+  name: string;
+  trigger_type?: string;
+  filter_data_source_types?: string[];
+  filter_organization_id?: string;
+  filter_project_id?: string;
+  filter_tags?: string[];
+  model_override?: string;
+  auto_approve?: boolean;
+}
+
+export interface UpdateWorkflowTrigger {
+  name?: string;
+  enabled?: boolean;
+  trigger_type?: string;
+  filter_data_source_types?: string[];
+  filter_organization_id?: string;
+  filter_project_id?: string;
+  filter_tags?: string[];
+  model_override?: string;
+  auto_approve?: boolean;
+}
+
+export const triggersApi = {
+  list: async (workflowId?: string): Promise<WorkflowTrigger[]> => {
+    const params = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : '';
+    const response = await makeRequest(`/api/workflows/triggers${params}`);
+    return handleApiResponse<WorkflowTrigger[]>(response);
+  },
+
+  get: async (id: string): Promise<WorkflowTrigger> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}`);
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  create: async (data: CreateWorkflowTrigger): Promise<WorkflowTrigger> => {
+    const response = await makeRequest('/api/workflows/triggers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  update: async (id: string, data: UpdateWorkflowTrigger): Promise<WorkflowTrigger> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}`, {
+      method: 'DELETE',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  toggle: async (id: string): Promise<WorkflowTrigger> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}/toggle`, {
+      method: 'POST',
+    });
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  check: async (dataSourceId: string): Promise<WorkflowTrigger[]> => {
+    const response = await makeRequest('/api/workflows/triggers/check', {
+      method: 'POST',
+      body: JSON.stringify({ data_source_id: dataSourceId }),
+    });
+    return handleApiResponse<WorkflowTrigger[]>(response);
+  },
+};
 
 // ── Schema types and API ──────────────────────────────────────────────────────
 
@@ -5748,6 +5844,19 @@ export interface WorkflowStagingRecord {
   updated_at: string;
 }
 
+export interface CommitResult {
+  id: string;
+  target_type: string;
+  created_id: string | null;
+  error: string | null;
+}
+
+export interface BatchCommitResult {
+  committed: number;
+  errors: number;
+  results: CommitResult[];
+}
+
 export const stagingApi = {
   listByRun: async (workflowRunId: string): Promise<WorkflowStagingRecord[]> => {
     const response = await makeRequest(`/api/workflow-staging?workflow_run_id=${workflowRunId}`);
@@ -5782,37 +5891,114 @@ export const stagingApi = {
     await handleApiResponse<void>(response);
   },
 
-  commit: async (id: string): Promise<{ created_id: string }> => {
+  commit: async (id: string): Promise<CommitResult> => {
     const response = await makeRequest(`/api/workflow-staging/${id}/commit`, {
       method: 'POST',
     });
-    return handleApiResponse<{ created_id: string }>(response);
+    return handleApiResponse<CommitResult>(response);
   },
 
-  batchCommit: async (workflowRunId: string): Promise<{ committed: number; errors: number }> => {
+  batchCommit: async (workflowRunId: string): Promise<BatchCommitResult> => {
     const response = await makeRequest('/api/workflow-staging/batch-commit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflow_run_id: workflowRunId }),
     });
-    return handleApiResponse<{ committed: number; errors: number }>(response);
+    return handleApiResponse<BatchCommitResult>(response);
   },
 
-  autoApprove: async (workflowRunId: string): Promise<{ approved: number }> => {
+  autoApprove: async (workflowRunId: string): Promise<{ affected: number }> => {
     const response = await makeRequest('/api/workflow-staging/auto-approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflow_run_id: workflowRunId }),
     });
-    return handleApiResponse<{ approved: number }>(response);
+    return handleApiResponse<{ affected: number }>(response);
   },
 
-  rejectDuplicates: async (workflowRunId: string): Promise<{ rejected: number }> => {
+  rejectDuplicates: async (workflowRunId: string): Promise<{ affected: number }> => {
     const response = await makeRequest('/api/workflow-staging/reject-duplicates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflow_run_id: workflowRunId }),
     });
-    return handleApiResponse<{ rejected: number }>(response);
+    return handleApiResponse<{ affected: number }>(response);
+  },
+};
+
+// ── PCG Router / Provider Keys API ──────────────────────────────────────────
+
+export interface ProviderKeyStatus {
+  provider: string;
+  has_key: boolean;
+  model_count: number;
+  enabled_count: number;
+  env_var: string | null;
+}
+
+export interface PcgRouterModelInfo {
+  id: string;
+  name: string;
+  model_id: string;
+  provider: string;
+  provider_base_url: string | null;
+  api_key_env_var: string | null;
+  priority: number;
+  context_window: number | null;
+  max_output_tokens: number | null;
+  supports_tools: boolean;
+  supports_vision: boolean;
+  cost_per_million_input: number;
+  cost_per_million_output: number;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// PCG Router returns raw JSON (not wrapped in { success, data })
+const handleRawJsonResponse = async <T>(response: Response): Promise<T> => {
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new ApiError(text || 'Request failed', response.status, response);
+  }
+  return response.json();
+};
+
+export const pcgRouterApi = {
+  listModels: async (): Promise<PcgRouterModelInfo[]> => {
+    const response = await makeRequest('/api/pcg-router/models');
+    return handleRawJsonResponse<PcgRouterModelInfo[]>(response);
+  },
+
+  listProviderKeys: async (): Promise<ProviderKeyStatus[]> => {
+    const response = await makeRequest('/api/pcg-router/provider-keys');
+    return handleRawJsonResponse<ProviderKeyStatus[]>(response);
+  },
+
+  setProviderKey: async (provider: string, apiKey: string): Promise<{ provider: string; models_updated: number; has_key: boolean }> => {
+    const response = await makeRequest('/api/pcg-router/provider-keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, api_key: apiKey }),
+    });
+    return handleRawJsonResponse<{ provider: string; models_updated: number; has_key: boolean }>(response);
+  },
+
+  deleteProviderKey: async (provider: string): Promise<void> => {
+    const response = await makeRequest(`/api/pcg-router/provider-keys/${provider}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new ApiError('Failed to delete provider key', response.status, response);
+    }
+  },
+
+  patchModel: async (id: string, data: Record<string, unknown>): Promise<PcgRouterModelInfo> => {
+    const response = await makeRequest(`/api/pcg-router/models/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleRawJsonResponse<PcgRouterModelInfo>(response);
   },
 };

@@ -124,6 +124,12 @@ voice_samples/
 .claude-login.json
 .mcp.json
 
+# SQLx offline query cache
+.sqlx/
+
+# Runtime data directory
+data/
+
 # Test artifacts
 screenshots/
 test-project/

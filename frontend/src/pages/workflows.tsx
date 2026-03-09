@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useExecutionEvents, ActiveExecution } from '@/hooks/useExecutionEvents';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -6,6 +6,20 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import {
   Sheet,
   SheetContent,
@@ -28,10 +42,21 @@ import {
   Hammer,
   Plus,
   Trash2,
+  BarChart3,
+  ClipboardCheck,
+  Activity,
+  Database,
+  Search,
+  Loader2,
+  FileText,
+  Upload,
 } from 'lucide-react';
-import { agentFlowsApi, wideResearchApi, workflowsApi, resolveApiUrl } from '@/lib/api';
-import type { AgentFlow, WideResearchSession, WorkflowDefinition } from '@/lib/api';
+import { agentFlowsApi, wideResearchApi, workflowsApi, dataSourcesApi, stagingApi, resolveApiUrl, DATA_TYPE_OPTIONS } from '@/lib/api';
+import type { AgentFlow, WideResearchSession, WorkflowDefinition, WorkflowStagingRecord } from '@/lib/api';
 import { WorkflowEditor, getNodeTypeDef } from '@/components/workflows/WorkflowEditor';
+import { WorkflowTriggersPanel } from '@/components/workflows/WorkflowTriggersPanel';
+import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
+import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
 
 interface AutomationDefinition {
   id: string;
@@ -190,10 +215,18 @@ export function WorkflowsPage() {
       <div className="flex-1 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="border-b px-4 sm:px-6">
-            <TabsList className="tab-grid-8">
+            <TabsList className="tab-grid-10">
               <TabsTrigger value="builder">
                 <Hammer className="h-3.5 w-3.5 mr-1" />
                 Builder
+              </TabsTrigger>
+              <TabsTrigger value="staging">
+                <ClipboardCheck className="h-3.5 w-3.5 mr-1" />
+                Staging
+              </TabsTrigger>
+              <TabsTrigger value="runs">
+                <Activity className="h-3.5 w-3.5 mr-1" />
+                Runs
               </TabsTrigger>
               <TabsTrigger value="active">
                 Active
@@ -250,6 +283,16 @@ export function WorkflowsPage() {
           {/* Builder */}
           <TabsContent value="builder" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
             <WorkflowBuilderTab />
+          </TabsContent>
+
+          {/* Staging Review */}
+          <TabsContent value="staging" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            <StagingTab />
+          </TabsContent>
+
+          {/* Workflow Runs */}
+          <TabsContent value="runs" className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            <RunsTab />
           </TabsContent>
 
           {/* Active */}
@@ -628,6 +671,11 @@ function WorkflowBuilderTab() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<WorkflowDefinition | null>(null);
+  const [triggersOpen, setTriggersOpen] = useState(false);
+  const [triggersWorkflow, setTriggersWorkflow] = useState<WorkflowDefinition | null>(null);
+  const [runsOpen, setRunsOpen] = useState(false);
+  const [runsWorkflow, setRunsWorkflow] = useState<WorkflowDefinition | null>(null);
+  const [runWorkflow, setRunWorkflow] = useState<WorkflowDefinition | null>(null);
 
   const saveMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; description?: string; nodes: any[]; connections: any[] }) => {
@@ -729,17 +777,51 @@ function WorkflowBuilderTab() {
                       })}
                       {nodeCount > 4 && <Badge variant="outline" className="text-[9px] px-1.5">+{nodeCount - 4}</Badge>}
                     </div>
-                    {!wf.is_system && (
+                    <div className="flex items-center gap-1">
                       <button
-                        className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        className="p-1 rounded hover:bg-primary/10 hover:text-primary transition-colors"
+                        title="Run workflow"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(`Delete "${wf.name}"?`)) deleteMutation.mutate(wf.id);
+                          setRunWorkflow(wf);
                         }}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Play className="h-3.5 w-3.5" />
                       </button>
-                    )}
+                      <button
+                        className="p-1 rounded hover:bg-blue-500/10 hover:text-blue-600 transition-colors"
+                        title="Run History"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRunsWorkflow(wf);
+                          setRunsOpen(true);
+                        }}
+                      >
+                        <BarChart3 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        className="p-1 rounded hover:bg-amber-500/10 hover:text-amber-600 transition-colors"
+                        title="Auto-Triggers"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTriggersWorkflow(wf);
+                          setTriggersOpen(true);
+                        }}
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                      </button>
+                      {!wf.is_system && (
+                        <button
+                          className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete "${wf.name}"?`)) deleteMutation.mutate(wf.id);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -755,6 +837,375 @@ function WorkflowBuilderTab() {
         onSave={(data) => saveMutation.mutate(data)}
         isSaving={saveMutation.isPending}
       />
+
+      <WorkflowTriggersPanel
+        open={triggersOpen}
+        onOpenChange={(v) => { setTriggersOpen(v); if (!v) setTriggersWorkflow(null); }}
+        workflowId={triggersWorkflow?.id ?? ''}
+        workflowName={triggersWorkflow?.name}
+      />
+
+      <WorkflowRunsPanel
+        open={runsOpen}
+        onOpenChange={(v) => { setRunsOpen(v); if (!v) setRunsWorkflow(null); }}
+        workflowId={runsWorkflow?.id}
+      />
+
+      <RunWorkflowDialog
+        workflow={runWorkflow}
+        onClose={() => setRunWorkflow(null)}
+      />
+    </div>
+  );
+}
+
+function RunWorkflowDialog({ workflow, onClose }: { workflow: WorkflowDefinition | null; onClose: () => void }) {
+  const orgId = '01010101-0101-0101-0101-010101010101';
+  const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [searchFilter, setSearchFilter] = useState('');
+  const [dataTypeFilter, setDataTypeFilter] = useState<string>('__all__');
+  const [reviewRunId, setReviewRunId] = useState<string | null>(null);
+
+  const { data: dataSources = [] } = useQuery({
+    queryKey: ['orgDataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    enabled: !!workflow,
+  });
+
+  const { data: availableModels } = useQuery({
+    queryKey: ['workflowModels'],
+    queryFn: () => workflowsApi.listAvailableModels(),
+    staleTime: 60 * 60 * 1000,
+    enabled: !!workflow,
+  });
+
+  const effectiveModel = selectedModel || availableModels?.find((m) => m.is_default)?.id || '';
+
+  const filteredSources = useMemo(() => {
+    let result = dataSources.filter((ds) => ds.status === 'ready');
+    if (searchFilter) {
+      const lower = searchFilter.toLowerCase();
+      result = result.filter((ds) =>
+        ds.title.toLowerCase().includes(lower) ||
+        ds.description?.toLowerCase().includes(lower)
+      );
+    }
+    if (dataTypeFilter && dataTypeFilter !== '__all__') {
+      result = result.filter((ds) => ds.data_type === dataTypeFilter);
+    }
+    return result;
+  }, [dataSources, searchFilter, dataTypeFilter]);
+
+  const runMutation = useMutation({
+    mutationFn: () => dataSourcesApi.runWorkflow(selectedDataSourceId, workflow!.id, effectiveModel || undefined),
+    onSuccess: (data) => {
+      if (data.workflow_run_id && data.staged_records > 0) {
+        setReviewRunId(data.workflow_run_id);
+      }
+    },
+  });
+
+  const handleClose = () => {
+    setSelectedDataSourceId('');
+    setSelectedModel('');
+    setSearchFilter('');
+    setDataTypeFilter('__all__');
+    setReviewRunId(null);
+    runMutation.reset();
+    onClose();
+  };
+
+  const sourceTypeIcon = (st: string) => {
+    if (st === 'file') return <Upload className="h-3.5 w-3.5 text-muted-foreground" />;
+    if (st === 'text') return <FileText className="h-3.5 w-3.5 text-muted-foreground" />;
+    return <Database className="h-3.5 w-3.5 text-muted-foreground" />;
+  };
+
+  return (
+    <>
+      <Dialog open={!!workflow && !reviewRunId} onOpenChange={(open) => { if (!open) handleClose(); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Play className="h-4 w-4" />
+              Run: {workflow?.name}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Filters */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search data sources..."
+                  className="pl-8 h-8 text-sm"
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                />
+              </div>
+              <Select value={dataTypeFilter} onValueChange={setDataTypeFilter}>
+                <SelectTrigger className="h-8 w-[140px] text-xs">
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All types</SelectItem>
+                  {DATA_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Data source list */}
+            <div className="border rounded-md max-h-64 overflow-auto">
+              {filteredSources.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  <Database className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                  {dataSources.length === 0
+                    ? 'No data sources available. Add data sources in the Knowledge tab.'
+                    : 'No data sources match your filters.'}
+                </div>
+              ) : (
+                filteredSources.map((ds) => (
+                  <button
+                    key={ds.id}
+                    className={`flex items-center gap-3 w-full text-left px-3 py-2.5 border-b last:border-b-0 transition-colors ${
+                      selectedDataSourceId === ds.id
+                        ? 'bg-primary/10 border-l-2 border-l-primary'
+                        : 'hover:bg-muted/50'
+                    }`}
+                    onClick={() => setSelectedDataSourceId(ds.id)}
+                  >
+                    {sourceTypeIcon(ds.source_type)}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{ds.title}</div>
+                      {ds.description && (
+                        <div className="text-xs text-muted-foreground truncate">{ds.description}</div>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="text-[9px] shrink-0">
+                      {DATA_TYPE_OPTIONS.find((o) => o.value === ds.data_type)?.label ?? ds.data_type}
+                    </Badge>
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Model selector */}
+            {Array.isArray(availableModels) && availableModels.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground shrink-0">Model:</span>
+                <Select value={effectiveModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Use workflow default" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Run result */}
+            {runMutation.isError && (
+              <div className="p-3 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300">
+                Failed: {(runMutation.error as Error)?.message ?? 'Unknown error'}
+              </div>
+            )}
+
+            {runMutation.isSuccess && (
+              <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-sm text-green-700 dark:text-green-300">
+                Workflow completed. {runMutation.data?.staged_records ?? 0} records staged.
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={handleClose}>Cancel</Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => runMutation.mutate()}
+                disabled={!selectedDataSourceId || runMutation.isPending}
+              >
+                {runMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
+                Run Workflow
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {reviewRunId && (
+        <StagingReviewPanel
+          open
+          onOpenChange={(open) => { if (!open) { setReviewRunId(null); handleClose(); } }}
+          workflowRunId={reviewRunId}
+          workflowName={workflow?.name}
+        />
+      )}
+    </>
+  );
+}
+
+function StagingTab() {
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const orgId = '01010101-0101-0101-0101-010101010101';
+
+  const { data: pendingRecords = [], isLoading } = useQuery({
+    queryKey: ['stagingPending', orgId],
+    queryFn: () => stagingApi.listPending(orgId),
+    refetchInterval: 15000,
+  });
+
+  const grouped = useMemo(() => {
+    const byRun: Record<string, { runId: string; records: WorkflowStagingRecord[]; workflowName?: string }> = {};
+    for (const r of pendingRecords) {
+      const rid = r.workflow_run_id;
+      if (!byRun[rid]) byRun[rid] = { runId: rid, records: [], workflowName: undefined };
+      byRun[rid].records.push(r);
+    }
+    return Object.values(byRun);
+  }, [pendingRecords]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading staging records...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 max-w-[1200px] mx-auto">
+      <div>
+        <h2 className="text-lg font-semibold">Staging Review</h2>
+        <p className="text-sm text-muted-foreground">
+          Review and approve records extracted by workflows before they are committed to the CRM.
+        </p>
+      </div>
+
+      {grouped.length === 0 ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <ClipboardCheck className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium">No pending records</p>
+          <p className="text-xs mt-1">Records extracted by workflow runs will appear here for review.</p>
+        </div>
+      ) : (
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {grouped.map((group) => {
+            const statuses = group.records.reduce<Record<string, number>>((acc, r) => {
+              acc[r.status] = (acc[r.status] || 0) + 1;
+              return acc;
+            }, {});
+            return (
+              <Card
+                key={group.runId}
+                className="card-interactive cursor-pointer"
+                onClick={() => setSelectedRunId(group.runId)}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm">{group.records.length} Records</CardTitle>
+                    <Badge variant="outline" className="text-[10px]">Pending Review</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-mono truncate">{group.runId}</p>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(statuses).map(([status, count]) => (
+                      <Badge key={status} variant="secondary" className="text-[9px]">
+                        {status}: {count}
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {selectedRunId && (
+        <StagingReviewPanel
+          open
+          onOpenChange={(open) => { if (!open) setSelectedRunId(null); }}
+          workflowRunId={selectedRunId}
+        />
+      )}
+    </div>
+  );
+}
+
+function RunsTab() {
+  const { data: recentRuns = [], isLoading } = useQuery({
+    queryKey: ['workflowRuns'],
+    queryFn: () => workflowsApi.listRecentRuns({ limit: 50 }),
+    refetchInterval: 10000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="text-sm text-muted-foreground">Loading workflow runs...</div>
+      </div>
+    );
+  }
+
+  const formatDurationShort = (ms?: number) => {
+    if (!ms) return '-';
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+  };
+
+  return (
+    <div className="space-y-4 max-w-[1200px] mx-auto">
+      <div>
+        <h2 className="text-lg font-semibold">Workflow Runs</h2>
+        <p className="text-sm text-muted-foreground">
+          History of workflow executions with token usage, cost, and output metrics.
+        </p>
+      </div>
+
+      {recentRuns.length === 0 ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <Activity className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium">No workflow runs yet</p>
+          <p className="text-xs mt-1">Run a workflow from a data source to see execution history here.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {recentRuns.map((run: any) => (
+            <Card key={run.id} className={`border-l-4 ${run.status === 'completed' ? 'border-l-green-500' : run.status === 'failed' ? 'border-l-red-500' : 'border-l-yellow-500'}`}>
+              <CardContent className="py-3 px-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Badge variant={run.status === 'completed' ? 'default' : run.status === 'failed' ? 'destructive' : 'outline'} className="text-[10px] capitalize">
+                      {run.status}
+                    </Badge>
+                    <span className="text-sm font-medium">{run.workflow_name || run.workflow_id}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    {run.duration_ms && <span>{formatDurationShort(run.duration_ms)}</span>}
+                    {run.total_cost_micros != null && <span>${(run.total_cost_micros / 1_000_000).toFixed(4)}</span>}
+                    {run.records_staged != null && <span>{run.records_staged} records</span>}
+                    <span>{new Date(run.started_at).toLocaleString()}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
