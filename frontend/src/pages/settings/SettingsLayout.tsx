@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2 } from 'lucide-react';
+import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2, Key } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
@@ -72,6 +72,12 @@ const settingsNavigation: SettingsNavItem[] = [
     icon: Cpu,
     label: 'Agents',
     description: 'Autonomous agents and budgets',
+  },
+  {
+    path: 'keys',
+    icon: Key,
+    label: 'API Keys',
+    description: 'LLM provider API keys',
   },
   {
     path: 'models',
