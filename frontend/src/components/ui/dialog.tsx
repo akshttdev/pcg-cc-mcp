@@ -29,9 +29,9 @@ const Dialog = React.forwardRef<
     }
   }, [open, enableScope, disableScope]);
 
-  // Dialog keyboard shortcuts using semantic hooks
-  useKeyExit(
-    (e) => {
+  // Dialog keyboard shortcuts using semantic hooks (callbacks memoized to avoid re-registration conflicts)
+  const handleEscapeKey = React.useCallback(
+    (e: KeyboardEvent | undefined) => {
       if (uncloseable) return;
 
       // Two-step Esc behavior:
@@ -51,14 +51,11 @@ const Dialog = React.forwardRef<
       // 2. Otherwise close the dialog
       onOpenChange?.(false);
     },
-    {
-      scope: Scope.DIALOG,
-      when: () => !!open,
-    }
+    [uncloseable, onOpenChange]
   );
 
-  useKeySubmit(
-    (e) => {
+  const handleSubmitKey = React.useCallback(
+    (e: KeyboardEvent | undefined) => {
       // Don't interfere if user is typing in textarea (allow new lines)
       const activeElement = document.activeElement as HTMLElement;
       if (activeElement?.tagName === 'TEXTAREA') {
@@ -95,11 +92,18 @@ const Dialog = React.forwardRef<
         }
       }
     },
-    {
-      scope: Scope.DIALOG,
-      when: () => !!open,
-    }
+    [ref]
   );
+
+  useKeyExit(handleEscapeKey, {
+    scope: Scope.DIALOG,
+    when: () => !!open,
+  });
+
+  useKeySubmit(handleSubmitKey, {
+    scope: Scope.DIALOG,
+    when: () => !!open,
+  });
 
   if (!open) return null;
 

@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Shield, Edit, Trash2, UserPlus, Eye, Pencil } from 'lucide-react';
+import { Shield, Trash2, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { UserListItem } from 'shared/types';
 import { resolveApiUrl } from '@/lib/api';
 

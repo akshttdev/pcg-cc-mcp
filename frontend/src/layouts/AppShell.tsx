@@ -9,6 +9,7 @@ import { useViewStore } from '@/stores/useViewStore';
 import { TopsiWidget } from '@/components/topsi';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import {
   useUserSystem,
 } from '@/components/config-provider';
@@ -57,6 +58,9 @@ export function AppShell() {
 
   // Track previous path for back navigation
   usePreviousPath();
+
+  // Dynamic page title based on current route
+  usePageTitle();
 
   const showNavbar = !isFullscreen;
 

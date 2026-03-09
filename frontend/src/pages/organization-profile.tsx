@@ -3271,7 +3271,7 @@ function DevelopmentSection() {
 
 // ── Members Tab ───────────────────────────────────────────────────────────────
 
-function MemberAssignments({ orgId, userId, userName }: { orgId: string; userId: string; userName: string }) {
+function MemberAssignments({ orgId, userId }: { orgId: string; userId: string }) {
   const queryClient = useQueryClient();
   const { data: assignments, isLoading } = useQuery({
     queryKey: ['member-assignments', orgId, userId],
@@ -3538,14 +3538,6 @@ function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const roleIcon = (role: string) => {
-    switch (role) {
-      case 'admin': return <Shield className="h-3 w-3" />;
-      case 'viewer': return <Eye className="h-3 w-3" />;
-      default: return <Users className="h-3 w-3" />;
-    }
-  };
-
   return (
     <Card className="bg-card/80 backdrop-blur-sm border-border/50">
       <CardHeader>
@@ -3663,7 +3655,7 @@ function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
                     </div>
                   </div>
                   {isExpanded && (
-                    <MemberAssignments orgId={orgId} userId={m.user_id} userName={displayName} />
+                    <MemberAssignments orgId={orgId} userId={m.user_id} />
                   )}
                 </div>
               );
