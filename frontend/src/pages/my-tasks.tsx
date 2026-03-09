@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
-import { ListTodo, Clock, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
+import { ListTodo, Clock, AlertCircle, CheckCircle2, ArrowRight, Eye } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { tasksApi, type AssignedTask } from '@/lib/api';
@@ -15,6 +15,12 @@ export function MyTasksPage() {
   const { data: tasks = [], isLoading, error } = useQuery<AssignedTask[]>({
     queryKey: ['my-tasks', user?.id],
     queryFn: () => tasksApi.getAssignedToMe(),
+    enabled: !!user,
+  });
+
+  const { data: watchedTasks = [] } = useQuery<AssignedTask[]>({
+    queryKey: ['my-watched-tasks', user?.id],
+    queryFn: () => tasksApi.getWatchedTasks(),
     enabled: !!user,
   });
 
@@ -76,7 +82,7 @@ export function MyTasksPage() {
           <div>
             <h1 className="text-xl font-semibold">My Tasks</h1>
             <p className="text-sm text-muted-foreground">
-              {tasks.length} task{tasks.length !== 1 ? 's' : ''} assigned to you
+              {tasks.length} assigned{watchedTasks.length > 0 ? `, ${watchedTasks.length} watching` : ''}
             </p>
           </div>
         </div>
@@ -135,6 +141,21 @@ export function MyTasksPage() {
                 </h2>
                 <div className="space-y-2">
                   {groupedTasks.low.map((task) => (
+                    <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getStatusIcon={getStatusIcon} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Watched Tasks */}
+            {watchedTasks.length > 0 && (
+              <div>
+                <h2 className="text-sm font-semibold text-purple-600 mb-3 flex items-center gap-2">
+                  <Eye className="h-4 w-4" />
+                  WATCHING ({watchedTasks.length})
+                </h2>
+                <div className="space-y-2">
+                  {watchedTasks.map((task) => (
                     <TaskCard key={task.id} task={task} getPriorityColor={getPriorityColor} getStatusIcon={getStatusIcon} />
                   ))}
                 </div>
