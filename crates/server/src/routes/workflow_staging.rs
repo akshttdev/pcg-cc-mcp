@@ -482,6 +482,7 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         image_ids: None,
         priority,
         assignee_id: None,
+        assignee_type: None,
         assigned_agent: None,
         agent_id: None,
         assigned_mcps: None,

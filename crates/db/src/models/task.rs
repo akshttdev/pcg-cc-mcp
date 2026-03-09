@@ -54,6 +54,7 @@ pub struct Task {
     // Phase A: Core Collaboration Fields
     pub priority: Priority,
     pub assignee_id: Option<String>,
+    pub assignee_type: Option<String>,   // Polymorphic: "user", "agent", "team"
     pub assigned_agent: Option<String>,  // Legacy: agent name (e.g., "Nora")
     pub agent_id: Option<Uuid>,           // New: foreign key to agents table
     pub assigned_mcps: Option<String>,    // JSON array of strings
@@ -152,6 +153,7 @@ pub struct CreateTask {
     // Phase A: Core Collaboration Fields
     pub priority: Option<Priority>,
     pub assignee_id: Option<String>,
+    pub assignee_type: Option<String>,   // Polymorphic: "user", "agent", "team"
     pub assigned_agent: Option<String>,  // Legacy: agent name
     pub agent_id: Option<Uuid>,           // New: foreign key to agents table
     pub assigned_mcps: Option<Vec<String>>,
@@ -184,6 +186,7 @@ pub struct UpdateTask {
     // Phase A: Core Collaboration Fields
     pub priority: Option<Priority>,
     pub assignee_id: Option<String>,
+    pub assignee_type: Option<String>,   // Polymorphic: "user", "agent", "team"
     pub assigned_agent: Option<String>,  // Legacy: agent name
     pub agent_id: Option<Option<Uuid>>,   // New: foreign key to agents table
     pub assigned_mcps: Option<Vec<String>>,
@@ -234,6 +237,7 @@ impl Task {
   t.updated_at                    AS "updated_at!: DateTime<Utc>",
   t.priority                      AS "priority!: Priority",
   t.assignee_id                   AS "assignee_id: String",
+  t.assignee_type                 AS "assignee_type: String",
   t.assigned_agent                AS "assigned_agent: String",
   t.agent_id                      AS "agent_id: Uuid",
   t.assigned_mcps                 AS "assigned_mcps: String",
@@ -315,6 +319,7 @@ ORDER BY t.created_at DESC"#,
                     updated_at: rec.updated_at,
                     priority: rec.priority,
                     assignee_id: rec.assignee_id,
+                    assignee_type: rec.assignee_type,
                     assigned_agent: rec.assigned_agent,
                     agent_id: rec.agent_id,
                     assigned_mcps: rec.assigned_mcps,
@@ -362,6 +367,7 @@ ORDER BY t.created_at DESC"#,
                 updated_at as "updated_at!: DateTime<Utc>",
                 priority as "priority!: Priority",
                 assignee_id,
+                assignee_type,
                 assigned_agent,
                 agent_id as "agent_id: Uuid",
                 assigned_mcps,
@@ -399,6 +405,7 @@ ORDER BY t.created_at DESC"#,
                 updated_at as "updated_at!: DateTime<Utc>",
                 priority as "priority!: Priority",
                 assignee_id,
+                assignee_type,
                 assigned_agent,
                 agent_id as "agent_id: Uuid",
                 assigned_mcps,
@@ -440,6 +447,7 @@ ORDER BY t.created_at DESC"#,
                 updated_at as "updated_at!: DateTime<Utc>",
                 priority as "priority!: Priority",
                 assignee_id,
+                assignee_type,
                 assigned_agent,
                 agent_id as "agent_id: Uuid",
                 assigned_mcps,
@@ -472,16 +480,22 @@ ORDER BY t.created_at DESC"#,
         let assigned_mcps_json = Self::serialize_json_array(&data.assigned_mcps);
         let tags_json = Self::serialize_json_array(&data.tags);
         let custom_properties = data.custom_properties.clone().map(Json);
+        // Auto-derive assignee_type if not explicitly set
+        let assignee_type = data.assignee_type.clone().or_else(|| {
+            if data.assignee_id.is_some() { Some("user".to_string()) }
+            else if data.agent_id.is_some() { Some("agent".to_string()) }
+            else { None }
+        });
 
         sqlx::query_as!(
             Task,
             r#"INSERT INTO tasks (
                 id, project_id, pod_id, board_id, title, description, status, parent_task_attempt,
-                priority, assignee_id, assigned_agent, agent_id, assigned_mcps, created_by,
+                priority, assignee_id, assignee_type, assigned_agent, agent_id, assigned_mcps, created_by,
                 requires_approval, parent_task_id, tags, due_date,
                 custom_properties, scheduled_start, scheduled_end, screenshot
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
                RETURNING
                 id as "id!: Uuid",
                 project_id as "project_id!: Uuid",
@@ -495,6 +509,7 @@ ORDER BY t.created_at DESC"#,
                 updated_at as "updated_at!: DateTime<Utc>",
                 priority as "priority!: Priority",
                 assignee_id,
+                assignee_type,
                 assigned_agent,
                 agent_id as "agent_id: Uuid",
                 assigned_mcps,
@@ -518,6 +533,7 @@ ORDER BY t.created_at DESC"#,
             data.parent_task_attempt,
             priority,
             data.assignee_id,
+            assignee_type,
             data.assigned_agent,
             data.agent_id,
             assigned_mcps_json,
@@ -547,6 +563,7 @@ ORDER BY t.created_at DESC"#,
         board_id: Option<Uuid>,
         priority: Priority,
         assignee_id: Option<String>,
+        assignee_type: Option<String>,
         assigned_agent: Option<String>,
         assigned_mcps: Option<String>,
         requires_approval: bool,
@@ -564,12 +581,13 @@ ORDER BY t.created_at DESC"#,
                SET title = $3, description = $4, status = $5, parent_task_attempt = $6,
                    pod_id = $7,
                    board_id = $8,
-                   priority = $9, assignee_id = $10, assigned_agent = $11, assigned_mcps = $12,
-                   requires_approval = $13, approval_status = $14, parent_task_id = $15,
-                   tags = $16, due_date = $17,
-                   custom_properties = $18,
-                   scheduled_start = $19,
-                   scheduled_end = $20,
+                   priority = $9, assignee_id = $10, assignee_type = $11,
+                   assigned_agent = $12, assigned_mcps = $13,
+                   requires_approval = $14, approval_status = $15, parent_task_id = $16,
+                   tags = $17, due_date = $18,
+                   custom_properties = $19,
+                   scheduled_start = $20,
+                   scheduled_end = $21,
                    updated_at = datetime('now', 'subsec')
                WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL
                RETURNING
@@ -585,6 +603,7 @@ ORDER BY t.created_at DESC"#,
                 updated_at as "updated_at!: DateTime<Utc>",
                 priority as "priority!: Priority",
                 assignee_id,
+                assignee_type,
                 assigned_agent,
                 agent_id as "agent_id: Uuid",
                 assigned_mcps,
@@ -608,6 +627,7 @@ ORDER BY t.created_at DESC"#,
             board_id,
             priority,
             assignee_id,
+            assignee_type,
             assigned_agent,
             assigned_mcps,
             requires_approval,
@@ -738,6 +758,7 @@ ORDER BY t.created_at DESC"#,
                 updated_at as "updated_at!: DateTime<Utc>",
                 priority as "priority!: Priority",
                 assignee_id,
+                assignee_type,
                 assigned_agent,
                 agent_id as "agent_id: Uuid",
                 assigned_mcps,
@@ -793,6 +814,99 @@ ORDER BY t.created_at DESC"#,
         })
     }
 
+    /// Add a user as a watcher on a task
+    pub async fn add_watcher(
+        pool: &SqlitePool,
+        task_id: Uuid,
+        user_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        Self::update_collaborator(pool, task_id, user_id, "watcher", "watching").await
+    }
+
+    /// Remove a watcher from a task
+    pub async fn remove_watcher(
+        pool: &SqlitePool,
+        task_id: Uuid,
+        user_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        let record = sqlx::query!(
+            r#"SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL"#,
+            task_id
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        let mut collaborators: Vec<TaskCollaborator> = match record {
+            Some(rec) => rec
+                .collaborators
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default(),
+            None => return Ok(()),
+        };
+
+        collaborators.retain(|c| !(c.actor_id == user_id && c.actor_type == "watcher"));
+
+        let collaborators_json = serde_json::to_string(&collaborators)
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+        sqlx::query!(
+            "UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+            task_id,
+            collaborators_json
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Find all tasks watched by a specific user (via collaborators JSON)
+    pub async fn find_watched_by_user(
+        pool: &SqlitePool,
+        user_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        // SQLite JSON: search for watcher entries in collaborators array
+        let pattern = format!("%\"actor_id\":\"{}\"%\"actor_type\":\"watcher\"%", user_id);
+        sqlx::query_as!(
+            Task,
+            r#"SELECT
+                id as "id!: Uuid",
+                project_id as "project_id!: Uuid",
+                pod_id as "pod_id: Uuid",
+                board_id as "board_id: Uuid",
+                title as "title!",
+                description,
+                status as "status!: TaskStatus",
+                parent_task_attempt as "parent_task_attempt: Uuid",
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>",
+                priority as "priority!: Priority",
+                assignee_id,
+                assignee_type,
+                assigned_agent,
+                agent_id as "agent_id: Uuid",
+                assigned_mcps,
+                created_by as "created_by!",
+                requires_approval as "requires_approval!: bool",
+                approval_status as "approval_status: ApprovalStatus",
+                parent_task_id as "parent_task_id: Uuid",
+                tags,
+                due_date as "due_date: DateTime<Utc>",
+                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
+                scheduled_start as "scheduled_start: DateTime<Utc>",
+                scheduled_end as "scheduled_end: DateTime<Utc>",
+                screenshot
+               FROM tasks
+               WHERE collaborators LIKE $1
+               AND deleted_at IS NULL
+               ORDER BY updated_at DESC"#,
+            pattern,
+        )
+        .fetch_all(pool)
+        .await
+    }
+
     /// Find all tasks assigned to a specific user across all projects
     pub async fn find_by_assignee(
         pool: &SqlitePool,
@@ -813,6 +927,7 @@ ORDER BY t.created_at DESC"#,
                 updated_at as "updated_at!: DateTime<Utc>",
                 priority as "priority!: Priority",
                 assignee_id,
+                assignee_type,
                 assigned_agent,
                 agent_id as "agent_id: Uuid",
                 assigned_mcps,
