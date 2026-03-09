@@ -145,9 +145,9 @@ export function PeoplePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">People</h1>
+          <h1 className="text-2xl font-semibold">All People</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Universal contact intelligence — every team member, client, lead, and contractor in one place.
+            Platform-level directory — every team member, client, lead, and contractor across all organizations.
           </p>
         </div>
         <Button onClick={() => navigate('/people/new')}>
@@ -202,7 +202,19 @@ export function PeoplePage() {
       ) : persons.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Users className="h-12 w-12 mb-3 opacity-30" />
-          <p className="text-sm">No people found</p>
+          <p className="text-lg font-semibold mb-1 text-foreground">
+            {search || activeFilter ? 'No people match your filters' : 'No people yet'}
+          </p>
+          <p className="text-sm max-w-sm text-center">
+            {search || activeFilter
+              ? 'Try adjusting your search or filter criteria.'
+              : 'Add team members, clients, leads, and contractors to build your contact directory.'}
+          </p>
+          {!search && !activeFilter && (
+            <Button size="sm" className="mt-4" onClick={() => navigate('/people/new')}>
+              + New Person
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-2">

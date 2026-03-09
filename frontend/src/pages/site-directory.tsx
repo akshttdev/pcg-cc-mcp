@@ -39,9 +39,9 @@ const categories: DirectoryCategory[] = [
     title: 'CRM & Sales',
     icon: <Users className="h-5 w-5" />,
     links: [
-      { label: 'All CRM', to: '/crm' },
-      { label: 'People', to: '/people' },
-      { label: 'Companies', to: '/companies' },
+      { label: 'CRM Admin', to: '/crm' },
+      { label: 'All People', to: '/people', admin: true },
+      { label: 'All Companies', to: '/companies', admin: true },
       { label: 'Proposals', to: '/proposals' },
       { label: 'Invoices', to: '/invoices' },
     ],
@@ -50,7 +50,7 @@ const categories: DirectoryCategory[] = [
     title: 'Intelligence & Knowledge',
     icon: <Brain className="h-5 w-5" />,
     links: [
-      { label: 'Workflows', to: '/workflows' },
+      { label: 'Workflow Builder', to: '/workflows' },
       { label: 'Knowledge', note: 'Accessed per-project: /projects/:id/knowledge' },
       { label: 'Data Sources', note: 'Accessed per-org via Intelligence tab' },
     ],

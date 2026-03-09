@@ -168,9 +168,22 @@ export function CompaniesPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-2">
-            <Building2 className="h-10 w-10 opacity-20" />
-            <p className="text-sm">{search ? 'No companies match your search' : 'No companies yet'}</p>
+          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+            <Building2 className="h-12 w-12 mb-3 opacity-30" />
+            <p className="text-lg font-semibold mb-1 text-foreground">
+              {search ? 'No companies match your search' : 'No companies yet'}
+            </p>
+            <p className="text-sm max-w-sm text-center">
+              {search
+                ? 'Try adjusting your search terms.'
+                : 'Add companies to track organizations, run intelligence, and link them to your CRM.'}
+            </p>
+            {!search && (
+              <Button size="sm" className="mt-4" onClick={() => setShowCreate(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                New Company
+              </Button>
+            )}
           </div>
         ) : (
           <table className="w-full text-sm">
