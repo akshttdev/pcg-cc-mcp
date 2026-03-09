@@ -51,7 +51,7 @@ const SocialPage            = lazy(() => import('@/pages/social').then(m => ({ d
 const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ default: m.CrmPage })));
 const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
 const OrganizationProfilePage  = lazy(() => import('@/pages/organization-profile').then(m => ({ default: m.OrganizationProfilePage })));
-const DataSourcesPage          = lazy(() => import('@/pages/data-sources').then(m => ({ default: m.DataSourcesPage })));
+const DataSourcesPage          = lazy(() => import('@/pages/data-sources'));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
 const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-environment').then(m => ({ default: m.EmbedVirtualEnvironmentPage })));
 // MeshPage merged into Settings > Network & Mesh
@@ -64,6 +64,9 @@ const CrmConferencesPage    = lazy(() => import('@/pages/crm-conferences').then(
 const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').then(m => ({ default: m.CrmContactDetailPage })));
 const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
 const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
+const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
+const CompaniesPage         = lazy(() => import('@/pages/companies').then(m => ({ default: m.CompaniesPage })));
+const DiscordPage           = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
 const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
@@ -346,8 +349,20 @@ function AppContent() {
                         element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
                       />
                       <Route
+                        path="/people"
+                        element={<AdminRoute><PeoplePage /></AdminRoute>}
+                      />
+                      <Route
                         path="/people/:personId"
                         element={<ProtectedRoute adminOnly><PersonDetailPage /></ProtectedRoute>}
+                      />
+                      <Route
+                        path="/companies"
+                        element={<AdminRoute><CompaniesPage /></AdminRoute>}
+                      />
+                      <Route
+                        path="/discord"
+                        element={<AdminRoute><DiscordPage /></AdminRoute>}
                       />
                       <Route
                         path="/proposals"
