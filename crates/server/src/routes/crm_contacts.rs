@@ -126,13 +126,13 @@ async fn get_contact_stats(
 ) -> Result<Json<ApiResponse<ContactStats>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    // Get counts by stage
+    // Get counts by stage (COALESCE handles NULL lifecycle_stage)
     let stage_counts: Vec<(String, i64)> = sqlx::query_as(
         r#"
-        SELECT lifecycle_stage, COUNT(*) as count
+        SELECT COALESCE(lifecycle_stage, 'unknown') as stage, COUNT(*) as count
         FROM crm_contacts
         WHERE project_id = ?1
-        GROUP BY lifecycle_stage
+        GROUP BY COALESCE(lifecycle_stage, 'unknown')
         ORDER BY count DESC
         "#
     )
@@ -160,10 +160,10 @@ async fn get_contact_stats(
         r#"
         SELECT COUNT(*) FROM crm_contacts
         WHERE project_id = ?1
-        AND lifecycle_stage != 'churned'
+        AND COALESCE(lifecycle_stage, 'lead') != 'churned'
         AND (
             last_activity_at IS NULL
-            OR datetime(last_activity_at, '+7 days') < datetime('now')
+            OR last_activity_at < datetime('now', '-7 days')
         )
         "#
     )
