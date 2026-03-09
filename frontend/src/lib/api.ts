@@ -767,6 +767,10 @@ export const tasksApi = {
     const response = await makeRequest('/api/tasks/assigned-to-me');
     return handleApiResponse<AssignedTask[]>(response);
   },
+  getWatchedTasks: async (): Promise<AssignedTask[]> => {
+    const response = await makeRequest('/api/tasks/watched');
+    return handleApiResponse<AssignedTask[]>(response);
+  },
   getAll: async (projectId: string): Promise<TaskWithAttemptStatus[]> => {
     const response = await makeRequest(`/api/tasks?project_id=${projectId}`);
     return handleApiResponse<TaskWithAttemptStatus[]>(response);
@@ -3973,6 +3977,64 @@ export const organizationsApi = {
       method: 'DELETE',
     });
     return handleApiResponse<void>(response);
+  },
+
+  changeMemberRole: async (orgId: string, userId: string, role: string): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  // Member assignments
+  getMemberAssignments: async (orgId: string, userId: string): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments`);
+    return handleApiResponse<any>(response);
+  },
+
+  assignMember: async (orgId: string, userId: string, type: string, targetId: string, role?: string): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ type, target_id: targetId, role }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  watchTaskForMember: async (orgId: string, userId: string, taskId: string): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/watch`, {
+      method: 'POST',
+      body: JSON.stringify({ task_id: taskId }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  unassignProject: async (orgId: string, userId: string, projectId: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments/project/${projectId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  unassignClient: async (orgId: string, userId: string, clientId: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments/client/${clientId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  // Org invitations
+  createInvitation: async (orgId: string, role?: string, maxUses?: number, expiresInHours?: number): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/invitations`, {
+      method: 'POST',
+      body: JSON.stringify({ role, max_uses: maxUses, expires_in_hours: expiresInHours }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  listInvitations: async (orgId: string): Promise<any[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/invitations`);
+    return handleApiResponse<any[]>(response);
   },
 
   // Clients
