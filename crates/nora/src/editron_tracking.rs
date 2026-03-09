@@ -217,6 +217,7 @@ pub async fn find_or_create_task(
         image_ids: None,
         priority: Some(Priority::High),
         assignee_id: None,
+        assignee_type: None,
         assigned_agent: Some("editron".to_string()),
         agent_id: None,
         assigned_mcps: None,

@@ -182,6 +182,7 @@ async fn convert_deal(
                 image_ids: None,
                 priority: Some(priority),
                 assignee_id: None,
+                assignee_type: None,
                 assigned_agent: task_tmpl.agent_role.clone(),
                 agent_id: None,
                 assigned_mcps: None,

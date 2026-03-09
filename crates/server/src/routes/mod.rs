@@ -80,6 +80,7 @@ pub mod pulse;
 pub mod pythia;
 pub mod wallet;
 pub mod invitations;
+pub mod org_invitations;
 pub mod organizations;
 pub mod clients;
 pub mod project_folders;
@@ -164,6 +165,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(wallet::router())
         .merge(pulse::router(&deployment))
         .merge(organizations::router(&deployment))
+        .merge(org_invitations::router(&deployment))
         .merge(clients::router(&deployment))
         // project_folders routes deprecated — projects now use parent_project_id nesting
         .merge(board_shares::router(&deployment))
@@ -208,6 +210,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(execution_summaries::routes())
         .merge(auth::router(&deployment))
         .merge(invitations::public_router(&deployment))
+        .merge(org_invitations::public_router(&deployment))
         .merge(filesystem::router())
         .merge(events::router(&deployment))
         .nest("/images", images::routes())

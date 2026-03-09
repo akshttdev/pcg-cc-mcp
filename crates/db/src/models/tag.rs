@@ -7,7 +7,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct Tag {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
     pub name: String,
     pub color: Option<String>,
     pub content: String,
@@ -17,7 +18,8 @@ pub struct Tag {
 
 #[derive(Debug, Deserialize, TS)]
 pub struct CreateTag {
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
     pub name: String,
     pub color: Option<String>,
     pub content: Option<String>,
@@ -36,7 +38,8 @@ impl Tag {
             Tag,
             r#"SELECT
                 id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
+                project_id as "project_id: Uuid",
+                organization_id as "organization_id: Uuid",
                 name,
                 color,
                 content,
@@ -57,7 +60,8 @@ impl Tag {
             Tag,
             r#"SELECT
                 id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
+                project_id as "project_id: Uuid",
+                organization_id as "organization_id: Uuid",
                 name,
                 color,
                 content,
@@ -72,12 +76,66 @@ impl Tag {
         .await
     }
 
+    /// Find tags scoped to an organization (org-wide tags, not project-specific)
+    pub async fn find_by_organization_id(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Tag,
+            r#"SELECT
+                id as "id!: Uuid",
+                project_id as "project_id: Uuid",
+                organization_id as "organization_id: Uuid",
+                name,
+                color,
+                content,
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>"
+            FROM tags
+            WHERE organization_id = $1
+            ORDER BY name ASC"#,
+            organization_id
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Find all tags visible in a project context: project-specific + org-wide
+    pub async fn find_for_project_context(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Tag,
+            r#"SELECT
+                id as "id!: Uuid",
+                project_id as "project_id: Uuid",
+                organization_id as "organization_id: Uuid",
+                name,
+                color,
+                content,
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>"
+            FROM tags
+            WHERE project_id = $1
+               OR (project_id IS NULL AND organization_id = (
+                   SELECT organization_id FROM projects WHERE id = $1
+               ))
+            ORDER BY name ASC"#,
+            project_id
+        )
+        .fetch_all(pool)
+        .await
+    }
+
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Tag,
             r#"SELECT
                 id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
+                project_id as "project_id: Uuid",
+                organization_id as "organization_id: Uuid",
                 name,
                 color,
                 content,
@@ -97,11 +155,12 @@ impl Tag {
         let color = data.color.as_deref().unwrap_or("#gray");
         sqlx::query_as!(
             Tag,
-            r#"INSERT INTO tags (id, project_id, name, color, content)
-            VALUES ($1, $2, $3, $4, $5)
+            r#"INSERT INTO tags (id, project_id, organization_id, name, color, content)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING
                 id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
+                project_id as "project_id: Uuid",
+                organization_id as "organization_id: Uuid",
                 name,
                 color,
                 content,
@@ -109,6 +168,7 @@ impl Tag {
                 updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             data.project_id,
+            data.organization_id,
             data.name,
             color,
             content
@@ -138,7 +198,8 @@ impl Tag {
             WHERE id = $1
             RETURNING
                 id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
+                project_id as "project_id: Uuid",
+                organization_id as "organization_id: Uuid",
                 name,
                 color,
                 content,
