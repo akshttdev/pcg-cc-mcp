@@ -465,6 +465,12 @@ struct RunWorkflowRequest {
 
 /// Extract individual records from LLM output JSON
 fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
+    // Skip error responses from failed LLM calls
+    if data.get("error").is_some() {
+        tracing::warn!("[WORKFLOW] Skipping record extraction — node returned an error: {}", data);
+        return vec![];
+    }
+
     // Try direct array
     if let Some(arr) = data.as_array() {
         return arr.clone();
@@ -485,9 +491,15 @@ fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
         }
     }
 
-    // If it's a single object, wrap it
-    if data.is_object() {
-        return vec![data.clone()];
+    // If it's a single object with recognized entity fields, wrap it
+    if data.is_object() && !data.as_object().unwrap().is_empty() {
+        // Only wrap if it looks like an actual entity record (has name/title/email)
+        let obj = data.as_object().unwrap();
+        let looks_like_record = obj.contains_key("name") || obj.contains_key("title")
+            || obj.contains_key("email") || obj.contains_key("first_name");
+        if looks_like_record {
+            return vec![data.clone()];
+        }
     }
 
     vec![]
@@ -1177,11 +1189,11 @@ async fn list_recent_artifacts(
     Ok(Json(ApiResponse::success(artifacts)))
 }
 
-// ── LLM execution via PCG Router (falls back to mock) ────────────────────────
+// ── LLM execution via PCG Router ─────────────────────────────────────────────
 
 /// Execute a workflow node's LLM prompt via the PCG Router.
 /// Routes through all configured providers with priority-based fallback.
-/// Falls back to mock extraction if no models are available.
+/// Returns an error string (instead of mock data) if no models are available.
 async fn execute_node_with_llm(
     pool: &sqlx::SqlitePool,
     node: &WorkflowNode,
@@ -1204,10 +1216,10 @@ async fn execute_node_with_llm(
     let schema_text = if !target_schemas.is_empty() {
         let schemas: Vec<String> = target_schemas.iter().filter_map(|t| {
             match t.as_str() {
-                "crm_contacts" => Some("Output JSON must contain a \"contacts\" array. Each contact object must have: first_name (required, string), last_name (required, string), email (string or null), phone (string or null), company_name (string or null), job_title (string or null), lifecycle_stage (one of: subscriber, lead, mql, sql, opportunity, customer, evangelist, churned), notes (string or null), tags (array of strings or null).".to_string()),
-                "crm_companies" | "companies" => Some("Output JSON must contain a \"companies\" array. Each company object must have: name (required, string), website (string or null), industry (string or null), description (string or null), notes (string or null).".to_string()),
-                "crm_deals" | "deals" => Some("Output JSON must contain a \"deals\" array. Each deal object must have: name (required, string), amount (number or null), currency (string, default USD), probability (number 0-100 or null), expected_close_date (ISO date string or null), notes (string or null).".to_string()),
-                "tasks" => Some("Output JSON must contain a \"tasks\" array. Each task object must have: title (required, string), description (string or null), priority (one of: critical, high, medium, low), tags (array of strings or null).".to_string()),
+                "crm_contacts" => Some(r#"Output JSON must contain a "contacts" array. Each contact must be a REAL person explicitly named in the source content. Each contact object fields: name (required — full name as it appears in source, e.g. "John Smith"), email (string or null — only if explicitly stated), phone (string or null — only if explicitly stated), company (string or null — the company they work for), job_title (string or null — their role/title), notes (string or null — relevant context from the source). Do NOT fabricate contacts. Do NOT use document metadata, titles, or section headings as contact names."#.to_string()),
+                "crm_companies" | "companies" => Some(r#"Output JSON must contain a "companies" array. Each company must be a REAL organization explicitly named in the source content. Each company object fields: name (required — official company/org name as stated in source, e.g. "Acme Corp"), industry (string or null), description (string or null — brief context from source), employee_count (number or null — only if stated), revenue (string or null — only if stated), website (string or null — only if stated), relationship (string or null — e.g. "potential_client", "partner", "competitor"). Do NOT fabricate companies. Do NOT use document metadata, dates, or headings as company names."#.to_string()),
+                "crm_deals" | "deals" => Some(r#"Output JSON must contain a "deals" array. Each deal must represent a REAL business opportunity described in the source. Each deal object fields: name (required — descriptive deal title, e.g. "Acme Corp Platform Modernization"), amount (number or null — estimated monetary value), currency (string, default "USD"), probability (number 0-100 or null), expected_close_date (ISO date string or null), stage (string or null — e.g. "discovery", "qualification", "proposal"), notes (string or null). Do NOT fabricate deals."#.to_string()),
+                "tasks" => Some(r#"Output JSON must contain a "tasks" array. Each task must be a REAL action item or follow-up explicitly described in the source. Each task object fields: title (required, string), description (string or null), priority (one of: critical, high, medium, low), due_date (ISO date string or null — only if stated), tags (array of strings or null). Do NOT fabricate tasks."#.to_string()),
                 _ => None,
             }
         }).collect();
@@ -1216,8 +1228,11 @@ async fn execute_node_with_llm(
         String::new()
     };
 
+    // Wrap content with clear delimiters so the LLM distinguishes data from instructions
+    let wrapped_content = format!("--- BEGIN SOURCE CONTENT ---\n{}\n--- END SOURCE CONTENT ---", content);
+
     let prompt = prompt_template
-        .replace("{{content}}", content)
+        .replace("{{content}}", &wrapped_content)
         .replace("{{previous_results}}", &prev_text)
         .replace("{{target_schema}}", &schema_text);
 
@@ -1232,7 +1247,7 @@ async fn execute_node_with_llm(
     let messages = vec![
         ChatMessage {
             role: "system".to_string(),
-            content: json!("You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only."),
+            content: json!("You are a precise data extraction assistant. Your task is to extract REAL entities (people, companies, deals, tasks) that are explicitly mentioned in the source content provided. Rules:\n1. Only extract entities that are clearly and explicitly named in the source text.\n2. NEVER use document metadata (titles, dates, section headings) as entity names.\n3. NEVER fabricate or hallucinate entities that are not in the source.\n4. If no entities of the requested type exist in the source, return an empty array.\n5. Always output valid JSON without markdown formatting or preamble."),
         },
         ChatMessage {
             role: "user".to_string(),
@@ -1343,16 +1358,17 @@ async fn execute_node_with_llm(
             tracing::warn!("[WORKFLOW] Empty response from router for node '{}'", node.id);
         }
         Err(e) => {
-            tracing::warn!("[WORKFLOW] PCG Router failed for node '{}': {e}, falling back to mock", node.id);
+            tracing::error!("[WORKFLOW] PCG Router failed for node '{}': {e}. Check that API keys are configured (e.g. ANTHROPIC_API_KEY env var).", node.id);
         }
     }
 
-    // Fall back to mock
-    let output_schema = node.parameters.get("output_schema")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let mock_result = generate_mock_step_result(&node.id, content, "preview", previous_results, &node.node_type, output_schema);
-    (mock_result, None)
+    // Return an error result instead of mock data — mock data produces nonsense entities
+    let error_result = json!({
+        "error": "LLM call failed — no API keys configured or all providers returned errors. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or another provider's API key as an environment variable.",
+        "node_id": node.id,
+        "node_name": node.name,
+    });
+    (error_result.to_string(), None)
 }
 
 // ── Preview (dry-run) endpoint ───────────────────────────────────────────────
