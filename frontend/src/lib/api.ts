@@ -5925,3 +5925,80 @@ export const stagingApi = {
     return handleApiResponse<{ affected: number }>(response);
   },
 };
+
+// ── PCG Router / Provider Keys API ──────────────────────────────────────────
+
+export interface ProviderKeyStatus {
+  provider: string;
+  has_key: boolean;
+  model_count: number;
+  enabled_count: number;
+  env_var: string | null;
+}
+
+export interface PcgRouterModelInfo {
+  id: string;
+  name: string;
+  model_id: string;
+  provider: string;
+  provider_base_url: string | null;
+  api_key_env_var: string | null;
+  priority: number;
+  context_window: number | null;
+  max_output_tokens: number | null;
+  supports_tools: boolean;
+  supports_vision: boolean;
+  cost_per_million_input: number;
+  cost_per_million_output: number;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// PCG Router returns raw JSON (not wrapped in { success, data })
+const handleRawJsonResponse = async <T>(response: Response): Promise<T> => {
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new ApiError(text || 'Request failed', response.status, response);
+  }
+  return response.json();
+};
+
+export const pcgRouterApi = {
+  listModels: async (): Promise<PcgRouterModelInfo[]> => {
+    const response = await makeRequest('/api/pcg-router/models');
+    return handleRawJsonResponse<PcgRouterModelInfo[]>(response);
+  },
+
+  listProviderKeys: async (): Promise<ProviderKeyStatus[]> => {
+    const response = await makeRequest('/api/pcg-router/provider-keys');
+    return handleRawJsonResponse<ProviderKeyStatus[]>(response);
+  },
+
+  setProviderKey: async (provider: string, apiKey: string): Promise<{ provider: string; models_updated: number; has_key: boolean }> => {
+    const response = await makeRequest('/api/pcg-router/provider-keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, api_key: apiKey }),
+    });
+    return handleRawJsonResponse<{ provider: string; models_updated: number; has_key: boolean }>(response);
+  },
+
+  deleteProviderKey: async (provider: string): Promise<void> => {
+    const response = await makeRequest(`/api/pcg-router/provider-keys/${provider}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new ApiError('Failed to delete provider key', response.status, response);
+    }
+  },
+
+  patchModel: async (id: string, data: Record<string, unknown>): Promise<PcgRouterModelInfo> => {
+    const response = await makeRequest(`/api/pcg-router/models/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleRawJsonResponse<PcgRouterModelInfo>(response);
+  },
+};

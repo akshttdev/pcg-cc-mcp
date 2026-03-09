@@ -13,6 +13,8 @@ pub struct PcgRouterModel {
     pub provider: String,
     pub provider_base_url: Option<String>,
     pub api_key_env_var: Option<String>,
+    #[serde(skip_serializing)]
+    pub api_key_value: Option<String>,
     pub priority: i64,
     pub context_window: Option<i64>,
     pub max_output_tokens: Option<i64>,
@@ -29,7 +31,7 @@ impl PcgRouterModel {
     pub async fn list(pool: &SqlitePool) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(
             "SELECT id, name, model_id, provider, provider_base_url, api_key_env_var,
-                    priority, context_window, max_output_tokens,
+                    api_key_value, priority, context_window, max_output_tokens,
                     supports_tools, supports_vision,
                     cost_per_million_input, cost_per_million_output,
                     is_enabled, created_at, updated_at
@@ -43,7 +45,7 @@ impl PcgRouterModel {
     pub async fn list_enabled(pool: &SqlitePool) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as(
             "SELECT id, name, model_id, provider, provider_base_url, api_key_env_var,
-                    priority, context_window, max_output_tokens,
+                    api_key_value, priority, context_window, max_output_tokens,
                     supports_tools, supports_vision,
                     cost_per_million_input, cost_per_million_output,
                     is_enabled, created_at, updated_at
@@ -58,7 +60,7 @@ impl PcgRouterModel {
     pub async fn get_by_model_id(pool: &SqlitePool, model_id: &str) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(
             "SELECT id, name, model_id, provider, provider_base_url, api_key_env_var,
-                    priority, context_window, max_output_tokens,
+                    api_key_value, priority, context_window, max_output_tokens,
                     supports_tools, supports_vision,
                     cost_per_million_input, cost_per_million_output,
                     is_enabled, created_at, updated_at
@@ -71,8 +73,15 @@ impl PcgRouterModel {
         .await
     }
 
-    /// Resolve the API key from the environment variable specified on the model.
+    /// Resolve the API key: prefer stored value, then fall back to env var lookup.
     pub fn resolve_api_key(&self) -> Option<String> {
+        // 1. Check for a directly stored API key value
+        if let Some(ref key) = self.api_key_value {
+            if !key.is_empty() {
+                return Some(key.clone());
+            }
+        }
+        // 2. Fall back to environment variable lookup
         self.api_key_env_var.as_deref().and_then(|var| std::env::var(var).ok())
     }
 
