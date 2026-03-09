@@ -1,0 +1,21 @@
+[    5669ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://dashboard.powerclubglobal.com/api/tasks?project_id=6861af57-610f-4646-b648-a62599d4cc1f:0
+[    5671ms] [ERROR] [API Error] {message: DatabaseError: error occurred while decoding colum…5: invalid utf-8 sequence of 1 bytes from index 0, status: 500, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/tasks?project_id=6861af57-610f-4646-b648-a62599d4cc1f, timestamp: 2026-03-09T15:00:29.241Z} @ https://dashboard.powerclubglobal.com/assets/index-Bj8l9H64.js:719
+[    5672ms] [ERROR] Failed to load board data for project 6861af57-610f-4646-b648-a62599d4cc1f: ApiError: DatabaseError: error occurred while decoding column 15: invalid utf-8 sequence of 1 bytes from index 0
+    at P (https://dashboard.powerclubglobal.com/assets/index-Bj8l9H64.js:691:11732)
+    at async Promise.all (index 1)
+    at async https://dashboard.powerclubglobal.com/assets/projects-BzLK82AE.js:31:4368
+    at async Promise.all (index 6)
+    at async https://dashboard.powerclubglobal.com/assets/projects-BzLK82AE.js:31:4319 @ https://dashboard.powerclubglobal.com/assets/index-Bj8l9H64.js:719
+[    6569ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ https://dashboard.powerclubglobal.com/api/tasks?project_id=b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf:0
+[    6569ms] [ERROR] [API Error] {message: DatabaseError: error occurred while decoding colum…1: invalid utf-8 sequence of 1 bytes from index 0, status: 500, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/tasks?project_id=b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf, timestamp: 2026-03-09T15:00:30.140Z} @ https://dashboard.powerclubglobal.com/assets/index-Bj8l9H64.js:719
+[    6569ms] [ERROR] Failed to load board data for project b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf: ApiError: DatabaseError: error occurred while decoding column 11: invalid utf-8 sequence of 1 bytes from index 0
+    at P (https://dashboard.powerclubglobal.com/assets/index-Bj8l9H64.js:691:11732)
+    at async Promise.all (index 1)
+    at async https://dashboard.powerclubglobal.com/assets/projects-BzLK82AE.js:31:4368
+    at async Promise.all (index 52)
+    at async https://dashboard.powerclubglobal.com/assets/projects-BzLK82AE.js:31:4319 @ https://dashboard.powerclubglobal.com/assets/index-Bj8l9H64.js:719
+[   11597ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://dashboard.powerclubglobal.com/api/projects/05abaaf5-b249-4d1c-a980-c27aa095f579/assets:0
+[   11598ms] [ERROR] [API Error] {message: No assets found for the project, status: 404, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects/05abaaf5-b249-4d1c-a980-c27aa095f579/assets, timestamp: 2026-03-09T15:00:35.169Z} @ https://dashboard.powerclubglobal.com/assets/index-Bj8l9H64.js:719
+[   11598ms] [ERROR] Failed to fetch project assets: ApiError: No assets found for the project
+    at P (https://dashboard.powerclubglobal.com/assets/index-Bj8l9H64.js:691:11732)
+    at async https://dashboard.powerclubglobal.com/assets/projects-BzLK82AE.js:31:20188 @ https://dashboard.powerclubglobal.com/assets/index-Bj8l9H64.js:719

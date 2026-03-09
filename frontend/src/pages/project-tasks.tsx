@@ -104,12 +104,18 @@ export function ProjectTasks() {
   } = useBulkSelectionStore();
   const { getActiveFilters } = useFilterStore();
 
+  // Extract board filter from URL - used for task creation and filtering
+  const boardFilter = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('board') ?? null;
+  }, [location.search]);
+
   // Helper functions to open task forms - memoized to prevent re-renders
   const handleCreateTask = useCallback(() => {
     if (project?.id) {
-      openTaskForm({ projectId: project.id });
+      openTaskForm({ projectId: project.id, initialBoardId: boardFilter });
     }
-  }, [project?.id]);
+  }, [project?.id, boardFilter]);
 
   const handleEditTask = useCallback((task: Task) => {
     if (project?.id) {
@@ -266,11 +272,6 @@ export function ProjectTasks() {
   ] as const;
 
   // Memoize filtered tasks based on search query and filters
-  const boardFilter = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get('board') ?? null;
-  }, [location.search]);
-
   const archivedCount = useMemo(() => tasks.filter((t) => (t as Record<string, unknown>).archived_at).length, [tasks]);
 
   const filteredTasks = useMemo(() => {
@@ -908,8 +909,8 @@ export function ProjectTasks() {
                 tasks={filteredTasks}
                 onTaskClick={(task) => handleViewTaskDetails(task, undefined, true)}
                 onCreateTask={() => {
-                  // Open task creation form with pre-filled date
-                  openTaskForm({ projectId });
+                  // Open task creation form with pre-filled date and current board
+                  openTaskForm({ projectId, initialBoardId: boardFilter });
                 }}
               />
             </div>
