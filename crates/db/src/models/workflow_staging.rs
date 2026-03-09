@@ -165,6 +165,22 @@ impl WorkflowStagingRecord {
         .await
     }
 
+    pub async fn update_validation_errors(pool: &SqlitePool, id: Uuid, errors: Option<&[String]>) -> Result<Self, sqlx::Error> {
+        let errors_str = errors.map(|errs| {
+            serde_json::to_string(errs).unwrap_or_else(|_| "[]".to_string())
+        });
+        sqlx::query_as::<_, Self>(
+            r#"UPDATE workflow_output_staging
+               SET validation_errors = ?1, updated_at = datetime('now', 'subsec')
+               WHERE id = ?2
+               RETURNING *"#,
+        )
+        .bind(&errors_str)
+        .bind(id)
+        .fetch_one(pool)
+        .await
+    }
+
     pub fn parsed_data(&self) -> Option<Value> {
         serde_json::from_str(&self.record_data).ok()
     }

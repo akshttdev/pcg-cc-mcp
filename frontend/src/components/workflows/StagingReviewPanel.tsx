@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   Send,
   Edit3,
+  RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { stagingApi } from '@/lib/api';
@@ -65,7 +66,7 @@ export function StagingReviewPanel({
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Record<string, any>>({});
-  const [filter, setFilter] = useState<'all' | 'valid' | 'duplicates' | 'validation_issues' | 'approved' | 'rejected'>('all');
+  const [filter, setFilter] = useState<'all' | 'valid' | 'duplicates' | 'validation_issues' | 'approved' | 'rejected' | 'error'>('all');
   const [commitErrors, setCommitErrors] = useState<Record<string, string>>({});
 
   const { data: records = [], isLoading } = useQuery({
@@ -109,6 +110,9 @@ export function StagingReviewPanel({
       case 'rejected':
         filtered = records.filter(r => r.status === 'rejected');
         break;
+      case 'error':
+        filtered = records.filter(r => r.status === 'error');
+        break;
     }
     const groups: Record<string, WorkflowStagingRecord[]> = {};
     for (const r of filtered) {
@@ -123,6 +127,7 @@ export function StagingReviewPanel({
   const committedCount = records.filter(r => r.status === 'committed').length;
   const duplicateCount = records.filter(r => r.duplicate_of_id != null).length;
   const validPendingCount = records.filter(r => r.status === 'pending_review' && !r.duplicate_of_id).length;
+  const errorCount = records.filter(r => r.status === 'error').length;
   const duplicatePendingCount = records.filter(r => r.status === 'pending_review' && r.duplicate_of_id != null).length;
 
   const updateMutation = useMutation({
@@ -165,6 +170,27 @@ export function StagingReviewPanel({
   const rejectDuplicatesMutation = useMutation({
     mutationFn: () => stagingApi.rejectDuplicates(workflowRunId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      // First set status back to "approved", then commit
+      await stagingApi.update(id, { status: 'approved' });
+      return stagingApi.commit(id);
+    },
+    onSuccess: (result: CommitResult) => {
+      if (result.error) {
+        setCommitErrors(prev => ({ ...prev, [result.id]: result.error! }));
+      } else {
+        // Clear any previous error for this record
+        setCommitErrors(prev => {
+          const next = { ...prev };
+          delete next[result.id];
+          return next;
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] });
+    },
   });
 
   const handleApprove = (id: string) => updateMutation.mutate({ id, data: { status: 'approved' } });
@@ -263,6 +289,9 @@ export function StagingReviewPanel({
               <Badge variant="outline">{pendingCount} pending</Badge>
               <Badge variant="outline" className="text-green-600 border-green-200">{approvedCount} approved</Badge>
               <Badge variant="outline" className="text-blue-600 border-blue-200">{committedCount} committed</Badge>
+              {errorCount > 0 && (
+                <Badge variant="outline" className="text-red-600 border-red-200">{errorCount} errors</Badge>
+              )}
             </div>
           </div>
         </div>
@@ -272,7 +301,7 @@ export function StagingReviewPanel({
           <div className="flex items-center gap-2 px-6 py-2 border-b bg-muted/30">
             {/* Filter tabs */}
             <div className="flex items-center gap-1 mr-2">
-              {(['all', 'valid', 'duplicates', 'validation_issues', 'approved', 'rejected'] as const).map((f) => {
+              {(['all', 'valid', 'duplicates', 'validation_issues', 'approved', 'rejected', 'error'] as const).map((f) => {
                 const counts = {
                   all: records.length,
                   valid: validPendingCount,
@@ -280,6 +309,7 @@ export function StagingReviewPanel({
                   validation_issues: validationIssueCount,
                   approved: approvedCount,
                   rejected: records.filter(r => r.status === 'rejected').length,
+                  error: errorCount,
                 };
                 if (counts[f] === 0 && f !== 'all') return null;
                 const labels: Record<string, string> = {
@@ -289,6 +319,7 @@ export function StagingReviewPanel({
                   validation_issues: 'Validation Issues',
                   approved: 'Approved',
                   rejected: 'Rejected',
+                  error: 'Errors',
                 };
                 return (
                   <button
@@ -299,7 +330,8 @@ export function StagingReviewPanel({
                       filter === f
                         ? 'bg-primary text-primary-foreground'
                         : 'hover:bg-muted text-muted-foreground',
-                      f === 'validation_issues' && counts[f] > 0 && filter !== f && 'text-amber-600'
+                      f === 'validation_issues' && counts[f] > 0 && filter !== f && 'text-amber-600',
+                      f === 'error' && counts[f] > 0 && filter !== f && 'text-red-600'
                     )}
                   >
                     {labels[f]}
@@ -480,6 +512,26 @@ export function StagingReviewPanel({
                               >
                                 <Send className="h-3.5 w-3.5 text-blue-500" />
                               </button>
+                            )}
+
+                            {record.status === 'error' && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleStartEdit(record)}
+                                  className="p-1 rounded hover:bg-muted transition-colors"
+                                  title="Edit before retrying"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />
+                                </button>
+                                <button
+                                  onClick={() => retryMutation.mutate(record.id)}
+                                  className="p-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors"
+                                  title="Retry commit"
+                                  disabled={retryMutation.isPending}
+                                >
+                                  <RotateCcw className={cn('h-3.5 w-3.5 text-amber-600', retryMutation.isPending && 'animate-spin')} />
+                                </button>
+                              </div>
                             )}
                           </div>
 

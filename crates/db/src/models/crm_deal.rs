@@ -441,6 +441,25 @@ impl CrmDeal {
         Ok(updated_deal)
     }
 
+    /// Find a deal by name + organization (fallback deduplication without requiring contact/pipeline match).
+    pub async fn find_by_name_and_org(
+        pool: &SqlitePool,
+        name: &str,
+        organization_id: Uuid,
+    ) -> Result<Option<Self>, CrmDealError> {
+        let deal = sqlx::query_as::<_, CrmDeal>(
+            r#"SELECT * FROM crm_deals
+               WHERE name = ?1 AND organization_id = ?2
+               ORDER BY created_at DESC
+               LIMIT 1"#,
+        )
+        .bind(name)
+        .bind(organization_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(deal)
+    }
+
     /// Find a deal by name + contact + pipeline combination (for deduplication).
     pub async fn find_by_name_contact_pipeline(
         pool: &SqlitePool,

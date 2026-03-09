@@ -602,6 +602,15 @@ const CONTEXT_COLORS: Record<string, string> = {
 function ContactCard({ contact, context, onClick }: { contact: OrgContact; context?: string; onClick?: () => void }) {
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
 
+  // Check if contact was imported via workflow
+  let importedViaWorkflow = false;
+  if (contact.custom_fields) {
+    try {
+      const cf = typeof contact.custom_fields === 'string' ? JSON.parse(contact.custom_fields) : contact.custom_fields;
+      importedViaWorkflow = !!cf.source_workflow_run_id;
+    } catch { /* ignore */ }
+  }
+
   return (
     <button
       type="button"
@@ -646,6 +655,12 @@ function ContactCard({ contact, context, onClick }: { contact: OrgContact; conte
           <span className={`text-[10px] px-1.5 py-0.5 rounded capitalize font-medium ${CONTEXT_COLORS[context] ?? CONTEXT_COLORS.contact}`}>
             {context}
           </span>
+        )}
+        {importedViaWorkflow && (
+          <Badge variant="outline" className="text-[10px] gap-0.5" title="Imported via workflow">
+            <GitBranch className="h-2.5 w-2.5" />
+            Workflow
+          </Badge>
         )}
       </div>
     </button>

@@ -27,6 +27,7 @@ import {
   Rocket,
   ListTodo,
   FileText,
+  Workflow,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useDealClient } from '@/hooks/useCrmPipeline';
@@ -188,7 +189,7 @@ function PanelContent({
 
         <TabsContent value="details" className="flex-1 mt-0 min-h-0">
           <ScrollArea className="h-[calc(100vh-340px)]">
-            <DetailsTab deal={deal} onEdit={onEdit} onDelete={onDelete} onConvert={onConvert} />
+            <DetailsTab deal={deal} onEdit={onEdit} onDelete={onDelete} onConvert={onConvert} orgId={orgId} />
           </ScrollArea>
         </TabsContent>
 
@@ -220,17 +221,33 @@ function DetailsTab({
   onEdit,
   onDelete,
   onConvert,
+  orgId,
 }: {
   deal: CrmDealWithContact;
   onEdit: (deal: CrmDealWithContact) => void;
   onDelete: (deal: CrmDealWithContact) => void;
   onConvert: () => void;
+  orgId?: string;
 }) {
   const navigate = useNavigate();
 
   let tags: string[] = [];
   if (deal.tags) {
     try { tags = JSON.parse(deal.tags); } catch { tags = deal.tags.split(',').map(t => t.trim()).filter(Boolean); }
+  }
+
+  // Parse source provenance from custom_fields
+  let sourceInfo: { dataSourceId?: string; workflowRunId?: string } | null = null;
+  if (deal.custom_fields) {
+    try {
+      const cf = typeof deal.custom_fields === 'string' ? JSON.parse(deal.custom_fields) : deal.custom_fields;
+      if (cf.source_data_source_id || cf.source_workflow_run_id) {
+        sourceInfo = {
+          dataSourceId: cf.source_data_source_id,
+          workflowRunId: cf.source_workflow_run_id,
+        };
+      }
+    } catch { /* ignore parse errors */ }
   }
 
   const taskTotal = deal.task_total ?? 0;
@@ -390,6 +407,27 @@ function DetailsTab({
         <div>
           <h4 className="text-xs font-medium text-muted-foreground mb-1.5">Lost Reason</h4>
           <p className="text-sm">{deal.lost_reason}</p>
+        </div>
+      )}
+
+      {/* Source provenance */}
+      {sourceInfo && (
+        <div>
+          <h4 className="text-xs font-medium text-muted-foreground mb-1.5">Source</h4>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Workflow className="h-3.5 w-3.5 shrink-0" />
+            {orgId ? (
+              <button
+                type="button"
+                className="text-primary hover:underline text-left"
+                onClick={() => navigate(`/organizations/${orgId}/intelligence`)}
+              >
+                Imported via workflow
+              </button>
+            ) : (
+              <span>Imported via workflow</span>
+            )}
+          </div>
         </div>
       )}
 

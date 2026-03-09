@@ -220,6 +220,16 @@ async fn move_deal_stage(
     Ok(Json(ApiResponse::success(deal)))
 }
 
+/// GET /organizations/:org_id/crm/deals - List deals for an organization
+async fn list_org_deals(
+    State(deployment): State<DeploymentImpl>,
+    Path(org_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<CrmDeal>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deals = CrmDeal::find_by_organization(pool, org_id).await?;
+    Ok(Json(ApiResponse::success(deals)))
+}
+
 /// DELETE /crm/deals/:id - Delete deal
 async fn delete_deal(
     State(deployment): State<DeploymentImpl>,
@@ -370,4 +380,6 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/deals/{id}", patch(update_deal))
         .route("/crm/deals/{id}", delete(delete_deal))
         .route("/crm/deals/{id}/stage", patch(move_deal_stage))
+        // Org-scoped CRM deal routes
+        .route("/organizations/{org_id}/crm/deals", get(list_org_deals))
 }

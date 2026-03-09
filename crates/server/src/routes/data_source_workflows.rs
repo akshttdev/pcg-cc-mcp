@@ -624,14 +624,71 @@ fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
     vec![]
 }
 
+/// Check if a record looks like a fallback placeholder produced by the mock extraction
+/// engine (i.e. when no LLM is connected). These records contain generic names and
+/// no real data, so they should be flagged as very low confidence.
+fn is_fallback_placeholder(record: &Value) -> bool {
+    // Collect all string values from the record for pattern matching
+    let string_values: Vec<&str> = record.as_object()
+        .map(|obj| obj.values().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+
+    let placeholder_patterns = [
+        "Follow-up from '",
+        "CRM Records from '",
+        "Company from '",
+        "Unknown Contact",
+        "Processed step '",
+        "Referenced in data source content",
+        "Referenced in ",
+        "Mentioned in data source content",
+    ];
+
+    for val in &string_values {
+        for pattern in &placeholder_patterns {
+            if val.contains(pattern) {
+                return true;
+            }
+        }
+    }
+
+    // Also check nested arrays (e.g. next_steps) for generic content
+    if let Some(obj) = record.as_object() {
+        for v in obj.values() {
+            if let Some(arr) = v.as_array() {
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        for pattern in &placeholder_patterns {
+                            if s.contains(pattern) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
 /// Compute a confidence score (0.0–1.0) for a staging record based on simple heuristics.
 /// - Start at 1.0
 /// - Subtract 0.15 for each missing required field
 /// - Subtract 0.05 for each validation error
 /// - Subtract 0.3 if marked as duplicate
 /// - Subtract 0.1 if more than half of all fields are null/empty
+/// - Cap at 0.1 if the record is a fallback placeholder (no LLM connected)
 /// - Floor at 0.0
 fn compute_confidence(record: &Value, target_type: &str, validation_errors: &[String], is_duplicate: bool) -> f64 {
+    // If this record was produced by the mock/fallback engine, cap confidence very low
+    if is_fallback_placeholder(record) {
+        tracing::warn!(
+            "[WORKFLOW] Detected fallback placeholder record (no LLM connected) — setting low confidence"
+        );
+        return 0.1;
+    }
+
     let mut score: f64 = 1.0;
 
     // Check required fields against schema
@@ -1419,7 +1476,7 @@ async fn run_workflow(
                     };
 
                     // Validate the record against the target schema
-                    let validation_errors = match validate_record_against_schema(&record, staging_target) {
+                    let mut validation_errors = match validate_record_against_schema(&record, staging_target) {
                         Ok(()) => None,
                         Err(errs) => {
                             tracing::warn!(
@@ -1429,6 +1486,19 @@ async fn run_workflow(
                             Some(errs)
                         }
                     };
+
+                    // Flag fallback placeholder records with an explanatory validation error
+                    if is_fallback_placeholder(&record) {
+                        validation_errors.get_or_insert_with(Vec::new).push(
+                            "Placeholder record generated without LLM — no real data extracted".to_string()
+                        );
+                    }
+
+                    // Run pre-commit business-rule validation
+                    let precommit_errs = super::workflow_staging::validate_staging_record(staging_target, &record);
+                    if !precommit_errs.is_empty() {
+                        validation_errors.get_or_insert_with(Vec::new).extend(precommit_errs);
+                    }
 
                     let is_duplicate = dup_id.is_some();
                     let confidence = compute_confidence(
@@ -2275,10 +2345,23 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                                 Some((id, t)) => (Some(id), Some(t)),
                                 None => (None, None),
                             };
-                            let validation_errors = match validate_record_against_schema(&record, staging_target) {
+                            let mut validation_errors = match validate_record_against_schema(&record, staging_target) {
                                 Ok(()) => None,
                                 Err(errs) => Some(errs),
                             };
+
+                            // Flag fallback placeholder records with an explanatory validation error
+                            if is_fallback_placeholder(&record) {
+                                validation_errors.get_or_insert_with(Vec::new).push(
+                                    "Placeholder record generated without LLM — no real data extracted".to_string()
+                                );
+                            }
+
+                            // Run pre-commit business-rule validation
+                            let precommit_errs = super::workflow_staging::validate_staging_record(staging_target, &record);
+                            if !precommit_errs.is_empty() {
+                                validation_errors.get_or_insert_with(Vec::new).extend(precommit_errs);
+                            }
 
                             let is_duplicate = dup_id.is_some();
                             let confidence = compute_confidence(
