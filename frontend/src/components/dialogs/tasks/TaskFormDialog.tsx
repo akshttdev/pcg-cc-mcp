@@ -45,6 +45,7 @@ export interface TaskFormDialogProps {
   initialTask?: Task | null; // For duplicating an existing task
   initialBaseBranch?: string; // For pre-selecting base branch in spinoff
   parentTaskAttemptId?: string; // For linking to parent task attempt
+  initialBoardId?: string | null; // For pre-selecting board (e.g., from URL filter)
 }
 
 export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
@@ -55,6 +56,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     initialTask,
     initialBaseBranch,
     parentTaskAttemptId,
+    initialBoardId,
   }) => {
     const modal = useModal();
     const { createTask, createAndStart, updateTask } =
@@ -248,13 +250,19 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
         return;
       }
 
-      // Prefer the default board, fallback to first available
+      // If initialBoardId is provided and exists in the boards list, use it
+      if (initialBoardId && boards.some((board) => board.id === initialBoardId)) {
+        setSelectedBoardId(initialBoardId);
+        return;
+      }
+
+      // Fallback: prefer the default board, then first available
       const preferred =
         boards.find((board) => board.board_type === 'default') || boards[0];
       if (preferred) {
         setSelectedBoardId(preferred.id);
       }
-    }, [boards, boardsLoading, isEditMode, selectedBoardId, modal.visible]);
+    }, [boards, boardsLoading, isEditMode, selectedBoardId, modal.visible, initialBoardId]);
 
     useEffect(() => {
       if (task) {
