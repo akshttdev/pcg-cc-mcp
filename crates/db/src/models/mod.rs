@@ -110,6 +110,12 @@ pub mod pcg_router_model;
 pub mod workflow_run;
 pub mod workflow_staging;
 pub mod workflow_trigger;
+pub mod media_asset;
+pub mod review_token;
+pub mod review_comment;
+pub mod person_note;
+pub mod orchestration_context;
+pub mod oss_library;
 // Topology modules need SQLX prepared queries — commented out for offline builds
 // pub mod topology_node;
 // pub mod topology_edge;
