@@ -18,6 +18,18 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use db::models::workflow_staging::WorkflowStagingRecord;
+
+/// Normalize a date or datetime string to RFC3339 format.
+/// Handles "2026-08-01" → "2026-08-01T00:00:00Z" and passes through already-valid datetimes.
+fn normalize_datetime(s: &str) -> String {
+    let trimmed = s.trim();
+    // If it looks like a date-only string (YYYY-MM-DD), append time component
+    if trimmed.len() == 10 && trimmed.chars().nth(4) == Some('-') && trimmed.chars().nth(7) == Some('-') {
+        format!("{}T00:00:00Z", trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
 use db::models::crm_contact::{CrmContact, CreateCrmContact, UpdateCrmContact, ContactSource, LifecycleStage};
 use db::models::company::Company;
 use db::models::crm_deal::{CrmDeal, CreateCrmDeal, UpdateCrmDeal};
@@ -484,7 +496,7 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
                 description: data["description"].as_str().map(|s| s.to_string()),
                 amount: data["amount"].as_f64(),
                 currency: data["currency"].as_str().map(|s| s.to_string()),
-                expected_close_date: data["expected_close_date"].as_str().map(|s| s.to_string()),
+                expected_close_date: data["expected_close_date"].as_str().map(|s| normalize_datetime(s)),
                 tags,
                 custom_fields,
                 ..Default::default()
@@ -512,7 +524,7 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         description: data["description"].as_str().map(|s| s.to_string()),
         amount: data["amount"].as_f64(),
         currency: data["currency"].as_str().map(|s| s.to_string()),
-        expected_close_date: data["expected_close_date"].as_str().map(|s| s.to_string()),
+        expected_close_date: data["expected_close_date"].as_str().map(|s| normalize_datetime(s)),
         tags,
         custom_fields,
     };
