@@ -6,6 +6,7 @@ use axum::{
 use db::models::user::{
     CreateOrganization, Organization, OrganizationMember, UpdateOrganization,
 };
+use db::models::company::Company;
 use db::models::person_association::{PersonOrgContact, UpsertPersonOrgContact};
 use deployment::Deployment;
 use serde::Deserialize;
@@ -285,4 +286,16 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/organizations/{id}/person-contacts",
             get(list_org_person_contacts).post(add_org_person_contact),
         )
+        .route("/organizations/{id}/companies", get(list_org_companies))
+}
+
+/// GET /organizations/:id/companies — list companies created by this org
+async fn list_org_companies(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<Company>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let companies = Company::list(pool, Some(id), None, Some(200)).await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    Ok(Json(companies))
 }
