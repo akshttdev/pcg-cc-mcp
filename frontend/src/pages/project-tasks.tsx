@@ -251,7 +251,7 @@ export function ProjectTasks() {
     { scope: Scope.KANBAN }
   );
 
-  // Toggle fullscreen with Cmd+Enter
+  // Toggle fullscreen with 'f' key
   useKeyToggleFullscreen(() => toggleFullscreen(!isFullscreen), {
     scope: Scope.KANBAN,
   });
