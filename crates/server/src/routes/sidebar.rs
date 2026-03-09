@@ -289,36 +289,64 @@ pub async fn get_sidebar_tree(
             .fetch_all(pool)
             .await
             .unwrap_or_default()
+        } else if org_row.role == "admin" {
+            // Org admins see all projects in the org
+            sqlx::query_as::<_, ProjectRow>(
+                r#"SELECT id, name, git_repo_path, client_id, parent_project_id, sort_order
+                   FROM projects WHERE organization_id = ? AND deleted_at IS NULL
+                   ORDER BY sort_order ASC, name ASC"#,
+            )
+            .bind(&org_id_bytes)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
         } else {
+            // Regular org members: only projects they're explicitly assigned to,
+            // or client projects where they have a task assignment
             sqlx::query_as::<_, ProjectRow>(
                 r#"SELECT DISTINCT p.id, p.name, p.git_repo_path, p.client_id, p.parent_project_id, p.sort_order
                    FROM projects p
                    WHERE p.organization_id = ? AND p.deleted_at IS NULL AND (
                        p.id IN (SELECT pm.project_id FROM project_members pm WHERE pm.user_id = ?)
-                       OR p.organization_id IN (SELECT om.organization_id FROM organization_members om WHERE om.user_id = ?)
-                       OR p.client_id IN (SELECT cm.client_id FROM client_members cm WHERE cm.user_id = ?)
+                       OR (p.client_id IN (SELECT cm.client_id FROM client_members cm WHERE cm.user_id = ?)
+                           AND p.id IN (SELECT t.project_id FROM tasks t WHERE t.assignee_id = ? AND t.deleted_at IS NULL))
                    )
                    ORDER BY p.sort_order ASC, p.name ASC"#,
             )
             .bind(&org_id_bytes)
             .bind(&user_id_bytes)
             .bind(&user_id_bytes)
-            .bind(&user_id_bytes)
+            .bind(user_id.to_string())
             .fetch_all(pool)
             .await
             .unwrap_or_default()
         };
 
         // Get clients for this org
-        let client_rows: Vec<ClientRow> = sqlx::query_as::<_, ClientRow>(
-            r#"SELECT id, name, slug FROM clients
-               WHERE organization_id = ? AND deleted_at IS NULL AND is_active = 1
-               ORDER BY name ASC"#,
-        )
-        .bind(&org_id_bytes)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
+        // Admins (platform or org) see all clients; regular members see only assigned clients
+        let client_rows: Vec<ClientRow> = if access_context.is_admin || org_row.role == "admin" {
+            sqlx::query_as::<_, ClientRow>(
+                r#"SELECT id, name, slug FROM clients
+                   WHERE organization_id = ? AND deleted_at IS NULL AND is_active = 1
+                   ORDER BY name ASC"#,
+            )
+            .bind(&org_id_bytes)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+        } else {
+            sqlx::query_as::<_, ClientRow>(
+                r#"SELECT c.id, c.name, c.slug FROM clients c
+                   INNER JOIN client_members cm ON cm.client_id = c.id AND cm.user_id = ?
+                   WHERE c.organization_id = ? AND c.deleted_at IS NULL AND c.is_active = 1
+                   ORDER BY c.name ASC"#,
+            )
+            .bind(&user_id_bytes)
+            .bind(&org_id_bytes)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+        };
 
         // Batch fetch health data for all projects in this org
         let all_project_ids: Vec<Vec<u8>> = project_rows.iter().map(|p| p.id.clone()).collect();
