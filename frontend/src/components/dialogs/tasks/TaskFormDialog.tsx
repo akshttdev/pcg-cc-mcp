@@ -354,7 +354,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
         setRequiresApproval(false);
         setDueDate('');
         setSelectedTemplate('');
-        setSelectedBoardId(null);
+        setSelectedBoardId(initialBoardId ?? null);
       } else {
         // Create mode - reset to defaults
         setTitle('');
@@ -373,12 +373,13 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
         setSelectedBranch('');
         setSelectedExecutorProfile(system.config?.executor_profile || null);
         setQuickstartExpanded(false);
-        setSelectedBoardId(null);
+        setSelectedBoardId(initialBoardId ?? null);
       }
     }, [
       task,
       initialTask,
       initialTemplate,
+      initialBoardId,
       modal.visible,
       system.config?.executor_profile,
     ]);
