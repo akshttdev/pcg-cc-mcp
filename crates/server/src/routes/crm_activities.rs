@@ -17,7 +17,7 @@ use db::models::crm_activity::{CrmActivity, CreateCrmActivity};
 
 #[derive(Debug, Deserialize)]
 pub struct ListActivitiesQuery {
-    pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
     pub contact_id: Option<Uuid>,
     pub deal_id: Option<Uuid>,
     pub limit: Option<i32>,
@@ -35,11 +35,11 @@ async fn list_activities(
         CrmActivity::find_by_contact(pool, contact_id, limit).await?
     } else if let Some(deal_id) = query.deal_id {
         CrmActivity::find_by_deal(pool, deal_id, limit).await?
-    } else if let Some(project_id) = query.project_id {
-        CrmActivity::find_by_project(pool, project_id, limit).await?
+    } else if let Some(org_id) = query.organization_id {
+        CrmActivity::find_by_organization(pool, org_id, limit).await?
     } else {
         return Err(ApiError::BadRequest(
-            "Must provide project_id, contact_id, or deal_id".to_string(),
+            "Must provide organization_id, contact_id, or deal_id".to_string(),
         ));
     };
 

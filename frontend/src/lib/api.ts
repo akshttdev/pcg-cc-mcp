@@ -2806,7 +2806,9 @@ export const emailApi = {
 
 export interface CrmContactRecord {
   id: string;
-  project_id: string;
+  organization_id: string;
+  project_id: string | null;
+  client_id: string | null;
   first_name: string | null;
   last_name: string | null;
   full_name: string | null;
@@ -2852,7 +2854,8 @@ export interface CrmContactRecord {
 }
 
 export interface CreateCrmContactRequest {
-  project_id: string;
+  organization_id: string;
+  client_id?: string;
   first_name?: string;
   last_name?: string;
   email?: string;
@@ -2976,11 +2979,11 @@ export const quickbooksApi = {
 
 export const crmApi = {
   listContacts: async (
-    projectId: string,
+    organizationId: string,
     options?: { lifecycleStage?: string; limit?: number }
   ): Promise<CrmContactRecord[]> => {
     const searchParams = new URLSearchParams();
-    searchParams.set('project_id', projectId);
+    searchParams.set('organization_id', organizationId);
     if (options?.lifecycleStage) searchParams.set('lifecycle_stage', options.lifecycleStage);
     if (options?.limit) searchParams.set('limit', options.limit.toString());
     const response = await makeRequest(`/api/crm/contacts?${searchParams.toString()}`);
@@ -2988,7 +2991,7 @@ export const crmApi = {
   },
 
   searchContacts: async (
-    projectId: string,
+    organizationId: string,
     query?: string,
     options?: {
       lifecycleStage?: string;
@@ -2999,7 +3002,7 @@ export const crmApi = {
     }
   ): Promise<CrmContactRecord[]> => {
     const searchParams = new URLSearchParams();
-    searchParams.set('project_id', projectId);
+    searchParams.set('organization_id', organizationId);
     if (query) searchParams.set('query', query);
     if (options?.lifecycleStage) searchParams.set('lifecycle_stage', options.lifecycleStage);
     if (options?.companyName) searchParams.set('company_name', options.companyName);
@@ -3043,8 +3046,8 @@ export const crmApi = {
     await handleApiResponse<void>(response);
   },
 
-  getContactStats: async (projectId: string): Promise<CrmContactStats> => {
-    const response = await makeRequest(`/api/crm/contacts/stats/${projectId}`);
+  getContactStats: async (organizationId: string): Promise<CrmContactStats> => {
+    const response = await makeRequest(`/api/crm/contacts/stats/${organizationId}`);
     return handleApiResponse<CrmContactStats>(response);
   },
 
@@ -3099,17 +3102,13 @@ export type {
 };
 
 export const crmPipelinesApi = {
-  /** List pipelines for a project or organization */
+  /** List pipelines for an organization */
   listPipelines: async (
-    projectId: string,
-    options?: { pipelineType?: PipelineType; organizationId?: string }
+    organizationId: string,
+    options?: { pipelineType?: PipelineType }
   ): Promise<CrmPipeline[]> => {
     const params = new URLSearchParams();
-    if (options?.organizationId) {
-      params.set('organization_id', options.organizationId);
-    } else {
-      params.set('project_id', projectId);
-    }
+    params.set('organization_id', organizationId);
     if (options?.pipelineType) params.set('pipeline_type', options.pipelineType);
     const response = await makeRequest(`/api/crm/pipelines?${params.toString()}`);
     return handleApiResponse<CrmPipeline[]>(response);
@@ -3206,13 +3205,13 @@ export const crmPipelinesApi = {
 
 export const crmDealsApi = {
   listDeals: async (options: {
-    project_id?: string;
+    organization_id?: string;
     pipeline_id?: string;
     stage_id?: string;
     contact_id?: string;
   }): Promise<CrmDealRecord[]> => {
     const params = new URLSearchParams();
-    if (options.project_id) params.set('project_id', options.project_id);
+    if (options.organization_id) params.set('organization_id', options.organization_id);
     if (options.pipeline_id) params.set('pipeline_id', options.pipeline_id);
     if (options.stage_id) params.set('stage_id', options.stage_id);
     if (options.contact_id) params.set('contact_id', options.contact_id);
@@ -3254,8 +3253,8 @@ export const crmDealsApi = {
     await handleApiResponse<void>(response);
   },
 
-  getMetrics: async (projectId: string, pipelineId?: string): Promise<PipelineMetricsRecord> => {
-    const params = new URLSearchParams({ project_id: projectId });
+  getMetrics: async (organizationId: string, pipelineId?: string): Promise<PipelineMetricsRecord> => {
+    const params = new URLSearchParams({ organization_id: organizationId });
     if (pipelineId) params.set('pipeline_id', pipelineId);
     const response = await makeRequest(`/api/crm/deals/metrics?${params}`);
     return handleApiResponse<PipelineMetricsRecord>(response);
@@ -3285,7 +3284,9 @@ export const crmDealsApi = {
 // CRM Activities API
 export interface CrmActivityRecord {
   id: string;
-  project_id: string;
+  organization_id: string;
+  project_id: string | null;
+  client_id: string | null;
   crm_contact_id?: string;
   crm_deal_id?: string;
   activity_type: string;
@@ -3327,13 +3328,13 @@ export interface PipelineMetricsRecord {
 
 export const crmActivitiesApi = {
   listActivities: async (options: {
-    project_id?: string;
+    organization_id?: string;
     contact_id?: string;
     deal_id?: string;
     limit?: number;
   }): Promise<CrmActivityRecord[]> => {
     const params = new URLSearchParams();
-    if (options.project_id) params.set('project_id', options.project_id);
+    if (options.organization_id) params.set('organization_id', options.organization_id);
     if (options.contact_id) params.set('contact_id', options.contact_id);
     if (options.deal_id) params.set('deal_id', options.deal_id);
     if (options.limit) params.set('limit', options.limit.toString());
@@ -3342,7 +3343,7 @@ export const crmActivitiesApi = {
   },
 
   createActivity: async (data: {
-    project_id: string;
+    organization_id: string;
     crm_contact_id?: string;
     crm_deal_id?: string;
     activity_type: string;

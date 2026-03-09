@@ -1,14 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { personsApi, type PersonRecord } from '@/lib/api';
+import { crmApi, type CrmContactRecord } from '@/lib/api';
 
-// OrgContact is just a PersonRecord — org contacts come from the persons table
-// (seeded via meeting ingestion, intelligence pipeline, manual create, etc.)
-export type OrgContact = PersonRecord;
+// OrgContact is now a CrmContactRecord (org-scoped CRM contacts)
+export type OrgContact = CrmContactRecord & { person_type?: string };
 
 export function useOrgContacts(orgId: string | undefined) {
-  const { data: contacts = [], isLoading } = useQuery<PersonRecord[]>({
-    queryKey: ['org-persons', orgId],
-    queryFn: () => personsApi.list({ organization_id: orgId!, limit: 500 }),
+  const { data: contacts = [], isLoading } = useQuery<OrgContact[]>({
+    queryKey: ['org-crm-contacts', orgId],
+    queryFn: () => crmApi.listContacts(orgId!),
     enabled: !!orgId,
     staleTime: 60_000,
   });

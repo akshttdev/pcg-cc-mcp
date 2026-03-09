@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
@@ -8,63 +8,51 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Search,
   Users,
-  UserCheck,
-  Briefcase,
-  TrendingUp,
   ArrowRight,
   Building2,
   Mail,
   Phone,
 } from 'lucide-react';
-import { personsApi, type PersonRecord } from '@/lib/api';
+import { crmApi, type CrmContactRecord } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const PERSON_TYPE_INFO: Record<string, { label: string; color: string }> = {
-  team:       { label: 'Team',       color: 'bg-violet-100 text-violet-700' },
-  client:     { label: 'Client',     color: 'bg-green-100 text-green-700' },
-  contractor: { label: 'Contractor', color: 'bg-amber-100 text-amber-700' },
-  lead:       { label: 'Lead',       color: 'bg-blue-100 text-blue-700' },
-  partner:    { label: 'Partner',    color: 'bg-pink-100 text-pink-700' },
-  contact:    { label: 'Contact',    color: 'bg-gray-100 text-gray-600' },
+const LIFECYCLE_COLORS: Record<string, string> = {
+  subscriber: 'bg-gray-100 text-gray-600',
+  lead:       'bg-blue-100 text-blue-700',
+  mql:        'bg-indigo-100 text-indigo-700',
+  sql:        'bg-violet-100 text-violet-700',
+  opportunity:'bg-amber-100 text-amber-700',
+  customer:   'bg-green-100 text-green-700',
+  evangelist: 'bg-pink-100 text-pink-700',
+  churned:    'bg-red-100 text-red-700',
 };
 
-const FINANCIAL_ROLE_INFO: Record<string, { label: string; color: string }> = {
-  taker:   { label: 'Taker',   color: 'text-red-600' },
-  giver:   { label: 'Giver',   color: 'text-green-600' },
-  both:    { label: 'Taker + Giver', color: 'text-purple-600' },
-  neutral: { label: '',        color: '' },
-};
-
-const FILTERS = [
-  { key: undefined, label: 'All', icon: Users },
-  { key: 'team',       label: 'Team',       icon: UserCheck },
-  { key: 'client',     label: 'Clients',    icon: Briefcase },
-  { key: 'lead',       label: 'Leads',      icon: TrendingUp },
-  { key: 'contractor', label: 'Contractors', icon: Building2 },
-];
-
-function PersonCard({ person }: { person: PersonRecord }) {
+function ContactCard({ contact }: { contact: CrmContactRecord }) {
   const navigate = useNavigate();
-  const typeInfo = PERSON_TYPE_INFO[person.person_type] ?? PERSON_TYPE_INFO.contact;
-  const roleInfo = FINANCIAL_ROLE_INFO[person.financial_role] ?? FINANCIAL_ROLE_INFO.neutral;
+  const fullName = contact.full_name
+    || [contact.first_name, contact.last_name].filter(Boolean).join(' ')
+    || 'Unnamed';
 
-  const initials = person.full_name
+  const initials = fullName
     .split(' ')
     .map((n) => n[0])
     .slice(0, 2)
     .join('')
     .toUpperCase();
 
+  const stageColor = LIFECYCLE_COLORS[contact.lifecycle_stage] ?? LIFECYCLE_COLORS.lead;
+
   return (
     <div
       className="flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/40 cursor-pointer transition-colors group"
-      onClick={() => navigate(`/people/${person.id}`)}
+      onClick={() => navigate(`/people/${contact.id}`)}
     >
       {/* Avatar */}
       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
-        {person.avatar_url ? (
-          <img src={person.avatar_url} alt={person.full_name} className="w-full h-full rounded-full object-cover" />
+        {contact.avatar_url ? (
+          <img src={contact.avatar_url} alt={fullName} className="w-full h-full rounded-full object-cover" />
         ) : (
           initials
         )}
@@ -73,44 +61,39 @@ function PersonCard({ person }: { person: PersonRecord }) {
       {/* Main info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium truncate">{person.full_name}</span>
-          <Badge className={`text-xs px-1.5 py-0 ${typeInfo.color} border-0`}>
-            {typeInfo.label}
+          <span className="text-sm font-medium truncate">{fullName}</span>
+          <Badge className={`text-xs px-1.5 py-0 ${stageColor} border-0`}>
+            {contact.lifecycle_stage.replace(/_/g, ' ')}
           </Badge>
-          {roleInfo.label && (
-            <span className={`text-xs font-medium ${roleInfo.color}`}>{roleInfo.label}</span>
-          )}
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-          {person.company_name && (
+          {contact.company_name && (
             <span className="flex items-center gap-1 truncate">
               <Building2 className="h-3 w-3" />
-              {person.company_name}
+              {contact.company_name}
             </span>
           )}
-          {person.email && (
+          {contact.email && (
             <span className="flex items-center gap-1 truncate">
               <Mail className="h-3 w-3" />
-              {person.email}
+              {contact.email}
             </span>
           )}
-          {person.phone && (
+          {contact.phone && (
             <span className="flex items-center gap-1">
               <Phone className="h-3 w-3" />
-              {person.phone}
+              {contact.phone}
             </span>
           )}
         </div>
-        {person.intelligence_summary && (
-          <p className="text-xs text-muted-foreground mt-1 line-clamp-1 italic">
-            {person.intelligence_summary}
-          </p>
+        {contact.job_title && (
+          <p className="text-xs text-muted-foreground mt-0.5">{contact.job_title}</p>
         )}
       </div>
 
       {/* Lifecycle */}
       <div className="hidden sm:block text-xs text-muted-foreground capitalize shrink-0">
-        {person.lifecycle_stage.replace(/_/g, ' ')}
+        {contact.lifecycle_stage.replace(/_/g, ' ')}
       </div>
 
       <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
@@ -122,23 +105,37 @@ function PersonCard({ person }: { person: PersonRecord }) {
 
 export function PeoplePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState<string | undefined>(undefined);
+  const [stageFilter, setStageFilter] = useState<string | undefined>(undefined);
 
-  const { data: persons = [], isLoading } = useQuery<PersonRecord[]>({
-    queryKey: ['persons', activeFilter, search],
+  const orgId = user?.home_organization_id ?? user?.organizations?.[0]?.id;
+
+  const { data: contacts = [], isLoading } = useQuery<CrmContactRecord[]>({
+    queryKey: ['crm-contacts-all', orgId, stageFilter],
     queryFn: () =>
-      personsApi.list({
-        person_type: activeFilter,
-        q: search || undefined,
+      crmApi.listContacts(orgId!, {
+        lifecycleStage: stageFilter,
         limit: 200,
       }),
+    enabled: !!orgId,
   });
 
-  const counts = persons.reduce<Record<string, number>>((acc, p) => {
-    acc[p.person_type] = (acc[p.person_type] ?? 0) + 1;
-    return acc;
-  }, {});
+  // Client-side search filtering
+  const filtered = useMemo(() => {
+    if (!search) return contacts;
+    const q = search.toLowerCase();
+    return contacts.filter((c) => {
+      const name = (c.full_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`).toLowerCase();
+      return (
+        name.includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.company_name?.toLowerCase().includes(q)
+      );
+    });
+  }, [contacts, search]);
+
+  const stages = ['subscriber', 'lead', 'mql', 'sql', 'opportunity', 'customer', 'evangelist', 'churned'];
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -147,32 +144,47 @@ export function PeoplePage() {
         <div>
           <h1 className="text-2xl font-semibold">All People</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Platform-level directory — every team member, client, lead, and contractor across all organizations.
+            CRM contacts across your organization.
           </p>
         </div>
-        <Button onClick={() => navigate('/people/new')}>
-          + New Person
-        </Button>
+        {orgId && (
+          <Button onClick={() => navigate(`/organizations/${orgId}/crm/contacts`)}>
+            CRM Contacts
+          </Button>
+        )}
       </div>
 
-      {/* Filter pills */}
+      {/* Stage filter pills */}
       <div className="flex items-center gap-2 flex-wrap">
-        {FILTERS.map((f) => {
-          const Icon = f.icon;
-          const count = f.key ? (counts[f.key] ?? 0) : persons.length;
-          const active = activeFilter === f.key;
+        <button
+          onClick={() => setStageFilter(undefined)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+            !stageFilter
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'border-border hover:bg-muted/60'
+          }`}
+        >
+          <Users className="h-3.5 w-3.5" />
+          All
+          <span className={`text-xs ${!stageFilter ? 'opacity-80' : 'text-muted-foreground'}`}>
+            {contacts.length}
+          </span>
+        </button>
+        {stages.map((stage) => {
+          const count = contacts.filter((c) => c.lifecycle_stage === stage).length;
+          if (count === 0 && stageFilter !== stage) return null;
+          const active = stageFilter === stage;
           return (
             <button
-              key={f.key ?? 'all'}
-              onClick={() => setActiveFilter(f.key)}
+              key={stage}
+              onClick={() => setStageFilter(active ? undefined : stage)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
                 active
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border hover:bg-muted/60'
               }`}
             >
-              <Icon className="h-3.5 w-3.5" />
-              {f.label}
+              {stage.replace(/_/g, ' ')}
               <span className={`text-xs ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
                 {count}
               </span>
@@ -199,27 +211,22 @@ export function PeoplePage() {
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>
-      ) : persons.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Users className="h-12 w-12 mb-3 opacity-30" />
           <p className="text-lg font-semibold mb-1 text-foreground">
-            {search || activeFilter ? 'No people match your filters' : 'No people yet'}
+            {search || stageFilter ? 'No contacts match your filters' : 'No contacts yet'}
           </p>
           <p className="text-sm max-w-sm text-center">
-            {search || activeFilter
+            {search || stageFilter
               ? 'Try adjusting your search or filter criteria.'
-              : 'Add team members, clients, leads, and contractors to build your contact directory.'}
+              : 'Contacts will appear here as they are added via CRM or workflow imports.'}
           </p>
-          {!search && !activeFilter && (
-            <Button size="sm" className="mt-4" onClick={() => navigate('/people/new')}>
-              + New Person
-            </Button>
-          )}
         </div>
       ) : (
         <div className="space-y-2">
-          {persons.map((p) => (
-            <PersonCard key={p.id} person={p} />
+          {filtered.map((c) => (
+            <ContactCard key={c.id} contact={c} />
           ))}
         </div>
       )}

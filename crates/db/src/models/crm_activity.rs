@@ -115,7 +115,9 @@ impl std::str::FromStr for CrmActivityType {
 #[ts(export)]
 pub struct CrmActivity {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+    pub client_id: Option<Uuid>,
     pub crm_contact_id: Option<Uuid>,
     pub crm_deal_id: Option<Uuid>,
     pub activity_type: String,
@@ -137,7 +139,8 @@ pub struct CrmActivity {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateCrmActivity {
-    pub project_id: Uuid,
+    pub organization_id: Option<Uuid>,
+    pub client_id: Option<Uuid>,
     pub crm_contact_id: Option<Uuid>,
     pub crm_deal_id: Option<Uuid>,
     pub activity_type: CrmActivityType,
@@ -166,17 +169,20 @@ impl CrmActivity {
         let activity = sqlx::query_as::<_, CrmActivity>(
             r#"
             INSERT INTO crm_activities (
-                id, project_id, crm_contact_id, crm_deal_id, activity_type,
+                id, organization_id, project_id, client_id,
+                crm_contact_id, crm_deal_id, activity_type,
                 subject, description, outcome, email_message_id, social_mention_id,
                 task_id, performed_by_user, performed_by_agent_id, metadata,
                 duration_minutes, activity_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, datetime('now', 'subsec'))
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, datetime('now', 'subsec'))
             RETURNING *
             "#,
         )
         .bind(id)
-        .bind(data.project_id)
+        .bind(data.organization_id)
+        .bind(None::<Uuid>)
+        .bind(data.client_id)
         .bind(data.crm_contact_id)
         .bind(data.crm_deal_id)
         .bind(&activity_type)
@@ -230,33 +236,10 @@ impl CrmActivity {
         Ok(activities)
     }
 
-    /// Find all activities for a project
-    pub async fn find_by_project(
-        pool: &SqlitePool,
-        project_id: Uuid,
-        limit: Option<i32>,
-    ) -> Result<Vec<Self>, CrmActivityError> {
-        let limit = limit.unwrap_or(100);
-        let activities = sqlx::query_as::<_, CrmActivity>(
-            r#"
-            SELECT * FROM crm_activities
-            WHERE project_id = ?1
-            ORDER BY activity_at DESC
-            LIMIT ?2
-            "#,
-        )
-        .bind(project_id)
-        .bind(limit)
-        .fetch_all(pool)
-        .await?;
-
-        Ok(activities)
-    }
-
-    /// Find activities by type for a project
+    /// Find activities by type for an organization
     pub async fn find_by_type(
         pool: &SqlitePool,
-        project_id: Uuid,
+        organization_id: Uuid,
         activity_type: CrmActivityType,
         limit: Option<i32>,
     ) -> Result<Vec<Self>, CrmActivityError> {
@@ -265,12 +248,12 @@ impl CrmActivity {
         let activities = sqlx::query_as::<_, CrmActivity>(
             r#"
             SELECT * FROM crm_activities
-            WHERE project_id = ?1 AND activity_type = ?2
+            WHERE organization_id = ?1 AND activity_type = ?2
             ORDER BY activity_at DESC
             LIMIT ?3
             "#,
         )
-        .bind(project_id)
+        .bind(organization_id)
         .bind(&type_str)
         .bind(limit)
         .fetch_all(pool)
@@ -295,6 +278,29 @@ impl CrmActivity {
             "#,
         )
         .bind(deal_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(activities)
+    }
+
+    /// Find all activities for an organization
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+        limit: Option<i32>,
+    ) -> Result<Vec<Self>, CrmActivityError> {
+        let limit = limit.unwrap_or(100);
+        let activities = sqlx::query_as::<_, CrmActivity>(
+            r#"
+            SELECT * FROM crm_activities
+            WHERE organization_id = ?1
+            ORDER BY activity_at DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(organization_id)
         .bind(limit)
         .fetch_all(pool)
         .await?;

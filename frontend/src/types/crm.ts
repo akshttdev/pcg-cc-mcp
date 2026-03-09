@@ -41,7 +41,7 @@ export interface CrmPipelineWithStages extends CrmPipeline {
 
 // Create/Update pipeline types
 export interface CreateCrmPipeline {
-  project_id: string;
+  organization_id: string;
   name: string;
   description?: string;
   pipeline_type: PipelineType;
@@ -81,7 +81,8 @@ export interface UpdateCrmPipelineStage {
 // Deal with contact info for Kanban display (matches backend CrmDealWithContact)
 export interface CrmDealWithContact {
   id: string;
-  project_id: string;
+  organization_id: string;
+  project_id?: string;
   crm_contact_id?: string;
   crm_pipeline_id?: string;
   crm_stage_id?: string;
@@ -131,7 +132,7 @@ export interface KanbanBoardData {
 
 // Create/Update deal types
 export interface CreateCrmDeal {
-  project_id: string;
+  organization_id: string;
   crm_contact_id?: string;
   crm_pipeline_id?: string;
   crm_stage_id?: string;
@@ -172,7 +173,7 @@ export type CrmDealRecord = CrmDealWithContact;
 
 // Create activity type for logging
 export interface CreateCrmActivity {
-  project_id: string;
+  organization_id: string;
   crm_contact_id?: string;
   crm_deal_id?: string;
   activity_type: CrmActivityType;

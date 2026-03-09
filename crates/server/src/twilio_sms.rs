@@ -177,7 +177,7 @@ impl TwilioSmsSender {
         let _: Result<SmsMessage, _> = SmsMessage::create(
             &self.db_pool,
             CreateSmsMessage {
-                project_id: contact.project_id,
+                project_id: contact.project_id.unwrap_or_else(Uuid::new_v4),
                 message_sid: message_sid.clone(),
                 account_sid: Some(self.config.account_sid.clone()),
                 messaging_service_sid: None,
@@ -201,7 +201,8 @@ impl TwilioSmsSender {
         let _: Result<CrmActivity, _> = CrmActivity::create(
             &self.db_pool,
             CreateCrmActivity {
-                project_id: contact.project_id,
+                organization_id: contact.organization_id,
+                client_id: contact.client_id,
                 crm_contact_id: Some(contact.id),
                 crm_deal_id: None,
                 activity_type: CrmActivityType::Custom,
@@ -270,7 +271,7 @@ impl TwilioSmsSender {
         let _: Result<SmsMessage, _> = SmsMessage::create(
             &self.db_pool,
             CreateSmsMessage {
-                project_id: contact.project_id,
+                project_id: contact.project_id.unwrap_or_else(Uuid::new_v4),
                 message_sid,
                 account_sid: Some(self.config.account_sid.clone()),
                 messaging_service_sid: None,

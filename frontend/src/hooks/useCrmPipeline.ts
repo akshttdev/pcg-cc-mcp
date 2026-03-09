@@ -10,32 +10,32 @@ import type {
 
 // Query keys for cache invalidation
 export const crmQueryKeys = {
-  pipelines: (projectId: string) => ['crm', 'pipelines', projectId] as const,
-  pipelinesByType: (projectId: string, type: PipelineType) =>
-    ['crm', 'pipelines', projectId, type] as const,
+  pipelines: (organizationId: string) => ['crm', 'pipelines', organizationId] as const,
+  pipelinesByType: (organizationId: string, type: PipelineType) =>
+    ['crm', 'pipelines', organizationId, type] as const,
   pipeline: (id: string) => ['crm', 'pipeline', id] as const,
   kanban: (pipelineId: string) => ['crm', 'kanban', pipelineId] as const,
-  deals: (projectId: string) => ['crm', 'deals', projectId] as const,
+  deals: (organizationId: string) => ['crm', 'deals', organizationId] as const,
   deal: (id: string) => ['crm', 'deal', id] as const,
 };
 
-// Hook to list all pipelines for a project
-export function useCrmPipelines(projectId: string, pipelineType?: PipelineType) {
+// Hook to list all pipelines for an organization
+export function useCrmPipelines(organizationId: string, pipelineType?: PipelineType) {
   return useQuery({
     queryKey: pipelineType
-      ? crmQueryKeys.pipelinesByType(projectId, pipelineType)
-      : crmQueryKeys.pipelines(projectId),
+      ? crmQueryKeys.pipelinesByType(organizationId, pipelineType)
+      : crmQueryKeys.pipelines(organizationId),
     queryFn: () =>
-      crmPipelinesApi.listPipelines(projectId, pipelineType ? { pipelineType } : undefined),
-    enabled: !!projectId,
+      crmPipelinesApi.listPipelines(organizationId, pipelineType ? { pipelineType } : undefined),
+    enabled: !!organizationId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     placeholderData: keepPreviousData,
   });
 }
 
 // Hook to get a single pipeline by type (for board pages)
-export function useCrmPipelineByType(projectId: string, pipelineType: PipelineType) {
-  const { data: pipelines, ...rest } = useCrmPipelines(projectId, pipelineType);
+export function useCrmPipelineByType(organizationId: string, pipelineType: PipelineType) {
+  const { data: pipelines, ...rest } = useCrmPipelines(organizationId, pipelineType);
   return {
     ...rest,
     data: pipelines?.[0],
@@ -125,7 +125,7 @@ export function useCreateDeal() {
       }
       // Invalidate deals list
       queryClient.invalidateQueries({
-        queryKey: crmQueryKeys.deals(deal.project_id),
+        queryKey: crmQueryKeys.deals(deal.organization_id),
       });
     },
   });

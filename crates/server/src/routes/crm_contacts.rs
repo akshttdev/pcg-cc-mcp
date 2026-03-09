@@ -20,14 +20,14 @@ use db::models::crm_contact::{
 
 #[derive(Debug, Deserialize)]
 pub struct ListContactsQuery {
-    pub project_id: Uuid,
+    pub organization_id: Uuid,
     pub lifecycle_stage: Option<String>,
     pub limit: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SearchContactsQuery {
-    pub project_id: Uuid,
+    pub organization_id: Uuid,
     pub query: Option<String>,
     pub lifecycle_stage: Option<String>,
     pub company_name: Option<String>,
@@ -55,7 +55,7 @@ pub struct UpdateLeadScoreRequest {
     pub score_delta: i32,
 }
 
-/// GET /crm/contacts - List contacts
+/// GET /crm/contacts - List contacts by organization
 async fn list_contacts(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<ListContactsQuery>,
@@ -65,9 +65,20 @@ async fn list_contacts(
     let contacts = if let Some(stage_str) = query.lifecycle_stage {
         let stage: LifecycleStage = stage_str.parse()
             .map_err(|_| ApiError::BadRequest(format!("Invalid lifecycle stage: {}", stage_str)))?;
-        CrmContact::find_by_lifecycle_stage(pool, query.project_id, stage).await?
+        let params = ContactSearchParams {
+            organization_id: Some(query.organization_id),
+            client_id: None,
+            query: None,
+            lifecycle_stage: Some(stage),
+            company_name: None,
+            tags: None,
+            min_lead_score: None,
+            limit: query.limit,
+            offset: None,
+        };
+        CrmContact::search(pool, params).await?
     } else {
-        CrmContact::find_by_project(pool, query.project_id, query.limit).await?
+        CrmContact::find_by_organization(pool, query.organization_id, query.limit).await?
     };
 
     Ok(Json(ApiResponse::success(contacts)))
@@ -82,7 +93,7 @@ async fn create_contact(
 
     // Check if contact with this email already exists
     if let Some(ref email) = data.email {
-        if let Some(existing) = CrmContact::find_by_email(pool, data.project_id, email).await? {
+        if let Some(existing) = CrmContact::find_by_email(pool, data.organization_id, email).await? {
             return Err(ApiError::Conflict(format!(
                 "Contact with email {} already exists: {}",
                 email, existing.id
@@ -105,7 +116,8 @@ async fn search_contacts(
         .and_then(|s| s.parse::<LifecycleStage>().ok());
 
     let params = ContactSearchParams {
-        project_id: query.project_id,
+        organization_id: Some(query.organization_id),
+        client_id: None,
         query: query.query,
         lifecycle_stage,
         company_name: query.company_name,
@@ -119,24 +131,23 @@ async fn search_contacts(
     Ok(Json(ApiResponse::success(contacts)))
 }
 
-/// GET /crm/contacts/stats/:project_id - Get contact statistics
+/// GET /crm/contacts/stats/:organization_id - Get contact statistics by org
 async fn get_contact_stats(
     State(deployment): State<DeploymentImpl>,
-    Path(project_id): Path<Uuid>,
+    Path(organization_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<ContactStats>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    // Get counts by stage (COALESCE handles NULL lifecycle_stage)
     let stage_counts: Vec<(String, i64)> = sqlx::query_as(
         r#"
         SELECT COALESCE(lifecycle_stage, 'unknown') as stage, COUNT(*) as count
         FROM crm_contacts
-        WHERE project_id = ?1
+        WHERE organization_id = ?1
         GROUP BY COALESCE(lifecycle_stage, 'unknown')
         ORDER BY count DESC
         "#
     )
-    .bind(project_id)
+    .bind(organization_id)
     .fetch_all(pool)
     .await?;
 
@@ -147,19 +158,17 @@ async fn get_contact_stats(
         .map(|(stage, count)| StageCount { stage, count })
         .collect();
 
-    // Get average lead score
     let avg_score: (f64,) = sqlx::query_as(
-        r#"SELECT COALESCE(AVG(CAST(lead_score AS REAL)), 0.0) FROM crm_contacts WHERE project_id = ?1"#
+        r#"SELECT COALESCE(AVG(CAST(lead_score AS REAL)), 0.0) FROM crm_contacts WHERE organization_id = ?1"#
     )
-    .bind(project_id)
+    .bind(organization_id)
     .fetch_one(pool)
     .await?;
 
-    // Get contacts that need follow-up (no activity in 7 days, not churned)
     let needs_follow_up: (i64,) = sqlx::query_as(
         r#"
         SELECT COUNT(*) FROM crm_contacts
-        WHERE project_id = ?1
+        WHERE organization_id = ?1
         AND COALESCE(lifecycle_stage, 'lead') != 'churned'
         AND (
             last_activity_at IS NULL
@@ -167,7 +176,7 @@ async fn get_contact_stats(
         )
         "#
     )
-    .bind(project_id)
+    .bind(organization_id)
     .fetch_one(pool)
     .await?;
 
@@ -189,13 +198,13 @@ async fn get_contact(
     Ok(Json(ApiResponse::success(contact)))
 }
 
-/// GET /crm/contacts/by-email/:email - Get contact by email
+/// GET /crm/contacts/by-email/:organization_id/:email - Get contact by email (org-scoped)
 async fn get_contact_by_email(
     State(deployment): State<DeploymentImpl>,
-    Path((project_id, email)): Path<(Uuid, String)>,
+    Path((organization_id, email)): Path<(Uuid, String)>,
 ) -> Result<Json<ApiResponse<Option<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let contact = CrmContact::find_by_email(pool, project_id, &email).await?;
+    let contact = CrmContact::find_by_email(pool, organization_id, &email).await?;
     Ok(Json(ApiResponse::success(contact)))
 }
 
@@ -267,7 +276,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/contacts", get(list_contacts))
         .route("/crm/contacts", post(create_contact))
         .route("/crm/contacts/search", get(search_contacts))
-        .route("/crm/contacts/stats/{project_id}", get(get_contact_stats))
+        .route("/crm/contacts/stats/{organization_id}", get(get_contact_stats))
         .route("/crm/contacts/{id}", get(get_contact))
         .route("/crm/contacts/{id}", patch(update_contact))
         .route("/crm/contacts/{id}", delete(delete_contact))
@@ -275,5 +284,5 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/contacts/{id}/contacted", post(record_contacted))
         .route("/crm/contacts/{id}/replied", post(record_replied))
         .route("/crm/contacts/{id}/lead-score", post(update_lead_score))
-        .route("/crm/contacts/by-email/{project_id}/{email}", get(get_contact_by_email))
+        .route("/crm/contacts/by-email/{organization_id}/{email}", get(get_contact_by_email))
 }

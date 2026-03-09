@@ -163,6 +163,7 @@ const FINE_ART_SOCIETY_PROJECT: Project = {
   sort_order: 0,
   aptos_address: null,
   aptos_funded: false,
+  deleted_at: null,
   created_at: new Date(),
   updated_at: new Date(),
 };

@@ -518,7 +518,7 @@ function ActivityTab({
   deal: CrmDealWithContact;
   projectId?: string;
 }) {
-  const resolvedProjectId = projectId || deal.project_id;
+  const resolvedProjectId = projectId || deal.organization_id;
 
   return (
     <div className="p-6">

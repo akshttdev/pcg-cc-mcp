@@ -595,7 +595,7 @@ function ContactCard({
 function ContactFormDialog({
   open,
   onOpenChange,
-  projectId,
+  projectId: _projectId,
   contact,
   onSubmit,
   isLoading,
@@ -653,7 +653,6 @@ function ContactFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
-      project_id: projectId,
       ...formData,
       first_name: formData.first_name || undefined,
       last_name: formData.last_name || undefined,

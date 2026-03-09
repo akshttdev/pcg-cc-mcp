@@ -547,6 +547,19 @@ pub async fn handle_incoming_call(
 
         let team_context = build_pcg_team_context(pool, user_id).await;
 
+        // Look up organization_id from the project
+        let organization_id = {
+            let row: Option<(Vec<u8>,)> = sqlx::query_as(
+                "SELECT organization_id FROM projects WHERE id = ?"
+            )
+            .bind(project_id.as_bytes().as_slice())
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+            row.and_then(|(b,)| Uuid::from_slice(&b).ok()).unwrap_or_else(Uuid::new_v4)
+        };
+
         // Ensure CRM contact exists for PCG team member (for call_log FK)
         let crm_contact_id = {
             match CrmContact::find_by_phone_global(pool, &request.from).await {
@@ -556,7 +569,8 @@ pub async fn handle_incoming_call(
                     let first = full_name.split_whitespace().next().unwrap_or(&full_name).to_string();
                     let last = full_name.split_whitespace().nth(1).map(|s| s.to_string());
                     match CrmContact::create(pool, CreateCrmContact {
-                        project_id,
+                        organization_id,
+                        client_id: None,
                         first_name: Some(first),
                         last_name: last,
                         email: None,
@@ -619,8 +633,22 @@ pub async fn handle_incoming_call(
                     (Uuid::new_v4(), Uuid::new_v4())
                 });
 
+            // Look up organization_id from the project
+            let organization_id = {
+                let row: Option<(Vec<u8>,)> = sqlx::query_as(
+                    "SELECT organization_id FROM projects WHERE id = ?"
+                )
+                .bind(project_id.as_bytes().as_slice())
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
+                row.and_then(|(b,)| Uuid::from_slice(&b).ok()).unwrap_or_else(Uuid::new_v4)
+            };
+
             let contact = match CrmContact::create(pool, CreateCrmContact {
-                project_id,
+                organization_id,
+                client_id: None,
                 first_name: Some(twilio_caller_name.split_whitespace().next().unwrap_or(&twilio_caller_name).to_string()),
                 last_name: twilio_caller_name.split_whitespace().nth(1).map(|s| s.to_string()),
                 email: None,
