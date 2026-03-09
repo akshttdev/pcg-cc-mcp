@@ -5503,6 +5503,18 @@ export const dataSourcesApi = {
     const response = await makeRequest(`/api/data-sources/${dataSourceId}/artifacts`);
     return handleApiResponse<any[]>(response);
   },
+
+  download: async (id: string): Promise<Blob> => {
+    const response = await fetch(resolveApiUrl(`/api/data-sources/${id}/download`), {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new ApiError(`Download failed: ${response.statusText}`, response.status, response);
+    }
+    return response.blob();
+  },
+
+  downloadUrl: (id: string): string => resolveApiUrl(`/api/data-sources/${id}/download`),
 };
 
 // ── Workflow types ──────────────────────────────────────────────────────────

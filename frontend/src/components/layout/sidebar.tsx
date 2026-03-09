@@ -265,8 +265,8 @@ function OrgIntelligenceSection({
   location: ReturnType<typeof useLocation>;
 }) {
   const isOnOrgIntel =
-    location.pathname === `/organizations/${orgId}` &&
-    location.search.includes('tab=knowledge');
+    (location.pathname === `/organizations/${orgId}` && location.search.includes('tab=knowledge')) ||
+    location.pathname === `/organizations/${orgId}/data-sources`;
   const [open, setOpen] = useState(isOnOrgIntel);
 
   return (
@@ -287,7 +287,7 @@ function OrgIntelligenceSection({
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
             { label: 'Overview',      icon: Brain,         color: 'text-[hsl(var(--success))]', to: `/organizations/${orgId}?tab=knowledge`,                   match: isOnOrgIntel && !location.search.includes('view=') },
-            { label: 'Data Sources',  icon: Database,       color: 'text-primary',                to: `/organizations/${orgId}?tab=knowledge&view=datasources`,   match: isOnOrgIntel && location.search.includes('view=datasources') },
+            { label: 'Data Sources',  icon: Database,       color: 'text-primary',                to: `/organizations/${orgId}/data-sources`,                     match: location.pathname === `/organizations/${orgId}/data-sources` },
             { label: 'Artifacts',     icon: FileText,      color: 'text-[hsl(var(--brand))]',    to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,     match: isOnOrgIntel && location.search.includes('view=artifacts') },
             { label: 'Workflows',     icon: GitBranch,     color: 'text-purple-500',             to: `/organizations/${orgId}?tab=knowledge&view=workflows`,     match: isOnOrgIntel && location.search.includes('view=workflows') },
             { label: 'Pulse',         icon: Radio,         color: 'text-[hsl(var(--warning))]',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,         match: isOnOrgIntel && location.search.includes('view=pulse') },
@@ -953,7 +953,7 @@ function ClientGroup({
           variant="ghost"
           className="flex-1 justify-between px-2 py-1 h-auto font-normal text-xs min-w-0"
           onClick={() => {
-            if (organizationId && client.id) navigate(`/organizations/${organizationId}/clients/${client.id}`);
+            if (organizationId && client.id) navigate(`/organizations/${organizationId}?tab=projects&client=${client.id}`);
           }}
         >
           <div className="flex items-center gap-1.5 min-w-0">
@@ -1014,6 +1014,40 @@ function ClientGroup({
             onToggleProject={onToggleProject}
             queryClient={queryClient}
           />
+
+          {/* Client context quick links */}
+          <div className="pt-1 mt-1 border-t border-border/40 space-y-0.5">
+            {client.crm_person_id && (
+              <Link
+                to={`/crm/people/${client.crm_person_id}`}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+                  location.pathname === `/crm/people/${client.crm_person_id}` && 'bg-primary/10 text-foreground font-medium'
+                )}
+              >
+                <Users className="h-3 w-3 shrink-0" />
+                <span>CRM Profile</span>
+              </Link>
+            )}
+            <Link
+              to={`/organizations/${organizationId}?tab=projects&client=${client.id}`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+              )}
+            >
+              <TrendingUp className="h-3 w-3 shrink-0" />
+              <span>Client Overview</span>
+            </Link>
+            <Link
+              to={`/organizations/${organizationId}?tab=pipelines&client=${client.id}`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+              )}
+            >
+              <Package className="h-3 w-3 shrink-0" />
+              <span>Deliverables</span>
+            </Link>
+          </div>
         </div>
       </CollapsibleContent>
     </Collapsible>

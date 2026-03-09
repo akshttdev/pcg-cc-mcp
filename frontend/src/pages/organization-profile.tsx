@@ -103,6 +103,7 @@ import {
   airtableApi,
   githubAuthApi,
   discordApi,
+  pulseApi,
   type DiscordSessionSummary,
   type OrganizationData,
   type ClientData,
@@ -627,19 +628,43 @@ function ProjectsTab({
   );
 }
 
-function ProjectRow({ project, folderName }: { project: any; folderName?: string }) {
+function ProjectRow({ project, folderName, depth = 0 }: { project: any; folderName?: string; depth?: number }) {
+  const hasChildren = project.children && project.children.length > 0;
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <Link
-      to={`/projects/${project.id}`}
-      className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors"
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="text-sm font-medium truncate">{project.name}</span>
-        {folderName && <Badge variant="secondary" className="text-xs shrink-0">{folderName}</Badge>}
+    <div>
+      <div className="flex items-center gap-1">
+        {hasChildren && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="p-0.5 hover:bg-muted rounded shrink-0"
+          >
+            {expanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+          </button>
+        )}
+        <Link
+          to={`/projects/${project.id}`}
+          className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors flex-1 min-w-0"
+          style={hasChildren ? undefined : { marginLeft: depth > 0 ? '0' : '1.25rem' }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium truncate">{project.name}</span>
+            {folderName && <Badge variant="secondary" className="text-xs shrink-0">{folderName}</Badge>}
+            {hasChildren && <Badge variant="outline" className="text-[10px] shrink-0">{project.children.length}</Badge>}
+          </div>
+          <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
+        </Link>
       </div>
-      <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
-    </Link>
+      {hasChildren && expanded && (
+        <div className="pl-4 border-l border-border/50 ml-3 mt-0.5 space-y-0.5">
+          {project.children.map((child: any) => (
+            <ProjectRow key={child.id} project={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2036,24 +2061,38 @@ function PulseSection({ projectEntries }: { projectEntries: { id: string; name: 
 
 // ── Intelligence Tab (Social + Knowledge + Pulse combined) ────────────────────
 
-function IntelligenceTab({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
-  const [intelView, setIntelView] = useState<'social' | 'knowledge' | 'pulse'>('social');
+function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewFromUrl = searchParams.get('view') || 'overview';
 
-  const viewOptions = [
-    { key: 'social' as const, label: 'Social', icon: Share2 },
-    { key: 'knowledge' as const, label: 'Knowledge Graph', icon: BookOpen },
-    { key: 'pulse' as const, label: 'Pulse Signals', icon: Radio },
+  const views = [
+    { key: 'overview',    label: 'Overview',      icon: Brain },
+    { key: 'datasources', label: 'Data Sources',  icon: Database },
+    { key: 'artifacts',   label: 'Artifacts',     icon: FileText },
+    { key: 'workflows',   label: 'Workflows',     icon: GitBranch },
+    { key: 'pulse',       label: 'Pulse',         icon: Radio },
+    { key: 'topology',    label: 'Topology',      icon: Network },
   ];
+
+  const setView = (view: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (view === 'overview') {
+      params.delete('view');
+    } else {
+      params.set('view', view);
+    }
+    setSearchParams(params, { replace: true });
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit">
-        {viewOptions.map(({ key, label, icon: Icon }) => (
+      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit flex-wrap">
+        {views.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            onClick={() => setIntelView(key)}
+            onClick={() => setView(key)}
             className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-              intelView === key
+              viewFromUrl === key
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
@@ -2064,9 +2103,285 @@ function IntelligenceTab({ projectEntries }: { projectEntries: { id: string; nam
         ))}
       </div>
 
-      {intelView === 'social' && <SocialTab projectEntries={projectEntries} />}
-      {intelView === 'knowledge' && <KnowledgeSection projectEntries={projectEntries} />}
-      {intelView === 'pulse' && <PulseSection projectEntries={projectEntries} />}
+      {viewFromUrl === 'overview'    && <KnowledgeSection projectEntries={projectEntries} />}
+      {viewFromUrl === 'datasources' && <DataSourcesIntelView orgId={orgId} projectEntries={projectEntries} />}
+      {viewFromUrl === 'artifacts'   && <ArtifactsIntelView projectEntries={projectEntries} />}
+      {viewFromUrl === 'workflows'   && <WorkflowsIntelView orgId={orgId} />}
+      {viewFromUrl === 'pulse'       && <PulseSection projectEntries={projectEntries} />}
+      {viewFromUrl === 'topology'    && <TopologyIntelView projectEntries={projectEntries} />}
+    </div>
+  );
+}
+
+function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string; projectEntries: { id: string; name: string }[] }) {
+  const { data: orgSources = [], isLoading: orgLoading } = useQuery({
+    queryKey: ['dataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    staleTime: 60_000,
+  });
+
+  const projSourceQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['dataSourcesProject', entry.id],
+      queryFn: () => dataSourcesApi.listByProject(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const isLoading = orgLoading || projSourceQueries.some(q => q.isLoading);
+
+  const sources = useMemo(() => {
+    const projSources = projSourceQueries.flatMap(q => q.data || []);
+    // Deduplicate by id
+    const all = [...orgSources, ...projSources];
+    const seen = new Set<string>();
+    return all.filter(s => {
+      if (seen.has((s as any).id)) return false;
+      seen.add((s as any).id);
+      return true;
+    });
+  }, [orgSources, projSourceQueries]);
+
+  const typeCount = useMemo(() => {
+    const counts: Record<string, number> = {};
+    sources.forEach((s: any) => { counts[s.data_type] = (counts[s.data_type] || 0) + 1; });
+    return counts;
+  }, [sources]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground">Data Library</h3>
+        <Link
+          to={`/organizations/${orgId}/data-sources`}
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <Database className="h-3.5 w-3.5" />
+          Open Full Library
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+          <Loader2 className="h-4 w-4 animate-spin" />Loading data sources...
+        </div>
+      ) : sources.length === 0 ? (
+        <Card className="bg-card/80 border-border/50">
+          <CardContent className="py-8 text-center">
+            <Database className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No data sources yet.</p>
+            <Link to={`/organizations/${orgId}/data-sources`} className="text-sm text-primary hover:underline mt-1 inline-block">
+              Add your first data source →
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Object.entries(typeCount).map(([type, count]) => (
+            <Card key={type} className="bg-card/80 border-border/50">
+              <CardContent className="pt-4 pb-4">
+                <p className="text-xs text-muted-foreground capitalize">{type.replace(/_/g, ' ')}</p>
+                <p className="text-2xl font-bold mt-1">{count as number}</p>
+              </CardContent>
+            </Card>
+          ))}
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="pt-4 pb-4">
+              <p className="text-xs text-muted-foreground">Total Files</p>
+              <p className="text-2xl font-bold mt-1 text-primary">{sources.length}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const knowledgeQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['projectKnowledge', entry.id],
+      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const artifacts = useMemo(() => {
+    const all: { title: string; summary?: string; projectName: string; projectId: string }[] = [];
+    knowledgeQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      ((q.data as any).sources_by_type?.artifact || []).forEach((src: any) => {
+        all.push({ title: src.source_title, summary: src.source_summary, projectName: entry.name, projectId: entry.id });
+      });
+    });
+    return all;
+  }, [knowledgeQueries, projectEntries]);
+
+  const isLoading = knowledgeQueries.some(q => q.isLoading);
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+      <Loader2 className="h-4 w-4 animate-spin" />Loading artifacts...
+    </div>
+  );
+
+  if (artifacts.length === 0) return (
+    <Card className="bg-card/80 border-border/50">
+      <CardContent className="py-8 text-center">
+        <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">No artifacts in the knowledge graph yet.</p>
+        <p className="text-xs text-muted-foreground mt-1">Artifacts are added automatically when deliverables are marked done.</p>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">{artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''} across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {artifacts.map((a, i) => (
+          <Card key={i} className="bg-card/80 border-border/50">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <FileText className="h-4 w-4 text-[hsl(var(--brand))] shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{a.title}</p>
+                  {a.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.summary}</p>}
+                  <Link to={`/projects/${a.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowsIntelView({ orgId }: { orgId: string }) {
+  const { data: automations = [] } = useQuery({
+    queryKey: ['system-automations'],
+    queryFn: async () => {
+      const r = await fetch('/api/automations', { credentials: 'include' });
+      const d = await r.json();
+      return d.data || [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground">Workflows & Automations</h3>
+        <Link
+          to="/workflows"
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <GitBranch className="h-3.5 w-3.5" />
+          Live Workflow Monitor
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+
+      {/* System Automations */}
+      {automations.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">System Automations ({automations.length} active)</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {automations.map((a: any) => (
+              <Card key={a.id} className="bg-card/80 border-border/50">
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start gap-2">
+                    <Activity className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{a.name}</p>
+                      {a.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.description}</p>}
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Badge variant="default" className="text-[9px] bg-green-500/10 text-green-700 border-green-200">Active</Badge>
+                        {a.schedule && <span className="text-[9px] text-muted-foreground">{a.schedule}</span>}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pipeline Blueprints — Conference, Editron, and API templates */}
+      <div>
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Pipeline Blueprints</p>
+        <LegacyPipelinesView orgId={orgId} />
+      </div>
+    </div>
+  );
+}
+
+function TopologyIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const knowledgeQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['projectKnowledge', entry.id],
+      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const topologyItems = useMemo(() => {
+    const all: { title: string; summary?: string; coverage?: number; projectName: string; projectId: string; isStale: boolean }[] = [];
+    knowledgeQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      ((q.data as any).sources_by_type?.topology_snapshot || []).forEach((src: any) => {
+        all.push({ title: src.source_title, summary: src.source_summary, coverage: src.coverage_score, projectName: entry.name, projectId: entry.id, isStale: src.is_stale || false });
+      });
+    });
+    return all;
+  }, [knowledgeQueries, projectEntries]);
+
+  const isLoading = knowledgeQueries.some(q => q.isLoading);
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+      <Loader2 className="h-4 w-4 animate-spin" />Loading topology data...
+    </div>
+  );
+
+  if (topologyItems.length === 0) return (
+    <Card className="bg-card/80 border-border/50">
+      <CardContent className="py-8 text-center">
+        <Network className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">No topology snapshots in the knowledge graph yet.</p>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {topologyItems.map((t, i) => (
+          <Card key={i} className={`bg-card/80 ${t.isStale ? 'border-yellow-500/30' : 'border-border/50'}`}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <Network className="h-4 w-4 text-[hsl(var(--info))] shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{t.title}</p>
+                  {t.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.summary}</p>}
+                  <div className="flex items-center justify-between mt-1.5">
+                    <Link to={`/projects/${t.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground">{t.projectName}</Link>
+                    {t.coverage != null && <span className="text-[10px] text-muted-foreground">{Math.round(t.coverage * 100)}% coverage</span>}
+                  </div>
+                  {t.isStale && <Badge variant="outline" className="text-[9px] mt-1 text-yellow-600 border-yellow-600">Stale</Badge>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -3122,6 +3437,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
             <TabsContent value="knowledge">
               <IntelligenceTab
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
+                orgId={orgId}
               />
             </TabsContent>
 

@@ -180,6 +180,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
   const networkErrorRetryCount = useRef(0);
   const abortedErrorCount = useRef(0);
   const lastAbortedTime = useRef(0);
+  const autoStopTimerRef = useRef<number | null>(null);
 
   // Initialize Nora on component mount
   useEffect(() => {
@@ -352,7 +353,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             // In continuous mode, automatically resume listening
             if (continuousMode && shouldContinueListeningRef.current) {
               setTimeout(() => {
-                void startSpeechRecognition();
+                void startMediaRecorder();
               }, 300); // Small delay to prevent picking up tail end of audio
             }
           };
@@ -362,7 +363,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             setIsSpeaking(false);
             // Resume listening even on error in continuous mode
             if (continuousMode && shouldContinueListeningRef.current) {
-              setTimeout(() => void startSpeechRecognition(), 300);
+              setTimeout(() => void startMediaRecorder(), 300);
             }
           };
           
@@ -373,13 +374,13 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             setIsSpeaking(false);
             // Resume listening even on play error in continuous mode
             if (continuousMode && shouldContinueListeningRef.current) {
-              setTimeout(() => void startSpeechRecognition(), 300);
+              setTimeout(() => void startMediaRecorder(), 300);
             }
           });
         } else {
           // No voice response - resume listening immediately in continuous mode
           if (continuousMode && shouldContinueListeningRef.current) {
-            setTimeout(() => void startSpeechRecognition(), 100);
+            setTimeout(() => void startMediaRecorder(), 500);
           }
         }
       }
@@ -388,7 +389,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       addMessage('nora', 'I apologise, but I encountered an issue processing your request. Please try again.');
       // Resume listening even on error in continuous mode
       if (continuousMode && shouldContinueListeningRef.current) {
-        setTimeout(() => void startSpeechRecognition(), 300);
+        setTimeout(() => void startMediaRecorder(), 300);
       }
     } finally {
       setIsLoading(false);
@@ -534,7 +535,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             if (networkErrorRetryCount.current <= 3) {
               setTimeout(() => {
                 if (shouldContinueListeningRef.current) {
-                  void startSpeechRecognition();
+                  void startMediaRecorder();
                 }
               }, 2000);
               return;
@@ -623,6 +624,8 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
 
   const startMediaRecorder = async () => {
     try {
+      shouldContinueListeningRef.current = continuousMode;
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       // Use a proper container format — MediaRecorder never produces raw WAV
@@ -644,13 +647,24 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       };
 
       mediaRecorderRef.current.onstop = async () => {
+        if (autoStopTimerRef.current) {
+          clearTimeout(autoStopTimerRef.current);
+          autoStopTimerRef.current = null;
+        }
+
         // Release microphone
         stream.getTracks().forEach(track => track.stop());
+
+        if (audioChunksRef.current.length === 0) {
+          toast.warning('No audio captured — please speak and try again');
+          return;
+        }
 
         const recordedMime = mediaRecorderRef.current?.mimeType || mimeType || 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: recordedMime });
         const base64Audio = await blobToBase64(audioBlob);
 
+        toast.info('Sending to Nora...');
         setIsLoading(true);
         try {
           // Single-shot: Whisper STT → Nora → ElevenLabs TTS
@@ -691,13 +705,13 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
               audioElement.onended = () => {
                 setIsSpeaking(false);
                 if (continuousMode && shouldContinueListeningRef.current) {
-                  setTimeout(() => void startSpeechRecognition(), 300);
+                  setTimeout(() => void startMediaRecorder(), 300);
                 }
               };
               audioElement.onerror = () => {
                 setIsSpeaking(false);
                 if (continuousMode && shouldContinueListeningRef.current) {
-                  setTimeout(() => void startSpeechRecognition(), 300);
+                  setTimeout(() => void startMediaRecorder(), 300);
                 }
               };
               audioElement.src = `data:audio/mpeg;base64,${result.audioResponse}`;
@@ -721,6 +735,15 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
 
       mediaRecorderRef.current.start();
       setIsListening(true);
+      toast.info('Recording — speak now, then click the mic again to send to Nora');
+
+      // Auto-stop after 30s
+      autoStopTimerRef.current = window.setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+          setIsListening(false);
+        }
+      }, 30000);
     } catch (error) {
       console.error('Failed to start voice recording:', error);
       toast.error('Could not access microphone. Please check browser permissions.');
@@ -734,7 +757,9 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       audioRef.current.currentTime = 0;
       setIsSpeaking(false);
     }
-    await startSpeechRecognition();
+    // Use MediaRecorder+Whisper — Chrome SpeechRecognition needs Google servers
+    // and shows browser-level "did not respond" errors when unreachable
+    await startMediaRecorder();
   };
 
   const stopVoiceRecording = () => {
@@ -745,6 +770,12 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
+    }
+
+    // Clear auto-stop timer
+    if (autoStopTimerRef.current) {
+      clearTimeout(autoStopTimerRef.current);
+      autoStopTimerRef.current = null;
     }
 
     // Stop speech recognition
