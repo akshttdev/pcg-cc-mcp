@@ -1,0 +1,43 @@
+[   15011ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/projects/05abaaf5-b249-4d1c-a980-c27aa095f579:0
+[   15012ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects/05abaaf5-b249-4d1c-a980-c27aa095f579, timestamp: 2026-03-09T17:47:20.700Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   15014ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ https://dashboard.powerclubglobal.com/api/auth/me:0
+[   15447ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/sidebar/tree:0
+[   15448ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/sidebar/tree, timestamp: 2026-03-09T17:47:21.136Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   15448ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/topsi/status:0
+[   15451ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/projects:0
+[   15451ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-09T17:47:21.140Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   15452ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[   15456ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/tasks?project_id=05abaaf5-b249-4d1c-a980-c27aa095f579:0
+[   15456ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/tasks?project_id=05abaaf5-b249-4d1c-a980-c27aa095f579, timestamp: 2026-03-09T17:47:21.144Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   16826ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/projects:0
+[   16826ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-09T17:47:22.514Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   16835ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/sidebar/tree:0
+[   16835ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/sidebar/tree, timestamp: 2026-03-09T17:47:22.524Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   19174ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/projects:0
+[   19174ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-09T17:47:24.863Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   19177ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/sidebar/tree:0
+[   19178ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/sidebar/tree, timestamp: 2026-03-09T17:47:24.866Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   23519ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/projects:0
+[   23520ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-09T17:47:29.208Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   23520ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/sidebar/tree:0
+[   23520ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/sidebar/tree, timestamp: 2026-03-09T17:47:29.209Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   23872ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/projects:0
+[   23873ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-09T17:47:29.561Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   25229ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/projects:0
+[   25229ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-09T17:47:30.918Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   27594ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/projects:0
+[   27594ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-09T17:47:33.283Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   31964ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/projects:0
+[   31965ms] [ERROR] [API Error] {message: Request failed with status 401, status: 401, response: Response, endpoint: https://dashboard.powerclubglobal.com/api/projects, timestamp: 2026-03-09T17:47:37.653Z} @ https://dashboard.powerclubglobal.com/assets/index-BN3UehoS.js:719
+[   45794ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[   76156ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  106756ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  137119ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  167476ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  197829ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  228181ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  258567ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  288951ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  319289ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  349679ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
+[  380039ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://dashboard.powerclubglobal.com/api/notifications?limit=30:0
