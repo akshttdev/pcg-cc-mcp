@@ -1,15 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
-// Redirect helpers for consolidated CRM routes
-function AcquisitionRedirect() {
-  const { orgId } = useParams<{ orgId: string }>();
-  return <Navigate to={`/organizations/${orgId}?tab=pipelines&pipeline=sales`} replace />;
-}
-function LifecycleRedirect() {
-  const { orgId } = useParams<{ orgId: string }>();
-  return <Navigate to={`/organizations/${orgId}?tab=pipelines&pipeline=lifecycle`} replace />;
-}
 import {
   UserSystemProvider,
 } from '@/components/config-provider';
@@ -39,7 +30,6 @@ const MissionControlPage    = lazy(() => import('@/pages/mission-control'));
 const WorkflowsPage         = lazy(() => import('@/pages/workflows').then(m => ({ default: m.WorkflowsPage })));
 const SocialPage            = lazy(() => import('@/pages/social').then(m => ({ default: m.SocialPage })));
 const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ default: m.CrmPage })));
-const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
 const OrganizationProfilePage  = lazy(() => import('@/pages/organization-profile').then(m => ({ default: m.OrganizationProfilePage })));
 const ClientOverview        = lazy(() => import('@/pages/client-overview').then(m => ({ default: m.ClientOverview })));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
@@ -48,11 +38,6 @@ const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-en
 const VibePage              = lazy(() => import('@/pages/vibe'));
 const PulsePage             = lazy(() => import('@/pages/pulse'));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
-const CrmSalesPage          = lazy(() => import('@/pages/crm-sales').then(m => ({ default: m.CrmSalesPage })));
-const CrmDeliveryPage       = lazy(() => import('@/pages/crm-delivery').then(m => ({ default: m.CrmDeliveryPage })));
-const CrmConferencesPage    = lazy(() => import('@/pages/crm-conferences').then(m => ({ default: m.CrmConferencesPage })));
-const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').then(m => ({ default: m.CrmContactDetailPage })));
-const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
 const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
 const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
 const ProposalsPage         = lazy(() => import('@/pages/proposals').then(m => ({ default: m.ProposalsPage })));
@@ -158,39 +143,76 @@ function App() {
             path="/projects/:projectId/control"
             element={<ProtectedRoute><ProjectControllerPage /></ProtectedRoute>}
           />
-          {/* Project CRM - scoped to project */}
-          <Route
-            path="/projects/:projectId/crm"
-            element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/sales"
-            element={<ProtectedRoute><CrmSalesPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/delivery"
-            element={<ProtectedRoute><CrmDeliveryPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/clients"
-            element={<ProtectedRoute><CrmClientsPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/conferences"
-            element={<ProtectedRoute><CrmConferencesPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/contacts/:contactId"
-            element={<ProtectedRoute><CrmContactDetailPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/projects/:projectId/crm/overview"
-            element={<ProtectedRoute><CrmOverviewPage /></ProtectedRoute>}
-          />
+          {/* Organization - base route (redirects to CRM overview) */}
           <Route
             path="/organizations/:orgId"
-            element={<ProtectedRoute><OrganizationProfilePage /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="overview" /></ProtectedRoute>}
           />
+          {/* Organization - CRM sub-routes */}
+          <Route
+            path="/organizations/:orgId/crm"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="overview" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/crm/contacts"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="contacts" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/crm/companies"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="companies" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/crm/pipeline"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="pipelines" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/crm/deliverables"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="deliverables" /></ProtectedRoute>}
+          />
+          {/* Organization - Social */}
+          <Route
+            path="/organizations/:orgId/social"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="social" /></ProtectedRoute>}
+          />
+          {/* Organization - Intelligence sub-routes */}
+          <Route
+            path="/organizations/:orgId/intelligence"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/intelligence/data-sources"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/intelligence/artifacts"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/intelligence/workflows"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/intelligence/pulse"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/intelligence/topology"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+          />
+          {/* Organization - Members, Projects, Integrations */}
+          <Route
+            path="/organizations/:orgId/members"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="members" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/projects"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="projects" /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/integrations"
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="integrations" /></ProtectedRoute>}
+          />
+          {/* Organization - Clients and Data Sources */}
           <Route
             path="/organizations/:orgId/clients/:clientId"
             element={<ProtectedRoute><ClientOverview /></ProtectedRoute>}
@@ -199,8 +221,6 @@ function App() {
             path="/organizations/:orgId/data-sources/:dataSourceId"
             element={<ProtectedRoute><DataSourceDetailPage /></ProtectedRoute>}
           />
-          <Route path="/organizations/:orgId/crm/acquisition" element={<AcquisitionRedirect />} />
-          <Route path="/organizations/:orgId/crm/lifecycle" element={<LifecycleRedirect />} />
           <Route
             path="/projects/:projectId/knowledge"
             element={<ProtectedRoute><KnowledgePage /></ProtectedRoute>}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -2982,28 +2982,87 @@ function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+// Map from path segments to tab names
+const PATH_TO_TAB: Record<string, string> = {
+  crm: 'overview',
+  'crm/contacts': 'contacts',
+  'crm/companies': 'companies',
+  'crm/pipeline': 'pipelines',
+  'crm/deliverables': 'deliverables',
+  social: 'social',
+  intelligence: 'knowledge',
+  'intelligence/data-sources': 'knowledge',
+  'intelligence/artifacts': 'knowledge',
+  'intelligence/workflows': 'knowledge',
+  'intelligence/pulse': 'knowledge',
+  'intelligence/topology': 'knowledge',
+  members: 'members',
+  projects: 'projects',
+  integrations: 'integrations',
+};
+
+// Map from path segments to intelligence view
+const PATH_TO_VIEW: Record<string, string> = {
+  'intelligence/data-sources': 'datasources',
+  'intelligence/artifacts': 'artifacts',
+  'intelligence/workflows': 'workflows',
+  'intelligence/pulse': 'pulse',
+  'intelligence/topology': 'topology',
+};
+
+// Map tab names to route paths for navigation
+const TAB_TO_PATH: Record<string, string> = {
+  overview: 'crm',
+  contacts: 'crm/contacts',
+  companies: 'crm/companies',
+  pipelines: 'crm/pipeline',
+  deliverables: 'crm/deliverables',
+  social: 'social',
+  knowledge: 'intelligence',
+  members: 'members',
+  projects: 'projects',
+  integrations: 'integrations',
+};
+
 export function OrganizationProfilePage({ defaultTab, defaultPipeline }: OrganizationProfilePageProps = {}) {
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const tabFromUrl = searchParams.get('tab') || defaultTab || 'overview';
+  // Derive tab from URL path (new route pattern) or search params (legacy)
+  const orgBase = `/organizations/${orgId}`;
+  const pathSuffix = location.pathname.startsWith(orgBase)
+    ? location.pathname.slice(orgBase.length + 1) // strip leading "/"
+    : '';
+
+  const tabFromPath = pathSuffix ? PATH_TO_TAB[pathSuffix] : undefined;
+  const viewFromPath = pathSuffix ? PATH_TO_VIEW[pathSuffix] : undefined;
+  const usingPathRoutes = !!tabFromPath;
+
+  const tabFromUrl = tabFromPath || searchParams.get('tab') || defaultTab || 'overview';
   const pipelineFromUrl = searchParams.get('pipeline') || defaultPipeline;
   const clientFilter = searchParams.get('client');
-  const viewFromUrl = searchParams.get('view');
+  const viewFromUrl = viewFromPath || searchParams.get('view');
 
   const setTab = (tab: string) => {
-    const params = new URLSearchParams(searchParams);
-    params.set('tab', tab);
-    if (tab !== 'pipelines') params.delete('pipeline');
-    if (tab !== 'projects') params.delete('client');
-    if (tab !== 'knowledge') params.delete('view');
-    setSearchParams(params, { replace: true });
+    // Use path-based navigation
+    const path = TAB_TO_PATH[tab];
+    if (path) {
+      navigate(`${orgBase}/${path}`);
+    } else {
+      navigate(orgBase);
+    }
   };
 
   const clearClientFilter = () => {
-    const params = new URLSearchParams(searchParams);
-    params.delete('client');
-    setSearchParams(params, { replace: true });
+    if (usingPathRoutes) {
+      navigate(`${orgBase}/projects`);
+    } else {
+      const params = new URLSearchParams(searchParams);
+      params.delete('client');
+      setSearchParams(params, { replace: true });
+    }
   };
 
   const { data: org, isLoading: orgLoading } = useQuery<OrganizationData>({

@@ -39,7 +39,6 @@ import {
   Brain,
   Bot,
   Share2,
-  Calendar,
   Radio,
   Database,
   MoreHorizontal,
@@ -142,7 +141,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
 
 // Intelligence & Automation — workflows, data pipelines
 const INTELLIGENCE_NAV_ITEMS: NavItem[] = [
-  { label: 'Workflow Builder', icon: Workflow, to: '/workflows', id: 'workflows', adminOnly: true },
+  { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
 ];
 
 // Management nav — admin-only, collapsible
@@ -203,7 +202,7 @@ function HealthDot({ status }: { status?: string }) {
 }
 
 // ============================================================================
-// OrgCrmSection — collapsible CRM with Overview/Contacts/Pipeline/Deliverables/Experiences
+// OrgCrmSection — collapsible CRM with Overview/Contacts/Pipeline/Deliverables/Social
 // ============================================================================
 
 function OrgCrmSection({
@@ -213,14 +212,11 @@ function OrgCrmSection({
   orgId: string;
   location: ReturnType<typeof useLocation>;
 }) {
-  const isOnOrg = location.pathname === `/organizations/${orgId}`;
+  const orgBase = `/organizations/${orgId}`;
   const isCrmActive =
-    isOnOrg &&
-    (location.search.includes('tab=contacts') ||
-      location.search.includes('tab=companies') ||
-      location.search.includes('tab=pipelines') ||
-      location.search.includes('tab=deliverables') ||
-      !location.search);
+    location.pathname === orgBase ||
+    location.pathname.startsWith(`${orgBase}/crm`) ||
+    location.pathname.startsWith(`${orgBase}/social`);
   const [open, setOpen] = useState(isCrmActive);
 
   return (
@@ -240,12 +236,12 @@ function OrgCrmSection({
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',     to: `/organizations/${orgId}`,                 icon: LayoutGrid, color: 'text-muted-foreground',        match: isOnOrg && !location.search },
-            { label: 'Contacts',     to: `/organizations/${orgId}?tab=contacts`,    icon: Users,      color: 'text-primary',                 match: isOnOrg && location.search.includes('tab=contacts') },
-            { label: 'Companies',    to: `/organizations/${orgId}?tab=companies`,   icon: Building2,  color: 'text-purple-500',              match: isOnOrg && location.search.includes('tab=companies') },
-            { label: 'Pipeline',     to: `/organizations/${orgId}?tab=pipelines`,   icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: isOnOrg && location.search.includes('tab=pipelines') },
-            { label: 'Deliverables', to: `/organizations/${orgId}?tab=deliverables`,icon: Package,    color: 'text-[hsl(var(--success))]',   match: isOnOrg && location.search.includes('tab=deliverables') },
-            { label: 'Experiences',  to: `/organizations/${orgId}?tab=social`,      icon: Sparkles,   color: 'text-[hsl(var(--brand))]',     match: isOnOrg && location.search.includes('tab=social') },
+            { label: 'Overview',     to: `${orgBase}/crm`,              icon: LayoutGrid, color: 'text-muted-foreground',        match: location.pathname === `${orgBase}/crm` },
+            { label: 'Contacts',     to: `${orgBase}/crm/contacts`,     icon: Users,      color: 'text-primary',                 match: location.pathname === `${orgBase}/crm/contacts` },
+            { label: 'Companies',    to: `${orgBase}/crm/companies`,    icon: Building2,  color: 'text-purple-500',              match: location.pathname === `${orgBase}/crm/companies` },
+            { label: 'Pipeline',     to: `${orgBase}/crm/pipeline`,     icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: location.pathname === `${orgBase}/crm/pipeline` },
+            { label: 'Deliverables', to: `${orgBase}/crm/deliverables`, icon: Package,    color: 'text-[hsl(var(--success))]',   match: location.pathname === `${orgBase}/crm/deliverables` },
+            { label: 'Social',       to: `${orgBase}/social`,           icon: Sparkles,   color: 'text-[hsl(var(--brand))]',     match: location.pathname.startsWith(`${orgBase}/social`) },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
@@ -276,9 +272,8 @@ function OrgIntelligenceSection({
   orgId: string;
   location: ReturnType<typeof useLocation>;
 }) {
-  const isOnOrgIntel =
-    location.pathname === `/organizations/${orgId}` &&
-    location.search.includes('tab=knowledge');
+  const orgBase = `/organizations/${orgId}`;
+  const isOnOrgIntel = location.pathname.startsWith(`${orgBase}/intelligence`);
   const [open, setOpen] = useState(isOnOrgIntel);
 
   return (
@@ -298,12 +293,12 @@ function OrgIntelligenceSection({
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',      icon: Brain,         color: 'text-[hsl(var(--success))]', to: `/organizations/${orgId}?tab=knowledge`,                   match: isOnOrgIntel && !location.search.includes('view=') },
-            { label: 'Data Sources',  icon: Database,       color: 'text-primary',                to: `/organizations/${orgId}?tab=knowledge&view=datasources`,   match: isOnOrgIntel && location.search.includes('view=datasources') },
-            { label: 'Artifacts',     icon: FileText,      color: 'text-[hsl(var(--brand))]',    to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,     match: isOnOrgIntel && location.search.includes('view=artifacts') },
-            { label: 'Workflows',     icon: GitBranch,     color: 'text-purple-500',             to: `/organizations/${orgId}?tab=knowledge&view=workflows`,     match: isOnOrgIntel && location.search.includes('view=workflows') },
-            { label: 'Pulse',         icon: Radio,         color: 'text-[hsl(var(--warning))]',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,         match: isOnOrgIntel && location.search.includes('view=pulse') },
-            { label: 'Topology',      icon: Network,       color: 'text-[hsl(var(--info))]',     to: `/organizations/${orgId}?tab=knowledge&view=topology`,      match: isOnOrgIntel && location.search.includes('view=topology') },
+            { label: 'Overview',      icon: Brain,         color: 'text-[hsl(var(--success))]', to: `${orgBase}/intelligence`,              match: location.pathname === `${orgBase}/intelligence` },
+            { label: 'Data Sources',  icon: Database,       color: 'text-primary',                to: `${orgBase}/intelligence/data-sources`, match: location.pathname === `${orgBase}/intelligence/data-sources` },
+            { label: 'Artifacts',     icon: FileText,      color: 'text-[hsl(var(--brand))]',    to: `${orgBase}/intelligence/artifacts`,    match: location.pathname === `${orgBase}/intelligence/artifacts` },
+            { label: 'Workflows',     icon: GitBranch,     color: 'text-purple-500',             to: `${orgBase}/intelligence/workflows`,    match: location.pathname === `${orgBase}/intelligence/workflows` },
+            { label: 'Pulse',         icon: Radio,         color: 'text-[hsl(var(--warning))]',  to: `${orgBase}/intelligence/pulse`,        match: location.pathname === `${orgBase}/intelligence/pulse` },
+            { label: 'Topology',      icon: Network,       color: 'text-[hsl(var(--info))]',     to: `${orgBase}/intelligence/topology`,     match: location.pathname === `${orgBase}/intelligence/topology` },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
@@ -323,72 +318,6 @@ function OrgIntelligenceSection({
   );
 }
 
-// ============================================================================
-// CrmSidebarLinks — project-level CRM links (collapsible)
-// ============================================================================
-
-function CrmSidebarLinks({
-  projectId,
-  location,
-  indent = 'pl-5',
-}: {
-  projectId: string;
-  location: ReturnType<typeof useLocation>;
-  indent?: string;
-}) {
-  const crmLinks = useMemo(
-    () => [
-      { label: 'Overview',        to: `/projects/${projectId}/crm/overview`,     icon: BarChart3  },
-      { label: 'Sales Pipeline',  to: `/projects/${projectId}/crm/sales`,        icon: TrendingUp },
-      { label: 'Client Delivery', to: `/projects/${projectId}/crm/delivery`,     icon: Package    },
-      { label: 'Contacts',        to: `/projects/${projectId}/crm`,              icon: Users      },
-      { label: 'Conferences',     to: `/projects/${projectId}/crm/conferences`,  icon: Calendar   },
-    ],
-    [projectId]
-  );
-
-  const hasCrmActive = crmLinks.some((link) => location.pathname === link.to);
-  const [open, setOpen] = useState(hasCrmActive);
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button
-          className={cn(
-            'flex items-center gap-2 w-full pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-            indent,
-            hasCrmActive && 'text-foreground font-medium'
-          )}
-        >
-          <Users className="h-3 w-3 text-primary shrink-0" />
-          <span className="flex-1 text-left">CRM</span>
-          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="pl-4 space-y-0.5 py-0.5">
-          {crmLinks.map((link) => {
-            const isActive = location.pathname === link.to;
-            const Icon = link.icon;
-            return (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={cn(
-                  'flex items-center gap-2 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-                  isActive && 'bg-primary/10 text-foreground font-medium'
-                )}
-              >
-                <Icon className="h-3 w-3 text-muted-foreground" />
-                <span>{link.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
 
 // ============================================================================
 // ProjectFolder — standalone project card (used in flat fallback list)
@@ -502,9 +431,6 @@ function ProjectFolder({
             <Bot className="h-3 w-3 text-[hsl(var(--brand))]" />
             <span className="font-medium">Controller</span>
           </Link>
-
-          {/* CRM */}
-          <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
 
           {/* Social */}
           <Link
@@ -815,9 +741,6 @@ function SortableSidebarProjectFolder({
                   <Bot className="h-3 w-3 text-[hsl(var(--brand))]" />
                   <span className="font-medium">Controller</span>
                 </Link>
-
-                {/* CRM Section */}
-                <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
 
                 {/* Social Media Link */}
                 <Link
@@ -1443,7 +1366,6 @@ export function Sidebar({ className }: SidebarProps) {
   });
   const filteredPrimaryNav = PRIMARY_NAV_ITEMS.filter((item) => {
     if (item.adminOnly && !isAdmin) return false;
-    if (item.memberOnly && isAdmin) return false;
     return true;
   });
 
