@@ -193,11 +193,15 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
         window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [modal.visible, hasUnsavedChanges]); // hasUnsavedChanges is memoised with title/descr deps
 
+    // Track the projectId that boards were loaded for to prevent stale validation
+    const [boardsProjectId, setBoardsProjectId] = useState<string | undefined>(undefined);
+
     useEffect(() => {
       if (!projectId || !modal.visible) {
         setBoards([]);
         setBoardsError(null);
         setBoardsLoading(false);
+        setBoardsProjectId(undefined);
         return;
       }
 
@@ -209,6 +213,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
           const results = await projectsApi.listBoards(projectId);
           if (!cancelled) {
             setBoards(results);
+            setBoardsProjectId(projectId); // Track which project these boards belong to
           }
         } catch (error) {
           console.error('Failed to load boards', error);
@@ -232,19 +237,25 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     }, [projectId, modal.visible]);
 
     useEffect(() => {
+      // Only validate if boards are loaded for the CURRENT project
       if (!selectedBoardId) return;
       if (!boards.length) return;
+      if (boardsProjectId !== projectId) return; // Don't validate against stale boards
+
       const exists = boards.some((board) => board.id === selectedBoardId);
       if (!exists) {
+        // Only reset if the board genuinely doesn't exist (not due to stale data)
         setSelectedBoardId(null);
       }
-    }, [boards, selectedBoardId]);
+    }, [boards, selectedBoardId, boardsProjectId, projectId]);
 
     useEffect(() => {
       if (isEditMode) return;
       if (!modal.visible) return;
       if (boardsLoading) return;
       if (!boards.length) return;
+      // Ensure boards are loaded for the current project before selecting
+      if (boardsProjectId !== projectId) return;
 
       if (selectedBoardId && boards.some((board) => board.id === selectedBoardId)) {
         return;
@@ -262,7 +273,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
       if (preferred) {
         setSelectedBoardId(preferred.id);
       }
-    }, [boards, boardsLoading, isEditMode, selectedBoardId, modal.visible, initialBoardId]);
+    }, [boards, boardsLoading, isEditMode, selectedBoardId, modal.visible, initialBoardId, boardsProjectId, projectId]);
 
     useEffect(() => {
       if (task) {
