@@ -136,6 +136,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
+  { label: 'Social', icon: Megaphone, to: '/social-command', id: 'social-command' },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'Vibe', icon: Palette, to: '/vibe', id: 'vibe' },
 ];
@@ -1063,17 +1064,6 @@ function OrgSection({
         {/* Org-level workspace links: CRM, Social, Intelligence */}
         <div className="px-1 py-1 space-y-0.5">
           <OrgCrmSection orgId={org.id} location={location} />
-
-          <Link
-            to={`/social-command`}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-              location.pathname === '/social-command' && 'bg-primary/10 text-foreground font-medium'
-            )}
-          >
-            <Megaphone className="h-3 w-3 shrink-0 text-[hsl(var(--brand))]" />
-            <span>Social</span>
-          </Link>
 
           <OrgIntelligenceSection orgId={org.id} location={location} />
 
