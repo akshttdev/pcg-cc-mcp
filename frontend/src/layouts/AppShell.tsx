@@ -1,10 +1,11 @@
 // Authenticated app shell with sidebar, navbar, and scoped providers
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useCallback } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
 import i18n from '@/i18n';
 import { Navbar } from '@/components/layout/navbar';
 import { Sidebar } from '@/components/layout/sidebar';
+import { useViewStore } from '@/stores/useViewStore';
 import { TopsiWidget } from '@/components/topsi';
 import { useTaskViewManager } from '@/hooks/useTaskViewManager';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
@@ -39,6 +40,20 @@ export function AppShell() {
   const { isFullscreen } = useTaskViewManager();
   const location = useLocation();
   const isVirtualEnv = location.pathname.startsWith('/virtual-environment');
+  const { sidebarCollapsed, toggleSidebar, setSidebarCollapsed } = useViewStore();
+
+  // On mobile, toggle sidebar means show/hide the overlay sidebar
+  // We reuse sidebarCollapsed: collapsed=true means hidden on mobile
+  const handleToggleSidebar = useCallback(() => {
+    toggleSidebar();
+  }, [toggleSidebar]);
+
+  // Collapse sidebar on mobile/tablet viewports initially and on route change
+  useEffect(() => {
+    if (window.innerWidth < 1024) {
+      setSidebarCollapsed(true);
+    }
+  }, [location.pathname, setSidebarCollapsed]);
 
   // Track previous path for back navigation
   usePreviousPath();
@@ -149,11 +164,28 @@ export function AppShell() {
             <div className="h-screen flex flex-col bg-background">
               <WebviewContextMenu />
               {showNavbar && <DevBanner />}
-              {showNavbar && <Navbar />}
+              {showNavbar && <Navbar onToggleSidebar={handleToggleSidebar} />}
               {showNavbar && <BreadcrumbNav />}
 
-              <div className="flex-1 flex min-h-0">
-                <Sidebar className="shrink-0" />
+              <div className="flex-1 flex min-h-0 relative">
+                {/* Mobile/tablet backdrop overlay when sidebar is open */}
+                {!sidebarCollapsed && (
+                  <div
+                    className="absolute inset-0 bg-black/50 z-40 lg:hidden"
+                    onClick={() => setSidebarCollapsed(true)}
+                  />
+                )}
+
+                {/* Sidebar: hidden on small screens when collapsed, overlay when open; always visible on lg+ */}
+                <div className={`
+                  lg:relative lg:flex lg:shrink-0
+                  ${sidebarCollapsed
+                    ? 'hidden lg:flex'
+                    : 'absolute top-0 left-0 bottom-0 z-50 lg:relative lg:z-auto flex'
+                  }
+                `}>
+                  <Sidebar className="shrink-0 bg-background h-full" />
+                </div>
 
                 <div className="flex-1 overflow-y-auto">
                   <Suspense fallback={<PageLoader />}>
