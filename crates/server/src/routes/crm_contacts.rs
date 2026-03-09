@@ -149,7 +149,7 @@ async fn get_contact_stats(
 
     // Get average lead score
     let avg_score: (f64,) = sqlx::query_as(
-        r#"SELECT COALESCE(AVG(lead_score), 0) FROM crm_contacts WHERE project_id = ?1"#
+        r#"SELECT COALESCE(AVG(CAST(lead_score AS REAL)), 0.0) FROM crm_contacts WHERE project_id = ?1"#
     )
     .bind(project_id)
     .fetch_one(pool)
