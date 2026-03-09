@@ -35,7 +35,8 @@ pub fn spawn_discord_bots() {
     ));
     let voice_config = VoiceServiceConfig::default();
 
-    let intents = GatewayIntents::GUILD_MESSAGES
+    let intents = GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_VOICE_STATES;
