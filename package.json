@@ -32,7 +32,9 @@
     "simulate:behavior": "node simulations/behavior/run-simulation.js",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "app:build": "npm run backend:build && npm run frontend:build && npm run tauri:build"
+    "app:build": "npm run backend:build && npm run frontend:build && npm run tauri:build",
+    "docs:build": "cd docs && npx mintlify build --output ../.docs-output",
+    "docs:dev": "cd docs && npx mintlify dev"
   },
   "devDependencies": {
     "@tailwindcss/container-queries": "^0.1.1",

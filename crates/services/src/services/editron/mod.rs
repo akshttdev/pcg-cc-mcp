@@ -39,6 +39,7 @@ pub mod premiere_prproj;
 pub mod artlist;
 pub mod epidemic;
 pub mod soundstripe;
+pub mod asset_intelligence;
 // visual_qc lives as a standalone module at services::services::visual_qc
 
 use std::path::{Path, PathBuf};

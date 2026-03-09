@@ -1,28 +1,68 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Duck Kanban",
-  "description": "A kanban board for developers to track coding tasks with AI coding agents",
+  "name": "PCG Command Centre",
+  "basePath": "/docs",
+  "description": "Sovereign AI orchestration platform — Rust/Axum backend, React frontend, MCP server infrastructure, and multi-agent topology",
   "colors": {
-    "primary": "#000000",
-    "light": "#fefefe",
-    "dark": "#121212"
+    "primary": "#3B82F6",
+    "light": "#60A5FA",
+    "dark": "#2563EB"
   },
   "background": {
     "color": {
-      "light": "#FAF9F5",
-      "dark": "#2F2F2D"
+      "light": "#F8FAFC",
+      "dark": "#0F172A"
     }
   },
   "favicon": "/logo/v-192.png",
   "navigation": {
     "groups": [
       {
-        "group": "Getting started",
+        "group": "Getting Started",
         "pages": [
           "index",
           "getting-started",
           "supported-coding-agents"
+        ]
+      },
+      {
+        "group": "Architecture",
+        "pages": [
+          "architecture/overview",
+          "architecture/crate-map",
+          "architecture/frontend",
+          "architecture/database"
+        ]
+      },
+      {
+        "group": "MCP Servers",
+        "pages": [
+          "mcp/overview",
+          "mcp/task-server",
+          "mcp/topsi-server",
+          "mcp/orchestration-context",
+          "mcp/nora-server",
+          "mcp/pulse-server"
+        ]
+      },
+      {
+        "group": "Sovereign Stack",
+        "pages": [
+          "sovereign-stack/overview",
+          "sovereign-stack/topsi",
+          "sovereign-stack/nora",
+          "sovereign-stack/vibe-economics",
+          "sovereign-stack/alpha-protocol"
+        ]
+      },
+      {
+        "group": "Development",
+        "pages": [
+          "development/setup",
+          "development/workflow",
+          "development/database",
+          "development/type-generation"
         ]
       },
       {
@@ -38,7 +78,7 @@
         ]
       },
       {
-        "group": "Configuration & Customisation",
+        "group": "Configuration",
         "pages": [
           "configuration-customisation/global-settings",
           "configuration-customisation/agent-configurations",
@@ -52,13 +92,14 @@
           "integrations/github-integration",
           "integrations/vscode-extension",
           "integrations/mcp-server-configuration",
-          "integrations/duck-kanban-mcp-server"
+          "integrations/vibe-kanban-mcp-server"
         ]
       },
       {
-        "group": "Testing & QA",
+        "group": "Deployment",
         "pages": [
-          "testing/nora-ceo-behavioral-tests"
+          "deployment/docker",
+          "deployment/production"
         ]
       }
     ]
@@ -71,36 +112,27 @@
     "links": [
       {
         "label": "GitHub",
-        "href": "https://github.com/BloopAI/duck-kanban"
+        "href": "https://github.com/nicholasgriffintn/pcg-cc-mcp"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Get Started",
-      "href": "https://duckkanban.com/docs"
+      "href": "/getting-started"
     }
   },
   "contextual": {
     "options": [
       "copy",
       "view",
-      "chatgpt",
       "claude",
-      "perplexity",
-      "mcp",
       "cursor",
       "vscode"
     ]
   },
-  "integrations": {
-    "posthog": {
-      "apiKey": "phc_V5XpxUvgOfEWk38iGHr0Kve2oZTmWFjDe3mIwTCXzx0",
-      "apiHost": "https://eu.i.posthog.com"
-    }
-  },
   "footer": {
     "socials": {
-      "github": "https://github.com/BloopAI/duck-kanban"
+      "github": "https://github.com/nicholasgriffintn/pcg-cc-mcp"
     }
   }
 }

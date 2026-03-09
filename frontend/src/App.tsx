@@ -10,6 +10,7 @@ import { ProjectProvider } from '@/contexts/project-context';
 import { OrganizationProvider } from '@/contexts/organization-context';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { LoginPage } from '@/components/auth/LoginPage';
+import { SignupPage } from '@/pages/auth/SignupPage';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AdminRoute } from '@/components/auth/AdminRoute';
 import * as Sentry from '@sentry/react';
@@ -49,6 +50,9 @@ const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables'
 const DataSourceDetailPage = lazy(() => import('@/pages/data-source-detail').then(m => ({ default: m.DataSourceDetailPage })));
 const DiscordPage             = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
 const SiteDirectoryPage       = lazy(() => import('@/pages/site-directory').then(m => ({ default: m.SiteDirectoryPage })));
+const MediaLibraryPage        = lazy(() => import('@/pages/media-library').then(m => ({ default: m.MediaLibraryPage })));
+const ReviewPage              = lazy(() => import('@/pages/review').then(m => ({ default: m.ReviewPage })));
+const OssLibraryListenerPage  = lazy(() => import('@/pages/oss-library-listener').then(m => ({ default: m.OssLibraryListenerPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -96,6 +100,7 @@ function App() {
           </AuthProvider>
         }>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
         </Route>
 
         {/* Authenticated app routes - full layout with sidebar/navbar */}
@@ -279,6 +284,15 @@ function App() {
           <Route
             path="/discord"
             element={<ProtectedRoute><DiscordPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/projects/:projectId/media"
+            element={<ProtectedRoute><MediaLibraryPage /></ProtectedRoute>}
+          />
+          <Route path="/review/:token" element={<ReviewPage />} />
+          <Route
+            path="/oss-library-listener"
+            element={<ProtectedRoute><OssLibraryListenerPage /></ProtectedRoute>}
           />
           <Route
             path="/virtual-environment"

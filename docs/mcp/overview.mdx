@@ -1,0 +1,123 @@
+---
+title: "MCP Server Overview"
+description: "Model Context Protocol servers in PCG CC — 4 servers, 24+ tools, and 7 resources for AI agent integration"
+---
+
+# MCP Server Overview
+
+PCG CC exposes its capabilities to AI agents through the **Model Context Protocol (MCP)**. Four MCP servers provide different aspects of platform functionality.
+
+## Server summary
+
+| Server | Binary | Tools | Resources | Purpose |
+|--------|--------|-------|-----------|---------|
+| **TaskServer** | `mcp_task_server` | 24 | 7 | Task management, knowledge, orchestration context |
+| **TopsiServer** | `mcp_topsi_server` | 10 | 0 | Topology intelligence, team formation, health |
+| **NoraMCP** | `mcp_nora_server` | varies | 0 | Executive assistant, workflow coordination |
+| **PulseMCP** | `mcp_pulse_server` | varies | 0 | Real-time metrics, content monitoring |
+
+All servers use **stdio transport** and are launched as separate binaries by the MCP client (Claude Code, Cursor, etc.).
+
+## Connection setup
+
+Add the MCP servers to your client's configuration:
+
+```json
+{
+  "mcpServers": {
+    "pcg-tasks": {
+      "command": "path/to/mcp_task_server",
+      "args": ["--db", "path/to/pcg.db"]
+    },
+    "pcg-topsi": {
+      "command": "path/to/mcp_topsi_server",
+      "args": ["--db", "path/to/pcg.db"]
+    }
+  }
+}
+```
+
+## TaskServer tools (24)
+
+The TaskServer is the primary MCP interface. Tools are organised into 5 phases:
+
+### Phase 1 — Core CRUD
+| Tool | Description |
+|------|-------------|
+| `list_projects` | List all accessible projects |
+| `create_task` | Create a task with full field support |
+| `list_tasks` | List tasks with filtering, search, sorting, pagination |
+| `get_task` | Get detailed task information |
+| `update_task` | Update any task field |
+| `delete_task` | Delete a task |
+| `evaluate_policy` | Check governance policies before execution |
+
+### Phase 2 — Bulk & dependencies
+| Tool | Description |
+|------|-------------|
+| `bulk_create_tasks` | Create up to 50 tasks atomically (transactional) |
+| `bulk_update_tasks` | Update up to 50 tasks atomically (transactional) |
+| `search_tasks` | Full-text search across title, description, and tags (FTS5) |
+| `manage_task_dependencies` | Add, remove, or list task dependencies (with cycle detection) |
+
+### Phase 3 — Knowledge management
+| Tool | Description |
+|------|-------------|
+| `add_knowledge` | Track a knowledge source with coverage scoring |
+| `list_knowledge` | List sources, optionally filtered by type |
+| `get_knowledge_completeness` | Completeness metrics (sources, freshness, coverage) |
+| `manage_knowledge` | Mark stale, mark refreshed, or delete sources |
+
+### Phase 4 — Topology & economics
+| Tool | Description |
+|------|-------------|
+| `get_topology` | Get the topology graph (nodes, edges, clusters) |
+| `get_topology_issues` | Detect bottlenecks, orphans, failures |
+| `find_topology_path` | BFS shortest path between topology nodes |
+| `get_vibe_budget` | Project VIBE budget (limit, spent, remaining) |
+| `list_agents` | Registered AI agents with capabilities and stats |
+
+### Phase 5 — Orchestration context
+| Tool | Description |
+|------|-------------|
+| `write_context` | Write to the shared blackboard (findings, decisions, blockers) |
+| `read_context` | Read context entries for a task tree |
+| `resolve_context` | Mark entries as resolved or superseded |
+| `get_context_summary` | Aggregated health view with active blockers and decisions |
+
+## TaskServer resources (7)
+
+Resources allow agents to browse structured data via URI patterns:
+
+| URI Template | Description |
+|-------------|-------------|
+| `pcg://projects/{project_id}` | Project details including VIBE budget |
+| `pcg://projects/{project_id}/tasks` | All tasks in a project |
+| `pcg://projects/{project_id}/tasks/{task_id}` | Single task detail |
+| `pcg://projects/{project_id}/knowledge` | Knowledge sources |
+| `pcg://projects/{project_id}/topology` | Topology summary (counts) |
+| `pcg://projects/{project_id}/health` | Health summary with issue counts |
+| `pcg://projects/{project_id}/context` | Active orchestration context entries |
+
+## TopsiServer tools (10)
+
+| Tool | Description |
+|------|-------------|
+| `get_topology` | Full topology graph for a project |
+| `get_topology_health` | Per-node health scores |
+| `detect_issues` | Identify isolated nodes, failures, overloaded agents, cycles |
+| `get_topology_summary` | Node/edge/cluster counts and overall health |
+| `route_task` | Route a task to the best available agent |
+| `form_team` | Create a dynamic agent cluster for coordinated work |
+| `dissolve_team` | Release agents from a cluster |
+| `get_agent_statuses` | Real-time agent status and workload |
+| `get_system_pulse` | System-wide health metrics |
+| `get_recommendations` | Proactive improvement suggestions |
+
+## User scoping
+
+MCP servers are user-scoped. Each connection has:
+
+- **`user_id`** — determines which projects are accessible
+- **`is_admin`** — admin users bypass project membership checks
+- Project access is enforced by checking `project_members` table membership

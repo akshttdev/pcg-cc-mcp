@@ -66,6 +66,8 @@ services:
       - ./backups:/app/backups
       # Share frontend dist with nginx
       - frontend-dist:/app/frontend/dist
+      # Share docs site with nginx
+      - docs-site:/app/docs-site
     ports:
       - "3001:3001"        # Main application API
       - "11434:11434"      # Ollama API (local LLM)
@@ -182,6 +184,7 @@ services:
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./frontend/dist:/app/frontend/dist:ro
+      - docs-site:/app/docs-site:ro
     ports:
       - "8080:80"  # Exposed on 8080 to avoid conflict with host nginx
     depends_on:
@@ -225,6 +228,8 @@ volumes:
   repos_data:
     driver: local
   frontend-dist:
+    driver: local
+  docs-site:
     driver: local
 
 networks:

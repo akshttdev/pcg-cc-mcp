@@ -111,6 +111,10 @@ pub mod workflow_triggers;
 pub mod output_schemas;
 pub mod pcg_router;
 pub mod discord;
+pub mod media_library;
+pub mod review;
+pub mod oss_listener;
+pub mod oss_listener_bg;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -192,6 +196,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(graph::router(&deployment))
         .merge(invite_dispatch::router(&deployment))
         .merge(discord::router(&deployment))
+        .merge(media_library::router(&deployment))
+        .merge(oss_listener::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
         .layer(middleware::from_fn_with_state(
@@ -242,6 +248,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(model_pricing::router(&deployment))
         .merge(feedback::router(&deployment))
         .merge(vibe_treasury::public_router(&deployment))
+        .merge(review::router(&deployment))
+        .merge(social_accounts::bio_router(&deployment))
         .merge(orcha::orcha_routes())
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))

@@ -131,12 +131,6 @@ export function StagingReviewPanel({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
   });
 
-  const batchMutation = useMutation({
-    mutationFn: ({ ids, action }: { ids: string[]; action: 'approve' | 'reject' }) =>
-      stagingApi.batchAction(ids, action),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
-  });
-
   const commitMutation = useMutation({
     mutationFn: (id: string) => stagingApi.commit(id),
     onSuccess: (result: CommitResult) => {
@@ -176,15 +170,6 @@ export function StagingReviewPanel({
   const handleApprove = (id: string) => updateMutation.mutate({ id, data: { status: 'approved' } });
   const handleReject = (id: string) => updateMutation.mutate({ id, data: { status: 'rejected' } });
 
-  const handleApproveAll = () => {
-    const pendingIds = records.filter(r => r.status === 'pending_review').map(r => r.id);
-    if (pendingIds.length > 0) batchMutation.mutate({ ids: pendingIds, action: 'approve' });
-  };
-
-  const handleRejectAll = () => {
-    const pendingIds = records.filter(r => r.status === 'pending_review').map(r => r.id);
-    if (pendingIds.length > 0) batchMutation.mutate({ ids: pendingIds, action: 'reject' });
-  };
 
   const handleStartEdit = (record: WorkflowStagingRecord) => {
     try {

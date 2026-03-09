@@ -1,55 +1,49 @@
 ---
-title: "Duck Kanban Documentation"
-description: "A specialised kanban board designed for developers who want to track and manage their coding tasks while working with AI coding agents. It provides seamless integration with various coding agents and helps you organise your development workflow efficiently."
+title: "PCG Command Centre"
+description: "Sovereign AI orchestration platform — multi-agent topology, task management, and economic governance for software teams"
 sidebarTitle: "Home"
 ---
 
-## What is Duck Kanban?
+# PCG Command Centre
 
-Duck Kanban transforms how developers work with AI coding agents by providing:
+PCG CC is a **sovereign AI orchestration platform** that coordinates multiple AI agents across complex software projects. Built on Rust/Axum with a React frontend, it provides task management, agent topology, knowledge tracking, and economic governance through the VIBE token system.
 
-- **Task Management**: Create, organise, and track coding tasks on an intuitive kanban board
-- **AI Agent Integration**: Works with popular coding agents like Amp, Claude Code, Cursor CLI, and more
-- **Git Integration**: Automatic branch management and pull request tracking
-- **Workspace Management**: Organise multiple projects with custom setup scripts
-- **Real-time Progress Tracking**: Monitor task attempts and coding agent execution
-
-## Key Features
-
-<CardGroup cols={2}>
-  <Card title="Multi-Agent Support" icon="robot" href="/supported-coding-agents">
-    Integrate with 8+ popular AI coding agents via npx - no separate installation required
+<CardGroup cols={3}>
+  <Card title="Get Started" icon="rocket" href="/getting-started">
+    Set up your local development environment and run the platform in under 10 minutes.
   </Card>
-
-  <Card title="Project Management" icon="folder" href="/core-features/creating-projects">
-    Organise your repositories with custom setup scripts and development workflows
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    Understand the 17-crate Rust workspace, React frontend, and MCP server infrastructure.
   </Card>
-
-  <Card title="Task Tracking" icon="list-check" href="/core-features/creating-tasks">
-    Create and manage coding tasks with templates, descriptions, and progress tracking
-  </Card>
-
-  <Card title="Git Integration" icon="code-branch" href="/integrations/github-integration">
-    Automatic branch creation, PR management, and GitHub status synchronisation
+  <Card title="MCP Servers" icon="plug" href="/mcp/overview">
+    24 tools + 7 resources across Task, Topsi, Nora, and Pulse MCP servers.
   </Card>
 </CardGroup>
 
-## Quick Start
-
-Ready to get started? Follow our getting started guide to install and configure Duck Kanban:
-
-<Card title="Get Started" icon="rocket" href="/getting-started">
-  Install Duck Kanban and complete the setup process in minutes
-</Card>
-
-## Need Help?
+## What makes PCG CC different
 
 <CardGroup cols={2}>
-  <Card title="User Guide" icon="book" href="/core-features/creating-projects">
-    Complete guides for creating projects, tasks, and working with coding agents
+  <Card title="Topology Intelligence" icon="diagram-project">
+    Topsi manages a live graph of agents, tasks, and resources — routing work to the best available agent and forming dynamic teams for complex objectives.
   </Card>
-
-  <Card title="Settings" icon="gear" href="/configuration-customisation/global-settings">
-    Configure themes, default agents, GitHub integration, and more
+  <Card title="Orchestration Context" icon="chalkboard">
+    A shared blackboard system where agents share findings, decisions, blockers, and intermediate results across parallel task trees.
+  </Card>
+  <Card title="VIBE Economics" icon="coins">
+    Every task has an economic cost. Agents operate within project budgets, and the token system governs resource allocation across the platform.
+  </Card>
+  <Card title="Sovereign Stack" icon="shield-halved">
+    Six layers from Alpha Protocol (mesh networking) to Spectrum (media pipeline), all self-hosted with no external dependencies.
   </Card>
 </CardGroup>
+
+## Platform at a glance
+
+| Component | Technology | Scale |
+|-----------|-----------|-------|
+| Backend | Rust, Axum, SQLite, Tokio | 17 crates, 103 route files |
+| Frontend | React 18, TypeScript, Vite, Tailwind | 36 pages, 51 component dirs, 55 hooks |
+| Database | SQLite with SQLx | 111 models, 136 migrations |
+| MCP Servers | rmcp (Rust MCP) | 4 servers, 24+ tools, 7 resources |
+| Agents | Topsi, Nora, configurable | Multi-provider (Claude, Gemini, etc.) |
+| Deployment | Docker, systemd, Tauri desktop | GPU support, mesh networking |

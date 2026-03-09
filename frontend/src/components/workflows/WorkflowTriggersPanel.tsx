@@ -34,7 +34,6 @@ import {
   DATA_TYPE_OPTIONS,
 } from '@/lib/api';
 import type {
-  WorkflowTrigger,
   CreateWorkflowTrigger,
   AvailableModel,
 } from '@/lib/api';

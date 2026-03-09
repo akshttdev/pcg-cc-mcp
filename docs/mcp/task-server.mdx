@@ -1,0 +1,311 @@
+---
+title: "TaskServer Reference"
+description: "Detailed reference for the TaskServer MCP — 24 tools and 7 resources for task management, knowledge, topology, and orchestration"
+---
+
+# TaskServer Reference
+
+The TaskServer is the primary MCP interface for PCG CC. It provides 24 tools organised across 5 phases and 7 browsable resources.
+
+**Binary**: `mcp_task_server`
+**Transport**: stdio
+**Version**: 2.1
+
+```json
+{
+  "mcpServers": {
+    "pcg-tasks": {
+      "command": "path/to/mcp_task_server",
+      "args": ["--db", "path/to/pcg.db"]
+    }
+  }
+}
+```
+
+## Phase 1 — Core CRUD
+
+These tools cover basic task and project management.
+
+### `list_projects`
+
+List all projects accessible to the current user.
+
+<ParamField query="include_archived" type="boolean" default="false">
+Whether to include archived projects in the results.
+</ParamField>
+
+### `create_task`
+
+Create a new task with full field support.
+
+<ParamField body="project_id" type="string" required>
+UUID of the project to create the task in.
+</ParamField>
+
+<ParamField body="title" type="string" required>
+Task title (used in search and display).
+</ParamField>
+
+<ParamField body="description" type="string">
+Detailed task description. Indexed for full-text search.
+</ParamField>
+
+<ParamField body="status" type="string" default="todo">
+Task status: `todo`, `in_progress`, `in_review`, `done`.
+</ParamField>
+
+<ParamField body="priority" type="string" default="medium">
+Priority level: `low`, `medium`, `high`, `critical`.
+</ParamField>
+
+<ParamField body="assigned_agent" type="string">
+Short name of the agent to assign (e.g., `claude`, `gemini`).
+</ParamField>
+
+<ParamField body="tags" type="string">
+Comma-separated tags for categorisation and search.
+</ParamField>
+
+### `list_tasks`
+
+List tasks with filtering, search, sorting, and pagination.
+
+<ParamField query="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ParamField query="status" type="string">
+Filter by status.
+</ParamField>
+
+<ParamField query="assigned_agent" type="string">
+Filter by assigned agent.
+</ParamField>
+
+<ParamField query="sort_by" type="string" default="created_at">
+Sort field: `created_at`, `updated_at`, `priority`, `title`.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="50">
+Maximum results to return.
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+Pagination offset.
+</ParamField>
+
+### `get_task`
+
+Get detailed information for a single task.
+
+<ParamField query="task_id" type="string" required>
+UUID of the task.
+</ParamField>
+
+### `update_task`
+
+Update any field on an existing task.
+
+<ParamField body="task_id" type="string" required>
+UUID of the task to update.
+</ParamField>
+
+All other fields from `create_task` are accepted as optional updates.
+
+### `delete_task`
+
+Delete a task by ID.
+
+<ParamField body="task_id" type="string" required>
+UUID of the task to delete.
+</ParamField>
+
+### `evaluate_policy`
+
+Check governance policies before executing a task.
+
+<ParamField body="task_id" type="string" required>
+UUID of the task to evaluate.
+</ParamField>
+
+---
+
+## Phase 2 — Bulk & dependencies
+
+### `bulk_create_tasks`
+
+Create up to 50 tasks atomically within a transaction. If any task fails validation, the entire batch is rolled back.
+
+<ParamField body="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ParamField body="tasks" type="array" required>
+Array of task objects (same fields as `create_task`). Maximum 50.
+</ParamField>
+
+### `bulk_update_tasks`
+
+Update up to 50 tasks atomically. All-or-nothing semantics — if one update fails, none are applied.
+
+<ParamField body="updates" type="array" required>
+Array of update objects with `task_id` and fields to update. Maximum 50.
+</ParamField>
+
+### `search_tasks`
+
+Full-text search across task titles, descriptions, and tags using FTS5.
+
+<ParamField query="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ParamField query="query" type="string" required>
+Search query. Supports prefix matching (e.g., `deploy*`).
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+Maximum results.
+</ParamField>
+
+<Note>
+The search uses SQLite FTS5 when available and falls back to in-memory matching if the FTS migration has not been applied.
+</Note>
+
+### `manage_task_dependencies`
+
+Add, remove, or list task dependencies with automatic cycle detection.
+
+<ParamField body="action" type="string" required>
+One of: `add`, `remove`, `list`.
+</ParamField>
+
+<ParamField body="source_task_id" type="string">
+The task that depends on another (required for `add`/`remove`).
+</ParamField>
+
+<ParamField body="target_task_id" type="string">
+The task being depended upon (required for `add`/`remove`).
+</ParamField>
+
+<ParamField body="dependency_type" type="string" default="blocks">
+Relationship type. Currently supports `blocks`.
+</ParamField>
+
+<Warning>
+The tool performs BFS cycle detection before adding dependencies. If adding a dependency would create a circular chain, the operation is rejected with an explanatory error.
+</Warning>
+
+---
+
+## Phase 3 — Knowledge management
+
+### `add_knowledge`
+
+Track a knowledge source with coverage scoring.
+
+<ParamField body="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ParamField body="source_type" type="string" required>
+Type of knowledge source (e.g., `documentation`, `codebase`, `api`, `design`).
+</ParamField>
+
+<ParamField body="title" type="string" required>
+Human-readable title.
+</ParamField>
+
+<ParamField body="url" type="string">
+URL or path to the knowledge source.
+</ParamField>
+
+<ParamField body="coverage_score" type="number">
+Estimated coverage (0.0 to 1.0).
+</ParamField>
+
+### `list_knowledge`
+
+List knowledge sources, optionally filtered by type.
+
+### `get_knowledge_completeness`
+
+Get completeness metrics including source count, average freshness, and overall coverage score.
+
+### `manage_knowledge`
+
+Mark sources as stale, refresh them, or delete them.
+
+---
+
+## Phase 4 — Topology & economics
+
+### `get_topology`
+
+Get the full topology graph (nodes, edges, clusters) for a project.
+
+### `get_topology_issues`
+
+Detect bottlenecks, orphan nodes, and failure states in the topology.
+
+### `find_topology_path`
+
+BFS shortest path between two topology nodes.
+
+<ParamField query="project_id" type="string" required>
+UUID of the project.
+</ParamField>
+
+<ParamField query="from_node_id" type="string" required>
+Starting node UUID.
+</ParamField>
+
+<ParamField query="to_node_id" type="string" required>
+Target node UUID.
+</ParamField>
+
+### `get_vibe_budget`
+
+Get the project's VIBE budget — limit, spent, and remaining.
+
+### `list_agents`
+
+List registered AI agents with capabilities, status, and execution statistics.
+
+---
+
+## Phase 5 — Orchestration context
+
+The orchestration context is a shared blackboard for multi-agent coordination. See the [Orchestration Context guide](/mcp/orchestration-context) for detailed usage patterns.
+
+### `write_context`
+
+Write a finding, decision, blocker, or directive to the shared context.
+
+### `read_context`
+
+Read context entries for a task tree, with optional filtering by type, status, and priority.
+
+### `resolve_context`
+
+Mark a context entry as resolved or superseded.
+
+### `get_context_summary`
+
+Get an aggregated health view with counts of active blockers, decisions, and findings.
+
+---
+
+## Resources
+
+Resources provide browsable structured data via URI patterns.
+
+| URI Template | Returns |
+|-------------|---------|
+| `pcg://projects/{project_id}` | Project details including VIBE budget |
+| `pcg://projects/{project_id}/tasks` | All tasks in a project |
+| `pcg://projects/{project_id}/tasks/{task_id}` | Single task detail |
+| `pcg://projects/{project_id}/knowledge` | Knowledge sources |
+| `pcg://projects/{project_id}/topology` | Topology summary (counts) |
+| `pcg://projects/{project_id}/health` | Health summary with issue counts |
+| `pcg://projects/{project_id}/context` | Active orchestration context entries |
