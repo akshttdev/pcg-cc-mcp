@@ -1,15 +1,18 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi } from '@/lib/api';
-import { UserCircle } from 'lucide-react';
+import { UserCircle, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader } from '@/components/ui/loader';
 import { Button } from '@/components/ui/button';
 import NiceModal from '@ebay/nice-modal-react';
 import '@/components/dialogs/shared/ConvertEntityDialog';
+import { ClientMembersDialog } from '@/components/dialogs/client-members-dialog';
 
 export function ClientOverview() {
   const { orgId, clientId } = useParams<{ orgId: string; clientId: string }>();
+  const [membersOpen, setMembersOpen] = useState(false);
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ['orgClients', orgId],
@@ -47,19 +50,29 @@ export function ClientOverview() {
             )}
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            NiceModal.show('convert-entity', {
-              sourceType: 'client',
-              sourceId: client.id,
-              sourceName: client.name,
-            })
-          }
-        >
-          Convert to...
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setMembersOpen(true)}
+          >
+            <Users className="h-4 w-4 mr-2" />
+            Members
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              NiceModal.show('convert-entity', {
+                sourceType: 'client',
+                sourceId: client.id,
+                sourceName: client.name,
+              })
+            }
+          >
+            Convert to...
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -80,6 +93,14 @@ export function ClientOverview() {
           </CardContent>
         </Card>
       </div>
+      {clientId && (
+        <ClientMembersDialog
+          open={membersOpen}
+          onOpenChange={setMembersOpen}
+          clientId={clientId}
+          clientName={client.name}
+        />
+      )}
     </div>
   );
 }
