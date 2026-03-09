@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useParams, useSearchParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 // Tabs UI removed — navigation now driven entirely by sidebar + URL routing
@@ -118,6 +119,7 @@ import {
   type SocialMentionRecord,
   type PersonOrgContact,
   dataSourcesApi,
+  companiesApi,
   workflowsApi,
   resolveApiUrl,
   type DataSourceRecord,
@@ -548,9 +550,94 @@ interface CompanyRecord {
   created_at?: string;
 }
 
+function CreateCompanyInlineDialog({
+  open,
+  onClose,
+  orgId,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  orgId: string;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [website, setWebsite] = useState('');
+  const [industry, setIndustry] = useState('');
+
+  const create = useMutation({
+    mutationFn: () =>
+      companiesApi.create({
+        name,
+        website: website || undefined,
+        industry: industry || undefined,
+        created_by_org_id: orgId,
+      }),
+    onSuccess: () => {
+      onCreated();
+      toast.success('Company created');
+      setName('');
+      setWebsite('');
+      setIndustry('');
+      onClose();
+    },
+    onError: () => toast.error('Failed to create company'),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Company</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3 py-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="co-name">Name *</Label>
+            <Input
+              id="co-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Acme Corp"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="co-web">Website</Label>
+            <Input
+              id="co-web"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="https://example.com"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="co-ind">Industry</Label>
+            <Input
+              id="co-ind"
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
+              placeholder="Technology"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={!name.trim() || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CompaniesTab({ orgId }: { orgId: string }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [industryFilter, setIndustryFilter] = useState('all');
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: companies = [], isLoading } = useQuery<CompanyRecord[]>({
     queryKey: ['org-companies', orgId],
@@ -612,18 +699,25 @@ function CompaniesTab({ orgId }: { orgId: string }) {
         {isLoading && (
           <span className="text-xs text-muted-foreground">Loading companies...</span>
         )}
-        <Button size="sm" onClick={() => {/* TODO: open add company dialog */}}>
+        <Button size="sm" onClick={() => setShowCreateDialog(true)}>
           <Plus className="h-4 w-4 mr-1" />
           Add Company
         </Button>
       </div>
+
+      <CreateCompanyInlineDialog
+        open={showCreateDialog}
+        onClose={() => setShowCreateDialog(false)}
+        orgId={orgId}
+        onCreated={() => queryClient.invalidateQueries({ queryKey: ['org-companies', orgId] })}
+      />
 
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>{isLoading ? 'Loading companies...' : 'No companies found'}</p>
           <p className="text-xs mt-1">Add a company manually or let workflow pipelines extract them automatically.</p>
-          <Button size="sm" variant="outline" className="mt-3" onClick={() => {/* TODO: open add company dialog */}}>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowCreateDialog(true)}>
             <Plus className="h-4 w-4 mr-1" />
             Add Company
           </Button>
@@ -2014,6 +2108,13 @@ function KnowledgeTab({
     })),
   });
 
+  // Fetch org-level data sources for accurate stats
+  const { data: orgDataSources = [] } = useQuery({
+    queryKey: ['orgDataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    staleTime: 60_000,
+  });
+
   const isLoading = knowledgeQueries.some(q => q.isLoading);
   const loadedCount = knowledgeQueries.filter(q => q.isSuccess).length;
 
@@ -2168,9 +2269,10 @@ function KnowledgeTab({
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold">{aggregated.totalSources}</span>
+              <span className="text-2xl font-bold">{aggregated.totalSources + orgDataSources.length}</span>
               <span className="text-sm text-muted-foreground">
-                across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}
+                {orgDataSources.length > 0 && `${orgDataSources.length} org · `}
+                {aggregated.totalSources} across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}
               </span>
             </div>
           </CardContent>
