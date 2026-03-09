@@ -130,7 +130,6 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: 'Mission Control', icon: Rocket, to: '/mission-control', id: 'mission-control', adminOnly: true },
   { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse', adminOnly: true },
   { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
-  { label: 'Workflows', icon: Workflow, to: '/workflows', id: 'workflows', adminOnly: true },
 ];
 
 // Primary navigation - workspace destinations
@@ -141,10 +140,15 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Vibe', icon: Palette, to: '/vibe', id: 'vibe' },
 ];
 
+// Intelligence & Automation — workflows, data pipelines
+const INTELLIGENCE_NAV_ITEMS: NavItem[] = [
+  { label: 'Workflow Builder', icon: Workflow, to: '/workflows', id: 'workflows', adminOnly: true },
+];
+
 // Management nav — admin-only, collapsible
 const MANAGEMENT_NAV_ITEMS: NavItem[] = [
-  { label: 'People', icon: Users, to: '/people', id: 'people', adminOnly: true },
-  { label: 'Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
+  { label: 'All People', icon: Users, to: '/people', id: 'people', adminOnly: true },
+  { label: 'All Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
   { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
   { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
   { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
@@ -154,7 +158,7 @@ const MANAGEMENT_NAV_ITEMS: NavItem[] = [
 // Global views - admin only, collapsible
 const GLOBAL_VIEW_ITEMS: NavItem[] = [
   { label: 'All Tasks', icon: ListTodo, to: '/global-tasks', id: 'global-tasks', adminOnly: true },
-  { label: 'All CRM', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
+  { label: 'CRM Admin', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
   { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
 ];
 
@@ -1427,6 +1431,7 @@ export function Sidebar({ className }: SidebarProps) {
   const [globalViewsExpanded, setGlobalViewsExpanded] = useState(false);
   const [adminPlatformsExpanded, setAdminPlatformsExpanded] = useState(false);
   const [managementExpanded, setManagementExpanded] = useState(false);
+  const [intelligenceExpanded, setIntelligenceExpanded] = useState(false);
 
   // Keyboard shortcut: Cmd+B / Ctrl+B to toggle sidebar
   useKeyToggleSidebar(() => toggleSidebar(), { scope: Scope.GLOBAL });
@@ -1549,9 +1554,45 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
       </div>
 
-      {/* Management + Global Views - Admin Only (collapsed into sections) */}
+      {/* Intelligence, Management, Global Views - Admin Only (collapsed into sections) */}
       {isAdmin && !sidebarCollapsed && (
         <div className="border-b border-border/40">
+          {/* Intelligence & Automation section */}
+          <Collapsible open={intelligenceExpanded} onOpenChange={setIntelligenceExpanded}>
+            <CollapsibleTrigger asChild>
+              <div className="sidebar-nav-item mx-3 my-1.5 justify-between cursor-pointer">
+                <div className="flex items-center gap-2.5">
+                  <Brain className="h-4 w-4" />
+                  <span>Intelligence</span>
+                </div>
+                {intelligenceExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-3 pb-1">
+              <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
+                {INTELLIGENCE_NAV_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  const active = location.pathname === item.to;
+                  return (
+                    <Link key={item.id} to={item.to}>
+                      <div className={cn(
+                        "sidebar-nav-item text-xs py-1",
+                        active && "sidebar-nav-item-active"
+                      )}>
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
           {/* Management section */}
           <Collapsible open={managementExpanded} onOpenChange={setManagementExpanded}>
             <CollapsibleTrigger asChild>
@@ -1694,9 +1735,26 @@ export function Sidebar({ className }: SidebarProps) {
         <ScrollArea className="flex-1 px-3 min-h-0">
           <div className="space-y-1">
             {isTreeLoading ? (
-              <div className="py-4 text-xs text-muted-foreground flex items-center gap-2">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Loading projects...
+              <div className="py-2 space-y-3">
+                {/* Org skeleton */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-muted animate-pulse" />
+                    <div className="h-4 w-32 rounded bg-muted animate-pulse" />
+                  </div>
+                  <div className="pl-4 space-y-1.5">
+                    <div className="h-3.5 w-20 rounded bg-muted animate-pulse" />
+                    <div className="h-3.5 w-24 rounded bg-muted animate-pulse" />
+                    <div className="h-3.5 w-28 rounded bg-muted animate-pulse" />
+                  </div>
+                  <div className="pl-4 space-y-1.5 pt-1">
+                    <div className="h-3 w-16 rounded bg-muted/60 animate-pulse" />
+                    <div className="flex items-center gap-1.5 pl-2">
+                      <div className="h-2 w-2 rounded-full bg-muted animate-pulse" />
+                      <div className="h-3.5 w-36 rounded bg-muted animate-pulse" />
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : hasTree ? (
               <SidebarOrgGroups
@@ -1712,9 +1770,13 @@ export function Sidebar({ className }: SidebarProps) {
             ) : useFlatFallback ? (
               // Fallback: flat project list
               isProjectsLoading ? (
-                <div className="py-4 text-xs text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Loading projects...
+                <div className="py-2 space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-muted animate-pulse" />
+                      <div className="h-4 rounded bg-muted animate-pulse" style={{ width: `${60 + i * 20}px` }} />
+                    </div>
+                  ))}
                 </div>
               ) : projectsError ? (
                 <div className="py-4 text-xs text-destructive">
