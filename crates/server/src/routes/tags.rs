@@ -15,15 +15,21 @@ use crate::{DeploymentImpl, error::ApiError};
 #[derive(Debug, Deserialize)]
 pub struct TagQuery {
     pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+    /// If true, returns project-specific + org-wide tags for the given project_id
+    pub include_org: Option<bool>,
 }
 
 pub async fn get_tags(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<TagQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<Tag>>>, ApiError> {
-    let tags = match query.project_id {
-        Some(pid) => Tag::find_by_project_id(&deployment.db().pool, pid).await?,
-        None => Tag::find_all(&deployment.db().pool).await?,
+    let pool = &deployment.db().pool;
+    let tags = match (query.project_id, query.organization_id, query.include_org) {
+        (Some(pid), _, Some(true)) => Tag::find_for_project_context(pool, pid).await?,
+        (Some(pid), _, _) => Tag::find_by_project_id(pool, pid).await?,
+        (_, Some(oid), _) => Tag::find_by_organization_id(pool, oid).await?,
+        _ => Tag::find_all(pool).await?,
     };
     Ok(ResponseJson(ApiResponse::success(tags)))
 }
