@@ -112,10 +112,11 @@ export function ProjectTasks() {
 
   // Helper functions to open task forms - memoized to prevent re-renders
   const handleCreateTask = useCallback(() => {
+    console.log('[ProjectTasks] Creating task with boardFilter:', boardFilter, 'URL search:', location.search);
     if (project?.id) {
       openTaskForm({ projectId: project.id, initialBoardId: boardFilter });
     }
-  }, [project?.id, boardFilter]);
+  }, [project?.id, boardFilter, location.search]);
 
   const handleEditTask = useCallback((task: Task) => {
     if (project?.id) {
