@@ -3,7 +3,7 @@ import { useParams, useSearchParams, useLocation, useNavigate, Link } from 'reac
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+// Tabs UI removed — navigation now driven entirely by sidebar + URL routing
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -50,7 +50,6 @@ import {
   ArrowLeft,
   Globe,
   ExternalLink,
-  LayoutGrid,
   Contact2,
   DollarSign,
   Activity,
@@ -613,13 +612,21 @@ function CompaniesTab({ orgId }: { orgId: string }) {
         {isLoading && (
           <span className="text-xs text-muted-foreground">Loading companies...</span>
         )}
+        <Button size="sm" onClick={() => {/* TODO: open add company dialog */}}>
+          <Plus className="h-4 w-4 mr-1" />
+          Add Company
+        </Button>
       </div>
 
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>{isLoading ? 'Loading companies...' : 'No companies found'}</p>
-          <p className="text-xs mt-1">Companies extracted by workflow pipelines will appear here.</p>
+          <p className="text-xs mt-1">Add a company manually or let workflow pipelines extract them automatically.</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => {/* TODO: open add company dialog */}}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Company
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -654,6 +661,129 @@ function CompaniesTab({ orgId }: { orgId: string }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Deliverables Tab ─────────────────────────────────────────────────────────
+
+function DeliverablesTab({
+  orgId,
+  projectEntries,
+}: {
+  orgId: string;
+  projectEntries: { id: string; name: string }[];
+}) {
+  const deliverableQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['deliverables', entry.id],
+      queryFn: async () => {
+        const res = await fetch(resolveApiUrl(`/api/projects/${entry.id}/deliverables`), { credentials: 'include' });
+        if (!res.ok) return [];
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : (data?.data ?? []);
+        return items.map((d: any) => ({ ...d, _projectName: entry.name }));
+      },
+      staleTime: 30_000,
+    })),
+  });
+
+  const isLoading = deliverableQueries.some((q) => q.isLoading);
+  const allDeliverables = deliverableQueries.flatMap((q) => q.data ?? []);
+
+  const statusGroups = useMemo(() => {
+    const groups: Record<string, typeof allDeliverables> = {
+      draft: [],
+      in_progress: [],
+      review: [],
+      delivered: [],
+    };
+    allDeliverables.forEach((d) => {
+      const status = d.status || 'draft';
+      if (!groups[status]) groups[status] = [];
+      groups[status].push(d);
+    });
+    return groups;
+  }, [allDeliverables]);
+
+  const statusLabels: Record<string, { label: string; color: string }> = {
+    draft: { label: 'Draft', color: 'text-muted-foreground' },
+    in_progress: { label: 'In Progress', color: 'text-blue-500' },
+    review: { label: 'In Review', color: 'text-amber-500' },
+    delivered: { label: 'Delivered', color: 'text-green-500' },
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        Loading deliverables...
+      </div>
+    );
+  }
+
+  if (allDeliverables.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <Boxes className="h-10 w-10 mx-auto mb-3 opacity-30" />
+        <p className="font-medium text-foreground mb-1">No deliverables yet</p>
+        <p className="text-sm max-w-md mx-auto">
+          Deliverables are tangible outputs produced for clients — reports, designs, assets, or completed work products.
+          Create them from individual project pages.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">{allDeliverables.length} Deliverables</h2>
+          <p className="text-sm text-muted-foreground">Across {projectEntries.length} projects</p>
+        </div>
+      </div>
+
+      {Object.entries(statusGroups).map(([status, items]) => {
+        if (items.length === 0) return null;
+        const info = statusLabels[status] || { label: status, color: 'text-muted-foreground' };
+        return (
+          <div key={status}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`text-sm font-medium ${info.color}`}>{info.label}</span>
+              <Badge variant="secondary" className="text-[10px]">{items.length}</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {items.map((d: any) => (
+                <Card key={d.id} className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{d.title}</p>
+                      {d.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{d.description}</p>
+                      )}
+                    </div>
+                    {d.deliverable_type && (
+                      <Badge variant="outline" className="text-[10px] shrink-0 capitalize">{d.deliverable_type}</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-3 text-[10px] text-muted-foreground">
+                    <FolderOpen className="h-3 w-3" />
+                    <span>{d._projectName}</span>
+                    {d.due_date && (
+                      <>
+                        <span className="mx-1">·</span>
+                        <Clock className="h-3 w-3" />
+                        <span>Due {formatDate(d.due_date)}</span>
+                      </>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -3574,47 +3704,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
       {/* Tabs */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-[1600px] mx-auto px-6 py-5">
-          <Tabs value={tabFromUrl} onValueChange={setTab}>
-            <TabsList className="mb-6">
-              <TabsTrigger value="overview">
-                <LayoutGrid className="h-4 w-4 mr-2" />
-                Overview
-              </TabsTrigger>
-              <TabsTrigger value="pipelines">
-                <Target className="h-4 w-4 mr-2" />
-                Pipelines
-              </TabsTrigger>
-              <TabsTrigger value="contacts">
-                <Contact2 className="h-4 w-4 mr-2" />
-                Contacts
-              </TabsTrigger>
-              <TabsTrigger value="companies">
-                <Building2 className="h-4 w-4 mr-2" />
-                Companies
-              </TabsTrigger>
-              <TabsTrigger value="projects">
-                <FolderOpen className="h-4 w-4 mr-2" />
-                Projects
-              </TabsTrigger>
-              <TabsTrigger value="social">
-                <Share2 className="h-4 w-4 mr-2" />
-                Social
-              </TabsTrigger>
-              <TabsTrigger value="knowledge">
-                <Brain className="h-4 w-4 mr-2" />
-                Intelligence
-              </TabsTrigger>
-              <TabsTrigger value="members">
-                <Users className="h-4 w-4 mr-2" />
-                Members
-              </TabsTrigger>
-              <TabsTrigger value="integrations">
-                <Plug className="h-4 w-4 mr-2" />
-                Integrations
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="overview">
+          {tabFromUrl === 'overview' && (
               <OverviewTab
                 orgId={orgId}
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
@@ -3626,49 +3716,52 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 contactCount={contacts.length}
                 onSwitchTab={setTab}
               />
-            </TabsContent>
+            )}
 
-            <TabsContent value="pipelines">
+            {tabFromUrl === 'pipelines' && (
               <PipelinesTab orgId={orgId} defaultPipeline={pipelineFromUrl || undefined} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="contacts">
+            {tabFromUrl === 'contacts' && (
               <ContactsTab orgId={orgId} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="companies">
+            {tabFromUrl === 'companies' && (
               <CompaniesTab orgId={orgId} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="projects">
+            {tabFromUrl === 'deliverables' && (
+              <DeliverablesTab orgId={orgId} projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
+            )}
+
+            {tabFromUrl === 'projects' && (
               <ProjectsTab
                 orgId={orgId}
                 sidebarOrg={sidebarOrg}
                 clientFilter={clientFilter}
                 onClearClientFilter={clearClientFilter}
               />
-            </TabsContent>
+            )}
 
-            <TabsContent value="social">
+            {tabFromUrl === 'social' && (
               <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="knowledge">
+            {tabFromUrl === 'knowledge' && (
               <KnowledgeTab
                 orgId={orgId!}
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                 view={viewFromUrl}
               />
-            </TabsContent>
+            )}
 
-            <TabsContent value="members">
+            {tabFromUrl === 'members' && (
               <MembersTab orgId={orgId} orgName={org.name} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="integrations">
+            {tabFromUrl === 'integrations' && (
               <IntegrationsTab orgId={orgId} />
-            </TabsContent>
-          </Tabs>
+            )}
         </div>
       </div>
     </div>

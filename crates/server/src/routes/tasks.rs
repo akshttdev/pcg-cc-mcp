@@ -881,19 +881,18 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/", get(get_tasks).post(create_task))
         .route("/stream/ws", get(stream_tasks_ws))
         .route("/create-and-start", post(create_task_and_start))
+        .route("/assigned-to-me", get(get_assigned_to_me))
+        .route("/watched", get(get_watched_tasks))
         .nest("/{task_id}", task_id_router);
 
-    // mount under /projects/:project_id/tasks
+    // mount under /tasks
     Router::new().nest("/tasks", inner)
 }
 
 /// Global tasks router - mounts at /api/tasks (not nested under projects)
-pub fn global_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+/// Note: assigned-to-me and watched routes are now in the main router() to avoid
+/// conflicts with the /{task_id} parameterized route. This router is kept for
+/// backwards compatibility but delegates to the same routes via the main router.
+pub fn global_router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/tasks/assigned-to-me", get(get_assigned_to_me))
-        .route("/tasks/watched", get(get_watched_tasks))
-        .layer(from_fn_with_state(
-            deployment.clone(),
-            crate::middleware::require_auth,
-        ))
 }

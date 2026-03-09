@@ -34,7 +34,6 @@ import {
   FileText,
   LayoutDashboard,
   Receipt,
-  Sparkles,
   LayoutGrid,
   Brain,
   Bot,
@@ -52,6 +51,7 @@ import {
   Map,
   Palette,
   Rocket,
+  Plug,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -135,13 +135,9 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
+  { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'Vibe', icon: Palette, to: '/vibe', id: 'vibe' },
-];
-
-// Intelligence & Automation — workflows, data pipelines
-const INTELLIGENCE_NAV_ITEMS: NavItem[] = [
-  { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
 ];
 
 // Management nav — admin-only, collapsible
@@ -215,8 +211,7 @@ function OrgCrmSection({
   const orgBase = `/organizations/${orgId}`;
   const isCrmActive =
     location.pathname === orgBase ||
-    location.pathname.startsWith(`${orgBase}/crm`) ||
-    location.pathname.startsWith(`${orgBase}/social`);
+    location.pathname.startsWith(`${orgBase}/crm`);
   const [open, setOpen] = useState(isCrmActive);
 
   return (
@@ -241,7 +236,6 @@ function OrgCrmSection({
             { label: 'Companies',    to: `${orgBase}/crm/companies`,    icon: Building2,  color: 'text-purple-500',              match: location.pathname === `${orgBase}/crm/companies` },
             { label: 'Pipeline',     to: `${orgBase}/crm/pipeline`,     icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: location.pathname === `${orgBase}/crm/pipeline` },
             { label: 'Deliverables', to: `${orgBase}/crm/deliverables`, icon: Package,    color: 'text-[hsl(var(--success))]',   match: location.pathname === `${orgBase}/crm/deliverables` },
-            { label: 'Social',       to: `${orgBase}/social`,           icon: Sparkles,   color: 'text-[hsl(var(--brand))]',     match: location.pathname.startsWith(`${orgBase}/social`) },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
@@ -1082,6 +1076,28 @@ function OrgSection({
           </Link>
 
           <OrgIntelligenceSection orgId={org.id} location={location} />
+
+          <Link
+            to={`/organizations/${org.id}/members`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/organizations/${org.id}/members` && 'bg-primary/10 text-foreground font-medium'
+            )}
+          >
+            <Users className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span>Members</span>
+          </Link>
+
+          <Link
+            to={`/organizations/${org.id}/integrations`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/organizations/${org.id}/integrations` && 'bg-primary/10 text-foreground font-medium'
+            )}
+          >
+            <Plug className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span>Integrations</span>
+          </Link>
         </div>
 
         {/* Internal projects — collapsible */}
@@ -1354,7 +1370,6 @@ export function Sidebar({ className }: SidebarProps) {
   const [globalViewsExpanded, setGlobalViewsExpanded] = useState(false);
   const [adminPlatformsExpanded, setAdminPlatformsExpanded] = useState(false);
   const [managementExpanded, setManagementExpanded] = useState(false);
-  const [intelligenceExpanded, setIntelligenceExpanded] = useState(false);
 
   // Keyboard shortcut: Cmd+B / Ctrl+B to toggle sidebar
   useKeyToggleSidebar(() => toggleSidebar(), { scope: Scope.GLOBAL });
@@ -1476,45 +1491,9 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
       </div>
 
-      {/* Intelligence, Management, Global Views - Admin Only (collapsed into sections) */}
+      {/* Management, Global Views - Admin Only (collapsed into sections) */}
       {isAdmin && !sidebarCollapsed && (
         <div className="border-b border-border/40">
-          {/* Intelligence & Automation section */}
-          <Collapsible open={intelligenceExpanded} onOpenChange={setIntelligenceExpanded}>
-            <CollapsibleTrigger asChild>
-              <div className="sidebar-nav-item mx-3 my-1.5 justify-between cursor-pointer">
-                <div className="flex items-center gap-2.5">
-                  <Brain className="h-4 w-4" />
-                  <span>Intelligence</span>
-                </div>
-                {intelligenceExpanded ? (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                ) : (
-                  <ChevronRight className="h-3.5 w-3.5" />
-                )}
-              </div>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="px-3 pb-1">
-              <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
-                {INTELLIGENCE_NAV_ITEMS.map((item) => {
-                  const Icon = item.icon;
-                  const active = location.pathname === item.to;
-                  return (
-                    <Link key={item.id} to={item.to}>
-                      <div className={cn(
-                        "sidebar-nav-item text-xs py-1",
-                        active && "sidebar-nav-item-active"
-                      )}>
-                        <Icon className="h-3.5 w-3.5" />
-                        {item.label}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-
           {/* Management section */}
           <Collapsible open={managementExpanded} onOpenChange={setManagementExpanded}>
             <CollapsibleTrigger asChild>
