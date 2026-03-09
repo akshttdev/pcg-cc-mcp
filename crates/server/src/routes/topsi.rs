@@ -5,10 +5,11 @@
 //! ensuring strict client data isolation.
 
 use std::sync::Arc;
+use base64::Engine as _;
 
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     routing::{get, post, put},
 };
 use chrono::{DateTime, Utc};
@@ -212,6 +213,7 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         .route("/topsi/voice/interaction", post(voice_interaction))
         .route("/topsi/voice/config", get(get_voice_config).put(update_voice_config))
         // Meeting mode routes
+        .route("/topsi/meeting/heartbeat", post(heartbeat_meeting))
         .route("/topsi/meeting/list", get(list_meetings))
         .route("/topsi/meeting/start", post(start_meeting))
         .route("/topsi/meeting/join", post(join_meeting))
@@ -219,9 +221,18 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         .route("/topsi/meeting/audio", post(meeting_audio_chunk))
         .route("/topsi/meeting/end", post(end_meeting))
         .route("/topsi/meeting/status/{session_id}", get(meeting_status))
-        .route("/topsi/meeting/notes/{session_id}", get(get_meeting_notes))
+        .route("/topsi/meeting/notes/{session_id}", get(get_meeting_notes).post(regenerate_meeting_notes))
         .route("/topsi/meeting/transcript/{session_id}", get(get_meeting_transcript))
         .route("/topsi/meeting/share/{session_id}", post(share_meeting))
+        // Recording upload / transcript import / person linking
+        .route(
+            "/topsi/meeting/upload",
+            post(upload_meeting_recording)
+                .layer(DefaultBodyLimit::max(200 * 1024 * 1024)),
+        )
+        .route("/topsi/meeting/upload-transcript", post(upload_meeting_transcript))
+        .route("/topsi/meeting/suggest-persons/{session_id}", get(suggest_meeting_persons))
+        .route("/topsi/meeting/link-persons/{session_id}", post(link_meeting_persons))
         .layer(axum::middleware::from_fn(
             crate::middleware::request_id_middleware,
         ))
@@ -448,6 +459,13 @@ pub struct MeetingAudioChunkResponse {
     pub segment_index: i32,
 }
 
+/// Request to send a heartbeat for an active meeting session
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingHeartbeatRequest {
+    pub session_id: String,
+}
+
 /// Request to end a meeting
 #[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -558,6 +576,8 @@ pub struct ListMeetingsResponse {
 pub struct MeetingSessionSummary {
     pub id: String,
     pub project_id: String,
+    pub project_name: Option<String>,
+    pub org_name: Option<String>,
     pub title: String,
     pub status: String,
     pub started_by: String,
@@ -566,6 +586,18 @@ pub struct MeetingSessionSummary {
     pub duration_seconds: Option<i32>,
     pub participant_count: Option<i32>,
     pub notes: Option<serde_json::Value>,
+}
+
+/// Response from joining a meeting, extended with project/org context
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinMeetingResponseFull {
+    pub session_id: String,
+    pub title: String,
+    pub project_id: String,
+    pub project_name: Option<String>,
+    pub org_name: Option<String>,
+    pub participant_count: i32,
 }
 
 // ============================================================================
@@ -1812,14 +1844,65 @@ pub async fn update_voice_config(
 // Meeting Mode Handlers
 // ============================================================================
 
-/// List meeting sessions
+/// Helper: get accessible project IDs (as lowercase hex, 32 chars) for a user
+/// Returns None for admins (all projects accessible).
+async fn get_accessible_project_hex_ids(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    is_admin: bool,
+) -> Option<std::collections::HashSet<String>> {
+    if is_admin {
+        return None;
+    }
+    let uid = match uuid::Uuid::parse_str(user_id) {
+        Ok(u) => u,
+        Err(_) => return Some(std::collections::HashSet::new()),
+    };
+    // project_members.project_id is BLOB; compare via hex
+    let ids: Vec<Vec<u8>> = sqlx::query_scalar(
+        "SELECT DISTINCT project_id FROM project_members WHERE user_id = ?1",
+    )
+    .bind(uid.as_bytes().as_slice())
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    Some(
+        ids.into_iter()
+            .map(|b| hex::encode(&b))
+            .collect(),
+    )
+}
+
+/// Helper: check if a project_id (UUID text with dashes) is accessible given a hex-id set
+fn project_is_accessible(
+    project_id_str: &str,
+    accessible: &Option<std::collections::HashSet<String>>,
+) -> bool {
+    match accessible {
+        None => true, // admin
+        Some(set) => {
+            let hex = project_id_str.replace('-', "").to_lowercase();
+            set.contains(&hex)
+        }
+    }
+}
+
+/// List meeting sessions — scoped to user's accessible projects
 pub async fn list_meetings(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
     Query(params): Query<ListMeetingsQuery>,
 ) -> Result<Json<ListMeetingsResponse>, ApiError> {
     let pool = &state.db().pool;
     let limit = params.limit.unwrap_or(50);
     let offset = params.offset.unwrap_or(0);
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_ctx = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let accessible = get_accessible_project_hex_ids(pool, &user_ctx.user_id, user_ctx.is_admin).await;
 
     let sessions = db::models::meeting_session::MeetingSession::list(
         pool,
@@ -1831,18 +1914,43 @@ pub async fn list_meetings(
     .map_err(|e| ApiError::InternalError(format!("Failed to list meetings: {}", e)))?;
 
     let status_filter = params.status.as_deref();
+
+    // Build a project_id → (project_name, org_name) lookup via a single query
+    #[derive(sqlx::FromRow)]
+    struct ProjectRow {
+        id_hex: String,
+        name: String,
+    }
+    let project_rows: Vec<ProjectRow> = sqlx::query_as(
+        "SELECT lower(hex(id)) as id_hex, name FROM projects WHERE deleted_at IS NULL",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let project_map: std::collections::HashMap<String, String> = project_rows
+        .into_iter()
+        .map(|r| (r.id_hex, r.name))
+        .collect();
+
     let meetings: Vec<MeetingSessionSummary> = sessions
         .into_iter()
         .filter(|s| status_filter.map_or(true, |f| s.status == f))
+        .filter(|s| project_is_accessible(&s.project_id, &accessible))
         .map(|s| {
             let notes_value = s
                 .notes
                 .as_ref()
                 .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok());
 
+            let hex = s.project_id.replace('-', "").to_lowercase();
+            let project_name = project_map.get(&hex).cloned();
+
             MeetingSessionSummary {
                 id: s.id,
                 project_id: s.project_id,
+                project_name,
+                org_name: None, // org→project link not in live DB yet
                 title: s.title,
                 status: s.status,
                 started_by: s.started_by,
@@ -1862,9 +1970,14 @@ pub async fn list_meetings(
 /// Join an existing active meeting session (increments participant count)
 pub async fn join_meeting(
     State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
     Json(request): Json<JoinMeetingRequest>,
 ) -> Result<Json<JoinMeetingResponse>, ApiError> {
     let pool = &state.db().pool;
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_ctx = get_user_context_from_req(&state, auth_header, cookie_header).await;
 
     let session = db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
         .await
@@ -1872,6 +1985,16 @@ pub async fn join_meeting(
 
     if session.status != "active" {
         return Err(ApiError::BadRequest("Meeting is not active".to_string()));
+    }
+
+    // Enforce: user must be a project member (or admin) to join
+    if !user_ctx.is_admin {
+        let accessible = get_accessible_project_hex_ids(pool, &user_ctx.user_id, false).await;
+        if !project_is_accessible(&session.project_id, &accessible) {
+            return Err(ApiError::Forbidden(
+                "You are not a member of this project. Ask the meeting host to add you.".to_string(),
+            ));
+        }
     }
 
     let new_count = session.participant_count.unwrap_or(0) + 1;
@@ -1886,7 +2009,20 @@ pub async fn join_meeting(
     .await
     .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
-    tracing::info!("[MEETING] User joined session {} — participants: {}", session.id, new_count);
+    // Look up project name for the response
+    let project_name: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM projects WHERE lower(hex(id)) = lower(replace(?1, '-', '')) AND deleted_at IS NULL",
+    )
+    .bind(&session.project_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    tracing::info!(
+        "[MEETING] User {} joined session {} (project: {}) — participants: {}",
+        user_ctx.user_id, session.id, session.project_id, new_count
+    );
 
     Ok(Json(JoinMeetingResponse {
         session_id: updated.id,
@@ -1946,6 +2082,18 @@ pub async fn meeting_text_message(
         segment_index: segment.segment_index,
         text,
     }))
+}
+
+/// Heartbeat — bumps updated_at so stale-session cleanup doesn't end this meeting
+pub async fn heartbeat_meeting(
+    State(state): State<DeploymentImpl>,
+    Json(request): Json<MeetingHeartbeatRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+    db::models::meeting_session::MeetingSession::heartbeat(&pool, &request.session_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Heartbeat failed: {}", e)))?;
+    Ok(Json(serde_json::json!({"ok": true})))
 }
 
 /// Start a new meeting session
@@ -2183,8 +2331,15 @@ pub async fn meeting_status(
         .await
         .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
 
-    // Access control
-    if !session.has_access(&user_context.user_id, user_context.is_admin) {
+    // Access control — owner/admin/shared OR any project member
+    let has_access = session.has_access(&user_context.user_id, user_context.is_admin)
+        || db::models::meeting_session::MeetingSession::is_project_member(
+            &pool,
+            &session_id,
+            &user_context.user_id,
+        )
+        .await;
+    if !has_access {
         return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
     }
 
@@ -2223,11 +2378,67 @@ pub async fn get_meeting_notes(
         .await
         .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
 
-    if !session.has_access(&user_context.user_id, user_context.is_admin) {
+    let has_access = session.has_access(&user_context.user_id, user_context.is_admin)
+        || db::models::meeting_session::MeetingSession::is_project_member(
+            &pool,
+            &session_id,
+            &user_context.user_id,
+        )
+        .await;
+    if !has_access {
         return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
     }
 
     let notes = session.notes.and_then(|n| serde_json::from_str::<serde_json::Value>(&n).ok());
+
+    Ok(Json(serde_json::json!({
+        "session_id": session_id,
+        "notes": notes,
+    })))
+}
+
+/// Regenerate AI notes for an ended meeting from its stored DB segments
+pub async fn regenerate_meeting_notes(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    // Only admins or session starters can trigger regeneration
+    let session = db::models::meeting_session::MeetingSession::find_by_id(&pool, &session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
+    if !session.has_access(&user_context.user_id, user_context.is_admin) {
+        return Err(ApiError::Forbidden("Access denied".to_string()));
+    }
+
+    let topsi_instance = get_topsi_instance().await?;
+    let instance = topsi_instance.read().await;
+    let topsi = instance
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Topsi not initialized".to_string()))?;
+
+    let notes = topsi
+        .handle_regenerate_meeting_notes(&session_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Note generation failed: {e}")))?;
+
+    let notes_json = serde_json::to_string(&notes).unwrap_or_default();
+
+    // Persist to DB
+    let _ = db::models::meeting_session::MeetingSession::update(
+        &pool,
+        &session_id,
+        db::models::meeting_session::UpdateMeetingSession {
+            notes: Some(notes_json),
+            ..Default::default()
+        },
+    )
+    .await;
 
     Ok(Json(serde_json::json!({
         "session_id": session_id,
@@ -2251,7 +2462,14 @@ pub async fn get_meeting_transcript(
         .await
         .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
 
-    if !session.has_access(&user_context.user_id, user_context.is_admin) {
+    let has_access = session.has_access(&user_context.user_id, user_context.is_admin)
+        || db::models::meeting_session::MeetingSession::is_project_member(
+            &pool,
+            &session_id,
+            &user_context.user_id,
+        )
+        .await;
+    if !has_access {
         return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
     }
 
@@ -2269,6 +2487,472 @@ pub async fn get_meeting_transcript(
         segments,
         total_count,
     }))
+}
+
+// ============================================================================
+// Recording upload / transcript import / person suggestion + linking
+// ============================================================================
+
+/// POST /api/topsi/meeting/upload — multipart audio file → transcribe → session + notes
+pub async fn upload_meeting_recording(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_ctx = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let mut audio_bytes: Option<Vec<u8>> = None;
+    let mut project_id_str = String::new();
+    let mut title = String::new();
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| ApiError::BadRequest(e.to_string()))? {
+        match field.name() {
+            Some("audio") => {
+                let data = field.bytes().await.map_err(|e| ApiError::BadRequest(e.to_string()))?;
+                audio_bytes = Some(data.to_vec());
+            }
+            Some("project_id") => {
+                project_id_str = field.text().await.unwrap_or_default();
+            }
+            Some("title") => {
+                title = field.text().await.unwrap_or_default();
+            }
+            _ => {}
+        }
+    }
+
+    let audio_bytes = audio_bytes.ok_or_else(|| ApiError::BadRequest("Missing 'audio' field".into()))?;
+    if project_id_str.is_empty() {
+        return Err(ApiError::BadRequest("Missing 'project_id' field".into()));
+    }
+
+    // Verify project exists
+    let project_exists: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM projects WHERE lower(hex(id)) = lower(replace(?1,'-','')) AND deleted_at IS NULL",
+    )
+    .bind(&project_id_str)
+    .fetch_one(&pool)
+    .await
+    .map(|c: i64| c > 0)
+    .unwrap_or(false);
+    if !project_exists {
+        return Err(ApiError::NotFound(format!("Project not found: {}", project_id_str)));
+    }
+
+    // Transcribe via voice engine
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &audio_bytes);
+    let engine_lock = get_or_init_voice_engine().await?;
+    let engine_guard = engine_lock.read().await;
+    let engine = engine_guard
+        .as_ref()
+        .ok_or_else(|| ApiError::InternalError("Voice engine not initialized".into()))?;
+
+    let transcript_text = engine
+        .transcribe_speech(&b64)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Transcription failed: {}", e)))?;
+    drop(engine_guard);
+
+    ingest_transcript_text(&state, &pool, &user_ctx, &project_id_str, &title, &transcript_text, "upload").await
+}
+
+/// POST /api/topsi/meeting/upload-transcript — JSON transcript paste → session + notes
+#[derive(serde::Deserialize)]
+pub struct UploadTranscriptRequest {
+    pub project_id: String,
+    pub title: Option<String>,
+    pub transcript_text: String,
+    pub source: Option<String>,
+}
+
+pub async fn upload_meeting_transcript(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<UploadTranscriptRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_ctx = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let project_exists: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM projects WHERE lower(hex(id)) = lower(replace(?1,'-','')) AND deleted_at IS NULL",
+    )
+    .bind(&body.project_id)
+    .fetch_one(&pool)
+    .await
+    .map(|c: i64| c > 0)
+    .unwrap_or(false);
+    if !project_exists {
+        return Err(ApiError::NotFound(format!("Project not found: {}", body.project_id)));
+    }
+
+    let source = body.source.as_deref().unwrap_or("manual");
+    let title = body.title.as_deref().unwrap_or("Imported Transcript");
+
+    ingest_transcript_text(&state, &pool, &user_ctx, &body.project_id, title, &body.transcript_text, source).await
+}
+
+/// Shared helper: takes a raw transcript string, creates a MeetingSession + segments + notes.
+async fn ingest_transcript_text(
+    state: &DeploymentImpl,
+    pool: &sqlx::SqlitePool,
+    user_ctx: &topsi::UserContext,
+    project_id: &str,
+    title: &str,
+    transcript_text: &str,
+    started_by: &str,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    use db::models::meeting_session::{CreateMeetingSession, CreateMeetingSegment, MeetingSegment, UpdateMeetingSession};
+    use db::models::project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource};
+
+    let display_title = if title.is_empty() { "Imported Recording" } else { title };
+
+    // Create session
+    let session = db::models::meeting_session::MeetingSession::create(
+        pool,
+        CreateMeetingSession {
+            project_id: project_id.to_string(),
+            title: Some(display_title.to_string()),
+            started_by: started_by.to_string(),
+        },
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to create session: {}", e)))?;
+
+    // Split into sentences
+    let sentences: Vec<&str> = transcript_text
+        .split(|c| c == '.' || c == '!' || c == '?' || c == '\n')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let segment_count = sentences.len();
+    for (idx, sentence) in sentences.iter().enumerate() {
+        let _ = MeetingSegment::create(
+            pool,
+            CreateMeetingSegment {
+                meeting_session_id: session.id.clone(),
+                segment_index: idx as i32,
+                speaker_label: None,
+                text: sentence.to_string(),
+                confidence: Some(1.0),
+                start_time_ms: (idx as i64) * 5000,
+                end_time_ms: (idx as i64 + 1) * 5000,
+                is_topsi_addressed: false,
+            },
+        )
+        .await;
+    }
+
+    // Mark as ended
+    let estimated_duration = (segment_count as i32).saturating_mul(5);
+    let _ = db::models::meeting_session::MeetingSession::update(
+        pool,
+        &session.id,
+        UpdateMeetingSession {
+            status: Some(db::models::meeting_session::MeetingStatus::Ended),
+            ended_at: Some(chrono::Utc::now().to_rfc3339()),
+            duration_seconds: Some(estimated_duration),
+            participant_count: Some(1),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    // Generate notes via Topsi
+    let notes_json_str = if let Ok(topsi_arc) = get_topsi_instance().await {
+        let guard = topsi_arc.read().await;
+        if let Some(topsi) = guard.as_ref() {
+            match topsi.handle_regenerate_meeting_notes(&session.id).await {
+                Ok(notes) => {
+                    let s = serde_json::to_string(&notes).unwrap_or_default();
+                    let _ = db::models::meeting_session::MeetingSession::update(
+                        pool,
+                        &session.id,
+                        UpdateMeetingSession {
+                            notes: Some(s.clone()),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
+                    Some(s)
+                }
+                Err(e) => {
+                    tracing::warn!("Note generation failed for uploaded session: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Register in knowledge graph
+    if let Ok(pid) = uuid::Uuid::parse_str(project_id) {
+        let summary = notes_json_str.as_deref().unwrap_or(transcript_text);
+        let _ = ProjectKnowledgeSource::upsert_source(
+            pool,
+            pid,
+            &KnowledgeSourceType::Conversation,
+            &session.id,
+            display_title,
+            Some(&summary[..summary.len().min(500)]),
+            0.85,
+        )
+        .await;
+    }
+
+    let notes_value: Option<serde_json::Value> = notes_json_str
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
+
+    Ok(Json(serde_json::json!({
+        "session_id": session.id,
+        "title": display_title,
+        "notes": notes_value,
+        "segment_count": segment_count,
+    })))
+}
+
+/// GET /api/topsi/meeting/suggest-persons/:session_id
+///
+/// Uses Topsi LLM to identify CRM persons mentioned in the meeting transcript/notes.
+pub async fn suggest_meeting_persons(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_ctx = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(&pool, &session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Session not found: {}", session_id)))?;
+
+    // Build transcript excerpt
+    let segments = db::models::meeting_session::MeetingSegment::find_by_session(&pool, &session_id)
+        .await
+        .unwrap_or_default();
+    let transcript_excerpt: String = segments
+        .iter()
+        .map(|s| s.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let transcript_excerpt = &transcript_excerpt[..transcript_excerpt.len().min(3000)];
+
+    let notes_summary = session.notes.as_deref().unwrap_or("").to_string();
+
+    // Load CRM persons
+    #[derive(sqlx::FromRow)]
+    struct PersonRow {
+        id: String,
+        full_name: String,
+        email: Option<String>,
+        person_type: String,
+    }
+
+    let persons: Vec<PersonRow> = sqlx::query_as(
+        "SELECT id, full_name, email, person_type FROM persons ORDER BY full_name LIMIT 200",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+
+    if persons.is_empty() {
+        return Ok(Json(serde_json::json!({ "suggestions": [] })));
+    }
+
+    let persons_list = persons
+        .iter()
+        .map(|p| format!("{{\"id\":\"{}\",\"name\":\"{}\",\"type\":\"{}\"}}", p.id, p.full_name, p.person_type))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let prompt = format!(
+        "Meeting title: {title}\n\
+         Meeting notes summary: {notes}\n\
+         Transcript excerpt: {transcript}\n\n\
+         CRM persons list: [{persons}]\n\n\
+         From this meeting transcript and notes, identify any people that match from the CRM persons list.\n\
+         Return ONLY a valid JSON array (no markdown, no explanation) in this exact format:\n\
+         [{{\"person_id\":\"...\",\"full_name\":\"...\",\"confidence\":0.0,\"reason\":\"...\"}}]\n\
+         Only include matches with confidence > 0.4. Return [] if none match.",
+        title = session.title,
+        notes = &notes_summary[..notes_summary.len().min(500)],
+        transcript = transcript_excerpt,
+        persons = persons_list,
+    );
+
+    // Use Topsi LLM
+    let topsi_arc = get_topsi_instance().await?;
+    let guard = topsi_arc.read().await;
+    let topsi = guard
+        .as_ref()
+        .ok_or_else(|| ApiError::NotFound("Topsi not initialized".into()))?;
+
+    let req = topsi::TopsiRequest::new(topsi::TopsiRequestType::Chat { message: prompt });
+    let response = topsi
+        .process_request(req, &user_ctx, Some(&session_id))
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Topsi error: {}", e)))?;
+    drop(guard);
+
+    // Extract JSON array from response
+    let text = &response.message;
+    let suggestions: serde_json::Value = {
+        // Try to find a JSON array in the response
+        let start = text.find('[').unwrap_or(0);
+        let end = text.rfind(']').map(|i| i + 1).unwrap_or(text.len());
+        if start < end {
+            serde_json::from_str(&text[start..end]).unwrap_or(serde_json::json!([]))
+        } else {
+            serde_json::json!([])
+        }
+    };
+
+    // Sort by confidence desc
+    let mut arr = suggestions.as_array().cloned().unwrap_or_default();
+    arr.sort_by(|a, b| {
+        let ca = a.get("confidence").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let cb = b.get("confidence").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        cb.partial_cmp(&ca).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    Ok(Json(serde_json::json!({ "suggestions": arr })))
+}
+
+/// POST /api/topsi/meeting/link-persons/:session_id
+///
+/// Links CRM persons to the session and enriches their intelligence profiles with
+/// meeting context.
+#[derive(serde::Deserialize)]
+pub struct LinkPersonsRequest {
+    pub person_ids: Vec<String>,
+}
+
+pub async fn link_meeting_persons(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(session_id): Path<String>,
+    Json(body): Json<LinkPersonsRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(&pool, &session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Session not found: {}", session_id)))?;
+
+    // Build transcript excerpt for context
+    let segments = db::models::meeting_session::MeetingSegment::find_by_session(&pool, &session_id)
+        .await
+        .unwrap_or_default();
+    let transcript_text: String = segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join(" ");
+    let transcript_excerpt = &transcript_text[..transcript_text.len().min(500)];
+
+    // Parse notes summary
+    let notes_summary = session.notes.as_deref().unwrap_or("").to_string();
+    let notes_parsed: Option<serde_json::Value> = serde_json::from_str(&notes_summary).ok();
+    let summary_text = notes_parsed
+        .as_ref()
+        .and_then(|n| n.get("summary").and_then(|s| s.as_str()))
+        .unwrap_or(transcript_excerpt);
+    let topics_text = notes_parsed
+        .as_ref()
+        .and_then(|n| n.get("topics").and_then(|t| t.as_array()))
+        .map(|ts| ts.iter().filter_map(|t| t.as_str()).collect::<Vec<_>>().join(", "))
+        .unwrap_or_default();
+    let actions_text = notes_parsed
+        .as_ref()
+        .and_then(|n| n.get("action_items").and_then(|a| a.as_array()))
+        .map(|acts| acts.iter().filter_map(|a| a.get("description").and_then(|d| d.as_str())).collect::<Vec<_>>().join("; "))
+        .unwrap_or_default();
+
+    // Get project UUID from session
+    let project_uuid = uuid::Uuid::parse_str(&session.project_id).ok();
+
+    // Merge existing linked_person_ids with new ones
+    let mut existing_ids: Vec<String> = serde_json::from_str(&session.linked_person_ids).unwrap_or_default();
+    for pid in &body.person_ids {
+        if !existing_ids.contains(pid) {
+            existing_ids.push(pid.clone());
+        }
+    }
+
+    // Save updated linked_person_ids
+    let _ = db::models::meeting_session::MeetingSession::link_persons(&pool, &session_id, &existing_ids).await;
+
+    let mut enriched_count = 0usize;
+
+    for person_id_str in &body.person_ids {
+        let person_uuid = match uuid::Uuid::parse_str(person_id_str) {
+            Ok(u) => u,
+            Err(_) => continue,
+        };
+
+        #[derive(sqlx::FromRow)]
+        struct PersonRow {
+            full_name: String,
+            intelligence_raw: Option<String>,
+        }
+
+        let person: Option<PersonRow> = sqlx::query_as(
+            "SELECT full_name, intelligence_raw FROM persons WHERE id = ?",
+        )
+        .bind(person_uuid)
+        .fetch_optional(&pool)
+        .await
+        .ok()
+        .flatten();
+
+        let Some(person) = person else { continue };
+
+        let enrichment_append = format!(
+            "\n\n[Meeting: {} on {}]\nSummary: {}\nTopics: {}\nAction items: {}\nContext: {}",
+            session.title,
+            &session.started_at[..10.min(session.started_at.len())],
+            summary_text,
+            topics_text,
+            actions_text,
+            transcript_excerpt,
+        );
+
+        let new_raw = format!(
+            "{}{}",
+            person.intelligence_raw.as_deref().unwrap_or(""),
+            enrichment_append
+        );
+
+        // Append meeting context to the person's raw intelligence field.
+        // Full intelligence integration is handled separately via the /research endpoint.
+        let result: Result<(), sqlx::Error> = sqlx::query(
+            "UPDATE persons SET intelligence_raw = ?, updated_at = datetime('now','subsec') WHERE id = ?",
+        )
+        .bind(&new_raw)
+        .bind(person_uuid)
+        .execute(&pool)
+        .await
+        .map(|_| ());
+
+        if result.is_ok() {
+            enriched_count += 1;
+        } else {
+            tracing::warn!("Failed to enrich person {} from meeting {}", person_id_str, session_id);
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "linked": body.person_ids.len(),
+        "enriched": enriched_count,
+        "linked_person_ids": existing_ids,
+    })))
 }
 
 /// Share a meeting with other users

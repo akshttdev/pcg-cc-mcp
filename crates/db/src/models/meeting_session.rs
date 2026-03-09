@@ -54,6 +54,7 @@ pub struct MeetingSession {
     pub topology_node_id: Option<String>,
     pub access_level: Option<String>,
     pub shared_with: Option<String>,
+    pub linked_person_ids: String, // JSON array e.g. '["uuid1","uuid2"]'
     pub created_at: String,
     pub updated_at: String,
 }
@@ -108,6 +109,7 @@ pub struct UpdateMeetingSession {
     pub notes: Option<String>,
     pub topology_node_id: Option<String>,
     pub shared_with: Option<String>,
+    pub linked_person_ids: Option<String>,
 }
 
 impl MeetingSession {
@@ -120,8 +122,8 @@ impl MeetingSession {
 
         let session = sqlx::query_as::<_, MeetingSession>(
             r#"
-            INSERT INTO meeting_sessions (id, project_id, title, started_by)
-            VALUES (?1, ?2, ?3, ?4)
+            INSERT INTO meeting_sessions (id, project_id, title, started_by, participant_count)
+            VALUES (?1, ?2, ?3, ?4, 1)
             RETURNING *
             "#,
         )
@@ -247,6 +249,7 @@ impl MeetingSession {
                 notes = COALESCE(?9, notes),
                 topology_node_id = COALESCE(?10, topology_node_id),
                 shared_with = COALESCE(?11, shared_with),
+                linked_person_ids = COALESCE(?12, linked_person_ids),
                 updated_at = datetime('now', 'subsec')
             WHERE id = ?1
             RETURNING *
@@ -263,6 +266,7 @@ impl MeetingSession {
         .bind(&data.notes)
         .bind(&data.topology_node_id)
         .bind(&data.shared_with)
+        .bind(&data.linked_person_ids)
         .fetch_optional(pool)
         .await?
         .ok_or(MeetingSessionError::NotFound)
@@ -280,7 +284,7 @@ impl MeetingSession {
         Ok(())
     }
 
-    /// Check if a user has access to this meeting
+    /// Check if a user has access to this meeting (sync — owner/admin/shared only)
     pub fn has_access(&self, user_id: &str, is_admin: bool) -> bool {
         if is_admin {
             return true;
@@ -296,6 +300,81 @@ impl MeetingSession {
             }
         }
         false
+    }
+
+    /// Check if a user is a member of the project this meeting belongs to.
+    /// project_members.project_id and .user_id are stored as BLOBs;
+    /// meeting_sessions.project_id is stored as TEXT (UUID with dashes).
+    pub async fn is_project_member(
+        pool: &SqlitePool,
+        session_id: &str,
+        user_id: &str,
+    ) -> bool {
+        sqlx::query(
+            r#"
+            SELECT 1 FROM meeting_sessions ms
+            JOIN project_members pm
+                ON lower(hex(pm.project_id)) = lower(replace(ms.project_id, '-', ''))
+            WHERE ms.id = ?1
+              AND lower(hex(pm.user_id)) = lower(replace(?2, '-', ''))
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map(|r| r.is_some())
+        .unwrap_or(false)
+    }
+
+    /// Link CRM persons to this meeting session by overwriting the linked_person_ids JSON array.
+    pub async fn link_persons(
+        pool: &SqlitePool,
+        id: &str,
+        person_ids: &[String],
+    ) -> Result<Self, MeetingSessionError> {
+        let json = serde_json::to_string(person_ids).unwrap_or_else(|_| "[]".to_string());
+        MeetingSession::update(
+            pool,
+            id,
+            UpdateMeetingSession {
+                linked_person_ids: Some(json),
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    /// Bump updated_at to keep the session alive (used by heartbeat endpoint).
+    pub async fn heartbeat(pool: &SqlitePool, id: &str) -> Result<(), MeetingSessionError> {
+        sqlx::query(
+            r#"UPDATE meeting_sessions
+               SET updated_at = datetime('now','subsec')
+               WHERE id = ?1 AND status = 'active'"#,
+        )
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Return all active sessions whose updated_at is older than `stale_secs` seconds.
+    pub async fn find_stale_active(
+        pool: &SqlitePool,
+        stale_secs: i64,
+    ) -> Result<Vec<Self>, MeetingSessionError> {
+        let sessions = sqlx::query_as::<_, MeetingSession>(
+            r#"
+            SELECT * FROM meeting_sessions
+            WHERE status = 'active'
+              AND (unixepoch('now') - unixepoch(updated_at)) > ?1
+            "#,
+        )
+        .bind(stale_secs)
+        .fetch_all(pool)
+        .await?;
+        Ok(sessions)
     }
 }
 

@@ -1,6 +1,9 @@
 use axum::{
     Json, Router,
+    body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, State},
+    http::{HeaderMap, HeaderValue, header},
+    response::Response,
     routing::{delete, get, post, put},
 };
 use db::models::data_source::{CreateDataSource, DataSource, UpdateDataSource, metadata_template};
@@ -385,6 +388,73 @@ async fn delete_data_source(
     Ok(Json(ApiResponse::success(())))
 }
 
+/// GET /api/data-sources/:id/download — serve the stored file binary
+async fn download_data_source(
+    Path(id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Response, ApiError> {
+    let pool = &deployment.db().pool;
+    let source = DataSource::find_by_id(pool, id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("{e}")))?
+        .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
+
+    // For text content, serve as a text file
+    if source.source_type == "text" {
+        if let Some(content) = &source.content {
+            let bytes = content.clone().into_bytes();
+            let file_name = format!("{}.txt", source.title.replace(['/', '\\', ':'], "_"));
+            let mut headers = HeaderMap::new();
+            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
+            headers.insert(
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_str(&format!("attachment; filename=\"{}\"", file_name))
+                    .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
+            );
+            return Ok(Response::builder()
+                .status(200)
+                .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", file_name))
+                .body(Body::from(bytes))
+                .map_err(|e| ApiError::InternalError(format!("{e}")))?);
+        }
+    }
+
+    // For file uploads, read from disk
+    let meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or(serde_json::json!({}));
+    let stored_name = meta.get("file_path")
+        .and_then(|v| v.as_str())
+        .or(source.file_path.as_deref())
+        .ok_or_else(|| ApiError::NotFound("File not stored locally".to_string()))?;
+
+    let uploads_dir = utils::cache_dir().join("data_sources");
+    let file_path = uploads_dir.join(stored_name);
+
+    if !file_path.exists() {
+        return Err(ApiError::NotFound("File not found on disk".to_string()));
+    }
+
+    let bytes = std::fs::read(&file_path)
+        .map_err(|e| ApiError::InternalError(format!("Failed to read file: {e}")))?;
+
+    let original_name = meta.get("file_name")
+        .and_then(|v| v.as_str())
+        .or(source.file_name.as_deref())
+        .unwrap_or(&source.title);
+
+    let mime = meta.get("file_mime")
+        .and_then(|v| v.as_str())
+        .unwrap_or("application/octet-stream");
+
+    Ok(Response::builder()
+        .status(200)
+        .header(header::CONTENT_TYPE, mime)
+        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", original_name))
+        .header(header::CONTENT_LENGTH, bytes.len())
+        .body(Body::from(bytes))
+        .map_err(|e| ApiError::InternalError(format!("{e}")))?)
+}
+
 /// GET /api/data-sources/metadata-template/:data_type?source_type=...
 async fn get_metadata_template(
     Path(data_type): Path<String>,
@@ -398,7 +468,6 @@ async fn get_metadata_template(
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/organizations/{org_id}/data-sources", get(list_by_organization))
         .route("/projects/{project_id}/data-sources", get(list_by_project))
         .route("/data-sources", post(create_data_source))
         .route(
@@ -407,4 +476,5 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/data-sources/metadata-template/{data_type}", get(get_metadata_template))
         .route("/data-sources/{id}", get(get_data_source).put(update_data_source).delete(delete_data_source))
+        .route("/data-sources/{id}/download", get(download_data_source))
 }

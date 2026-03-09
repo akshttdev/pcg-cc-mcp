@@ -100,20 +100,18 @@ pub mod command_center;
 pub mod automations;
 pub mod feedback;
 pub mod intelligence;
-pub mod graph;
-pub mod invite_dispatch;
-pub mod companies;
+pub mod media_library;
+pub mod review;
+pub mod pcg_router;
+pub mod oss_listener;
+pub mod oss_listener_bg;
 pub mod data_sources;
 pub mod data_source_workflows;
 pub mod workflow_staging;
 pub mod workflow_triggers;
 pub mod output_schemas;
-pub mod pcg_router;
 pub mod discord;
-pub mod media_library;
-pub mod review;
-pub mod oss_listener;
-pub mod oss_listener_bg;
+pub mod meet;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -186,7 +184,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
         .merge(companies::router(&deployment))
-        .merge(data_sources::router(&deployment))
         .merge(data_source_workflows::router(&deployment))
         .merge(workflow_staging::router(&deployment))
         .merge(workflow_triggers::router(&deployment))
@@ -198,6 +195,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(oss_listener::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
+        .merge(data_sources::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -245,6 +243,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(model_pricing::router(&deployment))
         .merge(feedback::router(&deployment))
         .merge(vibe_treasury::public_router(&deployment))
+        .merge(meet::meet_routes(&deployment))
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))
         .merge(orcha::orcha_routes())

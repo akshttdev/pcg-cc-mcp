@@ -5503,6 +5503,18 @@ export const dataSourcesApi = {
     const response = await makeRequest(`/api/data-sources/${dataSourceId}/artifacts`);
     return handleApiResponse<any[]>(response);
   },
+
+  download: async (id: string): Promise<Blob> => {
+    const response = await fetch(resolveApiUrl(`/api/data-sources/${id}/download`), {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new ApiError(`Download failed: ${response.statusText}`, response.status, response);
+    }
+    return response.blob();
+  },
+
+  downloadUrl: (id: string): string => resolveApiUrl(`/api/data-sources/${id}/download`),
 };
 
 // ── Workflow types ──────────────────────────────────────────────────────────
@@ -6076,6 +6088,70 @@ export interface ReviewComment { id: string; author_name?: string; content: stri
 export interface ReviewDeliverable { id: string; title: string; status: string; description?: string; working_file_url?: string; final_link?: string; }
 export interface ReviewToken { id: string; view_count: number; expires_at?: string; }
 export interface ReviewData { token: ReviewToken; deliverable: ReviewDeliverable; comments: ReviewComment[]; }
+
+export const reviewApi = {
+  getData: async (token: string): Promise<ReviewData> => {
+    const r = await makeRequest(`/api/review/${token}/data`);
+    return handleApiResponse<ReviewData>(r);
+  },
+  addComment: async (token: string, data: { author_name?: string; author_email?: string; content: string; timecode_seconds?: number }): Promise<ReviewComment> => {
+    const r = await makeRequest(`/api/review/${token}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    return handleApiResponse<ReviewComment>(r);
+  },
+  resolve: async (token: string, commentId: string): Promise<ReviewComment> => {
+    const r = await makeRequest(`/api/review/${token}/comments/${commentId}/resolve`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    return handleApiResponse<ReviewComment>(r);
+  },
+};
+
+// Axios-compatible client for pages that use apiClient.get/post/patch/delete
+export const apiClient = {
+  get: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`); const data = await r.json() as T; return { data }; },
+  post: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  patch: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  delete: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`, { method: 'DELETE' }); const data = await r.json() as T; return { data }; },
+};
+
+export const authApi = {
+  getInviteInfo: async (token: string): Promise<{ org_name: string; pending_owner_email?: string }> => {
+    const response = await makeRequest(`/api/auth/invite-info?token=${encodeURIComponent(token)}`);
+    return handleApiResponse(response);
+  },
+  register: async (data: { username: string; password: string; full_name: string; email?: string; invite_token: string }): Promise<void> => {
+    const response = await makeRequest('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
+  },
+};
+
+export const mediaApi = {
+  list: async (projectId: string) => {
+    const r = await makeRequest(`/api/projects/${projectId}/media`);
+    return handleApiResponse<unknown[]>(r);
+  },
+  search: async (projectId: string, q: string) => {
+    const r = await makeRequest(`/api/projects/${projectId}/media/search?q=${encodeURIComponent(q)}`);
+    return handleApiResponse<unknown[]>(r);
+  },
+  upload: async (projectId: string, fd: FormData) => {
+    const r = await makeRequest(`/api/projects/${projectId}/media`, {
+      method: 'POST',
+      headers: {},
+      body: fd,
+    } as RequestInit);
+    return handleApiResponse<unknown>(r);
+  },
+  delete: async (id: string) => {
+    const r = await makeRequest(`/api/media/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(r);
+  },
+};
+
+export interface ReviewComment { id: string; author_name?: string; content: string; timecode_seconds?: number; resolved_at?: string; created_at: string; }
+export interface ReviewData { token: string; deliverable: unknown; comments: ReviewComment[]; }
 
 export const reviewApi = {
   getData: async (token: string): Promise<ReviewData> => {
