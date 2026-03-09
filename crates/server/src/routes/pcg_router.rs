@@ -76,6 +76,24 @@ pub struct PatchRouterModel {
     pub is_enabled: Option<bool>,
     pub provider_base_url: Option<String>,
     pub api_key_env_var: Option<String>,
+    pub api_key_value: Option<String>,
+}
+
+/// Set API key for a provider (updates all models of that provider)
+#[derive(Debug, Deserialize)]
+pub struct SetProviderKeyRequest {
+    pub provider: String,
+    pub api_key: String,
+}
+
+/// Provider key status (returned by GET /pcg-router/provider-keys)
+#[derive(Debug, Serialize)]
+pub struct ProviderKeyStatus {
+    pub provider: String,
+    pub has_key: bool,
+    pub model_count: usize,
+    pub enabled_count: usize,
+    pub env_var: Option<String>,
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -124,7 +142,7 @@ async fn create_model(
 
     let created: PcgRouterModel = sqlx::query_as(
         "SELECT id, name, model_id, provider, provider_base_url, api_key_env_var,
-                priority, context_window, max_output_tokens,
+                api_key_value, priority, context_window, max_output_tokens,
                 supports_tools, supports_vision,
                 cost_per_million_input, cost_per_million_output,
                 is_enabled, created_at, updated_at
@@ -152,6 +170,7 @@ async fn patch_model(
              is_enabled        = COALESCE(?, is_enabled),
              provider_base_url = COALESCE(?, provider_base_url),
              api_key_env_var   = COALESCE(?, api_key_env_var),
+             api_key_value     = COALESCE(?, api_key_value),
              updated_at        = datetime('now','subsec')
          WHERE id = ?",
     )
@@ -160,6 +179,7 @@ async fn patch_model(
     .bind(body.is_enabled)
     .bind(&body.provider_base_url)
     .bind(&body.api_key_env_var)
+    .bind(&body.api_key_value)
     .bind(id)
     .execute(pool)
     .await
@@ -167,7 +187,7 @@ async fn patch_model(
 
     let updated: PcgRouterModel = sqlx::query_as(
         "SELECT id, name, model_id, provider, provider_base_url, api_key_env_var,
-                priority, context_window, max_output_tokens,
+                api_key_value, priority, context_window, max_output_tokens,
                 supports_tools, supports_vision,
                 cost_per_million_input, cost_per_million_output,
                 is_enabled, created_at, updated_at
@@ -477,11 +497,105 @@ async fn forward_to_gemini(
     Ok(resp.json().await?)
 }
 
+// ── Provider key management ──────────────────────────────────────────────────
+
+/// GET /pcg-router/provider-keys — list all providers and their key status
+async fn list_provider_keys(
+    State(deployment): State<DeploymentImpl>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let models = PcgRouterModel::list(&deployment.db().pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Group by provider
+    let mut providers: std::collections::BTreeMap<String, ProviderKeyStatus> =
+        std::collections::BTreeMap::new();
+
+    for model in &models {
+        let entry = providers.entry(model.provider.clone()).or_insert_with(|| {
+            ProviderKeyStatus {
+                provider: model.provider.clone(),
+                has_key: false,
+                model_count: 0,
+                enabled_count: 0,
+                env_var: model.api_key_env_var.clone(),
+            }
+        });
+        entry.model_count += 1;
+        if model.is_enabled {
+            entry.enabled_count += 1;
+        }
+        // Check if any model in this provider has a resolvable key
+        if model.resolve_api_key().is_some() {
+            entry.has_key = true;
+        }
+    }
+
+    let statuses: Vec<ProviderKeyStatus> = providers.into_values().collect();
+    Ok(Json(statuses))
+}
+
+/// POST /pcg-router/provider-keys — set API key for all models of a provider
+async fn set_provider_key(
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<SetProviderKeyRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let pool = &deployment.db().pool;
+
+    // If key is empty, clear it (set to NULL)
+    let key_value: Option<&str> = if body.api_key.is_empty() {
+        None
+    } else {
+        Some(&body.api_key)
+    };
+
+    let result = sqlx::query(
+        "UPDATE pcg_router_models
+         SET api_key_value = ?,
+             updated_at = datetime('now','subsec')
+         WHERE provider = ?",
+    )
+    .bind(key_value)
+    .bind(&body.provider)
+    .execute(pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(json!({
+        "provider": body.provider,
+        "models_updated": result.rows_affected(),
+        "has_key": key_value.is_some(),
+    })))
+}
+
+/// DELETE /pcg-router/provider-keys/:provider — clear API key for a provider
+async fn delete_provider_key(
+    State(deployment): State<DeploymentImpl>,
+    Path(provider): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let pool = &deployment.db().pool;
+
+    sqlx::query(
+        "UPDATE pcg_router_models
+         SET api_key_value = NULL,
+             updated_at = datetime('now','subsec')
+         WHERE provider = ?",
+    )
+    .bind(&provider)
+    .execute(pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/pcg-router/models", get(list_models).post(create_model))
         .route("/pcg-router/models/{id}", patch(patch_model).delete(delete_model))
+        .route("/pcg-router/provider-keys", get(list_provider_keys).post(set_provider_key))
+        .route("/pcg-router/provider-keys/{provider}", delete(delete_provider_key))
         .route("/pcg-router/v1/chat/completions", post(chat_completions))
 }

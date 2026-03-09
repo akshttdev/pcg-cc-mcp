@@ -207,6 +207,7 @@ function OrgCrmSection({
   const isCrmActive =
     isOnOrg &&
     (location.search.includes('tab=contacts') ||
+      location.search.includes('tab=companies') ||
       location.search.includes('tab=pipelines') ||
       location.search.includes('tab=deliverables') ||
       !location.search);
@@ -231,6 +232,7 @@ function OrgCrmSection({
           {[
             { label: 'Overview',     to: `/organizations/${orgId}`,                 icon: LayoutGrid, color: 'text-muted-foreground',        match: isOnOrg && !location.search },
             { label: 'Contacts',     to: `/organizations/${orgId}?tab=contacts`,    icon: Users,      color: 'text-primary',                 match: isOnOrg && location.search.includes('tab=contacts') },
+            { label: 'Companies',    to: `/organizations/${orgId}?tab=companies`,   icon: Building2,  color: 'text-purple-500',              match: isOnOrg && location.search.includes('tab=companies') },
             { label: 'Pipeline',     to: `/organizations/${orgId}?tab=pipelines`,   icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: isOnOrg && location.search.includes('tab=pipelines') },
             { label: 'Deliverables', to: `/organizations/${orgId}?tab=deliverables`,icon: Package,    color: 'text-[hsl(var(--success))]',   match: isOnOrg && location.search.includes('tab=deliverables') },
             { label: 'Experiences',  to: `/organizations/${orgId}?tab=social`,      icon: Sparkles,   color: 'text-[hsl(var(--brand))]',     match: isOnOrg && location.search.includes('tab=social') },

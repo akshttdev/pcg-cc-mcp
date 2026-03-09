@@ -77,6 +77,7 @@ const AgentSettings     = lazy(() => import('@/pages/settings/AgentSettings').th
 const ModelsSettings    = lazy(() => import('@/pages/settings/ModelsSettings').then(m => ({ default: m.ModelsSettings })));
 const McpSettings       = lazy(() => import('@/pages/settings/McpSettings').then(m => ({ default: m.McpSettings })));
 const WalletSettings    = lazy(() => import('@/pages/settings/WalletSettings').then(m => ({ default: m.WalletSettings })));
+const KeysSettings      = lazy(() => import('@/pages/settings/KeysSettings').then(m => ({ default: m.KeysSettings })));
 const NetworkSettings   = lazy(() => import('@/pages/settings/NetworkSettings').then(m => ({ default: m.NetworkSettings })));
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
@@ -283,6 +284,7 @@ function App() {
             <Route path="privacy" element={<PrivacySettings />} />
             <Route path="activity" element={<ActivitySettings />} />
             <Route path="agents" element={<AgentSettings />} />
+            <Route path="keys" element={<KeysSettings />} />
             <Route path="models" element={<ModelsSettings />} />
             <Route path="mcp" element={<McpSettings />} />
             <Route path="airtable" element={<Navigate to="/settings/general" replace />} />
