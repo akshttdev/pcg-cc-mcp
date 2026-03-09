@@ -95,7 +95,6 @@ import {
   Eye,
   Shield,
   Copy,
-  FolderKanban,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -167,7 +166,7 @@ function formatCurrency(amount: number) {
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({
-  orgId: _orgId,
+  orgId,
   projectEntries,
   projectCount,
   clientCount: _clientCount,
@@ -175,7 +174,6 @@ function OverviewTab({
   totalDealValue,
   totalDeals,
   contactCount,
-  onSwitchTab,
 }: {
   orgId: string;
   projectEntries: { id: string; name: string }[];
@@ -185,7 +183,6 @@ function OverviewTab({
   totalDealValue: number;
   totalDeals: number;
   contactCount: number;
-  onSwitchTab: (tab: string) => void;
 }) {
   // Aggregate tasks across all projects
   const taskQueries = useQueries({
@@ -277,23 +274,25 @@ function OverviewTab({
       {/* Quick links */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {[
-          { label: 'Pipelines', icon: Target, tab: 'pipelines', color: 'text-amber-500' },
-          { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
-          { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
-          { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
-          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
-          { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
-          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
-        ].map(({ label, icon: Icon, tab, color }) => (
-          <button
-            key={tab}
-            onClick={() => onSwitchTab(tab)}
-            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group"
+          { label: 'Pipelines', icon: Target, path: 'crm/pipeline', color: 'text-amber-500', summary: `${totalDeals} deals · ${formatCurrency(totalDealValue)}` },
+          { label: 'Contacts', icon: Contact2, path: 'crm/contacts', color: 'text-blue-500', summary: `${contactCount} contacts` },
+          { label: 'Projects', icon: FolderOpen, path: 'projects', color: 'text-emerald-500', summary: `${projectCount} active` },
+          { label: 'Intelligence', icon: Brain, path: 'intelligence', color: 'text-orange-500', summary: 'Data sources & workflows' },
+          { label: 'Members', icon: Users, path: 'members', color: 'text-purple-500', summary: 'Team & roles' },
+          { label: 'Integrations', icon: Plug, path: 'integrations', color: 'text-indigo-500', summary: 'Connected services' },
+        ].map(({ label, icon: Icon, path, color, summary }) => (
+          <Link
+            key={path}
+            to={`/organizations/${orgId}/${path}`}
+            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group cursor-pointer"
           >
             <Icon className={`h-5 w-5 ${color} group-hover:scale-110 transition-transform`} />
-            <span className="text-sm font-medium">{label}</span>
-            <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
+            <div className="min-w-0">
+              <span className="text-sm font-medium block">{label}</span>
+              <span className="text-xs text-muted-foreground">{summary}</span>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+          </Link>
         ))}
       </div>
 
@@ -390,12 +389,102 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
   );
 }
 
+// ── Create Contact Dialog ─────────────────────────────────────────────────────
+
+function CreateContactDialog({
+  open,
+  onClose,
+  orgId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  orgId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [companyName, setCompanyName] = useState('');
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(resolveApiUrl('/api/crm/contacts'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          organization_id: orgId,
+          first_name: firstName || undefined,
+          last_name: lastName || undefined,
+          email: email || undefined,
+          phone: phone || undefined,
+          company_name: companyName || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to create contact');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-contacts', orgId] });
+      toast.success('Contact created');
+      setFirstName(''); setLastName(''); setEmail(''); setPhone(''); setCompanyName('');
+      onClose();
+    },
+    onError: () => toast.error('Failed to create contact'),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Contact</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-fn">First Name</Label>
+              <Input id="ct-fn" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Jane" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-ln">Last Name</Label>
+              <Input id="ct-ln" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Doe" />
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="ct-em">Email</Label>
+            <Input id="ct-em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="ct-ph">Phone</Label>
+            <Input id="ct-ph" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555-0123" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="ct-co">Company</Label>
+            <Input id="ct-co" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme Corp" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={(!firstName.trim() && !lastName.trim() && !email.trim()) || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Contacts Tab ──────────────────────────────────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
   const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
+  const [showCreateContact, setShowCreateContact] = useState(false);
 
   const { data: personContacts = [] } = useQuery<PersonOrgContact[]>({
     queryKey: ['org-person-contacts', orgId],
@@ -451,15 +540,29 @@ function ContactsTab({ orgId }: { orgId: string }) {
             <option key={key} value={key}>{info.label}</option>
           ))}
         </select>
+        <Button size="sm" onClick={() => setShowCreateContact(true)}>
+          <Plus className="h-4 w-4 mr-1" />
+          Add Contact
+        </Button>
         {isLoading && (
           <span className="text-xs text-muted-foreground">Loading contacts…</span>
         )}
       </div>
 
+      <CreateContactDialog
+        open={showCreateContact}
+        onClose={() => setShowCreateContact(false)}
+        orgId={orgId}
+      />
+
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowCreateContact(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Contact
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -762,7 +865,6 @@ function CompaniesTab({ orgId }: { orgId: string }) {
 // ── Deliverables Tab ─────────────────────────────────────────────────────────
 
 function DeliverablesTab({
-  orgId,
   projectEntries,
 }: {
   orgId: string;
@@ -2715,6 +2817,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
     queryKey: ['qb-status-org', orgId],
     queryFn: () => quickbooksApi.getStatus(orgId),
     staleTime: 30_000,
+    retry: false,
   });
 
   const handleQbConnect = () => { window.location.href = quickbooksApi.getConnectUrl(orgId); };
@@ -3052,6 +3155,7 @@ function CommunicationSection() {
     queryKey: ['discord-active-sessions'],
     queryFn: () => discordApi.activeSessions(),
     staleTime: 30_000,
+    retry: false,
   });
 
   return (
@@ -3645,20 +3749,6 @@ const PATH_TO_VIEW: Record<string, string> = {
   'intelligence/topology': 'topology',
 };
 
-// Map tab names to route paths for navigation
-const TAB_TO_PATH: Record<string, string> = {
-  overview: 'crm',
-  contacts: 'crm/contacts',
-  companies: 'crm/companies',
-  pipelines: 'crm/pipeline',
-  deliverables: 'crm/deliverables',
-  social: 'social',
-  knowledge: 'intelligence',
-  members: 'members',
-  projects: 'projects',
-  integrations: 'integrations',
-};
-
 export function OrganizationProfilePage({ defaultTab, defaultPipeline }: OrganizationProfilePageProps = {}) {
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -3679,16 +3769,6 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
   const pipelineFromUrl = searchParams.get('pipeline') || defaultPipeline;
   const clientFilter = searchParams.get('client');
   const viewFromUrl = viewFromPath || searchParams.get('view');
-
-  const setTab = (tab: string) => {
-    // Use path-based navigation
-    const path = TAB_TO_PATH[tab];
-    if (path) {
-      navigate(`${orgBase}/${path}`);
-    } else {
-      navigate(orgBase);
-    }
-  };
 
   const clearClientFilter = () => {
     if (usingPathRoutes) {
@@ -3793,13 +3873,15 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
             </div>
           </div>
 
-          {/* Stat pills */}
-          <div className="flex items-center gap-3 mt-4 flex-wrap">
-            <StatPill icon={FolderOpen} label="Projects" value={allProjects.length} />
-            <StatPill icon={Briefcase} label="Clients" value={clients.length} />
-            <StatPill icon={Users} label="Members" value={members.length} />
-            <StatPill icon={DollarSign} label="Pipeline" value={formatCurrency(totalDealValue)} />
-          </div>
+          {/* Stat pills — overview only */}
+          {tabFromUrl === 'overview' && (
+            <div className="flex items-center gap-3 mt-4 flex-wrap">
+              <StatPill icon={FolderOpen} label="Projects" value={allProjects.length} />
+              <StatPill icon={Briefcase} label="Clients" value={clients.length} />
+              <StatPill icon={Users} label="Members" value={members.length} />
+              <StatPill icon={DollarSign} label="Pipeline" value={formatCurrency(totalDealValue)} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -3816,7 +3898,6 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
                 contactCount={contacts.length}
-                onSwitchTab={setTab}
               />
             )}
 
