@@ -50,6 +50,9 @@ import {
   GitBranch,
   Headphones,
   Workflow,
+  Map,
+  Palette,
+  Rocket,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -121,8 +124,10 @@ interface NavItem {
 
 // Admin tools — separated visually at top
 const ADMIN_NAV_ITEMS: NavItem[] = [
+  { label: 'Site Directory', icon: Map, to: '/site-directory', id: 'site-directory', adminOnly: true },
   { label: 'Nora Command', icon: Crown, to: '/nora', id: 'nora', adminOnly: true },
   { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi', adminOnly: true },
+  { label: 'Mission Control', icon: Rocket, to: '/mission-control', id: 'mission-control', adminOnly: true },
   { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse', adminOnly: true },
   { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
   { label: 'Workflows', icon: Workflow, to: '/workflows', id: 'workflows', adminOnly: true },
@@ -133,6 +138,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
+  { label: 'Vibe', icon: Palette, to: '/vibe', id: 'vibe' },
 ];
 
 // Management nav — admin-only, collapsible
@@ -519,6 +525,30 @@ function ProjectFolder({
             <BookOpen className="h-3 w-3 text-muted-foreground" />
             <span>Knowledge</span>
           </Link>
+
+          {/* Deliverables */}
+          <Link
+            to={`/projects/${project.id}/deliverables`}
+            className={cn(
+              'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/projects/${project.id}/deliverables` && 'bg-primary/10 text-foreground font-medium'
+            )}
+          >
+            <Package className="h-3 w-3 text-muted-foreground" />
+            <span>Deliverables</span>
+          </Link>
+
+          {/* Pulse */}
+          <Link
+            to={`/projects/${project.id}/pulse`}
+            className={cn(
+              'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/projects/${project.id}/pulse` && 'bg-primary/10 text-foreground font-medium'
+            )}
+          >
+            <Activity className="h-3 w-3 text-muted-foreground" />
+            <span>Pulse</span>
+          </Link>
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -809,6 +839,32 @@ function SortableSidebarProjectFolder({
                 >
                   <BookOpen className="h-3 w-3 text-muted-foreground" />
                   <span>Knowledge</span>
+                </Link>
+
+                {/* Deliverables */}
+                <Link
+                  to={`/projects/${project.id}/deliverables`}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                    location.pathname === `/projects/${project.id}/deliverables` &&
+                      'bg-primary/10 text-foreground font-medium'
+                  )}
+                >
+                  <Package className="h-3 w-3 text-muted-foreground" />
+                  <span>Deliverables</span>
+                </Link>
+
+                {/* Pulse */}
+                <Link
+                  to={`/projects/${project.id}/pulse`}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                    location.pathname === `/projects/${project.id}/pulse` &&
+                      'bg-primary/10 text-foreground font-medium'
+                  )}
+                >
+                  <Activity className="h-3 w-3 text-muted-foreground" />
+                  <span>Pulse</span>
                 </Link>
               </>
             )}
