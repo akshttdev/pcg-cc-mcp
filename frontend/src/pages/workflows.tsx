@@ -42,6 +42,7 @@ import {
   Hammer,
   Plus,
   Trash2,
+  BarChart3,
   ClipboardCheck,
   Activity,
   Database,
@@ -53,6 +54,8 @@ import {
 import { agentFlowsApi, wideResearchApi, workflowsApi, dataSourcesApi, stagingApi, resolveApiUrl, DATA_TYPE_OPTIONS } from '@/lib/api';
 import type { AgentFlow, WideResearchSession, WorkflowDefinition, WorkflowStagingRecord } from '@/lib/api';
 import { WorkflowEditor, getNodeTypeDef } from '@/components/workflows/WorkflowEditor';
+import { WorkflowTriggersPanel } from '@/components/workflows/WorkflowTriggersPanel';
+import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
 import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
 
 interface AutomationDefinition {
@@ -668,6 +671,10 @@ function WorkflowBuilderTab() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<WorkflowDefinition | null>(null);
+  const [triggersOpen, setTriggersOpen] = useState(false);
+  const [triggersWorkflow, setTriggersWorkflow] = useState<WorkflowDefinition | null>(null);
+  const [runsOpen, setRunsOpen] = useState(false);
+  const [runsWorkflow, setRunsWorkflow] = useState<WorkflowDefinition | null>(null);
   const [runWorkflow, setRunWorkflow] = useState<WorkflowDefinition | null>(null);
 
   const saveMutation = useMutation({
@@ -781,6 +788,28 @@ function WorkflowBuilderTab() {
                       >
                         <Play className="h-3.5 w-3.5" />
                       </button>
+                      <button
+                        className="p-1 rounded hover:bg-blue-500/10 hover:text-blue-600 transition-colors"
+                        title="Run History"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRunsWorkflow(wf);
+                          setRunsOpen(true);
+                        }}
+                      >
+                        <BarChart3 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        className="p-1 rounded hover:bg-amber-500/10 hover:text-amber-600 transition-colors"
+                        title="Auto-Triggers"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTriggersWorkflow(wf);
+                          setTriggersOpen(true);
+                        }}
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                      </button>
                       {!wf.is_system && (
                         <button
                           className="p-1 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
@@ -807,6 +836,19 @@ function WorkflowBuilderTab() {
         workflow={editingWorkflow}
         onSave={(data) => saveMutation.mutate(data)}
         isSaving={saveMutation.isPending}
+      />
+
+      <WorkflowTriggersPanel
+        open={triggersOpen}
+        onOpenChange={(v) => { setTriggersOpen(v); if (!v) setTriggersWorkflow(null); }}
+        workflowId={triggersWorkflow?.id ?? ''}
+        workflowName={triggersWorkflow?.name}
+      />
+
+      <WorkflowRunsPanel
+        open={runsOpen}
+        onOpenChange={(v) => { setRunsOpen(v); if (!v) setRunsWorkflow(null); }}
+        workflowId={runsWorkflow?.id}
       />
 
       <RunWorkflowDialog
