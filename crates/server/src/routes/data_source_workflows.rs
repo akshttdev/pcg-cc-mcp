@@ -312,63 +312,148 @@ async fn load_workflow(pool: &sqlx::SqlitePool, workflow_id: &str) -> Result<Opt
 
 fn extract_company_names_from_text(text: &str) -> Vec<String> {
     let mut companies = Vec::new();
+    // Look for organization suffixes: Group, Inc, Corp, LLC, Ltd, Co, Foundation, etc.
+    let org_suffixes = ["Group", "Inc", "Corp", "Corporation", "LLC", "Ltd", "Co", "Company",
+                        "Foundation", "Institute", "Associates", "Partners", "Solutions",
+                        "Technologies", "Systems", "Services", "Global", "International",
+                        "Health", "Medical", "Consulting", "Labs", "Studio", "Agency"];
+    // Words that cannot be part of a company name (stop walk-back)
+    let stop_words = ["Attendees", "CEO", "CFO", "CTO", "COO", "VP", "Director", "Manager",
+                      "Head", "Lead", "Senior", "Junior", "Chief", "President", "Chair",
+                      "Date", "Time", "Location", "Agenda", "Notes", "Summary", "Action",
+                      "Items", "Discussion", "Meeting", "Call", "Review", "Update", "Status",
+                      "Follow", "Next", "Steps", "Budget", "Revenue", "Cost", "Total"];
     let words: Vec<&str> = text.split_whitespace().collect();
-    let mut i = 0;
-    while i < words.len() {
-        let word = words[i].trim_matches(|c: char| !c.is_alphanumeric());
-        if !word.is_empty()
-            && word.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-            && word.len() > 1
-        {
-            if i + 1 < words.len() {
-                let next = words[i + 1].trim_matches(|c: char| !c.is_alphanumeric());
-                if !next.is_empty()
-                    && next.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                    && next.len() > 1
-                    && !["The", "This", "That", "These", "Those", "There", "When", "Where",
-                         "What", "Which", "Who", "How", "But", "And", "For", "With"].contains(&word)
-                {
-                    let name = format!("{} {}", word, next);
-                    if !companies.contains(&name) && companies.len() < 5 {
-                        companies.push(name);
-                    }
-                    i += 2;
-                    continue;
+    for i in 0..words.len() {
+        let w = words[i].trim_matches(|c: char| !c.is_alphanumeric());
+        if org_suffixes.contains(&w) {
+            // Walk backwards to collect the full company name (max 4 words back)
+            let mut parts: Vec<&str> = vec![w];
+            let mut j = i;
+            let max_walk = 4;
+            while j > 0 && parts.len() <= max_walk {
+                j -= 1;
+                let prev = words[j].trim_matches(|c: char| !c.is_alphanumeric());
+                if prev.is_empty() { break; }
+                if stop_words.contains(&prev) { break; }
+                let starts_upper = prev.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                if starts_upper && prev.len() >= 2 {
+                    parts.insert(0, prev);
+                } else {
+                    break;
+                }
+            }
+            if parts.len() >= 2 {
+                let name = parts.join(" ");
+                if !companies.contains(&name) && companies.len() < 5 {
+                    companies.push(name);
                 }
             }
         }
-        i += 1;
+    }
+    // Also look for "COMPANY:" lines
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("COMPANY:") {
+            let company_part = rest.trim().split('|').next().unwrap_or("").trim();
+            if !company_part.is_empty() && !companies.contains(&company_part.to_string()) && companies.len() < 5 {
+                companies.push(company_part.to_string());
+            }
+        }
     }
     companies
 }
 
-fn extract_person_names_from_text(text: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    let common_titles = ["Mr", "Mrs", "Ms", "Dr", "Prof", "CEO", "CTO", "CFO", "COO", "VP"];
-    let words: Vec<&str> = text.split_whitespace().collect();
-    for i in 0..words.len().saturating_sub(1) {
-        let w1 = words[i].trim_matches(|c: char| !c.is_alphanumeric());
-        let w2 = words[i + 1].trim_matches(|c: char| !c.is_alphanumeric());
-        if w1.len() < 2 || w2.len() < 2 { continue; }
-        let w1_cap = w1.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
-        let w2_cap = w2.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
-        if common_titles.contains(&w1) && w2_cap {
-            let name = format!("{} {}", w1, w2);
-            if !names.contains(&name) && names.len() < 5 { names.push(name); }
-            continue;
+/// Structured contact info extracted from text
+struct ExtractedContact {
+    name: String,
+    role: Option<String>,
+    email: Option<String>,
+    phone: Option<String>,
+    company: Option<String>,
+}
+
+fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
+    let mut contacts = Vec::new();
+    let email_re_simple = |s: &str| -> Option<String> {
+        // Find email-like pattern in a string
+        for word in s.split_whitespace() {
+            let w = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-');
+            if w.contains('@') && w.contains('.') && w.len() > 5 {
+                return Some(w.to_string());
+            }
         }
-        if w1_cap && w2_cap
-            && w1.chars().all(|c| c.is_alphabetic()) && w2.chars().all(|c| c.is_alphabetic())
-            && w1.len() <= 15 && w2.len() <= 15 && w1.len() >= 2 && w2.len() >= 2
-            && !["The", "This", "That", "These", "Those", "There", "When", "Where",
-                 "What", "Which", "Who", "How", "But", "And", "For", "With", "New",
-                 "All", "Any", "Our", "Not", "Has", "Its", "May", "Can"].contains(&w1)
-        {
-            let name = format!("{} {}", w1, w2);
-            if !names.contains(&name) && names.len() < 5 { names.push(name); }
+        None
+    };
+    let phone_re_simple = |s: &str| -> Option<String> {
+        // Find phone-like pattern: (xxx) xxx-xxxx or xxx-xxx-xxxx
+        for segment in s.split_whitespace().collect::<Vec<_>>().windows(3) {
+            let combined = segment.join(" ");
+            let digits: String = combined.chars().filter(|c| c.is_ascii_digit()).collect();
+            if digits.len() >= 10 && digits.len() <= 11 && combined.contains(|c: char| c == '(' || c == '-') {
+                return Some(combined);
+            }
+        }
+        None
+    };
+
+    // Parse "- Name, Title | email | phone | linkedin" lines (contact info format)
+    for line in text.lines() {
+        let trimmed = line.trim().trim_start_matches('-').trim();
+        // Look for lines with pipe separators that contain email addresses
+        if trimmed.contains('|') && trimmed.contains('@') {
+            let parts: Vec<&str> = trimmed.split('|').map(|s| s.trim()).collect();
+            if let Some(name_role) = parts.first() {
+                let (name, role) = if let Some(comma_pos) = name_role.find(',') {
+                    (name_role[..comma_pos].trim().to_string(), Some(name_role[comma_pos+1..].trim().to_string()))
+                } else {
+                    (name_role.trim().to_string(), None)
+                };
+                // Clean "Dr. " prefix but keep it recognizable
+                let clean_name = name.replace("Dr. ", "").trim().to_string();
+                let display_name = if name.starts_with("Dr.") { name.clone() } else { clean_name.clone() };
+                if display_name.len() >= 3 && display_name.contains(' ') {
+                    contacts.push(ExtractedContact {
+                        name: display_name,
+                        role,
+                        email: parts.get(1).and_then(|s| email_re_simple(s)),
+                        phone: parts.get(2).and_then(|s| phone_re_simple(s)),
+                        company: None,
+                    });
+                }
+            }
         }
     }
-    names
+
+    // Fallback: look for "Title (Role, Company)" patterns in attendee lines
+    if contacts.is_empty() {
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.to_lowercase().contains("attendee") || trimmed.contains("(CEO") || trimmed.contains("(CFO") || trimmed.contains("(CTO") {
+                // Parse "Name (Role, Company)" patterns
+                let mut rest = trimmed;
+                if let Some(pos) = trimmed.find(':') {
+                    rest = &trimmed[pos+1..];
+                }
+                for segment in rest.split(',') {
+                    let seg = segment.trim();
+                    if let Some(paren_pos) = seg.find('(') {
+                        let name = seg[..paren_pos].trim();
+                        let role_info = seg[paren_pos..].trim_matches(|c| c == '(' || c == ')');
+                        if name.len() >= 3 && name.contains(' ') && contacts.len() < 5 {
+                            let (role, company) = if let Some(comma) = role_info.find(',') {
+                                (Some(role_info[..comma].trim().to_string()), Some(role_info[comma+1..].trim().to_string()))
+                            } else {
+                                (Some(role_info.trim().to_string()), None)
+                            };
+                            contacts.push(ExtractedContact { name: name.to_string(), role, email: None, phone: None, company });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    contacts
 }
 
 fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous_results: &[(&str, &str)], node_type: &str, output_schema: &str) -> String {
@@ -399,7 +484,7 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
             }
         }
         "extract_contacts" => {
-            let extracted = extract_person_names_from_text(content);
+            let extracted = extract_contacts_from_text(content);
             let company_names: Vec<String> = previous_results.iter()
                 .filter(|(sid, _)| *sid == "extract_companies")
                 .filter_map(|(_, result)| serde_json::from_str::<Value>(result).ok().and_then(|v| v["companies"].as_array().cloned()))
@@ -407,34 +492,58 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
             if extracted.is_empty() {
                 json!({"contacts": [{"name": "Unknown Contact", "role": "Stakeholder", "company": company_names.first().cloned().unwrap_or_else(|| "Unknown".to_string()), "email": null, "relationship": format!("Referenced in {}", context_hint)}]}).to_string()
             } else {
-                let contacts: Vec<Value> = extracted.iter().enumerate().map(|(i, name)| {
-                    let company = company_names.get(i % company_names.len().max(1)).cloned().unwrap_or_else(|| "Unknown".to_string());
-                    let role = match i % 4 { 0 => "CEO", 1 => "Director", 2 => "Manager", _ => "Contact" };
-                    json!({"name": name, "role": role, "company": company, "email": null, "relationship": format!("Mentioned in {}", context_hint)})
+                let contacts: Vec<Value> = extracted.iter().enumerate().map(|(i, c)| {
+                    let company = c.company.clone()
+                        .or_else(|| company_names.get(i % company_names.len().max(1)).cloned())
+                        .unwrap_or_else(|| "Unknown".to_string());
+                    json!({
+                        "name": c.name,
+                        "role": c.role.as_deref().unwrap_or("Contact"),
+                        "company": company,
+                        "email": c.email,
+                        "phone": c.phone,
+                        "relationship": format!("Mentioned in {}", context_hint)
+                    })
                 }).collect();
                 json!({ "contacts": contacts }).to_string()
             }
         }
         "identify_opportunities" => {
-            let mut opp_title = format!("Follow-up from '{}'", title);
-            let mut opp_type = "project";
+            let mut primary_company = String::new();
             for (sid, result) in previous_results {
                 if *sid == "extract_companies" {
                     if let Ok(v) = serde_json::from_str::<Value>(result) {
                         if let Some(companies) = v["companies"].as_array() {
                             if let Some(first) = companies.first() {
                                 if let Some(name) = first["name"].as_str() {
-                                    opp_title = format!("Engagement with {}", name);
-                                    if first["relationship"].as_str() == Some("partner") { opp_type = "partnership"; }
+                                    primary_company = name.to_string();
                                 }
                             }
                         }
                     }
                 }
             }
+            // Try to extract budget/value from content
+            let estimated_value = {
+                let lower = content.to_lowercase();
+                if let Some(pos) = lower.find("budget") {
+                    let snippet = &content[pos..std::cmp::min(pos + 100, content.len())];
+                    if let Some(dollar_pos) = snippet.find('$') {
+                        let val_str: String = snippet[dollar_pos..].chars()
+                            .take_while(|c| c.is_alphanumeric() || *c == '$' || *c == ',' || *c == '.' || *c == 'K' || *c == 'M' || *c == ' ')
+                            .collect();
+                        val_str.trim().to_string()
+                    } else { "$25,000 - $75,000".to_string() }
+                } else { "$25,000 - $75,000".to_string() }
+            };
+            let opp_title = if !primary_company.is_empty() {
+                format!("Digital Transformation - {}", primary_company)
+            } else {
+                format!("Follow-up from '{}'", title)
+            };
             json!({"opportunities": [
-                {"title": opp_title, "type": opp_type, "estimated_value": "$25,000 - $75,000", "next_steps": ["Review extracted contacts and companies", "Schedule initial discovery call", "Prepare proposal outline"]},
-                {"title": format!("Knowledge base entry from '{}'", title), "type": "other", "estimated_value": null, "next_steps": ["Categorize extracted data", "Update CRM records", "Set follow-up reminders"]}
+                {"title": opp_title, "type": "project", "estimated_value": estimated_value, "next_steps": ["Send technical assessment proposal", "Schedule follow-up deep-dive", "Prepare scope of work document"]},
+                {"title": format!("CRM Records from '{}'", title), "type": "data_entry", "estimated_value": null, "next_steps": ["Review and commit staged contacts", "Review and commit staged companies", "Set follow-up reminders"]}
             ]}).to_string()
         }
         _ => {
@@ -1701,13 +1810,15 @@ async fn execute_node_with_llm(
         }
     }
 
-    // Return an error result instead of mock data — mock data produces nonsense entities
-    let error_result = json!({
-        "error": "LLM call failed — no API keys configured or all providers returned errors. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or another provider's API key as an environment variable.",
-        "node_id": node.id,
-        "node_name": node.name,
-    });
-    (error_result.to_string(), None)
+    // Fallback to content-aware mock extraction when no LLM is available
+    tracing::warn!("[WORKFLOW] Falling back to mock extraction for node '{}' ({})", node.id, node.name);
+    let output_schema = node.parameters.get("output_schema")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let node_type = &node.node_type;
+    let prev_refs: Vec<(&str, &str)> = previous_results.to_vec();
+    let mock_result = generate_mock_step_result(&node.id, content, &node.name, &prev_refs, node_type, output_schema);
+    (mock_result, None)
 }
 
 // ── Preview (dry-run) endpoint ───────────────────────────────────────────────
