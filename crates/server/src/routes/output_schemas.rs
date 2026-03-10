@@ -211,6 +211,23 @@ pub fn company_schema() -> TargetSchema {
         enum_values: None,
         format: None,
     });
+    fields.insert("relationship".to_string(), FieldDef {
+        field_type: "string".to_string(),
+        required: false,
+        description: "Relationship type with this company".to_string(),
+        enum_values: Some(vec![
+            "potential_client".into(), "existing_client".into(), "partner".into(),
+            "competitor".into(), "vendor".into(), "other".into(),
+        ]),
+        format: None,
+    });
+    fields.insert("context".to_string(), FieldDef {
+        field_type: "string".to_string(),
+        required: false,
+        description: "Context or notes about how this company was identified".to_string(),
+        enum_values: None,
+        format: None,
+    });
 
     TargetSchema {
         target_type: "company".to_string(),
@@ -263,6 +280,44 @@ pub fn crm_deal_schema() -> TargetSchema {
         description: "Tags for categorizing the deal".to_string(),
         enum_values: None,
         format: Some("string[]".to_string()),
+    });
+    fields.insert("contact_name".to_string(), FieldDef {
+        field_type: "string".to_string(),
+        required: false,
+        description: "Contact person name for the deal".to_string(),
+        enum_values: None,
+        format: None,
+    });
+    fields.insert("contact_email".to_string(), FieldDef {
+        field_type: "string".to_string(),
+        required: false,
+        description: "Contact email for the deal (used to auto-link CRM contact)".to_string(),
+        enum_values: None,
+        format: Some("email".to_string()),
+    });
+    fields.insert("deal_type".to_string(), FieldDef {
+        field_type: "string".to_string(),
+        required: false,
+        description: "Type of deal or opportunity".to_string(),
+        enum_values: Some(vec![
+            "project".into(), "service".into(), "product".into(),
+            "partnership".into(), "other".into(),
+        ]),
+        format: None,
+    });
+    fields.insert("next_steps".to_string(), FieldDef {
+        field_type: "array".to_string(),
+        required: false,
+        description: "Action items or next steps for the deal".to_string(),
+        enum_values: None,
+        format: Some("string[]".to_string()),
+    });
+    fields.insert("estimated_value".to_string(), FieldDef {
+        field_type: "string".to_string(),
+        required: false,
+        description: "Human-readable estimated value (e.g. $150K)".to_string(),
+        enum_values: None,
+        format: None,
     });
     fields.insert("custom_fields".to_string(), FieldDef {
         field_type: "object".to_string(),

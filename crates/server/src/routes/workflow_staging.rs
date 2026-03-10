@@ -540,15 +540,30 @@ async fn update_company_extra_fields(pool: &SqlitePool, company_id: Uuid, data: 
     let has_extra_fields = data["industry"].as_str().is_some()
         || data["description"].as_str().is_some()
         || data["logo_url"].as_str().is_some()
-        || data["headquarters"].as_str().is_some();
+        || data["headquarters"].as_str().is_some()
+        || data["relationship"].as_str().is_some()
+        || data["context"].as_str().is_some();
 
     if has_extra_fields {
         use db::models::company::UpdateCompany;
+
+        // Merge context into description if no explicit description provided
+        let description = data["description"].as_str()
+            .or_else(|| data["context"].as_str())
+            .map(|s| s.to_string());
+
+        // Store relationship as a tag (e.g. "relationship:partner")
+        let tags = data["relationship"].as_str().map(|r| {
+            let tag_list = vec![format!("relationship:{}", r)];
+            serde_json::to_string(&tag_list).unwrap_or_default()
+        });
+
         let update = UpdateCompany {
             industry: data["industry"].as_str().map(|s| s.to_string()),
-            description: data["description"].as_str().map(|s| s.to_string()),
+            description,
             logo_url: data["logo_url"].as_str().map(|s| s.to_string()),
             headquarters: data["headquarters"].as_str().map(|s| s.to_string()),
+            tags,
             ..Default::default()
         };
         if let Err(e) = Company::update(pool, company_id, update).await {
@@ -854,6 +869,8 @@ async fn store_company_id_in_custom_fields(
 }
 
 /// Build custom_fields JSON with source traceability info, merging with any existing custom_fields.
+/// Also persists extended schema fields (deal_type, next_steps, estimated_value) that don't
+/// have dedicated DB columns.
 fn build_source_custom_fields(record: &WorkflowStagingRecord, data: &Value) -> Option<Value> {
     let mut fields = if let Some(existing) = data["custom_fields"].as_object() {
         existing.clone()
@@ -865,6 +882,17 @@ fn build_source_custom_fields(record: &WorkflowStagingRecord, data: &Value) -> O
         fields.insert("source_data_source_id".to_string(), serde_json::json!(ds_id.to_string()));
     }
     fields.insert("source_workflow_run_id".to_string(), serde_json::json!(record.workflow_run_id.to_string()));
+
+    // Persist extended deal schema fields that have no dedicated DB column
+    if let Some(deal_type) = data["deal_type"].as_str().or_else(|| data["type"].as_str()) {
+        fields.insert("deal_type".to_string(), serde_json::json!(deal_type));
+    }
+    if let Some(next_steps) = data["next_steps"].as_array() {
+        fields.insert("next_steps".to_string(), serde_json::json!(next_steps));
+    }
+    if let Some(est_val) = data["estimated_value"].as_str() {
+        fields.insert("estimated_value".to_string(), serde_json::json!(est_val));
+    }
 
     Some(Value::Object(fields))
 }

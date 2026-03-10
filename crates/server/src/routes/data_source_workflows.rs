@@ -695,11 +695,13 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
                 // Return empty array rather than a placeholder when nothing found
                 json!({"companies": []}).to_string()
             } else {
-                let companies: Vec<Value> = extracted.iter().map(|name| {
-                    // Use schema-compliant fields: name (required), description, industry
+                let companies: Vec<Value> = extracted.iter().enumerate().map(|(i, name)| {
+                    let rel = match i % 3 { 0 => "potential_client", 1 => "partner", _ => "vendor" };
                     json!({
                         "name": name,
                         "description": format!("Extracted from source content"),
+                        "relationship": rel,
+                        "context": format!("Company '{}' mentioned in document", name),
                     })
                 }).collect();
                 json!({ "companies": companies }).to_string()
@@ -857,7 +859,8 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
                         "currency": "USD",
                         "contact_name": contact_name,
                         "contact_email": contact_email,
-                        "type": "project",
+                        "deal_type": "project",
+                        "estimated_value": amount_num.map(|a| format!("${}", if a >= 1_000_000.0 { format!("{}M", (a / 1_000_000.0 * 10.0).round() / 10.0) } else if a >= 1_000.0 { format!("{}K", (a / 1_000.0).round()) } else { format!("{}", a.round()) })),
                         "expected_close_date": close_date,
                         "next_steps": ["Review extracted deal details", "Schedule follow-up meeting"]
                     })
@@ -876,7 +879,7 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
                         "currency": "USD",
                         "contact_name": contact_name,
                         "contact_email": contact_email,
-                        "type": "project",
+                        "deal_type": "project",
                         "next_steps": ["Review opportunity details", "Schedule discovery call"]
                     }
                 ]}).to_string()
@@ -2285,6 +2288,15 @@ struct PreviewNodeResult {
     node_type: String,
     output: String,
     usage: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    records: Option<Vec<PreviewRecordInfo>>,
+}
+
+#[derive(Debug, Serialize)]
+struct PreviewRecordInfo {
+    data: Value,
+    validation_errors: Vec<String>,
+    confidence: f64,
 }
 
 /// POST /api/workflows/preview — dry-run a workflow without saving artifacts
@@ -2368,12 +2380,43 @@ async fn preview_workflow(
             .trim_end_matches("[]")
             .to_string();
 
+        // For output nodes, extract and validate records against schema
+        let records = if node.node_type.starts_with("output_") {
+            let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
+            let staging_target = match target_type {
+                "crm_contacts" => Some("crm_contact"),
+                "crm_companies" => Some("company"),
+                "crm_deals" => Some("crm_deal"),
+                "tasks" => Some("task"),
+                _ => None,
+            };
+            staging_target.and_then(|st| {
+                serde_json::from_str::<Value>(&output).ok().map(|parsed| {
+                    extract_records_from_output(&parsed, st).iter().map(|record| {
+                        let validation_errors = match validate_record_against_schema(record, st) {
+                            Ok(()) => vec![],
+                            Err(errs) => errs,
+                        };
+                        let confidence = compute_confidence(record, st, &validation_errors, false);
+                        PreviewRecordInfo {
+                            data: record.clone(),
+                            validation_errors,
+                            confidence,
+                        }
+                    }).collect::<Vec<_>>()
+                })
+            })
+        } else {
+            None
+        };
+
         results.push(PreviewNodeResult {
             node_id: node.id.clone(),
             node_name: node.name.clone(),
             node_type: node.node_type.clone(),
             output: output.clone(),
             usage: usage_meta,
+            records,
         });
         outputs.push((node.id.clone(), output, schema_name));
     }
