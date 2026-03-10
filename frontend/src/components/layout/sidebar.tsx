@@ -1192,17 +1192,6 @@ function OrgSection({
           <OrgIntelligenceSection orgId={org.id} location={location} />
 
           <Link
-            to={`/organizations/${org.id}/brand-guide`}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-              location.pathname === `/organizations/${org.id}/brand-guide` && 'bg-primary/10 text-foreground font-medium'
-            )}
-          >
-            <Palette className="h-3 w-3 shrink-0 text-pink-500" />
-            <span>Brand Guide</span>
-          </Link>
-
-          <Link
             to={`/organizations/${org.id}/members`}
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',

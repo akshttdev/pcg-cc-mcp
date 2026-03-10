@@ -2807,6 +2807,14 @@ function KnowledgeTab({
   projectEntries: { id: string; name: string }[];
   view?: string | null;
 }) {
+  // Org-level knowledge (brand research, intelligence)
+  const { data: orgKnowledge } = useQuery({
+    queryKey: ['orgKnowledge', orgId],
+    queryFn: () => organizationsApi.getKnowledge(orgId),
+    staleTime: 60_000,
+    enabled: !!orgId,
+  });
+
   const knowledgeQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['projectKnowledge', entry.id],
@@ -2840,9 +2848,11 @@ function KnowledgeTab({
       }
     });
 
+    const orgEntryCount = orgKnowledge?.knowledge_entries?.length ?? 0;
+    totalSources += orgEntryCount;
     const avgCompleteness = coverageCount > 0 ? Math.round((totalCoverage / coverageCount) * 100) : 0;
     return { totalSources, staleSources, avgCompleteness, sourcesByProject };
-  }, [knowledgeQueries, projectEntries]);
+  }, [knowledgeQueries, projectEntries, orgKnowledge]);
 
   // Deep view: "datasources" shows the new data sources table; others filter knowledge by type
   if (view && view !== 'overview') {
@@ -2997,12 +3007,36 @@ function KnowledgeTab({
         <p className="text-xs text-muted-foreground">Loading {loadedCount}/{projectEntries.length} projects...</p>
       )}
 
-      {aggregated.sourcesByProject.length === 0 && !isLoading ? (
+      {orgKnowledge?.knowledge_entries && orgKnowledge.knowledge_entries.length > 0 && (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Brain className="h-4 w-4 text-[hsl(var(--brand))]" />
+              Organization Intelligence
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {orgKnowledge.knowledge_entries.map((entry: any) => (
+                <Badge key={entry.source_id} variant="secondary" className="text-xs gap-1 cursor-default" title={entry.source_summary || entry.source_title}>
+                  <Brain className="h-3 w-3" />
+                  {entry.source_title}
+                  {entry.coverage_score != null && (
+                    <span className="opacity-60 ml-1">{Math.round(entry.coverage_score * 100)}%</span>
+                  )}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {aggregated.sourcesByProject.length === 0 && !isLoading && !(orgKnowledge?.knowledge_entries?.length) ? (
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>No knowledge sources indexed yet</p>
         </div>
-      ) : (
+      ) : aggregated.sourcesByProject.length > 0 ? (
         <div className="space-y-4">
           {aggregated.sourcesByProject.map(({ projectName, projectId, data }) => {
             const completeness = data.completeness
@@ -3053,7 +3087,7 @@ function KnowledgeTab({
             );
           })}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -3262,160 +3296,12 @@ function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: stri
         ))}
       </div>
 
-      {viewFromUrl === 'overview'    && <KnowledgeSection projectEntries={projectEntries} />}
+      {viewFromUrl === 'overview'    && <KnowledgeTab orgId={orgId} projectEntries={projectEntries} />}
       {viewFromUrl === 'datasources' && <DataSourcesIntelView orgId={orgId} projectEntries={projectEntries} />}
       {viewFromUrl === 'artifacts'   && <ArtifactsIntelView projectEntries={projectEntries} />}
       {viewFromUrl === 'workflows'   && <WorkflowsIntelView orgId={orgId} />}
       {viewFromUrl === 'pulse'       && <PulseSection projectEntries={projectEntries} />}
       {viewFromUrl === 'topology'    && <TopologyIntelView projectEntries={projectEntries} />}
-    </div>
-  );
-}
-
-function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string; projectEntries: { id: string; name: string }[] }) {
-  const { data: orgSources = [], isLoading: orgLoading } = useQuery({
-    queryKey: ['dataSources', orgId],
-    queryFn: () => dataSourcesApi.listByOrganization(orgId),
-    staleTime: 60_000,
-  });
-
-  const projSourceQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['dataSourcesProject', entry.id],
-      queryFn: () => dataSourcesApi.listByProject(entry.id),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const isLoading = orgLoading || projSourceQueries.some(q => q.isLoading);
-
-  const sources = useMemo(() => {
-    const projSources = projSourceQueries.flatMap(q => q.data || []);
-    // Deduplicate by id
-    const all = [...orgSources, ...projSources];
-    const seen = new Set<string>();
-    return all.filter(s => {
-      if (seen.has((s as any).id)) return false;
-      seen.add((s as any).id);
-      return true;
-    });
-  }, [orgSources, projSourceQueries]);
-
-  const typeCount = useMemo(() => {
-    const counts: Record<string, number> = {};
-    sources.forEach((s: any) => { counts[s.data_type] = (counts[s.data_type] || 0) + 1; });
-    return counts;
-  }, [sources]);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">Data Library</h3>
-        <Link
-          to={`/organizations/${orgId}/data-sources`}
-          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-        >
-          <Database className="h-3.5 w-3.5" />
-          Open Full Library
-          <ExternalLink className="h-3 w-3" />
-        </Link>
-      </div>
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-          <Loader2 className="h-4 w-4 animate-spin" />Loading data sources...
-        </div>
-      ) : sources.length === 0 ? (
-        <Card className="bg-card/80 border-border/50">
-          <CardContent className="py-8 text-center">
-            <Database className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No data sources yet.</p>
-            <Link to={`/organizations/${orgId}/data-sources`} className="text-sm text-primary hover:underline mt-1 inline-block">
-              Add your first data source →
-            </Link>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {Object.entries(typeCount).map(([type, count]) => (
-            <Card key={type} className="bg-card/80 border-border/50">
-              <CardContent className="pt-4 pb-4">
-                <p className="text-xs text-muted-foreground capitalize">{type.replace(/_/g, ' ')}</p>
-                <p className="text-2xl font-bold mt-1">{count as number}</p>
-              </CardContent>
-            </Card>
-          ))}
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-muted-foreground">Total Files</p>
-              <p className="text-2xl font-bold mt-1 text-primary">{sources.length}</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
-  const knowledgeQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['projectKnowledge', entry.id],
-      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const artifacts = useMemo(() => {
-    const all: { title: string; summary?: string; projectName: string; projectId: string }[] = [];
-    knowledgeQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      ((q.data as any).sources_by_type?.artifact || []).forEach((src: any) => {
-        all.push({ title: src.source_title, summary: src.source_summary, projectName: entry.name, projectId: entry.id });
-      });
-    });
-    return all;
-  }, [knowledgeQueries, projectEntries]);
-
-  const isLoading = knowledgeQueries.some(q => q.isLoading);
-
-  if (isLoading) return (
-    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-      <Loader2 className="h-4 w-4 animate-spin" />Loading artifacts...
-    </div>
-  );
-
-  if (artifacts.length === 0) return (
-    <Card className="bg-card/80 border-border/50">
-      <CardContent className="py-8 text-center">
-        <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-        <p className="text-sm text-muted-foreground">No artifacts in the knowledge graph yet.</p>
-        <p className="text-xs text-muted-foreground mt-1">Artifacts are added automatically when deliverables are marked done.</p>
-      </CardContent>
-    </Card>
-  );
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">{artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''} across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {artifacts.map((a, i) => (
-          <Card key={i} className="bg-card/80 border-border/50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start gap-2">
-                <FileText className="h-4 w-4 text-[hsl(var(--brand))] shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{a.title}</p>
-                  {a.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.summary}</p>}
-                  <Link to={`/projects/${a.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }
@@ -3564,7 +3450,14 @@ const PLATFORM_COLORS: Record<string, string> = {
   youtube: 'text-[#FF0000]',
 };
 
-function SocialTab({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+function SocialTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
+  const { data: brandProfile } = useQuery({
+    queryKey: ['brandProfile', orgId],
+    queryFn: () => organizationsApi.getBrandProfile(orgId),
+    staleTime: 300_000,
+    enabled: !!orgId,
+  });
+
   const accountQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['social-accounts', entry.id],
@@ -3672,10 +3565,64 @@ function SocialTab({ projectEntries }: { projectEntries: { id: string; name: str
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {aggregated.accounts.length === 0 ? (
+            {aggregated.accounts.length === 0 && !brandProfile?.socialInstagram && !brandProfile?.socialLinkedin && !brandProfile?.socialTwitter && !brandProfile?.socialTiktok && !brandProfile?.socialYoutube ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Share2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
                 <p>No social accounts connected</p>
+              </div>
+            ) : aggregated.accounts.length === 0 && brandProfile ? (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground mb-2">From brand profile (not yet connected as monitored accounts)</p>
+                {brandProfile.socialInstagram && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
+                    <Instagram className="h-5 w-5 shrink-0 text-pink-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{brandProfile.socialInstagram}</p>
+                      <p className="text-xs text-muted-foreground">Instagram</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
+                  </div>
+                )}
+                {brandProfile.socialLinkedin && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
+                    <Linkedin className="h-5 w-5 shrink-0 text-blue-600" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{brandProfile.socialLinkedin}</p>
+                      <p className="text-xs text-muted-foreground">LinkedIn</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
+                  </div>
+                )}
+                {brandProfile.socialTwitter && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
+                    <Twitter className="h-5 w-5 shrink-0 text-sky-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{brandProfile.socialTwitter}</p>
+                      <p className="text-xs text-muted-foreground">X / Twitter</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
+                  </div>
+                )}
+                {brandProfile.socialTiktok && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
+                    <Globe className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{brandProfile.socialTiktok}</p>
+                      <p className="text-xs text-muted-foreground">TikTok</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
+                  </div>
+                )}
+                {brandProfile.socialYoutube && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
+                    <Youtube className="h-5 w-5 shrink-0 text-red-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{brandProfile.socialYoutube}</p>
+                      <p className="text-xs text-muted-foreground">YouTube</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-3">
@@ -4708,17 +4655,6 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                   }
                 </Button>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => seedProjectMutation.mutate()}
-                  disabled={seedProjectMutation.isPending}
-                  className="text-xs gap-1.5"
-                >
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  {seedProjectMutation.isPending ? 'Seeding...' : 'Seed Brand Project'}
-                </Button>
-
                 {brandProfile ? (
                   <>
                     <Link to={`/organizations/${orgId}/brand-guide`}>
@@ -4832,7 +4768,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
             </TabsContent>
 
             <TabsContent value="social">
-              <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
+              <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} orgId={orgId} />
             </TabsContent>
 
             <TabsContent value="knowledge">
