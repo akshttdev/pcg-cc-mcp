@@ -50,7 +50,7 @@ import {
   Headphones,
   Workflow,
   Map,
-  Palette,
+  Coins,
   Rocket,
   Plug,
   Cpu,
@@ -142,7 +142,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
   { label: 'Social', icon: Megaphone, to: '/social-command', id: 'social-command' },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
-  { label: 'Vibe', icon: Palette, to: '/vibe', id: 'vibe' },
+  { label: 'VIBE', icon: Coins, to: '/vibe', id: 'vibe' },
 ];
 
 // Management nav — admin-only, collapsible
