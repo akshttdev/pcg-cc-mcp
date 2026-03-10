@@ -34,10 +34,12 @@ import {
   FileText,
   LayoutDashboard,
   Receipt,
+  Sparkles,
   LayoutGrid,
   Brain,
   Bot,
   Share2,
+  Calendar,
   Radio,
   Database,
   MoreHorizontal,
@@ -52,6 +54,7 @@ import {
   Palette,
   Rocket,
   Plug,
+  Cpu,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -149,6 +152,7 @@ const MANAGEMENT_NAV_ITEMS: NavItem[] = [
   { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
   { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
   { label: 'Discord Voice', icon: Headphones, to: '/discord', id: 'discord', adminOnly: true },
+  { label: 'AI Usage', icon: Cpu, to: '/ai-usage', id: 'ai-usage', adminOnly: true },
 ];
 
 // Global views - admin only, collapsible
@@ -313,6 +317,72 @@ function OrgIntelligenceSection({
   );
 }
 
+// ============================================================================
+// CrmSidebarLinks — project-level CRM links (collapsible)
+// ============================================================================
+
+function CrmSidebarLinks({
+  projectId,
+  location,
+  indent = 'pl-5',
+}: {
+  projectId: string;
+  location: ReturnType<typeof useLocation>;
+  indent?: string;
+}) {
+  const crmLinks = useMemo(
+    () => [
+      { label: 'Overview',        to: `/projects/${projectId}/crm/overview`,     icon: BarChart3  },
+      { label: 'Sales Pipeline',  to: `/projects/${projectId}/crm/sales`,        icon: TrendingUp },
+      { label: 'Client Delivery', to: `/projects/${projectId}/crm/delivery`,     icon: Package    },
+      { label: 'Contacts',        to: `/projects/${projectId}/crm`,              icon: Users      },
+      { label: 'Conferences',     to: `/projects/${projectId}/crm/conferences`,  icon: Calendar   },
+    ],
+    [projectId]
+  );
+
+  const hasCrmActive = crmLinks.some((link) => location.pathname === link.to);
+  const [open, setOpen] = useState(hasCrmActive);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            'flex items-center gap-2 w-full pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+            indent,
+            hasCrmActive && 'text-foreground font-medium'
+          )}
+        >
+          <Users className="h-3 w-3 text-primary shrink-0" />
+          <span className="flex-1 text-left">CRM</span>
+          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-4 space-y-0.5 py-0.5">
+          {crmLinks.map((link) => {
+            const isActive = location.pathname === link.to;
+            const Icon = link.icon;
+            return (
+              <Link
+                key={link.to}
+                to={link.to}
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                  isActive && 'bg-primary/10 text-foreground font-medium'
+                )}
+              >
+                <Icon className="h-3 w-3 text-muted-foreground" />
+                <span>{link.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 // ============================================================================
 // ProjectFolder — standalone project card (used in flat fallback list)
@@ -426,6 +496,9 @@ function ProjectFolder({
             <Bot className="h-3 w-3 text-[hsl(var(--brand))]" />
             <span className="font-medium">Controller</span>
           </Link>
+
+          {/* CRM */}
+          <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
 
           {/* Social */}
           <Link
@@ -737,6 +810,9 @@ function SortableSidebarProjectFolder({
                   <span className="font-medium">Controller</span>
                 </Link>
 
+                {/* CRM Section */}
+                <CrmSidebarLinks projectId={project.id} location={location} indent="pl-2" />
+
                 {/* Social Media Link */}
                 <Link
                   to={`/projects/${project.id}/social`}
@@ -994,6 +1070,40 @@ function ClientGroup({
             onToggleProject={onToggleProject}
             queryClient={queryClient}
           />
+
+          {/* Client context quick links */}
+          <div className="pt-1 mt-1 border-t border-border/40 space-y-0.5">
+            {client.crm_person_id && (
+              <Link
+                to={`/crm/people/${client.crm_person_id}`}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+                  location.pathname === `/crm/people/${client.crm_person_id}` && 'bg-primary/10 text-foreground font-medium'
+                )}
+              >
+                <Users className="h-3 w-3 shrink-0" />
+                <span>CRM Profile</span>
+              </Link>
+            )}
+            <Link
+              to={`/organizations/${organizationId}?tab=projects&client=${client.id}`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+              )}
+            >
+              <TrendingUp className="h-3 w-3 shrink-0" />
+              <span>Client Overview</span>
+            </Link>
+            <Link
+              to={`/organizations/${organizationId}?tab=pipelines&client=${client.id}`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+              )}
+            >
+              <Package className="h-3 w-3 shrink-0" />
+              <span>Deliverables</span>
+            </Link>
+          </div>
         </div>
       </CollapsibleContent>
     </Collapsible>

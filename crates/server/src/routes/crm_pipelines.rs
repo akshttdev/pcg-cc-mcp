@@ -22,6 +22,7 @@ use db::models::crm_pipeline::{
 #[derive(Debug, Deserialize)]
 pub struct ListPipelinesQuery {
     pub organization_id: Uuid,
+
     pub pipeline_type: Option<String>,
 }
 
@@ -31,6 +32,7 @@ pub struct ReorderStagesRequest {
 }
 
 /// GET /crm/pipelines - List pipelines for an organization
+
 async fn list_pipelines(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<ListPipelinesQuery>,
@@ -40,17 +42,20 @@ async fn list_pipelines(
     // Ensure default pipelines exist for this org
     CrmPipeline::ensure_defaults_for_org(pool, query.organization_id).await?;
 
+
     let pipelines = if let Some(type_str) = query.pipeline_type {
         let pipeline_type: PipelineType = type_str
             .parse()
             .map_err(|_| ApiError::BadRequest(format!("Invalid pipeline type: {}", type_str)))?;
 
         CrmPipeline::find_by_type_for_org(pool, query.organization_id, pipeline_type)
+
             .await?
             .into_iter()
             .collect()
     } else {
         CrmPipeline::find_by_organization(pool, query.organization_id, None).await?
+
     };
 
     Ok(Json(ApiResponse::success(pipelines)))
@@ -166,6 +171,7 @@ async fn list_org_pipelines(
 
     // Ensure default pipelines exist for the organization
     let _ = CrmPipeline::ensure_defaults_for_org(pool, org_id).await;
+
 
     let pipeline_type_filter = if let Some(ref type_str) = query.pipeline_type {
         Some(

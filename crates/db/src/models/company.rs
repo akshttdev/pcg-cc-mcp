@@ -161,6 +161,7 @@ impl Company {
         Ok(row)
     }
 
+
     pub async fn find_by_organization(
         pool: &SqlitePool,
         org_id: Uuid,
@@ -254,6 +255,7 @@ impl Company {
         }
 
         // Fallback to global name lookup
+
         if let Some(existing) = Self::find_by_name(pool, name).await? {
             return Ok(existing);
         }

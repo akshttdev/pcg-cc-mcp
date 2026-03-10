@@ -8,6 +8,7 @@ use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, Exec
 use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun, UpdateWorkflowRunOnComplete};
 use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
 use regex::Regex;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utils::response::ApiResponse;
@@ -167,6 +168,7 @@ fn default_analysis_workflow() -> WorkflowDefinition {
                         "- job_title: Their role or title if mentioned, null otherwise\n",
                         "- department: Their department if mentioned, null otherwise\n",
                         "- linkedin_url: LinkedIn URL if available, null otherwise\n\n",
+
                         "Output as structured JSON with a top-level \"contacts\" array.\n\n",
                         "Content:\n{{content}}"
                     ),
@@ -190,6 +192,7 @@ fn default_analysis_workflow() -> WorkflowDefinition {
                         "- contact_email: Email of the primary contact for this deal, if known\n",
                         "- contact_name: Name of the primary contact, if known\n",
                         "- type: One of project, partnership, upsell, referral, other\n",
+
                         "- next_steps: Array of concrete next actions\n\n",
                         "Also consider any companies and contacts extracted in previous steps.\n\n",
                         "Output as structured JSON with a top-level \"opportunities\" array.\n\n",
@@ -678,12 +681,14 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
     // Match on exact step_id first (system workflows), then use output_schema to determine mock data
     let key = match step_id {
         "extract_companies" | "extract_contacts" | "identify_opportunities" | "identify_deals" => step_id.to_string(),
+
         _ => {
             // For custom workflows, use output_schema to pick the right mock
             let schema_lower = output_schema.to_lowercase();
             if schema_lower.contains("compan") { "extract_companies".to_string() }
             else if schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people") { "extract_contacts".to_string() }
             else if schema_lower.contains("deal") { "identify_deals".to_string() }
+
             else if schema_lower.contains("opportunit") || node_type == "llm_analyze" { "identify_opportunities".to_string() }
             else { step_id.to_string() }
         }
@@ -703,12 +708,14 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
                         "relationship": rel,
                         "context": format!("Company '{}' mentioned in document", name),
                     })
+
                 }).collect();
                 json!({ "companies": companies }).to_string()
             }
         }
         "extract_contacts" => {
             let extracted = extract_contacts_from_text(content);
+
             let company_names: Vec<String> = previous_results.iter()
                 .filter(|(sid, _)| *sid == "extract_companies")
                 .filter_map(|(_, result)| serde_json::from_str::<Value>(result).ok().and_then(|v| v["companies"].as_array().cloned()))
@@ -738,6 +745,7 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
                         "phone": c.phone,
                         "company_name": company,
                     })
+
                 }).collect();
                 json!({ "contacts": contacts }).to_string()
             }
@@ -747,6 +755,7 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
             let mut primary_company = String::new();
             let mut primary_contact_name = String::new();
             let mut primary_contact_email = String::new();
+
             for (sid, result) in previous_results {
                 if *sid == "extract_companies" {
                     if let Ok(v) = serde_json::from_str::<Value>(result) {
@@ -772,6 +781,7 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
                                 }
                                 if let Some(email) = first["email"].as_str() {
                                     primary_contact_email = email.to_string();
+
                                 }
                             }
                         }
@@ -887,6 +897,7 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
         }
         _ => {
             json!({"result": format!("Analysis of {} chars of content", content.len()), "status": "completed"}).to_string()
+
         }
     }
 }
@@ -1035,6 +1046,7 @@ fn is_fallback_placeholder(record: &Value) -> bool {
     false
 }
 
+
 /// Compute a confidence score (0.0–1.0) for a staging record based on simple heuristics.
 /// - Start at 1.0
 /// - Subtract 0.15 for each missing required field
@@ -1051,6 +1063,7 @@ fn compute_confidence(record: &Value, target_type: &str, validation_errors: &[St
         );
         return 0.1;
     }
+
 
     let mut score: f64 = 1.0;
 
@@ -1701,6 +1714,7 @@ async fn run_workflow(
 
     let mut step_results: Vec<StepResult> = Vec::new();
     let mut step_outputs: Vec<(String, String, String)> = Vec::new(); // (node_id, output, schema_name)
+
     let mut all_usage: Vec<Value> = Vec::new();
 
     for node in &ordered_nodes {
@@ -1708,12 +1722,14 @@ async fn run_workflow(
         let previous: Vec<(&str, &str, &str)> = step_outputs.iter()
             .filter(|(sid, _, _)| deps.contains(sid))
             .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
+
             .collect();
 
         let (output, usage_meta) = if node.node_type.starts_with("output_") {
             // Output nodes pass through their input data unchanged
             let input_data = previous.iter()
                 .map(|(_, result, _)| result.to_string())
+
                 .collect::<Vec<_>>()
                 .join("\n");
             (input_data, None)
@@ -1728,6 +1744,7 @@ async fn run_workflow(
             .unwrap_or("")
             .trim_end_matches("[]")
             .to_string();
+
 
         let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
         let mut artifact_metadata = json!({
@@ -1759,11 +1776,13 @@ async fn run_workflow(
             artifact_id: artifact.id,
         });
         step_outputs.push((node.id.clone(), output, schema_name));
+
     }
 
     // Check if any LLM node failed (returned error JSON) — fail the run early
     let llm_errors: Vec<String> = step_outputs.iter()
         .filter_map(|(node_id, output, _)| {
+
             serde_json::from_str::<Value>(output).ok()
                 .and_then(|v| v.get("error").and_then(|e| e.as_str().map(|s| format!("Node '{}': {}", node_id, s))))
         })
@@ -1823,6 +1842,7 @@ async fn run_workflow(
 
         // Find this node's output
         if let Some((_, output, _)) = step_outputs.iter().find(|(id, _, _)| id == &node.id) {
+
             if let Ok(parsed) = serde_json::from_str::<Value>(output) {
                 let records = extract_records_from_output(&parsed, staging_target);
                 for record in records {
@@ -1847,6 +1867,7 @@ async fn run_workflow(
 
                     // Validate the record against the target schema
                     let mut validation_errors = match validate_record_against_schema(&record, staging_target) {
+
                         Ok(()) => None,
                         Err(errs) => {
                             tracing::warn!(
@@ -1869,6 +1890,7 @@ async fn run_workflow(
                     if !precommit_errs.is_empty() {
                         validation_errors.get_or_insert_with(Vec::new).extend(precommit_errs);
                     }
+
 
                     let is_duplicate = dup_id.is_some();
                     let confidence = compute_confidence(
@@ -2100,6 +2122,7 @@ async fn execute_node_with_llm(
     node: &WorkflowNode,
     content: &str,
     previous_results: &[(&str, &str, &str)],  // (node_id, output, schema_name)
+
     model: &str,
     target_schemas: &[String],
 ) -> (String, Option<Value>) {
@@ -2111,6 +2134,7 @@ async fn execute_node_with_llm(
     // {{previous_results}} — backwards-compatible merged text of all upstream outputs
     let prev_text = previous_results.iter()
         .map(|(id, result, _)| format!("[{}]: {}", id, result))
+
         .collect::<Vec<_>>()
         .join("\n\n");
 
@@ -2128,6 +2152,7 @@ async fn execute_node_with_llm(
     let wrapped_content = format!("--- BEGIN SOURCE CONTENT ---\n{}\n--- END SOURCE CONTENT ---", content);
 
     let mut prompt = prompt_template
+
         .replace("{{content}}", &wrapped_content)
         .replace("{{previous_results}}", &prev_text)
         .replace("{{target_schema}}", &schema_text);
@@ -2140,6 +2165,7 @@ async fn execute_node_with_llm(
             prompt = prompt.replace(&placeholder, result);
         }
     }
+
 
     // If target_schema is non-empty but the prompt didn't contain the placeholder, append it
     let prompt = if !schema_text.is_empty() && !prompt_template.contains("{{target_schema}}") {
@@ -2276,6 +2302,7 @@ async fn execute_node_with_llm(
     let prev_refs: Vec<(&str, &str)> = previous_results.iter().map(|(id, out, _)| (*id, *out)).collect();
     let mock_result = generate_mock_step_result(&node.id, content, &node.name, &prev_refs, node_type, output_schema);
     (mock_result, None)
+
 }
 
 // ── Preview (dry-run) endpoint ───────────────────────────────────────────────
@@ -2297,6 +2324,7 @@ struct PreviewRecordInfo {
     data: Value,
     validation_errors: Vec<String>,
     confidence: f64,
+
 }
 
 /// POST /api/workflows/preview — dry-run a workflow without saving artifacts
@@ -2360,12 +2388,14 @@ async fn preview_workflow(
         let previous: Vec<(&str, &str, &str)> = outputs.iter()
             .filter(|(sid, _, _)| deps.contains(sid))
             .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
+
             .collect();
 
         let (output, usage_meta) = if node.node_type.starts_with("output_") {
             // Output nodes pass through their input data unchanged
             let input_data = previous.iter()
                 .map(|(_, result, _)| result.to_string())
+
                 .collect::<Vec<_>>()
                 .join("\n");
             (input_data, None)
@@ -2410,6 +2440,7 @@ async fn preview_workflow(
             None
         };
 
+
         results.push(PreviewNodeResult {
             node_id: node.id.clone(),
             node_name: node.name.clone(),
@@ -2419,6 +2450,7 @@ async fn preview_workflow(
             records,
         });
         outputs.push((node.id.clone(), output, schema_name));
+
     }
 
     Ok(Json(ApiResponse::success(results)))
@@ -2691,6 +2723,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
             }
 
             let mut step_outputs: Vec<(String, String, String)> = Vec::new(); // (node_id, output, schema_name)
+
             let mut all_usage: Vec<serde_json::Value> = Vec::new();
             let mut staged_records: i64 = 0;
 
@@ -2699,11 +2732,13 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 let previous: Vec<(&str, &str, &str)> = step_outputs.iter()
                     .filter(|(sid, _, _)| deps.contains(sid))
                     .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
+
                     .collect();
 
                 let (output, usage_meta) = if node.node_type.starts_with("output_") {
                     let input_data = previous.iter()
                         .map(|(_, result, _)| result.to_string())
+
                         .collect::<Vec<_>>()
                         .join("\n");
                     (input_data, None)
@@ -2717,6 +2752,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                     .unwrap_or("")
                     .trim_end_matches("[]")
                     .to_string();
+
 
                 let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
                 let mut artifact_metadata = serde_json::json!({
@@ -2746,6 +2782,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 }
 
                 step_outputs.push((node.id.clone(), output, schema_name));
+
             }
 
             // Create staging records for output nodes
@@ -2760,6 +2797,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 };
 
                 if let Some((_, output, _)) = step_outputs.iter().find(|(id, _, _)| id == &node.id) {
+
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(output) {
                         let records = extract_records_from_output(&parsed, staging_target);
                         for record in records {
@@ -2778,6 +2816,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                                 None => (None, None),
                             };
                             let mut validation_errors = match validate_record_against_schema(&record, staging_target) {
+
                                 Ok(()) => None,
                                 Err(errs) => Some(errs),
                             };
@@ -2794,6 +2833,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                             if !precommit_errs.is_empty() {
                                 validation_errors.get_or_insert_with(Vec::new).extend(precommit_errs);
                             }
+
 
                             let is_duplicate = dup_id.is_some();
                             let confidence = compute_confidence(

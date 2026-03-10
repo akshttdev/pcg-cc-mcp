@@ -20,6 +20,7 @@ use db::models::crm_deal::{
 #[derive(Debug, Deserialize)]
 pub struct ListDealsQuery {
     pub organization_id: Option<Uuid>,
+
     pub pipeline_id: Option<Uuid>,
     pub stage_id: Option<Uuid>,
     pub contact_id: Option<Uuid>,
@@ -49,6 +50,7 @@ async fn list_deals(
     } else {
         return Err(ApiError::BadRequest(
             "Must provide organization_id, pipeline_id, stage_id, or contact_id".to_string(),
+
         ));
     };
 
@@ -94,6 +96,7 @@ async fn create_deal(
         r#"
         INSERT INTO crm_activities (
             id, organization_id, crm_contact_id, crm_deal_id, activity_type,
+
             subject, activity_at
         )
         VALUES (?1, ?2, ?3, ?4, 'deal_created', ?5, datetime('now', 'subsec'))
@@ -101,6 +104,7 @@ async fn create_deal(
     )
     .bind(Uuid::new_v4())
     .bind(deal.organization_id)
+
     .bind(deal.crm_contact_id)
     .bind(deal.id)
     .bind(format!("Created deal: {}", deal.name))
@@ -210,6 +214,7 @@ async fn move_deal_stage(
                                 )
                                 .await;
                             }
+
                         }
                     }
                 }
@@ -230,6 +235,7 @@ async fn list_org_deals(
     Ok(Json(ApiResponse::success(deals)))
 }
 
+
 /// DELETE /crm/deals/:id - Delete deal
 async fn delete_deal(
     State(deployment): State<DeploymentImpl>,
@@ -243,6 +249,7 @@ async fn delete_deal(
 #[derive(Debug, Deserialize)]
 pub struct MetricsQuery {
     pub organization_id: Uuid,
+
     pub pipeline_id: Option<Uuid>,
 }
 
@@ -287,6 +294,7 @@ async fn get_metrics(
         CrmDeal::find_by_pipeline(pool, pipeline_id).await?
     } else {
         CrmDeal::find_by_organization(pool, query.organization_id).await?
+
     };
 
     let total_deals = deals.len() as i64;
@@ -382,4 +390,5 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/deals/{id}/stage", patch(move_deal_stage))
         // Org-scoped CRM deal routes
         .route("/organizations/{org_id}/crm/deals", get(list_org_deals))
+
 }

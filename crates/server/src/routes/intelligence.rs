@@ -7,6 +7,7 @@
 //!   4. Results are stored in persons.intelligence_* fields
 //!   5. Social profiles, company contact methods, proposals, tasks, and
 //!      business analysis files are all created/updated from the research output.
+
 //!
 //! The endpoint is non-blocking — it sets intelligence_status='queued', fires
 //! the Nora request asynchronously, and returns immediately with a job token.
@@ -31,6 +32,7 @@ use crate::{
     routes::nora::get_nora_instance,
 };
 
+
 use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 
 // ── Request / Response types ──────────────────────────────────────────────────
@@ -38,6 +40,7 @@ use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 #[derive(Debug, Deserialize)]
 pub struct ResearchRequest {
     pub project_id: Option<Uuid>,
+
     pub agent_preference: Option<String>,
 }
 
@@ -61,6 +64,7 @@ pub struct IntelligenceStatusResponse {
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// POST /api/persons/:id/research
+
 pub async fn trigger_research(
     State(d): State<DeploymentImpl>,
     Path(person_id): Path<Uuid>,
@@ -68,9 +72,11 @@ pub async fn trigger_research(
 ) -> Result<Json<ApiResponse<ResearchJobResponse>>, ApiError> {
     let pool = &d.db().pool;
 
+
     let person = Person::find_by_id(pool, person_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Person not found".into()))?;
+
 
     sqlx::query(
         "UPDATE persons SET intelligence_status = 'queued', \
@@ -84,6 +90,7 @@ pub async fn trigger_research(
     let agent_pref = body.agent_preference.as_deref().unwrap_or("Scout");
     let project_context = body.project_id
         .map(|pid| format!(" Project context: {}.", pid))
+
         .unwrap_or_default();
 
     let research_prompt = format!(
@@ -111,11 +118,13 @@ pub async fn trigger_research(
            \"recommended_approach\": \"1 sentence\", \
            \"confidence\": 0.8 \
          }}.{}",
+
         agent_pref,
         person.full_name,
         person.email.as_deref().unwrap_or("unknown"),
         person.company_name.as_deref().unwrap_or("unknown"),
         person.job_title.as_deref().unwrap_or("unknown"),
+
         person.person_type,
         project_context
     );
@@ -132,6 +141,7 @@ pub async fn trigger_research(
             project_id,
         )
         .await;
+
         if let Err(e) = result {
             tracing::error!("Intelligence research failed for person {}: {}", person_id, e);
             let _ = sqlx::query(
@@ -200,6 +210,7 @@ async fn run_research_via_nora(
     let person_id = person.id;
     let full_name = person.full_name.clone();
 
+
     sqlx::query(
         "UPDATE persons SET intelligence_status = 'running', updated_at = datetime('now','subsec') WHERE id = ?",
     )
@@ -219,6 +230,7 @@ async fn run_research_via_nora(
         let Some(nora) = nora_guard.as_ref() else {
             drop(nora_guard);
             return run_research_direct(pool, &person, project_id).await;
+
         };
 
         let nora_request = NoraRequest {
@@ -264,6 +276,7 @@ async fn run_research_via_nora(
 async fn run_research_direct(
     pool: &sqlx::SqlitePool,
     person: &Person,
+
     project_id: Option<Uuid>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use serde_json::json;
@@ -300,16 +313,19 @@ async fn run_research_direct(
         person.company_name.as_deref().unwrap_or("unknown"),
         person.email.as_deref().unwrap_or("unknown"),
         person.job_title.as_deref().unwrap_or("unknown"),
+
     );
 
     let body = json!({
         "model": "claude-sonnet-4-6",
         "max_tokens": 2048,
+
         "system": system,
         "tools": [{
             "type": "web_search_20250305",
             "name": "web_search",
             "max_uses": 5
+
         }],
         "messages": [{"role": "user", "content": prompt}]
     });
@@ -349,6 +365,7 @@ async fn write_intelligence_results(
     pool: &sqlx::SqlitePool,
     person: &Person,
     parsed: &serde_json::Value,
+
     summary: &str,
     confidence: f64,
     raw: &str,
@@ -357,6 +374,7 @@ async fn write_intelligence_results(
     let person_id = person.id;
 
     // 1. Update person intelligence fields
+
     sqlx::query(
         "UPDATE persons SET \
          intelligence_status = 'done', \
@@ -436,12 +454,14 @@ async fn write_intelligence_results(
     if let Some(pid) = project_id {
         let source_id = person_id.to_string();
         let source_summary = Some(format!("Scout intelligence: {}", summary));
+
         let _ = ProjectKnowledgeSource::upsert_source(
             pool,
             pid,
             &KnowledgeSourceType::Entity,
             &source_id,
             &format!("Person: {}", person.full_name),
+
             source_summary.as_deref(),
             confidence,
         )
@@ -952,12 +972,14 @@ fn parse_research_json(text: &str) -> serde_json::Value {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text[start..=end]) {
                     if v.is_object() {
                         return v;
+
                     }
                 }
             }
         }
     }
     serde_json::Value::Object(Default::default())
+
 }
 
 fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String {
@@ -977,6 +999,7 @@ fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String 
     // Check for error
     if let Some(err) = response.get("error") {
         return format!("API error: {}", err);
+
     }
     response.to_string()
 }
@@ -1260,6 +1283,7 @@ async fn write_company_intel_results(
     .await;
 }
 
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
@@ -1268,5 +1292,6 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/persons/{id}/intelligence-status", get(get_intelligence_status))
         .route("/companies/{id}/research", post(trigger_company_research))
         .route("/companies/{id}/intelligence-status", get(get_company_intelligence_status))
+
         .with_state(deployment.clone())
 }

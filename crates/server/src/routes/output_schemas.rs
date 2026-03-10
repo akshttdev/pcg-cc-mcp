@@ -229,6 +229,7 @@ pub fn company_schema() -> TargetSchema {
         format: None,
     });
 
+
     TargetSchema {
         target_type: "company".to_string(),
         description: "Company/Organization record".to_string(),
@@ -319,6 +320,7 @@ pub fn crm_deal_schema() -> TargetSchema {
         enum_values: None,
         format: None,
     });
+
     fields.insert("custom_fields".to_string(), FieldDef {
         field_type: "object".to_string(),
         required: false,

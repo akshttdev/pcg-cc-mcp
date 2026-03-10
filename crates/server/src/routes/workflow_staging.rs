@@ -106,6 +106,7 @@ pub fn validate_staging_record(target_type: &str, data: &Value) -> Vec<String> {
     errors
 }
 
+
 // ── Query params ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -204,11 +205,13 @@ async fn update_staging_record(
 
     // Verify record exists
     let existing = WorkflowStagingRecord::find_by_id(pool, id)
+
         .await
         .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Staging record not found".to_string()))?;
 
     // Update record_data if provided, and re-validate
+
     if let Some(ref data) = req.record_data {
         WorkflowStagingRecord::update_record_data(pool, id, data)
             .await
@@ -220,6 +223,7 @@ async fn update_staging_record(
         WorkflowStagingRecord::update_validation_errors(pool, id, errs_opt.as_deref())
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to update validation errors: {e}")))?;
+
     }
 
     // Update status if provided
@@ -311,6 +315,7 @@ async fn batch_commit(
     }
     approved.sort_by_key(|r| target_type_order(&r.target_type));
 
+
     let mut committed: i64 = 0;
     let mut errors: i64 = 0;
     let mut results = Vec::new();
@@ -343,6 +348,7 @@ async fn batch_commit(
             }
         }
     }
+
 
     Ok(Json(ApiResponse::success(BatchCommitResult {
         committed,
@@ -387,6 +393,7 @@ async fn commit_record(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Com
 async fn commit_contact(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Result<Uuid, String> {
     let data: Value = serde_json::from_str(&record.record_data).map_err(|e| e.to_string())?;
     let organization_id = record.organization_id.ok_or("No organization_id set")?;
+
 
     let lifecycle_stage = data["lifecycle_stage"]
         .as_str()
@@ -481,6 +488,7 @@ async fn commit_contact(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
         avatar_url: data["avatar_url"].as_str().map(|s| s.to_string()),
         company_name: company_name.clone(),
         job_title,
+
         department: data["department"].as_str().map(|s| s.to_string()),
         linkedin_url: data["linkedin_url"].as_str().map(|s| s.to_string()),
         twitter_handle: data["twitter_handle"].as_str().map(|s| s.to_string()),
@@ -497,6 +505,7 @@ async fn commit_contact(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
 
     // Auto-link: if company_name is present, find or create the Company record
     auto_link_company(pool, contact.id, &company_name, &data, record.organization_id).await;
+
 
     Ok(contact.id)
 }
@@ -520,6 +529,7 @@ async fn commit_company(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
             return Ok(existing.id);
         }
     }
+
 
     let company = Company::find_or_create(
         pool,
@@ -569,11 +579,13 @@ async fn update_company_extra_fields(pool: &SqlitePool, company_id: Uuid, data: 
         if let Err(e) = Company::update(pool, company_id, update).await {
             tracing::warn!(
                 company_id = %company_id,
+
                 error = %e,
                 "Failed to update company with additional fields from workflow"
             );
         }
     }
+
 }
 
 async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Result<Uuid, String> {
@@ -585,12 +597,14 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
 
     // Find a sales pipeline for this organization
     let pipelines = CrmPipeline::find_by_organization(pool, organization_id, Some(PipelineType::Sales))
+
         .await
         .map_err(|e| e.to_string())?;
 
     let pipeline = pipelines
         .iter()
         .find(|p| p.is_default == Some(1))
+
         .or_else(|| pipelines.first());
 
     let (pipeline_id, stage_id) = if let Some(p) = pipeline {
@@ -610,6 +624,7 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
             Err(e) => {
                 tracing::error!(
                     organization_id = %organization_id,
+
                     error = %e,
                     "Failed to create default Sales Pipeline — deal will have no pipeline"
                 );
@@ -669,6 +684,7 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         return Ok(existing_deal.id);
     }
 
+
     let tags: Option<Vec<String>> = data["tags"]
         .as_array()
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
@@ -680,6 +696,7 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
     let create = CreateCrmDeal {
         organization_id,
         client_id: None,
+
         crm_contact_id,
         crm_pipeline_id: pipeline_id,
         crm_stage_id: stage_id,
@@ -688,6 +705,7 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         amount: data["amount"].as_f64(),
         currency: data["currency"].as_str().map(|s| s.to_string()),
         expected_close_date: data["expected_close_date"].as_str().map(|s| normalize_datetime(s)),
+
         tags,
         custom_fields,
     };
@@ -715,6 +733,7 @@ async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
             }
         }
     }
+
 }
 
 async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Result<Uuid, String> {
@@ -762,6 +781,7 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         priority,
         assignee_id: None,
         assignee_type: None,
+
         assigned_agent: None,
         agent_id: None,
         assigned_mcps: None,
@@ -871,6 +891,7 @@ async fn store_company_id_in_custom_fields(
 /// Build custom_fields JSON with source traceability info, merging with any existing custom_fields.
 /// Also persists extended schema fields (deal_type, next_steps, estimated_value) that don't
 /// have dedicated DB columns.
+
 fn build_source_custom_fields(record: &WorkflowStagingRecord, data: &Value) -> Option<Value> {
     let mut fields = if let Some(existing) = data["custom_fields"].as_object() {
         existing.clone()
@@ -903,6 +924,7 @@ async fn resolve_deal_contact(pool: &SqlitePool, organization_id: Uuid, data: &V
     if let Some(email) = data["contact_email"].as_str() {
         if !email.trim().is_empty() {
             match CrmContact::find_by_email(pool, organization_id, email).await {
+
                 Ok(Some(contact)) => {
                     tracing::info!(
                         deal_contact_email = email,
@@ -934,6 +956,7 @@ async fn resolve_deal_contact(pool: &SqlitePool, organization_id: Uuid, data: &V
             let search_params = db::models::crm_contact::ContactSearchParams {
                 organization_id: Some(organization_id),
                 client_id: None,
+
                 query: Some(name.to_string()),
                 lifecycle_stage: None,
                 company_name: None,
@@ -976,6 +999,7 @@ async fn create_default_sales_pipeline(pool: &SqlitePool, organization_id: Uuid)
     let pipeline = CrmPipeline::create(pool, CreateCrmPipeline {
         organization_id: Some(organization_id),
         client_id: None,
+
         name: "Sales Pipeline".to_string(),
         description: Some("Auto-created by workflow commit".to_string()),
         pipeline_type: PipelineType::Sales,

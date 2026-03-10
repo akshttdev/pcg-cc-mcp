@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Users,
   AlertTriangle,
   History,
   ExternalLink,
@@ -115,6 +116,10 @@ export function DataSourceDetailPage() {
       dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId, effectiveModel || undefined, opts?.force),
     onSuccess: (data) => {
       setWorkflowResult(data);
+      // Auto-open review panel if there are staged records
+      if (data.workflow_run_id && data.staged_records > 0) {
+        setReviewRunId(data.workflow_run_id);
+      }
       queryClient.invalidateQueries({ queryKey: ['dataSourceArtifacts', dataSourceId] });
     },
   });

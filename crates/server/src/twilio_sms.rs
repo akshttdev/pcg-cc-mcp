@@ -1,7 +1,10 @@
-//! Twilio SMS sending service for Pulse alert notifications.
+//! Twilio / SignalWire SMS sending service for Pulse alert notifications.
 //!
-//! Sends outbound SMS via the Twilio Messages API and records
+//! Sends outbound SMS via the Twilio-compatible Messages API and records
 //! each message in the sms_messages table with CRM activity tracking.
+//!
+//! Set SIGNALWIRE_SPACE_URL (e.g. "example.signalwire.com") to route
+//! through SignalWire instead of Twilio. All other env vars stay the same.
 
 use chrono::Utc;
 use db::models::{
@@ -33,6 +36,19 @@ struct TwilioMessageResponse {
     status: Option<String>,
     error_code: Option<i32>,
     error_message: Option<String>,
+}
+
+/// Build the Messages API URL for either Twilio or SignalWire.
+///
+/// If `SIGNALWIRE_SPACE_URL` is set (e.g. "example.signalwire.com"),
+/// uses the SignalWire LaML endpoint. Otherwise falls back to Twilio.
+pub fn sms_api_url(account_sid: &str) -> String {
+    if let Ok(space) = std::env::var("SIGNALWIRE_SPACE_URL") {
+        let space = space.trim_end_matches('/');
+        format!("https://{}/api/laml/2010-04-01/Accounts/{}/Messages.json", space, account_sid)
+    } else {
+        format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", account_sid)
+    }
 }
 
 pub struct TwilioSmsSender {
@@ -87,10 +103,7 @@ impl TwilioSmsSender {
     /// Send an SMS via Twilio Messages API.
     /// Returns the Twilio message SID on success.
     pub async fn send_sms(&self, to: &str, body: &str) -> Result<String, String> {
-        let url = format!(
-            "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
-            self.config.account_sid
-        );
+        let url = sms_api_url(&self.config.account_sid);
 
         let params = [
             ("To", to),

@@ -187,6 +187,21 @@ impl CrmPipeline {
             .ok_or(CrmPipelineError::NotFound)
     }
 
+    /// Find pipelines by project (legacy/compatibility)
+    pub async fn find_by_project(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Vec<Self>, CrmPipelineError> {
+        let pipelines = sqlx::query_as::<_, CrmPipeline>(
+            r#"SELECT * FROM crm_pipelines WHERE project_id = ?1 AND is_active = 1 ORDER BY name"#,
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(pipelines)
+    }
+
     /// List all active pipelines in an organization (direct org_id query)
     pub async fn find_by_organization(
         pool: &SqlitePool,
@@ -229,6 +244,24 @@ impl CrmPipeline {
             r#"SELECT * FROM crm_pipelines WHERE organization_id = ?1 AND pipeline_type = ?2 AND is_active = 1"#,
         )
         .bind(organization_id)
+        .bind(&pipeline_type_str)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(pipeline)
+    }
+
+    /// Find pipeline by type scoped to a project (legacy/compatibility)
+    pub async fn find_by_type(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        pipeline_type: PipelineType,
+    ) -> Result<Option<Self>, CrmPipelineError> {
+        let pipeline_type_str = pipeline_type.to_string();
+        let pipeline = sqlx::query_as::<_, CrmPipeline>(
+            r#"SELECT * FROM crm_pipelines WHERE project_id = ?1 AND pipeline_type = ?2 AND is_active = 1"#,
+        )
+        .bind(project_id)
         .bind(&pipeline_type_str)
         .fetch_optional(pool)
         .await?;
@@ -308,6 +341,43 @@ impl CrmPipeline {
         }
         if !existing.iter().any(|p| p.pipeline_type == "delivery") {
             Self::create_delivery_pipeline(pool, Some(organization_id)).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Ensure default pipelines exist for a project (legacy/compatibility)
+    pub async fn ensure_defaults(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<(), CrmPipelineError> {
+        if Self::find_by_type(pool, project_id, PipelineType::Conferences)
+            .await?
+            .is_none()
+        {
+            // For project-based defaults, we don't have an org_id easily, so pass None
+            Self::create_conferences_pipeline(pool, None).await?;
+        }
+
+        if Self::find_by_type(pool, project_id, PipelineType::Clients)
+            .await?
+            .is_none()
+        {
+            Self::create_clients_pipeline(pool, None).await?;
+        }
+
+        if Self::find_by_type(pool, project_id, PipelineType::Sales)
+            .await?
+            .is_none()
+        {
+            Self::create_sales_pipeline(pool, None).await?;
+        }
+
+        if Self::find_by_type(pool, project_id, PipelineType::Delivery)
+            .await?
+            .is_none()
+        {
+            Self::create_delivery_pipeline(pool, None).await?;
         }
 
         Ok(())

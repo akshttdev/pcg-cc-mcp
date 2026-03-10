@@ -28,23 +28,23 @@ client_id: string | null,
 /**
  * Folder this project is grouped under (deprecated — use parent_project_id)
  */
-folder_id: string | null, 
+folder_id: string | null,
 /**
  * Parent project for nesting (max 3 levels deep). None = top-level.
  */
-parent_project_id: string | null, 
+parent_project_id: string | null,
 /**
  * Sort order among siblings
  */
-sort_order: number, 
+sort_order: number,
 /**
  * Aptos wallet address registered for on-chain deposits
  */
-aptos_address: string | null, 
+aptos_address: string | null,
 /**
  * Whether this project has been funded with on-chain VIBE
  */
-aptos_funded: boolean, created_at: Date, updated_at: Date, 
+aptos_funded: boolean, created_at: Date, updated_at: Date,
 /**
  * Soft delete timestamp - if set, project is considered deleted
  */
@@ -130,11 +130,11 @@ export type Priority = "critical" | "high" | "medium" | "low";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "changesrequested";
 
-export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, 
+export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
 /**
  * Base64 encoded screenshot image for bug reports
  */
-screenshot?: string | null, };
+screenshot: string | null, };
 
 export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, has_merged_attempt: boolean, last_attempt_failed: boolean, executor: string, 
 /**
@@ -152,15 +152,15 @@ vibe_cost: bigint | null,
 /**
  * Model used for the most recent vibe transaction on this task
  */
-vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, 
+vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, archived_at?: string | null,
 /**
  * Base64 encoded screenshot image for bug reports
  */
-screenshot?: string | null, };
+screenshot: string | null, };
 
 export type TaskRelationships = { parent_task: Task | null, current_attempt: TaskAttempt, children: Array<Task>, };
 
-export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, 
+export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
 /**
  * Base64 encoded screenshot image for bug reports
  */
@@ -756,11 +756,11 @@ stream: boolean,
 /**
  * Optional model override (e.g. "llama3.2:3b", "gpt-4o", "claude-sonnet-4")
  */
-model: string | null, 
+model?: string | null,
 /**
  * Optional provider override ("ollama", "openai", "anthropic")
  */
-provider: string | null, };
+provider?: string | null, };
 
 export type AgentChatResponse = { 
 /**
@@ -818,27 +818,28 @@ export type ConvertEntityRequest = { source_type: string, source_id: string, tar
 
 export type ConvertEntityResponse = { new_id: string, new_type: string, };
 
-export type SubmitFeedbackRequest = { 
+
+export type SubmitFeedbackRequest = {
 /**
  * Type of feedback: bug, feature, improvement, question, other
  */
-feedback_type: string, 
+feedback_type: string,
 /**
  * Brief title/summary
  */
-title: string, 
+title: string,
 /**
  * Detailed description
  */
-description: string, 
+description: string,
 /**
  * Reporter's email (optional)
  */
-email: string | null, 
+email: string | null,
 /**
  * Severity for bugs: low, medium, high, critical
  */
-severity: string | null, 
+severity: string | null,
 /**
  * Base64 encoded screenshot image (optional)
  */

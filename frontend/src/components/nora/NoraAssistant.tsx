@@ -180,6 +180,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
   const networkErrorRetryCount = useRef(0);
   const abortedErrorCount = useRef(0);
   const lastAbortedTime = useRef(0);
+  const autoStopTimerRef = useRef<number | null>(null);
 
   // Initialize Nora on component mount
   useEffect(() => {
@@ -623,46 +624,128 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
 
   const startMediaRecorder = async () => {
     try {
+      shouldContinueListeningRef.current = continuousMode;
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+
+      // Use a proper container format — MediaRecorder never produces raw WAV
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+        ? 'audio/ogg;codecs=opus'
+        : '';
+
+      mediaRecorderRef.current = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (event: BlobEvent) => {
-        audioChunksRef.current.push(event.data);
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
       mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        if (autoStopTimerRef.current) {
+          clearTimeout(autoStopTimerRef.current);
+          autoStopTimerRef.current = null;
+        }
+
+        // Release microphone
+        stream.getTracks().forEach(track => track.stop());
+
+        if (audioChunksRef.current.length === 0) {
+          toast.warning('No audio captured — please speak and try again');
+          return;
+        }
+
+        const recordedMime = mediaRecorderRef.current?.mimeType || mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: recordedMime });
         const base64Audio = await blobToBase64(audioBlob);
 
+        toast.info('Sending to Nora...');
+        setIsLoading(true);
         try {
           const response = await fetch(resolveApiUrl('/api/nora/voice/transcribe'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ audioData: base64Audio })
+            body: JSON.stringify({
+              interactionId: `interaction-${Date.now()}`,
+              sessionId: sessionId.current,
+              interactionType: 'speechInput',
+              audioInput: base64Audio,
+              responseText: '',
+              processingTimeMs: 0,
+              timestamp: new Date().toISOString(),
+            }),
           });
 
           if (response.ok) {
-            const { text } = (await response.json()) as { text?: string };
-            const cleanedText = text?.trim();
-            if (cleanedText && !cleanedText.startsWith('This is a dummy transcription')) {
-              await sendMessage(cleanedText, 'voiceInteraction');
-            } else {
-              addMessage('nora', "I couldn't clearly capture that audio. Please try again with a clearer phrase.");
+            const result = (await response.json()) as {
+              transcription?: string;
+              responseText?: string;
+              audioResponse?: string;
+            };
+
+            // Show transcription as user message
+            const transcript = result.transcription?.trim();
+            addMessage('user', transcript || '🎤 [Voice message]');
+
+            // Show Nora's text response
+            if (result.responseText) {
+              addMessage('nora', result.responseText);
+            }
+
+            // Play ElevenLabs audio response
+            if (result.audioResponse && voiceEnabled && audioRef.current) {
+              const audioElement = audioRef.current;
+              setIsSpeaking(true);
+              audioElement.onended = () => {
+                setIsSpeaking(false);
+                if (continuousMode && shouldContinueListeningRef.current) {
+                  setTimeout(() => void startMediaRecorder(), 300);
+                }
+              };
+              audioElement.onerror = () => {
+                setIsSpeaking(false);
+                if (continuousMode && shouldContinueListeningRef.current) {
+                  setTimeout(() => void startMediaRecorder(), 300);
+                }
+              };
+              audioElement.src = `data:audio/mpeg;base64,${result.audioResponse}`;
+              audioElement.load();
+              audioElement.play().catch(err => {
+                console.error('[NoraVoice] playback error:', err);
+                setIsSpeaking(false);
+              });
             }
           } else {
-            addMessage('nora', 'I was unable to transcribe that audio clip. Let’s give it another go.');
+            console.error('[NoraVoice] voice/interaction failed:', response.status);
+            addMessage('nora', "I couldn't process that audio. Please try again.");
           }
         } catch (error) {
-          console.error('Transcription request failed:', error);
-          addMessage('nora', 'I ran into an error while transcribing that clip. Could you repeat it for me?');
+          console.error('[NoraVoice] request failed:', error);
+          addMessage('nora', 'I ran into an error while processing your voice message. Could you try again?');
+        } finally {
+          setIsLoading(false);
         }
       };
 
       mediaRecorderRef.current.start();
       setIsListening(true);
+      toast.info('Recording — speak now, then click the mic again to send to Nora');
+
+      // Auto-stop after 30s
+      autoStopTimerRef.current = window.setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+          setIsListening(false);
+        }
+      }, 30000);
     } catch (error) {
       console.error('Failed to start voice recording:', error);
+      toast.error('Could not access microphone. Please check browser permissions.');
     }
   };
 

@@ -336,6 +336,29 @@ impl CrmContact {
         Ok(contacts)
     }
 
+    /// Find all contacts for a project (legacy/compatibility)
+    pub async fn find_by_project(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        limit: Option<i32>,
+    ) -> Result<Vec<Self>, CrmContactError> {
+        let limit = limit.unwrap_or(100);
+        let contacts = sqlx::query_as::<_, CrmContact>(
+            r#"
+            SELECT * FROM crm_contacts
+            WHERE project_id = ?1
+            ORDER BY last_activity_at DESC NULLS LAST, created_at DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(contacts)
+    }
+
     pub async fn find_by_lifecycle_stage(
         pool: &SqlitePool,
         organization_id: Uuid,

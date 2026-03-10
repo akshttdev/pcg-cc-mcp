@@ -20,6 +20,7 @@ use db::models::social_post::{CreateSocialPost, SocialPost, UpdateSocialPost};
 pub struct ListPostsQuery {
     pub project_id: Option<Uuid>,
     pub status: Option<String>,
+    pub category: Option<String>,
     pub limit: Option<i64>,
 }
 
@@ -35,6 +36,16 @@ async fn list_posts(
     // Apply status filter
     let posts = if let Some(status) = &query.status {
         posts.into_iter().filter(|p| p.status == *status).collect()
+    } else {
+        posts
+    };
+
+    // Apply category filter
+    let posts = if let Some(category) = &query.category {
+        posts
+            .into_iter()
+            .filter(|p| p.category.as_deref() == Some(category.as_str()))
+            .collect()
     } else {
         posts
     };

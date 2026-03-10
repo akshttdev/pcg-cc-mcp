@@ -79,6 +79,7 @@ pub mod pulse_collection_run;
 pub mod pulse_content_item;
 pub mod pulse_source;
 pub mod pulse_tracking_config;
+pub mod orchestration_context;
 pub mod project_knowledge_source;
 // Topology modules: exist on disk but use sqlx::query! macros that require
 // DATABASE_URL or cached queries. The MCP TaskServer uses raw SQL for topology
@@ -96,6 +97,12 @@ pub mod proposal;
 pub mod deliverable;
 pub mod operator_rate;
 pub mod meeting_session;
+pub mod media_asset;
+pub mod review_token;
+pub mod review_comment;
+pub mod person_note;
+pub mod pcg_router_model;
+pub mod oss_library;
 pub mod repo;
 pub mod scratch;
 pub mod session;
@@ -106,22 +113,9 @@ pub mod scheduled_meeting;
 pub mod company;
 pub mod quickbooks_account;
 pub mod entity_graph;
-pub mod pcg_router_model;
 pub mod workflow_run;
 pub mod workflow_staging;
 pub mod workflow_trigger;
-pub mod media_asset;
-pub mod review_token;
-pub mod review_comment;
-pub mod person_note;
-pub mod orchestration_context;
-pub mod oss_library;
-// Topology modules need SQLX prepared queries — commented out for offline builds
-// pub mod topology_node;
-// pub mod topology_edge;
-// pub mod topology_cluster;
-// pub mod topology_issue;
-// pub mod topology_route;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

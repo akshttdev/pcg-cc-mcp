@@ -2932,6 +2932,100 @@ impl TopsiAgent {
         })
     }
 
+    /// Regenerate notes for an ended meeting by reading segments from DB
+    pub async fn handle_regenerate_meeting_notes(
+        &self,
+        session_id: &str,
+    ) -> Result<crate::meeting::MeetingNotes> {
+        let pool = self.db.as_ref().ok_or_else(|| {
+            TopsiError::NotInitialized("Database not connected".to_string())
+        })?;
+
+        let segments =
+            db::models::meeting_session::MeetingSegment::find_by_session(pool, session_id)
+                .await
+                .map_err(|e| TopsiError::NotInitialized(format!("DB error: {e}")))?;
+
+        if segments.is_empty() {
+            return Err(TopsiError::NotInitialized(
+                "No segments found for this session".to_string(),
+            ));
+        }
+
+        let transcript_text = segments
+            .iter()
+            .map(|s| {
+                let speaker = s.speaker_label.as_deref().unwrap_or("Speaker");
+                format!("[{}]: {}", speaker, s.text)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Build synthetic MeetingState so we can reuse generate_meeting_notes
+        let mut state = crate::meeting::MeetingState::new(
+            session_id.to_string(),
+            String::new(),
+            String::new(),
+        );
+        for seg in &segments {
+            let entry = crate::meeting::MeetingTranscriptEntry {
+                speaker_label: seg.speaker_label.clone(),
+                text: seg.text.clone(),
+                confidence: seg.confidence.unwrap_or(1.0),
+                start_time_ms: seg.start_time_ms,
+                end_time_ms: seg.end_time_ms,
+                is_topsi_addressed: seg.is_topsi_addressed,
+                segment_index: seg.segment_index,
+            };
+            state.transcript.push(entry);
+            if let Some(ref label) = seg.speaker_label {
+                state.speakers.entry(label.clone()).or_insert_with(|| {
+                    crate::meeting::SpeakerInfo::new(label.clone())
+                });
+            }
+        }
+
+        // Try LLM with raw transcript text first (avoids second scan of state.transcript)
+        if let Some(llm) = &self.llm {
+            let user_query = r#"Generate structured meeting notes from the provided transcript. Respond ONLY with valid JSON matching this exact schema (use camelCase keys):
+{
+  "summary": "2-3 sentence overview",
+  "topics": ["topic1", "topic2"],
+  "decisions": ["decision1"],
+  "actionItems": [{"description": "task", "assignee": null, "deadline": null, "priority": "high"}],
+  "openQuestions": ["unresolved question"],
+  "participants": ["Speaker 1"]
+}"#;
+            match llm
+                .generate(MEETING_SYSTEM_PROMPT, user_query, &transcript_text)
+                .await
+            {
+                Ok(response) => {
+                    if let Ok(notes) =
+                        serde_json::from_str::<crate::meeting::MeetingNotes>(&response)
+                    {
+                        return Ok(notes);
+                    }
+                    if let Some(js) = response.find('{') {
+                        if let Some(je) = response.rfind('}') {
+                            if let Ok(notes) =
+                                serde_json::from_str::<crate::meeting::MeetingNotes>(
+                                    &response[js..=je],
+                                )
+                            {
+                                return Ok(notes);
+                            }
+                        }
+                    }
+                    tracing::warn!("Failed to parse regenerated notes JSON; snippet: {}", &response[..response.len().min(400)]);
+                }
+                Err(e) => tracing::error!("LLM regen failed: {e}"),
+            }
+        }
+
+        self.generate_meeting_notes(&state).await
+    }
+
     /// Generate structured meeting notes from transcript using LLM
     async fn generate_meeting_notes(
         &self,
@@ -2948,14 +3042,14 @@ impl TopsiAgent {
             .join("\n");
 
         if let Some(llm) = &self.llm {
-            let user_query = r#"Generate structured meeting notes from the provided transcript. Respond ONLY with valid JSON in this exact format:
+            let user_query = r#"Generate structured meeting notes from the provided transcript. Respond ONLY with valid JSON matching this exact schema (use camelCase keys):
 {
   "summary": "2-3 sentence overview",
   "topics": ["topic1", "topic2"],
-  "decisions": ["decision1", "decision2"],
-  "action_items": [{"description": "...", "assignee": "..." or null, "deadline": "..." or null, "priority": "high/medium/low" or null}],
-  "open_questions": ["question1"],
-  "participants": ["Speaker 1", "Speaker 2"]
+  "decisions": ["decision1"],
+  "actionItems": [{"description": "task", "assignee": null, "deadline": null, "priority": "high"}],
+  "openQuestions": ["unresolved question"],
+  "participants": ["Speaker 1"]
 }"#;
 
             match llm.generate(MEETING_SYSTEM_PROMPT, user_query, &transcript_text).await {

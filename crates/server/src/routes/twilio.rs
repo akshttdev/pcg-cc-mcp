@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+
 use axum::{
     Form, Router,
     extract::{Path, Query, State},
@@ -19,6 +20,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
+
 use db::models::agent_conversation::{
     AgentConversation, AgentConversationMessage, ConversationStatus,
 };
@@ -54,6 +56,7 @@ static CALL_DB_CONTEXTS: Lazy<Arc<Mutex<HashMap<String, CallDbContext>>>> =
 /// Secondary index: caller phone → call_sid (for SMS-during-call lookup)
 static ACTIVE_CALL_PHONES: Lazy<Arc<Mutex<HashMap<String, String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
 
 /// An SMS received while a call is active, optionally with ingested content.
 #[derive(Debug, Clone)]
@@ -560,6 +563,7 @@ pub async fn handle_incoming_call(
             row.and_then(|(b,)| Uuid::from_slice(&b).ok()).unwrap_or_else(Uuid::new_v4)
         };
 
+
         // Ensure CRM contact exists for PCG team member (for call_log FK)
         let crm_contact_id = {
             match CrmContact::find_by_phone_global(pool, &request.from).await {
@@ -571,6 +575,7 @@ pub async fn handle_incoming_call(
                     match CrmContact::create(pool, CreateCrmContact {
                         organization_id,
                         client_id: None,
+
                         first_name: Some(first),
                         last_name: last,
                         email: None,
@@ -649,6 +654,7 @@ pub async fn handle_incoming_call(
             let contact = match CrmContact::create(pool, CreateCrmContact {
                 organization_id,
                 client_id: None,
+
                 first_name: Some(twilio_caller_name.split_whitespace().next().unwrap_or(&twilio_caller_name).to_string()),
                 last_name: twilio_caller_name.split_whitespace().nth(1).map(|s| s.to_string()),
                 email: None,
@@ -1602,6 +1608,7 @@ pub async fn handle_incoming_sms(
 
         if let Some(queue) = sms_queue {
             // Spawn content ingestion so we don't block Twilio's webhook timeout
+
             let body = request.body.clone();
             let from = request.from.clone();
             tokio::spawn(async move {
@@ -1618,6 +1625,7 @@ pub async fn handle_incoming_sms(
             // Acknowledge immediately — Nora will weave it into the next voice turn
             let twiml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>\
                 <Message>Got it — I'll bring that into our conversation now.</Message>\
+
                 </Response>";
             return (StatusCode::OK, [("Content-Type", "application/xml")], twiml.to_string());
         }
@@ -1665,6 +1673,7 @@ pub async fn handle_incoming_sms(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>{}</Message></Response>",
         xml_escape(&nora_text)
     );
+
 
     (StatusCode::OK, [("Content-Type", "application/xml")], twiml)
 }
@@ -1762,11 +1771,13 @@ fn extract_text_from_html(html: &str) -> String {
 }
 
 /// Process an SMS through Nora's LLM (text channel — no voice constraints).
+
 async fn process_sms_with_nora(
     message: &str,
     from_number: &str,
     context: Option<serde_json::Value>,
 ) -> Result<String, String> {
+
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
         .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
@@ -1789,6 +1800,7 @@ async fn process_sms_with_nora(
         .and_then(|c| c.get("caller_name"))
         .and_then(|v| v.as_str())
         .filter(|n| !n.is_empty() && *n != "Unknown")
+
         .map(|name| format!("[SMS from {} ({})] ", name, from_number))
         .unwrap_or_else(|| format!("[SMS from {}] ", from_number));
 
@@ -1828,6 +1840,7 @@ async fn process_sms_with_nora(
 
     Ok(text)
 }
+
 
 /// Escape special XML characters for TwiML body
 fn xml_escape(s: &str) -> String {

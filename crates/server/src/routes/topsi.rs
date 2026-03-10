@@ -9,6 +9,7 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
+
     routing::{get, post, put},
 };
 use chrono::{DateTime, Utc};
@@ -212,6 +213,7 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         .route("/topsi/voice/interaction", post(voice_interaction))
         .route("/topsi/voice/config", get(get_voice_config).put(update_voice_config))
         // Meeting mode routes
+
         .route("/topsi/meeting/list", get(list_meetings))
         .route("/topsi/meeting/start", post(start_meeting))
         .route("/topsi/meeting/join", post(join_meeting))
@@ -222,6 +224,7 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         .route("/topsi/meeting/notes/{session_id}", get(get_meeting_notes))
         .route("/topsi/meeting/transcript/{session_id}", get(get_meeting_transcript))
         .route("/topsi/meeting/share/{session_id}", post(share_meeting))
+
         .layer(axum::middleware::from_fn(
             crate::middleware::request_id_middleware,
         ))
@@ -448,6 +451,7 @@ pub struct MeetingAudioChunkResponse {
     pub segment_index: i32,
 }
 
+
 /// Request to end a meeting
 #[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -558,6 +562,7 @@ pub struct ListMeetingsResponse {
 pub struct MeetingSessionSummary {
     pub id: String,
     pub project_id: String,
+
     pub title: String,
     pub status: String,
     pub started_by: String,
@@ -567,6 +572,7 @@ pub struct MeetingSessionSummary {
     pub participant_count: Option<i32>,
     pub notes: Option<serde_json::Value>,
 }
+
 
 // ============================================================================
 // Route Handlers
@@ -1815,11 +1821,13 @@ pub async fn update_voice_config(
 /// List meeting sessions
 pub async fn list_meetings(
     State(state): State<DeploymentImpl>,
+
     Query(params): Query<ListMeetingsQuery>,
 ) -> Result<Json<ListMeetingsResponse>, ApiError> {
     let pool = &state.db().pool;
     let limit = params.limit.unwrap_or(50);
     let offset = params.offset.unwrap_or(0);
+
 
     let sessions = db::models::meeting_session::MeetingSession::list(
         pool,
@@ -1834,6 +1842,7 @@ pub async fn list_meetings(
     let meetings: Vec<MeetingSessionSummary> = sessions
         .into_iter()
         .filter(|s| status_filter.map_or(true, |f| s.status == f))
+
         .map(|s| {
             let notes_value = s
                 .notes
@@ -1843,6 +1852,7 @@ pub async fn list_meetings(
             MeetingSessionSummary {
                 id: s.id,
                 project_id: s.project_id,
+
                 title: s.title,
                 status: s.status,
                 started_by: s.started_by,
@@ -1862,9 +1872,11 @@ pub async fn list_meetings(
 /// Join an existing active meeting session (increments participant count)
 pub async fn join_meeting(
     State(state): State<DeploymentImpl>,
+
     Json(request): Json<JoinMeetingRequest>,
 ) -> Result<Json<JoinMeetingResponse>, ApiError> {
     let pool = &state.db().pool;
+
 
     let session = db::models::meeting_session::MeetingSession::find_by_id(pool, &request.session_id)
         .await
@@ -1873,6 +1885,7 @@ pub async fn join_meeting(
     if session.status != "active" {
         return Err(ApiError::BadRequest("Meeting is not active".to_string()));
     }
+
 
     let new_count = session.participant_count.unwrap_or(0) + 1;
     let updated = db::models::meeting_session::MeetingSession::update(
@@ -1887,6 +1900,7 @@ pub async fn join_meeting(
     .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     tracing::info!("[MEETING] User joined session {} — participants: {}", session.id, new_count);
+
 
     Ok(Json(JoinMeetingResponse {
         session_id: updated.id,
@@ -1947,6 +1961,7 @@ pub async fn meeting_text_message(
         text,
     }))
 }
+
 
 /// Start a new meeting session
 pub async fn start_meeting(
@@ -2185,6 +2200,7 @@ pub async fn meeting_status(
 
     // Access control
     if !session.has_access(&user_context.user_id, user_context.is_admin) {
+
         return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
     }
 
@@ -2224,6 +2240,7 @@ pub async fn get_meeting_notes(
         .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
 
     if !session.has_access(&user_context.user_id, user_context.is_admin) {
+
         return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
     }
 
@@ -2234,6 +2251,7 @@ pub async fn get_meeting_notes(
         "notes": notes,
     })))
 }
+
 
 /// Get meeting transcript
 pub async fn get_meeting_transcript(
@@ -2252,6 +2270,7 @@ pub async fn get_meeting_transcript(
         .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
 
     if !session.has_access(&user_context.user_id, user_context.is_admin) {
+
         return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
     }
 
@@ -2270,6 +2289,7 @@ pub async fn get_meeting_transcript(
         total_count,
     }))
 }
+
 
 /// Share a meeting with other users
 pub async fn share_meeting(

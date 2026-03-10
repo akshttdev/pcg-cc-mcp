@@ -144,3 +144,6 @@ dev_assets_seed/duck.db
 # Backup migration files
 *.sql.bak
 .vercel
+
+# Playwright MCP
+.playwright-mcp/

@@ -35,7 +35,7 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let filter_string = format!(
-        "warn,server={level},services={level},db={level},executors={level},deployment={level},local_deployment={level},utils={level},nora={level},discord_bot={level}",
+        "warn,server={level},services={level},db={level},executors={level},deployment={level},local_deployment={level},utils={level},nora={level},discord_bot={level},discord_bots={level},serenity=warn,songbird=warn",
         level = log_level
     );
     let env_filter = EnvFilter::try_new(filter_string).expect("Failed to create tracing filter");
@@ -133,6 +133,9 @@ async fn main() -> Result<(), VibeKanbanError> {
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(3000);
     discord_bot::spawn_discord_bot(deployment.db().pool.clone(), server_port).await;
+
+    // Start Discord bot agents (Nora + Topsi) if tokens are configured
+    discord_bots::spawn_discord_bots();
 
     // Pre-warm file search cache for most active projects
     let deployment_for_cache = deployment.clone();
@@ -287,7 +290,7 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
 
-    // Spawn OSS library listener background task
+    // Spawn OSS Library Listener (polls GitHub releases hourly)
     routes::oss_listener_bg::spawn_oss_listener(deployment.db().pool.clone());
 
     // Spawn VIBE deposit watcher (polls platform revenue wallet every 30s)
@@ -370,6 +373,55 @@ async fn main() -> Result<(), VibeKanbanError> {
                         Err(e) => {
                             let _ = db::models::vibe_deposit::VibeWithdrawal::mark_failed(&pool_for_withdrawals, withdrawal.id, &e.to_string()).await;
                         }
+                    }
+                }
+            }
+        });
+    }
+
+    // Spawn meeting stale-session cleanup (runs every 2 minutes)
+    // Any meeting with no heartbeat for 5+ minutes is auto-ended.
+    {
+        let pool_for_meetings = deployment.db().pool.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(120));
+            tracing::info!("[MEETING] Stale-session cleanup started (5-min timeout)");
+            loop {
+                interval.tick().await;
+                let stale = match db::models::meeting_session::MeetingSession::find_stale_active(
+                    &pool_for_meetings,
+                    300, // 5 minutes
+                )
+                .await
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!("[MEETING] Failed to query stale sessions: {e}");
+                        continue;
+                    }
+                };
+                for session in stale {
+                    match sqlx::query(
+                        r#"UPDATE meeting_sessions
+                           SET status = 'ended',
+                               ended_at = datetime('now','subsec'),
+                               duration_seconds = CAST(unixepoch('now') - unixepoch(started_at) AS INTEGER),
+                               updated_at = datetime('now','subsec')
+                           WHERE id = ?"#,
+                    )
+                    .bind(&session.id)
+                    .execute(&pool_for_meetings)
+                    .await
+                    {
+                        Ok(_) => tracing::info!(
+                            "[MEETING] Auto-ended stale session {} (project={})",
+                            session.id,
+                            session.project_id
+                        ),
+                        Err(e) => tracing::error!(
+                            "[MEETING] Failed to auto-end session {}: {e}",
+                            session.id
+                        ),
                     }
                 }
             }

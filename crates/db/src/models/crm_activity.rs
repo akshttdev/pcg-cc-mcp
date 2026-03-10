@@ -236,6 +236,29 @@ impl CrmActivity {
         Ok(activities)
     }
 
+    /// Find all activities for a project
+    pub async fn find_by_project(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        limit: Option<i32>,
+    ) -> Result<Vec<Self>, CrmActivityError> {
+        let limit = limit.unwrap_or(100);
+        let activities = sqlx::query_as::<_, CrmActivity>(
+            r#"
+            SELECT * FROM crm_activities
+            WHERE project_id = ?1
+            ORDER BY activity_at DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(project_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(activities)
+    }
+
     /// Find activities by type for an organization
     pub async fn find_by_type(
         pool: &SqlitePool,

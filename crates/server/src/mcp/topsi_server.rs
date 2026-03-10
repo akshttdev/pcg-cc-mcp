@@ -182,57 +182,53 @@ fn pid_hex(uuid: Uuid) -> String {
     hex::encode(uuid.as_bytes()).to_uppercase()
 }
 
-/// Fetch topology nodes for a project via raw SQL.
+/// Fetch topology nodes for a project via parameterized SQL.
 async fn fetch_nodes(pool: &SqlitePool, pid: &str) -> Vec<NodeRow> {
-    let q = format!(
+    sqlx::query_as::<_, NodeRow>(
         "SELECT id, node_type, ref_id, capabilities, status, metadata, weight \
-         FROM topology_nodes WHERE project_id = '{}' ORDER BY node_type, created_at DESC",
-        pid
-    );
-    sqlx::query_as::<_, NodeRow>(&q)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default()
+         FROM topology_nodes WHERE project_id = ? ORDER BY node_type, created_at DESC"
+    )
+    .bind(pid)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
 }
 
-/// Fetch topology edges for a project via raw SQL.
+/// Fetch topology edges for a project via parameterized SQL.
 async fn fetch_edges(pool: &SqlitePool, pid: &str) -> Vec<EdgeRow> {
-    let q = format!(
+    sqlx::query_as::<_, EdgeRow>(
         "SELECT id, from_node_id, to_node_id, edge_type, weight, status \
-         FROM topology_edges WHERE project_id = '{}' ORDER BY edge_type, created_at DESC",
-        pid
-    );
-    sqlx::query_as::<_, EdgeRow>(&q)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default()
+         FROM topology_edges WHERE project_id = ? ORDER BY edge_type, created_at DESC"
+    )
+    .bind(pid)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
 }
 
-/// Fetch topology clusters for a project via raw SQL.
+/// Fetch topology clusters for a project via parameterized SQL.
 async fn fetch_clusters(pool: &SqlitePool, pid: &str) -> Vec<ClusterRow> {
-    let q = format!(
+    sqlx::query_as::<_, ClusterRow>(
         "SELECT id, name, purpose, node_ids, is_active \
-         FROM topology_clusters WHERE project_id = '{}' ORDER BY is_active DESC, formed_at DESC",
-        pid
-    );
-    sqlx::query_as::<_, ClusterRow>(&q)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default()
+         FROM topology_clusters WHERE project_id = ? ORDER BY is_active DESC, formed_at DESC"
+    )
+    .bind(pid)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
 }
 
 /// Fetch agent-type nodes for a project that are active.
 async fn fetch_active_agent_nodes(pool: &SqlitePool, pid: &str) -> Vec<NodeRow> {
-    let q = format!(
+    sqlx::query_as::<_, NodeRow>(
         "SELECT id, node_type, ref_id, capabilities, status, metadata, weight \
-         FROM topology_nodes WHERE project_id = '{}' AND node_type = 'agent' AND status = 'active' \
-         ORDER BY weight DESC",
-        pid
-    );
-    sqlx::query_as::<_, NodeRow>(&q)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default()
+         FROM topology_nodes WHERE project_id = ? AND node_type = 'agent' AND status = 'active' \
+         ORDER BY weight DESC"
+    )
+    .bind(pid)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
 }
 
 // ========================================================
@@ -571,13 +567,12 @@ impl TopsiServer {
         let node_ids_json =
             serde_json::to_string(&req.agent_ids).unwrap_or_else(|_| "[]".to_string());
 
-        let q = format!(
+        match sqlx::query(
             "INSERT INTO topology_clusters (id, project_id, name, node_ids, is_active, formed_at) \
-             VALUES ('{}', '{}', ?, ?, 1, datetime('now'))",
-            cid, pid
-        );
-
-        match sqlx::query(&q)
+             VALUES (?, ?, ?, ?, 1, datetime('now'))"
+        )
+            .bind(&cid)
+            .bind(&pid)
             .bind(&req.team_name)
             .bind(&node_ids_json)
             .execute(&self.pool)
@@ -610,12 +605,11 @@ impl TopsiServer {
         };
         let cid = hex::encode(cluster_id.as_bytes()).to_uppercase();
 
-        let q = format!(
-            "UPDATE topology_clusters SET is_active = 0, dissolved_at = datetime('now') WHERE id = '{}'",
-            cid
-        );
-
-        match sqlx::query(&q).execute(&self.pool).await {
+        match sqlx::query(
+            "UPDATE topology_clusters SET is_active = 0, dissolved_at = datetime('now') WHERE id = ?"
+        )
+        .bind(&cid)
+        .execute(&self.pool).await {
             Ok(result) => {
                 if result.rows_affected() == 0 {
                     return Ok(err_result("Cluster not found"));
@@ -682,11 +676,10 @@ impl TopsiServer {
         if let Some(ref pid_str) = req.project_id {
             if let Ok(project_id) = Uuid::parse_str(pid_str) {
                 let pid = pid_hex(project_id);
-                let q = format!(
-                    "SELECT CAST(COUNT(*) AS INTEGER) as cnt FROM topology_nodes WHERE project_id = '{}'",
-                    pid
-                );
-                if let Ok(row) = sqlx::query_as::<_, CountRow>(&q)
+                if let Ok(row) = sqlx::query_as::<_, CountRow>(
+                    "SELECT CAST(COUNT(*) AS INTEGER) as cnt FROM topology_nodes WHERE project_id = ?"
+                )
+                    .bind(&pid)
                     .fetch_one(&self.pool)
                     .await
                 {

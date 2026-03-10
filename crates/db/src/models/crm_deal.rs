@@ -214,6 +214,21 @@ impl CrmDeal {
         Ok(deals)
     }
 
+    /// Find deals by project (legacy/compatibility)
+    pub async fn find_by_project(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<Vec<Self>, CrmDealError> {
+        let deals = sqlx::query_as::<_, CrmDeal>(
+            r#"SELECT * FROM crm_deals WHERE project_id = ?1 ORDER BY created_at DESC"#,
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(deals)
+    }
+
     pub async fn find_by_pipeline(
         pool: &SqlitePool,
         pipeline_id: Uuid,

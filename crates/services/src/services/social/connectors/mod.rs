@@ -4,3 +4,6 @@
 
 pub mod linkedin;
 pub mod instagram;
+pub mod twitter;
+pub mod tiktok;
+pub mod threads;

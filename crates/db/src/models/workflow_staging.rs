@@ -181,6 +181,7 @@ impl WorkflowStagingRecord {
         .await
     }
 
+
     pub fn parsed_data(&self) -> Option<Value> {
         serde_json::from_str(&self.record_data).ok()
     }

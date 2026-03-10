@@ -13,6 +13,29 @@ pub enum TokenUsageError {
     NotFound,
 }
 
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct TokenUsageByProvider {
+    pub provider: String,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_tokens: i64,
+    pub total_cost_cents: Option<i64>,
+    pub request_count: i64,
+}
+
+#[derive(Debug, FromRow, Serialize, TS)]
+#[ts(export)]
+pub struct TokenUsageByModel {
+    pub model: String,
+    pub provider: String,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_tokens: i64,
+    pub total_cost_cents: Option<i64>,
+    pub request_count: i64,
+}
+
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct TokenUsage {
@@ -290,6 +313,61 @@ impl TokenUsage {
             LEFT JOIN projects p ON tu.project_id = p.id
             WHERE tu.created_at >= ?1
             GROUP BY tu.project_id, p.name
+            ORDER BY total_tokens DESC
+            "#,
+        )
+        .bind(since)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(results)
+    }
+
+    /// Get usage breakdown by provider for a time period
+    pub async fn by_provider(
+        pool: &SqlitePool,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<TokenUsageByProvider>, TokenUsageError> {
+        let results = sqlx::query_as::<_, TokenUsageByProvider>(
+            r#"
+            SELECT
+                provider,
+                COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+                COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                SUM(cost_cents) as total_cost_cents,
+                COUNT(*) as request_count
+            FROM token_usage
+            WHERE created_at >= ?1
+            GROUP BY provider
+            ORDER BY total_tokens DESC
+            "#,
+        )
+        .bind(since)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(results)
+    }
+
+    /// Get usage breakdown by model for a time period
+    pub async fn by_model(
+        pool: &SqlitePool,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<TokenUsageByModel>, TokenUsageError> {
+        let results = sqlx::query_as::<_, TokenUsageByModel>(
+            r#"
+            SELECT
+                model,
+                provider,
+                COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+                COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                SUM(cost_cents) as total_cost_cents,
+                COUNT(*) as request_count
+            FROM token_usage
+            WHERE created_at >= ?1
+            GROUP BY model, provider
             ORDER BY total_tokens DESC
             "#,
         )

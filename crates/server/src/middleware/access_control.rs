@@ -212,9 +212,8 @@ impl AccessContext {
                 role: String,
             }
 
-            // 2a. Check org membership — only org admins get automatic access
-            // to all org-level projects. Regular org members need explicit
-            // project_members entries (handled in step 1 above).
+            // 2a. Check org membership — org admins get Admin access,
+            // regular org members get role-based access.
             if let Some(ref org_id_bytes) = info.organization_id {
                 let org_role: Option<RoleRow> = sqlx::query_as(
                     "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?"
@@ -226,18 +225,20 @@ impl AccessContext {
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
                 if let Some(or) = &org_role {
-                    if or.role == "admin" {
-                        // Org admins get Admin-level access to all org projects
-                        let granted_role = ProjectRole::Admin;
-                        let has_access = match required_role {
-                            ProjectRole::Viewer => granted_role.can_read(),
-                            ProjectRole::Editor => granted_role.can_write(),
-                            ProjectRole::Admin => granted_role.can_manage_members(),
-                            ProjectRole::Owner => granted_role.can_delete(),
-                        };
-                        if has_access {
-                            return Ok(granted_role);
-                        }
+                    let granted_role = match or.role.as_str() {
+                        "admin" => ProjectRole::Admin,
+                        "member" => ProjectRole::Editor,
+                        "viewer" => ProjectRole::Viewer,
+                        _ => ProjectRole::Viewer,
+                    };
+                    let has_access = match required_role {
+                        ProjectRole::Viewer => granted_role.can_read(),
+                        ProjectRole::Editor => granted_role.can_write(),
+                        ProjectRole::Admin => granted_role.can_manage_members(),
+                        ProjectRole::Owner => granted_role.can_delete(),
+                    };
+                    if has_access {
+                        return Ok(granted_role);
                     }
                 }
             }
@@ -373,10 +374,10 @@ impl AccessContext {
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(p) = &parent {
-            // Org admin gets full access to all org projects
+            // Org member gets full access to org projects
             if let Some(ref org_id) = p.organization_id {
-                let org_admin: Option<i64> = sqlx::query_scalar(
-                    "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? AND role = 'admin' LIMIT 1"
+                let org_member: Option<i64> = sqlx::query_scalar(
+                    "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1"
                 )
                 .bind(org_id)
                 .bind(&user_id_bytes)
@@ -384,7 +385,7 @@ impl AccessContext {
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
-                if org_admin.is_some() {
+                if org_member.is_some() {
                     return Ok("full");
                 }
             }

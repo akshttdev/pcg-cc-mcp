@@ -21,6 +21,7 @@ use db::models::crm_contact::{
 #[derive(Debug, Deserialize)]
 pub struct ListContactsQuery {
     pub organization_id: Uuid,
+
     pub lifecycle_stage: Option<String>,
     pub limit: Option<i32>,
 }
@@ -28,6 +29,7 @@ pub struct ListContactsQuery {
 #[derive(Debug, Deserialize)]
 pub struct SearchContactsQuery {
     pub organization_id: Uuid,
+
     pub query: Option<String>,
     pub lifecycle_stage: Option<String>,
     pub company_name: Option<String>,
@@ -56,6 +58,7 @@ pub struct UpdateLeadScoreRequest {
 }
 
 /// GET /crm/contacts - List contacts by organization
+
 async fn list_contacts(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<ListContactsQuery>,
@@ -79,6 +82,7 @@ async fn list_contacts(
         CrmContact::search(pool, params).await?
     } else {
         CrmContact::find_by_organization(pool, query.organization_id, query.limit).await?
+
     };
 
     Ok(Json(ApiResponse::success(contacts)))
@@ -94,6 +98,7 @@ async fn create_contact(
     // Check if contact with this email already exists
     if let Some(ref email) = data.email {
         if let Some(existing) = CrmContact::find_by_email(pool, data.organization_id, email).await? {
+
             return Err(ApiError::Conflict(format!(
                 "Contact with email {} already exists: {}",
                 email, existing.id
@@ -118,6 +123,7 @@ async fn search_contacts(
     let params = ContactSearchParams {
         organization_id: Some(query.organization_id),
         client_id: None,
+
         query: query.query,
         lifecycle_stage,
         company_name: query.company_name,
@@ -148,6 +154,7 @@ async fn get_contact_stats(
         "#
     )
     .bind(organization_id)
+
     .fetch_all(pool)
     .await?;
 
@@ -177,6 +184,7 @@ async fn get_contact_stats(
         "#
     )
     .bind(organization_id)
+
     .fetch_one(pool)
     .await?;
 
@@ -205,6 +213,7 @@ async fn get_contact_by_email(
 ) -> Result<Json<ApiResponse<Option<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
     let contact = CrmContact::find_by_email(pool, organization_id, &email).await?;
+
     Ok(Json(ApiResponse::success(contact)))
 }
 
@@ -277,6 +286,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/contacts", post(create_contact))
         .route("/crm/contacts/search", get(search_contacts))
         .route("/crm/contacts/stats/{organization_id}", get(get_contact_stats))
+
         .route("/crm/contacts/{id}", get(get_contact))
         .route("/crm/contacts/{id}", patch(update_contact))
         .route("/crm/contacts/{id}", delete(delete_contact))
@@ -285,4 +295,5 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/contacts/{id}/replied", post(record_replied))
         .route("/crm/contacts/{id}/lead-score", post(update_lead_score))
         .route("/crm/contacts/by-email/{organization_id}/{email}", get(get_contact_by_email))
+
 }

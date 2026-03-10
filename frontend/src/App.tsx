@@ -31,6 +31,12 @@ const MissionControlPage    = lazy(() => import('@/pages/mission-control'));
 const WorkflowsPage         = lazy(() => import('@/pages/workflows').then(m => ({ default: m.WorkflowsPage })));
 const SocialPage            = lazy(() => import('@/pages/social').then(m => ({ default: m.SocialPage })));
 const CrmPage               = lazy(() => import('@/pages/crm').then(m => ({ default: m.CrmPage })));
+const CrmClientsPage        = lazy(() => import('@/pages/crm-clients').then(m => ({ default: m.CrmClientsPage })));
+const CrmSalesPage          = lazy(() => import('@/pages/crm-sales').then(m => ({ default: m.CrmSalesPage })));
+const CrmDeliveryPage       = lazy(() => import('@/pages/crm-delivery').then(m => ({ default: m.CrmDeliveryPage })));
+const CrmConferencesPage    = lazy(() => import('@/pages/crm-conferences').then(m => ({ default: m.CrmConferencesPage })));
+const CrmContactDetailPage  = lazy(() => import('@/pages/crm-contact-detail').then(m => ({ default: m.CrmContactDetailPage })));
+const CrmOverviewPage       = lazy(() => import('@/pages/crm-overview').then(m => ({ default: m.CrmOverviewPage })));
 const OrganizationProfilePage  = lazy(() => import('@/pages/organization-profile').then(m => ({ default: m.OrganizationProfilePage })));
 const ClientOverview        = lazy(() => import('@/pages/client-overview').then(m => ({ default: m.ClientOverview })));
 const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environment').then(m => ({ default: m.VirtualEnvironmentPage })));
@@ -38,6 +44,7 @@ const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-en
 // MeshPage merged into Settings > Network & Mesh
 const VibePage              = lazy(() => import('@/pages/vibe'));
 const PulsePage             = lazy(() => import('@/pages/pulse'));
+const AIUsagePage           = lazy(() => import('@/pages/ai-usage').then(m => ({ default: m.AIUsagePage })));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
 const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
 const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
@@ -153,6 +160,35 @@ function App() {
           <Route
             path="/projects/:projectId/control"
             element={<ProtectedRoute><ProjectControllerPage /></ProtectedRoute>}
+          />
+          {/* Project CRM - scoped to project (from main) */}
+          <Route
+            path="/projects/:projectId/crm"
+            element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/projects/:projectId/crm/sales"
+            element={<ProtectedRoute><CrmSalesPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/projects/:projectId/crm/delivery"
+            element={<ProtectedRoute><CrmDeliveryPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/projects/:projectId/crm/clients"
+            element={<ProtectedRoute><CrmClientsPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/projects/:projectId/crm/conferences"
+            element={<ProtectedRoute><CrmConferencesPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/projects/:projectId/crm/contacts/:contactId"
+            element={<ProtectedRoute><CrmContactDetailPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/projects/:projectId/crm/overview"
+            element={<ProtectedRoute><CrmOverviewPage /></ProtectedRoute>}
           />
           {/* Organization - base route (redirects to CRM overview) */}
           <Route
@@ -311,6 +347,7 @@ function App() {
             path="/projects/:projectId/pulse"
             element={<ProtectedRoute><PulsePage /></ProtectedRoute>}
           />
+          <Route path="/ai-usage" element={<AdminRoute><AIUsagePage /></AdminRoute>} />
           <Route path="/vibe" element={<ProtectedRoute><VibePage /></ProtectedRoute>} />
           <Route
             path="/oauth/:provider/callback"

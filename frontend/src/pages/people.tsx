@@ -1,17 +1,30 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import {
   Search,
   Users,
+  UserCheck,
+  Briefcase,
+  TrendingUp,
   ArrowRight,
   Building2,
   Mail,
   Phone,
+  UserCircle,
+  ChevronDown,
+  Globe,
 } from 'lucide-react';
 import { crmApi, type CrmContactRecord } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,6 +41,14 @@ const LIFECYCLE_COLORS: Record<string, string> = {
   evangelist: 'bg-pink-100 text-pink-700',
   churned:    'bg-red-100 text-red-700',
 };
+
+const STAGE_FILTERS = [
+  { key: undefined,      label: 'All',         icon: Users },
+  { key: 'lead',         label: 'Leads',       icon: TrendingUp },
+  { key: 'customer',     label: 'Clients',     icon: Briefcase },
+  { key: 'subscriber',   label: 'Subscribers', icon: UserCheck },
+  { key: 'opportunity',  label: 'Opportunities', icon: Building2 },
+];
 
 function ContactCard({ contact }: { contact: CrmContactRecord }) {
   const navigate = useNavigate();
@@ -108,17 +129,22 @@ export function PeoplePage() {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<string | undefined>(undefined);
+  const [myContacts, setMyContacts] = useState(false);
 
-  const orgId = user?.home_organization_id ?? user?.organizations?.[0]?.id;
+  // Org scoping: default to the user's first org, allow switching to "All"
+  const userOrgs: { id: string; name: string; slug: string }[] = (user as any)?.organizations ?? [];
+  const orgId = user?.home_organization_id ?? userOrgs[0]?.id;
+  const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>(orgId);
+  const selectedOrg = userOrgs.find(o => o.id === selectedOrgId);
 
   const { data: contacts = [], isLoading } = useQuery<CrmContactRecord[]>({
-    queryKey: ['crm-contacts-all', orgId, stageFilter],
+    queryKey: ['crm-contacts-all', selectedOrgId, stageFilter],
     queryFn: () =>
-      crmApi.listContacts(orgId!, {
+      crmApi.listContacts(selectedOrgId!, {
         lifecycleStage: stageFilter,
         limit: 200,
       }),
-    enabled: !!orgId,
+    enabled: !!selectedOrgId,
   });
 
   // Client-side search filtering
@@ -135,7 +161,10 @@ export function PeoplePage() {
     });
   }, [contacts, search]);
 
-  const stages = ['subscriber', 'lead', 'mql', 'sql', 'opportunity', 'customer', 'evangelist', 'churned'];
+  const stageCounts = contacts.reduce<Record<string, number>>((acc, c) => {
+    acc[c.lifecycle_stage] = (acc[c.lifecycle_stage] ?? 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -144,53 +173,91 @@ export function PeoplePage() {
         <div>
           <h1 className="text-2xl font-semibold">All People</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            CRM contacts across your organization.
+            CRM contacts across {selectedOrg?.name ?? 'your organization'}.
           </p>
         </div>
-        {orgId && (
-          <Button onClick={() => navigate(`/organizations/${orgId}/crm/contacts`)}>
+        {selectedOrgId && (
+          <Button onClick={() => navigate(`/organizations/${selectedOrgId}/crm/contacts`)}>
             CRM Contacts
           </Button>
         )}
       </div>
 
-      {/* Stage filter pills */}
+      {/* Org scope switcher + Stage filter pills */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setStageFilter(undefined)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
-            !stageFilter
-              ? 'bg-primary text-primary-foreground border-primary'
-              : 'border-border hover:bg-muted/60'
-          }`}
-        >
-          <Users className="h-3.5 w-3.5" />
-          All
-          <span className={`text-xs ${!stageFilter ? 'opacity-80' : 'text-muted-foreground'}`}>
-            {contacts.length}
-          </span>
-        </button>
-        {stages.map((stage) => {
-          const count = contacts.filter((c) => c.lifecycle_stage === stage).length;
-          if (count === 0 && stageFilter !== stage) return null;
-          const active = stageFilter === stage;
+        {/* Org selector */}
+        {userOrgs.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border border-border hover:bg-muted/60 transition-colors font-medium">
+                <Building2 className="h-3.5 w-3.5" />
+                {selectedOrg?.name ?? 'All Orgs'}
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => setSelectedOrgId(undefined)}>
+                <Globe className="h-4 w-4 mr-2" />
+                All Organisations
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {userOrgs.map(org => (
+                <DropdownMenuItem key={org.id} onClick={() => setSelectedOrgId(org.id)}>
+                  <Building2 className="h-4 w-4 mr-2" />
+                  {org.name}
+                  {selectedOrgId === org.id && <span className="ml-auto text-primary">✓</span>}
+                </DropdownMenuItem>
+              ))}
+              {selectedOrgId && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to={`/organizations/${selectedOrgId}?tab=crm`} className="flex items-center gap-2">
+                      <UserCheck className="h-4 w-4" />
+                      Open {selectedOrg?.name} CRM
+                    </Link>
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        {/* Stage filter pills */}
+        {STAGE_FILTERS.map((f) => {
+          const Icon = f.icon;
+          const count = f.key ? (stageCounts[f.key] ?? 0) : contacts.length;
+          const active = stageFilter === f.key;
           return (
             <button
-              key={stage}
-              onClick={() => setStageFilter(active ? undefined : stage)}
+              key={f.key ?? 'all'}
+              onClick={() => setStageFilter(f.key)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
                 active
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border hover:bg-muted/60'
               }`}
             >
-              {stage.replace(/_/g, ' ')}
+              <Icon className="h-3.5 w-3.5" />
+              {f.label}
               <span className={`text-xs ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
                 {count}
               </span>
             </button>
           );
         })}
+
+        <button
+          onClick={() => setMyContacts(!myContacts)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+            myContacts
+              ? 'bg-violet-600 text-white border-violet-600'
+              : 'border-border hover:bg-muted/60'
+          }`}
+        >
+          <UserCircle className="h-3.5 w-3.5" />
+          My Contacts
+        </button>
       </div>
 
       {/* Search */}
@@ -222,6 +289,11 @@ export function PeoplePage() {
               ? 'Try adjusting your search or filter criteria.'
               : 'Contacts will appear here as they are added via CRM or workflow imports.'}
           </p>
+          {selectedOrg && (
+            <p className="text-xs mt-1">
+              Showing contacts for <strong>{selectedOrg.name}</strong>
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-2">

@@ -126,7 +126,7 @@ const Dialog = React.forwardRef<
       />
       <div
         ref={ref}
-        className={cn('relative z-[10000] w-full flex justify-center', className)}
+className={cn('relative z-[10000] w-full flex justify-center', className)}
         {...props}
       >
         {enrichedChildren}
