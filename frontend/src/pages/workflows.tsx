@@ -1226,7 +1226,7 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: WorkflowDefinition
   return (
     <>
       <Dialog open={!!workflow} onOpenChange={(open) => { if (!open) handleClose(); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Play className="h-4 w-4" />
@@ -1234,9 +1234,9 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: WorkflowDefinition
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 flex-1 min-h-0 flex flex-col">
             {/* Filters */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
@@ -1260,7 +1260,7 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: WorkflowDefinition
             </div>
 
             {/* Data source list */}
-            <div className="border rounded-md max-h-64 overflow-auto">
+            <div className="border rounded-md flex-1 min-h-0 overflow-auto">
               {filteredSources.length === 0 ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">
                   <Database className="h-6 w-6 mx-auto mb-2 opacity-40" />
@@ -1296,7 +1296,7 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: WorkflowDefinition
 
             {/* Model selector */}
             {Array.isArray(availableModels) && availableModels.length > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <span className="text-xs text-muted-foreground shrink-0">Model:</span>
                 <Select value={effectiveModel} onValueChange={setSelectedModel}>
                   <SelectTrigger className="h-8 text-xs">
@@ -1325,7 +1325,7 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: WorkflowDefinition
             )}
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 shrink-0">
               <Button variant="outline" size="sm" onClick={handleClose}>Cancel</Button>
               <Button
                 size="sm"
