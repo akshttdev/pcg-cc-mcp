@@ -140,7 +140,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'My Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
-  { label: 'Social', icon: Megaphone, to: '/social-command', id: 'social-command' },
+  { label: 'Calendar', icon: Calendar, to: '/calendar', id: 'calendar' },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
   { label: 'VIBE', icon: Coins, to: '/vibe', id: 'vibe' },
 ];
