@@ -926,7 +926,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         )
         .route("/organizations/{id}/generate-invite", post(generate_invite))
         .route("/organizations/{id}/persons", get(get_org_persons))
-        .route("/organizations/{id}/data-sources", get(list_org_data_sources))
+        // data-sources routes handled by data_sources::router
         .route("/data-sources", get(list_data_sources))
         .route(
             "/organizations/{id}/person-contacts",
