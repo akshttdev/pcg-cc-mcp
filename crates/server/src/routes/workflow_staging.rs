@@ -296,7 +296,21 @@ async fn batch_commit(
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to list records: {e}")))?;
 
-    let approved: Vec<_> = records.into_iter().filter(|r| r.status == "approved").collect();
+    let mut approved: Vec<_> = records.into_iter().filter(|r| r.status == "approved").collect();
+
+    // Sort: companies first, then contacts, then deals, then tasks
+    // This ensures companies exist before contacts try to link to them
+    fn target_type_order(t: &str) -> u8 {
+        match t {
+            "company" => 0,
+            "crm_contact" => 1,
+            "crm_deal" => 2,
+            "task" => 3,
+            _ => 4,
+        }
+    }
+    approved.sort_by_key(|r| target_type_order(&r.target_type));
+
     let mut committed: i64 = 0;
     let mut errors: i64 = 0;
     let mut results = Vec::new();
@@ -309,6 +323,25 @@ async fn batch_commit(
             committed += 1;
         }
         results.push(result);
+    }
+
+    // Post-commit linking pass: link contacts to companies by matching company_name
+    let org_id = approved.first().and_then(|r| r.organization_id);
+    if let Some(org_id) = org_id {
+        for result in &results {
+            if result.target_type == "crm_contact" && result.created_id.is_some() && result.error.is_none() {
+                let contact_id = result.created_id.unwrap();
+                // Try to link the contact to a company by name
+                if let Ok(contact) = CrmContact::find_by_id(pool, contact_id).await {
+                    if let Some(company_name) = &contact.company_name {
+                        if let Ok(Some(company)) = Company::find_by_name_and_org(pool, company_name, org_id).await {
+                            // Store company_id in contact's custom_fields
+                            let _ = store_company_id_in_custom_fields(pool, contact.id, company.id).await;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok(Json(ApiResponse::success(BatchCommitResult {
@@ -472,6 +505,22 @@ async fn commit_company(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
     let data: Value = serde_json::from_str(&record.record_data).map_err(|e| e.to_string())?;
     let name = data["name"].as_str().ok_or("Company name is required")?;
 
+    // Org-scoped dedup: if organization_id is available, check for an existing company
+    // with the same name within that org before falling through to find_or_create.
+    if let Some(org_id) = record.organization_id {
+        if let Ok(Some(existing)) = Company::find_by_name_and_org(pool, name, org_id).await {
+            tracing::info!(
+                existing_company_id = %existing.id,
+                company_name = %name,
+                organization_id = %org_id,
+                "Merged staging company into existing company {} (org-scoped dedup)",
+                existing.id
+            );
+            update_company_extra_fields(pool, existing.id, &data).await;
+            return Ok(existing.id);
+        }
+    }
+
     let company = Company::find_or_create(
         pool,
         name,
@@ -481,7 +530,13 @@ async fn commit_company(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
     .await
     .map_err(|e| e.to_string())?;
 
-    // Update additional fields if present in record data (find_or_create only sets name/website)
+    update_company_extra_fields(pool, company.id, &data).await;
+
+    Ok(company.id)
+}
+
+/// Update additional fields on a company if present in staging record data.
+async fn update_company_extra_fields(pool: &SqlitePool, company_id: Uuid, data: &Value) {
     let has_extra_fields = data["industry"].as_str().is_some()
         || data["description"].as_str().is_some()
         || data["logo_url"].as_str().is_some()
@@ -496,16 +551,14 @@ async fn commit_company(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Re
             headquarters: data["headquarters"].as_str().map(|s| s.to_string()),
             ..Default::default()
         };
-        if let Err(e) = Company::update(pool, company.id, update).await {
+        if let Err(e) = Company::update(pool, company_id, update).await {
             tracing::warn!(
-                company_id = %company.id,
+                company_id = %company_id,
                 error = %e,
                 "Failed to update company with additional fields from workflow"
             );
         }
     }
-
-    Ok(company.id)
 }
 
 async fn commit_deal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Result<Uuid, String> {

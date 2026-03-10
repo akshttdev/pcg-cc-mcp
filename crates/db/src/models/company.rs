@@ -144,6 +144,23 @@ impl Company {
         Ok(row)
     }
 
+    /// Find a company by name scoped to a specific organization.
+    /// Used for deduplication during workflow staging commits.
+    pub async fn find_by_name_and_org(
+        pool: &SqlitePool,
+        name: &str,
+        org_id: Uuid,
+    ) -> Result<Option<Self>, CompanyError> {
+        let row = sqlx::query_as::<_, Self>(
+            "SELECT * FROM companies WHERE lower(name) = lower(?) AND created_by_org_id = ? ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(name)
+        .bind(org_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(row)
+    }
+
     pub async fn find_by_organization(
         pool: &SqlitePool,
         org_id: Uuid,
@@ -229,6 +246,14 @@ impl Company {
         created_by_org_id: Option<Uuid>,
         website: Option<String>,
     ) -> Result<Self, CompanyError> {
+        // Prefer org-scoped lookup for deduplication when org is known
+        if let Some(org_id) = created_by_org_id {
+            if let Some(existing) = Self::find_by_name_and_org(pool, name, org_id).await? {
+                return Ok(existing);
+            }
+        }
+
+        // Fallback to global name lookup
         if let Some(existing) = Self::find_by_name(pool, name).await? {
             return Ok(existing);
         }
