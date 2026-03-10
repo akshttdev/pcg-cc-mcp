@@ -945,8 +945,8 @@ export function ProjectTasks() {
           )}
         </div>
 
-        {/* Right Column - Task Details Panel */}
-        {isPanelOpen && selectedTask && useEnhancedCards ? (
+        {/* Right Column - Task Details Panel (always Enhanced for PCG workflow tasks) */}
+        {isPanelOpen && selectedTask ? (
           <EnhancedTaskDetailsPanel
             task={selectedTask}
             projectId={projectId!}
@@ -957,27 +957,6 @@ export function ProjectTasks() {
             onToggleFullscreen={() => toggleFullscreen(!isFullscreen)}
             isFullscreen={isFullscreen}
             className={isFullscreen ? 'fixed inset-0 z-50' : 'w-[600px] xl:w-[700px] shrink-0'}
-          />
-        ) : isPanelOpen ? (
-          <TaskDetailsPanel
-            task={selectedTask}
-            projectHasDevScript={!!project?.dev_script}
-            projectId={projectId!}
-            onClose={handleClosePanel}
-            onEditTask={handleEditTaskCallback}
-            onDeleteTask={handleDeleteTask}
-            onDuplicateTask={handleDuplicateTaskCallback}
-            onNavigateToTask={(taskId) => {
-              const task = tasksById[taskId];
-              if (task) {
-                handleViewTaskDetails(task, undefined, true);
-              }
-            }}
-            isFullScreen={isFullscreen}
-            selectedAttempt={selectedAttempt}
-            attempts={attempts}
-            setSelectedAttempt={setSelectedAttempt}
-            tasksById={tasksById}
           />
         ) : null}
       </div>

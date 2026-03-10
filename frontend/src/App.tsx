@@ -43,6 +43,7 @@ const VirtualEnvironmentPage       = lazy(() => import('@/pages/virtual-environm
 const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-environment').then(m => ({ default: m.EmbedVirtualEnvironmentPage })));
 // MeshPage merged into Settings > Network & Mesh
 const VibePage              = lazy(() => import('@/pages/vibe'));
+const CalendarPage          = lazy(() => import('@/pages/calendar'));
 const PulsePage             = lazy(() => import('@/pages/pulse'));
 const AIUsagePage           = lazy(() => import('@/pages/ai-usage').then(m => ({ default: m.AIUsagePage })));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
@@ -77,6 +78,8 @@ const McpSettings       = lazy(() => import('@/pages/settings/McpSettings').then
 const WalletSettings    = lazy(() => import('@/pages/settings/WalletSettings').then(m => ({ default: m.WalletSettings })));
 const KeysSettings      = lazy(() => import('@/pages/settings/KeysSettings').then(m => ({ default: m.KeysSettings })));
 const NetworkSettings   = lazy(() => import('@/pages/settings/NetworkSettings').then(m => ({ default: m.NetworkSettings })));
+const BrandIntakePage   = lazy(() => import('@/pages/brand-intake').then(m => ({ default: m.BrandIntakePage })));
+const BrandGuidePage    = lazy(() => import('@/pages/brand-guide').then(m => ({ default: m.BrandGuidePage })));
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -273,6 +276,11 @@ function App() {
             path="/organizations/:orgId/data-sources/:dataSourceId"
             element={<ProtectedRoute><DataSourceDetailPage /></ProtectedRoute>}
           />
+          <Route path="/intake/:token" element={<BrandIntakePage />} />
+          <Route
+            path="/organizations/:orgId/brand-guide"
+            element={<ProtectedRoute><BrandGuidePage /></ProtectedRoute>}
+          />
           <Route
             path="/projects/:projectId/knowledge"
             element={<ProtectedRoute><KnowledgePage /></ProtectedRoute>}
@@ -354,6 +362,7 @@ function App() {
           />
           <Route path="/ai-usage" element={<AdminRoute><AIUsagePage /></AdminRoute>} />
           <Route path="/vibe" element={<ProtectedRoute><VibePage /></ProtectedRoute>} />
+          <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
           <Route
             path="/oauth/:provider/callback"
             element={<ProtectedRoute><OAuthCallbackPage /></ProtectedRoute>}

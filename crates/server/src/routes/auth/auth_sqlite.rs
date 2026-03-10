@@ -92,12 +92,13 @@ pub async fn login(
     // Get SQLite pool from deployment
     let pool = &deployment.db().pool;
 
-    // Find user by username
+    // Find user by username OR email (case-insensitive)
     let user = sqlx::query_as::<_, User>(
         "SELECT id, username, email, password_hash, full_name, avatar_url, is_active, is_admin, home_organization_id
          FROM users
-         WHERE username = ? COLLATE NOCASE AND is_active = 1",
+         WHERE (username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE) AND is_active = 1",
     )
+    .bind(&req.username)
     .bind(&req.username)
     .fetch_optional(pool)
     .await

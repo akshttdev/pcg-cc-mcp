@@ -115,7 +115,7 @@ pub mod pcg_router;
 pub mod discord;
 pub mod oss_listener;
 pub mod oss_listener_bg;
-// pub mod meet; // file not yet committed
+pub mod meet;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -218,6 +218,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(auth::router(&deployment))
         .merge(invitations::public_router(&deployment))
         .merge(org_invitations::public_router(&deployment))
+        .merge(organizations::public_router(&deployment))
         .merge(filesystem::router())
         .merge(events::router(&deployment))
         .nest("/images", images::routes())
@@ -249,7 +250,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(model_pricing::router(&deployment))
         .merge(feedback::router(&deployment))
         .merge(vibe_treasury::public_router(&deployment))
-        // .merge(meet::meet_routes(&deployment)) // meet.rs not yet committed
+        .merge(meet::meet_routes(&deployment))
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))
         .merge(orcha::orcha_routes())

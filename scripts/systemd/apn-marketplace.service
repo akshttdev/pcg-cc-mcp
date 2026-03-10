@@ -1,0 +1,20 @@
+[Unit]
+Description=APN Marketplace — Alpha Protocol Network Service Marketplace
+After=network.target
+
+[Service]
+Type=simple
+User=pythia
+WorkingDirectory=/home/pythia/apn-marketplace
+Environment=NODE_ENV=production
+Environment=PORT=3002
+Environment=NEXT_PUBLIC_API_URL=https://dashboard.powerclubglobal.com/api
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=apn-marketplace
+
+[Install]
+WantedBy=multi-user.target

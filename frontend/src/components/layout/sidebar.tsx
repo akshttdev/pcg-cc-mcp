@@ -50,10 +50,12 @@ import {
   Headphones,
   Workflow,
   Map,
-  Palette,
+  Coins,
   Rocket,
   Plug,
   Cpu,
+  Inbox,
+  BarChart2,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -138,9 +140,9 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { label: 'My Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
-  { label: 'Social', icon: Megaphone, to: '/social-command', id: 'social-command' },
+  { label: 'Calendar', icon: Calendar, to: '/calendar', id: 'calendar' },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
-  { label: 'Vibe', icon: Palette, to: '/vibe', id: 'vibe' },
+  { label: 'VIBE', icon: Coins, to: '/vibe', id: 'vibe' },
 ];
 
 // Management nav — admin-only, collapsible
@@ -253,6 +255,71 @@ function OrgCrmSection({
               <span>{label}</span>
             </Link>
           ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// ============================================================================
+// OrgSocialSection — collapsible Social sub-navigation for an org
+// ============================================================================
+
+function OrgSocialSection({
+  orgId,
+  location,
+}: {
+  orgId: string;
+  location: ReturnType<typeof useLocation>;
+}) {
+  const orgBase = `/organizations/${orgId}`;
+  const sp = new URLSearchParams(location.search);
+  const isOnSocial = location.pathname === orgBase && sp.get('tab') === 'social';
+  const [open, setOpen] = useState(isOnSocial);
+
+  const socialViews = [
+    { label: 'Overview',  sv: '',          icon: LayoutGrid,  color: 'text-muted-foreground' },
+    { label: 'Accounts',  sv: 'accounts',  icon: Share2,      color: 'text-pink-500' },
+    { label: 'Content',   sv: 'content',   icon: FileText,    color: 'text-purple-500' },
+    { label: 'Inbox',     sv: 'inbox',     icon: Inbox,       color: 'text-amber-500' },
+    { label: 'Analytics', sv: 'analytics', icon: BarChart2,   color: 'text-blue-500' },
+  ];
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            'flex items-center gap-1.5 w-full px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+            isOnSocial && 'text-accent-foreground font-medium'
+          )}
+        >
+          <Share2 className="h-3 w-3 shrink-0 text-pink-500" />
+          <span className="flex-1 text-left">Social</span>
+          {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-4 space-y-0.5 py-0.5">
+          {socialViews.map(({ label, sv, icon: Icon, color }) => {
+            const to = sv
+              ? `${orgBase}?tab=social&sv=${sv}`
+              : `${orgBase}?tab=social`;
+            const isActive = isOnSocial && (sp.get('sv') || '') === sv;
+            return (
+              <Link
+                key={label}
+                to={to}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                  isActive && 'bg-primary/10 text-foreground font-medium'
+                )}
+              >
+                <Icon className={cn('h-3 w-3 shrink-0', color)} />
+                <span>{label}</span>
+              </Link>
+            );
+          })}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -1003,20 +1070,23 @@ function ClientGroup({
 
   return (
     <Collapsible open={expanded} onOpenChange={handleSetExpanded}>
-      <div className="flex items-center group/client">
-        <Button
-          variant="ghost"
-          className="flex-1 justify-between px-2 py-1 h-auto font-normal text-xs min-w-0"
-          onClick={() => {
-            if (organizationId && client.id) navigate(`/organizations/${organizationId}/clients/${client.id}`);
-          }}
+      {/* Entire header row is the collapse trigger — chevron always visible on the left */}
+      <CollapsibleTrigger asChild>
+        <div
+          className={cn(
+            'flex items-center gap-1.5 px-2 py-1.5 rounded-sm cursor-pointer hover:bg-accent/60 hover:text-accent-foreground transition-colors group/client text-xs',
+            hasActiveProject && 'bg-primary/10 text-foreground font-medium'
+          )}
         >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <HealthDot status={client.health_status} />
-            <UserCircle className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="truncate">{client.name}</span>
-          </div>
-          <div className="flex items-center gap-1">
+          {expanded ? (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          )}
+          <HealthDot status={client.health_status} />
+          <UserCircle className="h-3.5 w-3.5 text-primary shrink-0" />
+          <span className="truncate flex-1 font-normal">{client.name}</span>
+          <div className="flex items-center gap-1 shrink-0">
             {client.active_issues_count != null && client.active_issues_count > 0 && (
               <span className="text-[9px] px-1 py-0.5 rounded bg-destructive/10 text-destructive">
                 {client.active_issues_count}
@@ -1026,39 +1096,8 @@ function ClientGroup({
               {countProjects(client.projects)}
             </span>
           </div>
-        </Button>
-        <CollapsibleTrigger asChild>
-          <button className="p-0.5 hover:bg-accent rounded-sm shrink-0 mr-0.5">
-            {expanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-          </button>
-        </CollapsibleTrigger>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-5 w-5 p-0 hover:bg-accent opacity-0 group-hover/client:opacity-100 transition-opacity shrink-0 mr-1"
-          title="Add project to client"
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const result = await NiceModal.show('project-form', {
-                organization_id: organizationId,
-                client_id: client.id,
-              }) as ProjectFormDialogResult;
-              if (result === 'saved') {
-                queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
-              }
-            } catch {
-              // dialog dismissed
-            }
-          }}
-        >
-          <Plus className="h-3 w-3" />
-        </Button>
-      </div>
+        </div>
+      </CollapsibleTrigger>
       <CollapsibleContent className="pl-4">
         <div className="space-y-0.5 py-0.5">
           <SortableProjectList
@@ -1072,6 +1111,16 @@ function ClientGroup({
 
           {/* Client context quick links */}
           <div className="pt-1 mt-1 border-t border-border/40 space-y-0.5">
+            <Link
+              to={`/organizations/${organizationId}/clients/${client.id}`}
+              className={cn(
+                'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
+                location.pathname === `/organizations/${organizationId}/clients/${client.id}` && 'bg-primary/10 text-foreground font-medium'
+              )}
+            >
+              <UserCircle className="h-3 w-3 shrink-0" />
+              <span>Client Overview</span>
+            </Link>
             {client.crm_person_id && (
               <Link
                 to={`/people/${client.crm_person_id}`}
@@ -1085,15 +1134,6 @@ function ClientGroup({
               </Link>
             )}
             <Link
-              to={`/organizations/${organizationId}/projects`}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
-              )}
-            >
-              <TrendingUp className="h-3 w-3 shrink-0" />
-              <span>Client Overview</span>
-            </Link>
-            <Link
               to={`/organizations/${organizationId}/crm/pipeline`}
               className={cn(
                 'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
@@ -1102,6 +1142,26 @@ function ClientGroup({
               <Package className="h-3 w-3 shrink-0" />
               <span>Deliverables</span>
             </Link>
+            <button
+              className="flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground w-full text-left opacity-0 group-hover/client:opacity-100"
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  const result = await NiceModal.show('project-form', {
+                    organization_id: organizationId,
+                    client_id: client.id,
+                  }) as ProjectFormDialogResult;
+                  if (result === 'saved') {
+                    queryClient?.invalidateQueries({ queryKey: ['sidebarTree'] });
+                  }
+                } catch {
+                  // dialog dismissed
+                }
+              }}
+            >
+              <Plus className="h-3 w-3 shrink-0" />
+              <span>Add Project</span>
+            </button>
           </div>
         </div>
       </CollapsibleContent>
@@ -1188,6 +1248,8 @@ function OrgSection({
         {/* Org-level workspace links: CRM, Social, Intelligence */}
         <div className="px-1 py-1 space-y-0.5">
           <OrgCrmSection orgId={org.id} location={location} />
+
+          <OrgSocialSection orgId={org.id} location={location} />
 
           <OrgIntelligenceSection orgId={org.id} location={location} />
 
