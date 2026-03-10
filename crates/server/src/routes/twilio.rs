@@ -2006,10 +2006,7 @@ async fn send_outbound_sms(to: &str, body: &str) -> Result<(), String> {
     let from_number = std::env::var("TWILIO_PHONE_NUMBER")
         .map_err(|_| "TWILIO_PHONE_NUMBER not set".to_string())?;
 
-    let url = format!(
-        "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
-        account_sid
-    );
+    let url = crate::twilio_sms::sms_api_url(&account_sid);
 
     let client = reqwest::Client::new();
     let resp = client

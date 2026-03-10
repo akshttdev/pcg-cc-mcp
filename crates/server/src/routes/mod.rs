@@ -111,7 +111,10 @@ pub mod workflow_staging;
 pub mod workflow_triggers;
 pub mod output_schemas;
 pub mod discord;
-pub mod meet;
+pub mod companies;
+pub mod graph;
+pub mod invite_dispatch;
+// pub mod meet; // file not yet committed
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -243,7 +246,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(model_pricing::router(&deployment))
         .merge(feedback::router(&deployment))
         .merge(vibe_treasury::public_router(&deployment))
-        .merge(meet::meet_routes(&deployment))
+        // .merge(meet::meet_routes(&deployment)) // meet.rs not yet committed
         .merge(review::router(&deployment))
         .merge(social_accounts::bio_router(&deployment))
         .merge(orcha::orcha_routes())

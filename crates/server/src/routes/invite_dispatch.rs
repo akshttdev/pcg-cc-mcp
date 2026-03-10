@@ -199,7 +199,7 @@ async fn send_sms(to: &str, body: &str) -> (String, String) {
         return ("sent".to_string(), format!("SMS logged (Twilio not configured) → {to}"));
     }
 
-    let url = format!("https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json");
+    let url = crate::twilio_sms::sms_api_url(&sid);
     match reqwest::Client::new()
         .post(&url)
         .basic_auth(&sid, Some(&token))
@@ -226,7 +226,7 @@ async fn send_whatsapp(to: &str, body: &str) -> (String, String) {
     }
 
     let to_wa = format!("whatsapp:{to}");
-    let url = format!("https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json");
+    let url = crate::twilio_sms::sms_api_url(&sid);
     match reqwest::Client::new()
         .post(&url)
         .basic_auth(&sid, Some(&token))
