@@ -54,6 +54,7 @@ const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
+const DataSourcesPage      = lazy(() => import('@/pages/data-sources'));
 const DataSourceDetailPage = lazy(() => import('@/pages/data-source-detail').then(m => ({ default: m.DataSourceDetailPage })));
 const DiscordPage             = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
 const SiteDirectoryPage       = lazy(() => import('@/pages/site-directory').then(m => ({ default: m.SiteDirectoryPage })));
@@ -263,6 +264,10 @@ function App() {
           <Route
             path="/organizations/:orgId/clients/:clientId"
             element={<ProtectedRoute><ClientOverview /></ProtectedRoute>}
+          />
+          <Route
+            path="/organizations/:orgId/data-sources"
+            element={<ProtectedRoute><DataSourcesPage /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/data-sources/:dataSourceId"

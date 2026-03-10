@@ -2798,7 +2798,7 @@ function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string; projec
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-muted-foreground">Data Library Summary</h3>
         <Link
-          to={`/organizations/${orgId}/intelligence/data-sources`}
+          to={`/organizations/${orgId}/data-sources`}
           className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
         >
           <Database className="h-3.5 w-3.5" />
