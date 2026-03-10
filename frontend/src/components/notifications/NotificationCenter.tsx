@@ -39,9 +39,11 @@ interface ActivityItem {
 
 function getActionIcon(action: string) {
   switch (action) {
+    case 'created':
     case 'create':
     case 'task_created':
       return <Plus className="h-3 w-3 text-green-500" />;
+    case 'updated':
     case 'update':
     case 'task_updated':
       return <Edit className="h-3 w-3 text-blue-500" />;
@@ -50,6 +52,7 @@ function getActionIcon(action: string) {
     case 'complete':
     case 'done':
       return <CheckCircle2 className="h-3 w-3 text-green-500" />;
+    case 'deleted':
     case 'delete':
       return <Trash2 className="h-3 w-3 text-red-500" />;
     case 'comment':
@@ -59,17 +62,26 @@ function getActionIcon(action: string) {
   }
 }
 
+function formatActor(item: ActivityItem): string {
+  if (item.actor_type === 'agent') return 'Agent';
+  if (item.actor_type === 'system') return 'System';
+  if (item.actor_id === 'current-user' || !item.actor_id) return 'You';
+  return item.actor_id;
+}
+
 function formatAction(item: ActivityItem): string {
-  const actor = item.actor_type === 'agent' ? `Agent` : item.actor_id;
+  const actor = formatActor(item);
   let meta: Record<string, any> = {};
   try {
     if (item.metadata) meta = JSON.parse(item.metadata);
   } catch {}
 
   switch (item.action) {
+    case 'created':
     case 'create':
     case 'task_created':
       return `${actor} created${meta.title ? ` "${meta.title}"` : ' a task'}`;
+    case 'updated':
     case 'update':
     case 'task_updated':
       if (meta.fields_changed) {
@@ -82,8 +94,11 @@ function formatAction(item: ActivityItem): string {
       return `${actor} commented`;
     case 'create_and_start':
       return `${actor} started execution`;
+    case 'deleted':
+    case 'delete':
+      return `${actor} deleted${meta.title ? ` "${meta.title}"` : ' an item'}`;
     default:
-      return `${actor}: ${item.action}`;
+      return `${actor} ${item.action.replace(/_/g, ' ')}`;
   }
 }
 

@@ -1424,6 +1424,7 @@ function SidebarOrgGroups({
 
 export function Sidebar({ className }: SidebarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
   const { favorites, addFavorite, removeFavorite, isFavorite } = useCommandStore();
@@ -1806,8 +1807,11 @@ export function Sidebar({ className }: SidebarProps) {
                     submitText: 'Create Organization',
                   }) as CreateNameDialogResult;
                   const slug = result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-                  await organizationsApi.create({ name: result.name, slug });
+                  const newOrg = await organizationsApi.create({ name: result.name, slug });
                   queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+                  if (newOrg?.id) {
+                    navigate(`/organizations/${newOrg.id}`);
+                  }
                 } catch {
                   // dialog dismissed
                 }
