@@ -212,7 +212,7 @@ export function PeoplePage() {
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link to={`/organizations/${selectedOrgId}?tab=crm`} className="flex items-center gap-2">
+                    <Link to={`/organizations/${selectedOrgId}/crm`} className="flex items-center gap-2">
                       <UserCheck className="h-4 w-4" />
                       Open {selectedOrg?.name} CRM
                     </Link>

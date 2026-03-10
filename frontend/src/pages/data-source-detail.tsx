@@ -273,7 +273,7 @@ export function DataSourceDetailPage() {
           size="sm"
           className="gap-1.5 -ml-2"
           onClick={() =>
-            navigate(`/organizations/${orgId}?tab=knowledge&view=datasources`)
+            navigate(`/organizations/${orgId}/intelligence/data-sources`)
           }
         >
           <ArrowLeft className="h-4 w-4" />

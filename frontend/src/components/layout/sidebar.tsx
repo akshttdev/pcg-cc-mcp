@@ -1074,10 +1074,10 @@ function ClientGroup({
           <div className="pt-1 mt-1 border-t border-border/40 space-y-0.5">
             {client.crm_person_id && (
               <Link
-                to={`/crm/people/${client.crm_person_id}`}
+                to={`/people/${client.crm_person_id}`}
                 className={cn(
                   'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
-                  location.pathname === `/crm/people/${client.crm_person_id}` && 'bg-primary/10 text-foreground font-medium'
+                  location.pathname === `/people/${client.crm_person_id}` && 'bg-primary/10 text-foreground font-medium'
                 )}
               >
                 <Users className="h-3 w-3 shrink-0" />
@@ -1085,7 +1085,7 @@ function ClientGroup({
               </Link>
             )}
             <Link
-              to={`/organizations/${organizationId}?tab=projects&client=${client.id}`}
+              to={`/organizations/${organizationId}/projects`}
               className={cn(
                 'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
               )}
@@ -1094,7 +1094,7 @@ function ClientGroup({
               <span>Client Overview</span>
             </Link>
             <Link
-              to={`/organizations/${organizationId}?tab=pipelines&client=${client.id}`}
+              to={`/organizations/${organizationId}/crm/pipeline`}
               className={cn(
                 'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
               )}

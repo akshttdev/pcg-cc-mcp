@@ -121,7 +121,7 @@ export function OAuthCallbackPage() {
         if (ownerType === 'agent' || ownerType === 'organization') {
           setStatusDetail('Redirecting to Agent Settings…');
           redirectTimer.current = window.setTimeout(() => {
-            navigate('/settings?tab=agents', { replace: true });
+            navigate('/settings/agents', { replace: true });
           }, 1800);
         } else if (projectIdFromState) {
           setStatusDetail('Redirecting you back to CRM…');
@@ -158,7 +158,7 @@ export function OAuthCallbackPage() {
 
   const handleBackToCrm = () => {
     if (ownerType === 'agent' || ownerType === 'organization') {
-      navigate('/settings?tab=agents');
+      navigate('/settings/agents');
     } else if (projectIdFromState) {
       const params = new URLSearchParams();
       params.set('projectId', projectIdFromState);
