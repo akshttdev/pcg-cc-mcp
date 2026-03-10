@@ -69,6 +69,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Info,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -2019,6 +2020,11 @@ function StagingTab() {
               try { validationErrs = JSON.parse(record.validation_errors); } catch {}
             }
 
+            // Check if this record has any of the common/global warnings
+            const hasCommonWarning = validationErrs.some(e => commonWarningSet.has(e));
+            // Row-specific (non-common) warnings only
+            const rowSpecificErrs = validationErrs.filter(e => !commonWarningSet.has(e));
+
             return (
               <div key={record.id}>
                 <div
@@ -2045,8 +2051,11 @@ function StagingTab() {
                     {record.duplicate_of_id && (
                       <span title="Potential duplicate"><AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" /></span>
                     )}
-                    {validationErrs.length > 0 && !record.duplicate_of_id && (
-                      <span title={`${validationErrs.length} issue(s)`}><AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" /></span>
+                    {rowSpecificErrs.length > 0 && !record.duplicate_of_id && (
+                      <span title={`${rowSpecificErrs.length} issue(s)`}><AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" /></span>
+                    )}
+                    {hasCommonWarning && (
+                      <span title="Affected by global warning (see banner above)"><Info className="h-3 w-3 text-blue-400 shrink-0" /></span>
                     )}
                   </div>
 
@@ -2155,10 +2164,10 @@ function StagingTab() {
                 )}
 
                 {/* Compact inline warnings when NOT expanded — skip common warnings shown in banner */}
-                {!isExpanded && validationErrs.filter(e => !commonWarningSet.has(e)).length > 0 && record.status !== 'rejected' && (
+                {!isExpanded && rowSpecificErrs.length > 0 && record.status !== 'rejected' && (
                   <div className="px-4 py-1 bg-amber-50/50 dark:bg-amber-950/10 border-b flex items-center gap-1.5">
                     <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
-                    <span className="text-[10px] text-amber-600">{validationErrs.filter(e => !commonWarningSet.has(e)).join(' · ')}</span>
+                    <span className="text-[10px] text-amber-600">{rowSpecificErrs.join(' · ')}</span>
                   </div>
                 )}
               </div>
