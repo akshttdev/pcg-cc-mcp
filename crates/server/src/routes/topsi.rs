@@ -585,6 +585,7 @@ pub struct MeetingSessionSummary {
     pub ended_at: Option<String>,
     pub duration_seconds: Option<i32>,
     pub participant_count: Option<i32>,
+    pub segment_count: i64,
     pub notes: Option<serde_json::Value>,
 }
 
@@ -1922,7 +1923,7 @@ pub async fn list_meetings(
         name: String,
     }
     let project_rows: Vec<ProjectRow> = sqlx::query_as(
-        "SELECT lower(hex(id)) as id_hex, name FROM projects WHERE deleted_at IS NULL",
+        "SELECT lower(hex(id)) as id_hex, name FROM projects",
     )
     .fetch_all(pool)
     .await
@@ -1931,6 +1932,20 @@ pub async fn list_meetings(
     let project_map: std::collections::HashMap<String, String> = project_rows
         .into_iter()
         .map(|r| (r.id_hex, r.name))
+        .collect();
+
+    // Batch segment counts for all sessions
+    #[derive(sqlx::FromRow)]
+    struct SegCountRow { session_id: String, cnt: i64 }
+    let seg_counts: Vec<SegCountRow> = sqlx::query_as(
+        "SELECT meeting_session_id as session_id, COUNT(*) as cnt FROM meeting_segments GROUP BY meeting_session_id"
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let seg_count_map: std::collections::HashMap<String, i64> = seg_counts
+        .into_iter()
+        .map(|r| (r.session_id, r.cnt))
         .collect();
 
     let meetings: Vec<MeetingSessionSummary> = sessions
@@ -1946,6 +1961,7 @@ pub async fn list_meetings(
             let hex = s.project_id.replace('-', "").to_lowercase();
             let project_name = project_map.get(&hex).cloned();
 
+            let segment_count = seg_count_map.get(&s.id).copied().unwrap_or(0);
             MeetingSessionSummary {
                 id: s.id,
                 project_id: s.project_id,
@@ -1958,6 +1974,7 @@ pub async fn list_meetings(
                 ended_at: s.ended_at,
                 duration_seconds: s.duration_seconds,
                 participant_count: s.participant_count,
+                segment_count,
                 notes: notes_value,
             }
         })

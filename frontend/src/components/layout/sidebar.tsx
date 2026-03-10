@@ -948,10 +948,10 @@ function ClientGroup({
 
   return (
     <Collapsible open={expanded} onOpenChange={handleSetExpanded}>
-      <div className="flex items-center group/client">
+      <div className="flex items-center group/client min-w-0 overflow-hidden">
         <Button
           variant="ghost"
-          className="flex-1 justify-between px-2 py-1 h-auto font-normal text-xs min-w-0"
+          className="flex-1 justify-between px-2 py-1 h-auto font-normal text-xs min-w-0 overflow-hidden"
           onClick={() => {
             if (organizationId && client.id) navigate(`/organizations/${organizationId}?tab=projects&client=${client.id}`);
           }}
@@ -973,7 +973,7 @@ function ClientGroup({
           </div>
         </Button>
         <CollapsibleTrigger asChild>
-          <button className="p-0.5 hover:bg-accent rounded-sm shrink-0 mr-0.5">
+          <button className="p-0.5 hover:bg-accent rounded-sm shrink-0 ml-0.5 flex-none">
             {expanded ? (
               <ChevronDown className="h-3 w-3" />
             ) : (
@@ -984,7 +984,7 @@ function ClientGroup({
         <Button
           variant="ghost"
           size="sm"
-          className="h-5 w-5 p-0 hover:bg-accent opacity-0 group-hover/client:opacity-100 transition-opacity shrink-0 mr-1"
+          className="h-5 w-5 p-0 hover:bg-accent opacity-0 group-hover/client:opacity-100 transition-opacity flex-none mr-1"
           title="Add project to client"
           onClick={async (e) => {
             e.stopPropagation();
@@ -1483,7 +1483,7 @@ export function Sidebar({ className }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
     <div className={cn(
       "flex flex-col h-full sidebar-container transition-all duration-200 overflow-hidden",
-      sidebarCollapsed ? "w-14" : "w-64",
+      sidebarCollapsed ? "w-14" : "w-72",
       className
     )}>
       {/* Admin Platforms (collapsible, only shown for admins) */}

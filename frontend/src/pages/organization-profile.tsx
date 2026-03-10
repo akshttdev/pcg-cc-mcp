@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/table';
 import {
   Building2,
+  MapPin,
   Users,
   FolderOpen,
   Briefcase,
@@ -90,6 +91,16 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Palette,
+  Mic,
+  Type,
+  Zap,
+  Heart,
+  Link as LinkIcon,
+  Tag,
+  Megaphone,
+  Lightbulb,
+  Crosshair,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -121,6 +132,7 @@ import {
   type ExecutionArtifact,
   DATA_TYPE_OPTIONS,
   type EmailAccountRecord,
+  type OrgBrandProfile,
 } from '@/lib/api';
 import { useUserSystem } from '@/components/config-provider';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
@@ -158,10 +170,468 @@ function formatCurrency(amount: number) {
   return `$${amount.toFixed(0)}`;
 }
 
+// ── Brand Identity Card ───────────────────────────────────────────────────────
+
+const BRAND_VOICE_OPTIONS = ['formal', 'casual', 'playful', 'authoritative', 'bold', 'sophisticated'];
+const BRAND_ARCHETYPE_OPTIONS = ['Hero', 'Creator', 'Sage', 'Outlaw', 'Explorer', 'Ruler', 'Caregiver', 'Innocent', 'Jester', 'Lover', 'Magician', 'Regular Guy'];
+const MARKET_POSITION_OPTIONS = ['luxury', 'premium', 'mid-market', 'budget'];
+const ICP_COMPANY_SIZE_OPTIONS = ['solo', 'startup', 'smb', 'mid-market', 'enterprise'];
+
+function parseJsonArray(val: string | null | undefined): string[] {
+  if (!val) return [];
+  try { return JSON.parse(val); } catch { return []; }
+}
+
+function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: string }) {
+  const qc = useQueryClient();
+  const { data: profile, isLoading } = useQuery<OrgBrandProfile | null>({
+    queryKey: ['orgBrandProfile', orgId],
+    queryFn: () => organizationsApi.getBrandProfile(orgId),
+    staleTime: 5 * 60_000,
+  });
+
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<Partial<OrgBrandProfile>>({});
+  const [saving, setSaving] = useState(false);
+
+  const openEdit = () => {
+    setForm({
+      tagline: profile?.tagline ?? '',
+      primaryColor: profile?.primaryColor ?? '#2563EB',
+      secondaryColor: profile?.secondaryColor ?? '#EC4899',
+      accentColor: profile?.accentColor ?? '',
+      typographyHeading: profile?.typographyHeading ?? '',
+      typographyBody: profile?.typographyBody ?? '',
+      logoUrl: profile?.logoUrl ?? '',
+      industry: profile?.industry ?? '',
+      marketPosition: profile?.marketPosition ?? '',
+      uniqueValueProposition: profile?.uniqueValueProposition ?? '',
+      missionStatement: profile?.missionStatement ?? '',
+      visionStatement: profile?.visionStatement ?? '',
+      brandValues: profile?.brandValues ?? '[]',
+      brandVoice: profile?.brandVoice ?? '',
+      brandArchetype: profile?.brandArchetype ?? '',
+      targetAudience: profile?.targetAudience ?? '',
+      icpDescription: profile?.icpDescription ?? '',
+      icpCompanySize: profile?.icpCompanySize ?? '',
+      icpIndustries: profile?.icpIndustries ?? '[]',
+      competitorBrands: profile?.competitorBrands ?? '[]',
+      differentiators: profile?.differentiators ?? '[]',
+      contentPillars: profile?.contentPillars ?? '[]',
+      contentTone: profile?.contentTone ?? '',
+      websiteUrl: profile?.websiteUrl ?? '',
+      socialInstagram: profile?.socialInstagram ?? '',
+      socialTwitter: profile?.socialTwitter ?? '',
+      socialLinkedin: profile?.socialLinkedin ?? '',
+      socialFacebook: profile?.socialFacebook ?? '',
+      socialYoutube: profile?.socialYoutube ?? '',
+      socialTiktok: profile?.socialTiktok ?? '',
+    });
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await organizationsApi.upsertBrandProfile(orgId, form);
+      qc.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const set = (k: keyof OrgBrandProfile, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  // helper: comma-separated ↔ JSON array
+  const getArr = (k: keyof OrgBrandProfile) => parseJsonArray(form[k] as string).join(', ');
+  const setArr = (k: keyof OrgBrandProfile, v: string) =>
+    set(k, JSON.stringify(v.split(',').map(s => s.trim()).filter(Boolean)));
+
+  const values = parseJsonArray(profile?.brandValues);
+  const pillars = parseJsonArray(profile?.contentPillars);
+  const competitors = parseJsonArray(profile?.competitorBrands);
+  const differentiators = parseJsonArray(profile?.differentiators);
+
+  const initials = orgName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+  return (
+    <>
+      <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+        <CardHeader className="flex flex-row items-start justify-between pb-2">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Palette className="h-4 w-4 text-[hsl(var(--brand))]" />
+              Brand Identity
+            </CardTitle>
+            <CardDescription>Visual language, positioning, audience, and content strategy</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={openEdit} className="shrink-0">
+            <Pencil className="h-3 w-3 mr-1.5" />
+            {profile ? 'Edit' : 'Set up brand'}
+          </Button>
+        </CardHeader>
+
+        {isLoading ? (
+          <CardContent className="flex items-center gap-2 text-muted-foreground py-6">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          </CardContent>
+        ) : !profile ? (
+          <CardContent className="py-8 text-center text-muted-foreground">
+            <Palette className="h-8 w-8 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No brand profile yet. Click <strong>Set up brand</strong> to get started.</p>
+          </CardContent>
+        ) : (
+          <CardContent className="space-y-6">
+            {/* Hero row */}
+            <div className="flex items-start gap-4">
+              <div
+                className="h-16 w-16 rounded-xl flex items-center justify-center text-white text-xl font-bold shrink-0 shadow"
+                style={{ background: `linear-gradient(135deg, ${profile.primaryColor}, ${profile.secondaryColor})` }}
+              >
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-lg leading-tight">{orgName}</p>
+                {profile.tagline && <p className="text-muted-foreground text-sm mt-0.5 italic">"{profile.tagline}"</p>}
+                <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                  {profile.industry && <Badge variant="secondary" className="text-[10px]">{profile.industry}</Badge>}
+                  {profile.marketPosition && <Badge variant="outline" className="text-[10px] capitalize">{profile.marketPosition}</Badge>}
+                  {profile.brandArchetype && <Badge className="text-[10px] bg-[hsl(var(--brand))]/10 text-[hsl(var(--brand))] border-[hsl(var(--brand))]/20">{profile.brandArchetype}</Badge>}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Visual Identity */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Palette className="h-3 w-3" /> Visual Identity
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-md border shadow-sm shrink-0" style={{ backgroundColor: profile.primaryColor }} />
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Primary</p>
+                    <p className="text-xs font-mono font-medium">{profile.primaryColor}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-md border shadow-sm shrink-0" style={{ backgroundColor: profile.secondaryColor }} />
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Secondary</p>
+                    <p className="text-xs font-mono font-medium">{profile.secondaryColor}</p>
+                  </div>
+                </div>
+                {profile.accentColor && (
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-md border shadow-sm shrink-0" style={{ backgroundColor: profile.accentColor }} />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Accent</p>
+                      <p className="text-xs font-mono font-medium">{profile.accentColor}</p>
+                    </div>
+                  </div>
+                )}
+                {profile.typographyHeading && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Type className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Heading Font</p>
+                      <p className="text-xs font-medium">{profile.typographyHeading}</p>
+                    </div>
+                  </div>
+                )}
+                {profile.typographyBody && (
+                  <div className="flex items-center gap-2">
+                    <Type className="h-3.5 w-3.5 text-muted-foreground shrink-0 opacity-60" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Body Font</p>
+                      <p className="text-xs font-medium">{profile.typographyBody}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Positioning */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Lightbulb className="h-3 w-3" /> Positioning
+                </p>
+                {profile.uniqueValueProposition && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Unique Value Proposition</p>
+                    <p className="text-xs leading-relaxed">{profile.uniqueValueProposition}</p>
+                  </div>
+                )}
+                {profile.missionStatement && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Mission</p>
+                    <p className="text-xs leading-relaxed">{profile.missionStatement}</p>
+                  </div>
+                )}
+                {profile.visionStatement && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Vision</p>
+                    <p className="text-xs leading-relaxed">{profile.visionStatement}</p>
+                  </div>
+                )}
+                {values.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-1">Brand Values</p>
+                    <div className="flex flex-wrap gap-1">
+                      {values.map(v => <Badge key={v} variant="outline" className="text-[10px]">{v}</Badge>)}
+                    </div>
+                  </div>
+                )}
+                {profile.brandVoice && (
+                  <div className="flex items-center gap-2">
+                    <Mic className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Brand Voice</p>
+                      <p className="text-xs font-medium capitalize">{profile.brandVoice}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Audience */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Crosshair className="h-3 w-3" /> Audience & ICP
+                </p>
+                {profile.targetAudience && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Target Audience</p>
+                    <p className="text-xs leading-relaxed">{profile.targetAudience}</p>
+                  </div>
+                )}
+                {profile.icpDescription && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Ideal Customer Profile</p>
+                    <p className="text-xs leading-relaxed">{profile.icpDescription}</p>
+                  </div>
+                )}
+                {profile.icpCompanySize && (
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Company Size</p>
+                      <p className="text-xs font-medium capitalize">{profile.icpCompanySize}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Content Strategy */}
+              {(pillars.length > 0 || profile.contentTone) && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Megaphone className="h-3 w-3" /> Content Strategy
+                  </p>
+                  {pillars.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-1">Content Pillars</p>
+                      <div className="flex flex-wrap gap-1">
+                        {pillars.map(p => <Badge key={p} variant="secondary" className="text-[10px]">{p}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                  {profile.contentTone && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Tone Notes</p>
+                      <p className="text-xs leading-relaxed">{profile.contentTone}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Competitive */}
+              {(competitors.length > 0 || differentiators.length > 0) && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Zap className="h-3 w-3" /> Competitive
+                  </p>
+                  {competitors.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-1">Competitors</p>
+                      <div className="flex flex-wrap gap-1">
+                        {competitors.map(c => <Badge key={c} variant="outline" className="text-[10px] border-destructive/30 text-destructive">{c}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                  {differentiators.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-1">Differentiators</p>
+                      <div className="flex flex-wrap gap-1">
+                        {differentiators.map(d => <Badge key={d} variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-600">{d}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Online Presence */}
+              {(profile.websiteUrl || profile.socialInstagram || profile.socialLinkedin || profile.socialTwitter || profile.socialTiktok || profile.socialYoutube) && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Globe className="h-3 w-3" /> Online Presence
+                  </p>
+                  {profile.websiteUrl && (
+                    <a href={profile.websiteUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-primary hover:underline">
+                      <LinkIcon className="h-3 w-3" /> {profile.websiteUrl.replace(/^https?:\/\//, '')}
+                    </a>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {profile.socialInstagram && <a href={`https://instagram.com/${profile.socialInstagram.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Instagram className="h-3.5 w-3.5" />{profile.socialInstagram}</a>}
+                    {profile.socialLinkedin && <a href={`https://linkedin.com/in/${profile.socialLinkedin.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Linkedin className="h-3.5 w-3.5" />{profile.socialLinkedin}</a>}
+                    {profile.socialTwitter && <a href={`https://twitter.com/${profile.socialTwitter.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Twitter className="h-3.5 w-3.5" />{profile.socialTwitter}</a>}
+                    {profile.socialTiktok && <a href={`https://tiktok.com/@${profile.socialTiktok.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Heart className="h-3.5 w-3.5" />{profile.socialTiktok}</a>}
+                    {profile.socialYoutube && <a href={`https://youtube.com/@${profile.socialYoutube.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Youtube className="h-3.5 w-3.5" />{profile.socialYoutube}</a>}
+                    {profile.socialFacebook && <a href={`https://facebook.com/${profile.socialFacebook.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Facebook className="h-3.5 w-3.5" />{profile.socialFacebook}</a>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={editing} onOpenChange={setEditing}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Palette className="h-5 w-5 text-[hsl(var(--brand))]" />
+              Brand Profile — {orgName}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-2">
+            {/* Visual */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Palette className="h-3 w-3" /> Visual Identity</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Tagline</Label><Input value={form.tagline ?? ''} onChange={e => set('tagline', e.target.value)} placeholder="One-liner that captures the brand" /></div>
+                <div><Label className="text-xs">Industry</Label><Input value={form.industry ?? ''} onChange={e => set('industry', e.target.value)} placeholder="e.g. Luxury Agency, SaaS" /></div>
+                <div>
+                  <Label className="text-xs">Primary Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={form.primaryColor ?? '#2563EB'} onChange={e => set('primaryColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={form.primaryColor ?? ''} onChange={e => set('primaryColor', e.target.value)} placeholder="#2563EB" className="font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Secondary Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={form.secondaryColor ?? '#EC4899'} onChange={e => set('secondaryColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={form.secondaryColor ?? ''} onChange={e => set('secondaryColor', e.target.value)} placeholder="#EC4899" className="font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Accent Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={form.accentColor ?? '#000000'} onChange={e => set('accentColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={form.accentColor ?? ''} onChange={e => set('accentColor', e.target.value)} placeholder="#000000" className="font-mono" />
+                  </div>
+                </div>
+                <div><Label className="text-xs">Heading Font</Label><Input value={form.typographyHeading ?? ''} onChange={e => set('typographyHeading', e.target.value)} placeholder="e.g. Anton, Playfair Display" /></div>
+                <div><Label className="text-xs">Body Font</Label><Input value={form.typographyBody ?? ''} onChange={e => set('typographyBody', e.target.value)} placeholder="e.g. Inter, DM Sans" /></div>
+                <div><Label className="text-xs">Logo URL</Label><Input value={form.logoUrl ?? ''} onChange={e => set('logoUrl', e.target.value)} placeholder="https://..." /></div>
+              </div>
+            </div>
+
+            {/* Positioning */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Lightbulb className="h-3 w-3" /> Positioning</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Unique Value Proposition</Label><Input value={form.uniqueValueProposition ?? ''} onChange={e => set('uniqueValueProposition', e.target.value)} placeholder="What makes this brand irreplaceable?" /></div>
+                <div className="col-span-2"><Label className="text-xs">Mission Statement</Label><Textarea value={form.missionStatement ?? ''} onChange={e => set('missionStatement', e.target.value)} placeholder="Why does this brand exist?" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Vision Statement</Label><Textarea value={form.visionStatement ?? ''} onChange={e => set('visionStatement', e.target.value)} placeholder="Where is this brand going?" rows={2} /></div>
+                <div>
+                  <Label className="text-xs">Brand Voice</Label>
+                  <Select value={form.brandVoice ?? ''} onValueChange={v => set('brandVoice', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select voice" /></SelectTrigger>
+                    <SelectContent>{BRAND_VOICE_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Brand Archetype</Label>
+                  <Select value={form.brandArchetype ?? ''} onValueChange={v => set('brandArchetype', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select archetype" /></SelectTrigger>
+                    <SelectContent>{BRAND_ARCHETYPE_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Market Position</Label>
+                  <Select value={form.marketPosition ?? ''} onValueChange={v => set('marketPosition', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
+                    <SelectContent>{MARKET_POSITION_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">Brand Values <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('brandValues')} onChange={e => setArr('brandValues', e.target.value)} placeholder="Integrity, Innovation, Excellence" /></div>
+              </div>
+            </div>
+
+            {/* Audience */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Crosshair className="h-3 w-3" /> Audience & ICP</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Target Audience</Label><Textarea value={form.targetAudience ?? ''} onChange={e => set('targetAudience', e.target.value)} placeholder="Who is this brand speaking to?" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Ideal Customer Profile (ICP)</Label><Textarea value={form.icpDescription ?? ''} onChange={e => set('icpDescription', e.target.value)} placeholder="Describe the perfect client in detail — pain points, goals, context" rows={3} /></div>
+                <div>
+                  <Label className="text-xs">ICP Company Size</Label>
+                  <Select value={form.icpCompanySize ?? ''} onValueChange={v => set('icpCompanySize', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select size" /></SelectTrigger>
+                    <SelectContent>{ICP_COMPANY_SIZE_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">ICP Industries <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('icpIndustries')} onChange={e => setArr('icpIndustries', e.target.value)} placeholder="Hospitality, Real Estate, Fashion" /></div>
+              </div>
+            </div>
+
+            {/* Competitive */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Zap className="h-3 w-3" /> Competitive Intelligence</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Competitors <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('competitorBrands')} onChange={e => setArr('competitorBrands', e.target.value)} placeholder="Competitor A, Competitor B" /></div>
+                <div><Label className="text-xs">Differentiators <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('differentiators')} onChange={e => setArr('differentiators', e.target.value)} placeholder="End-to-end, Luxury positioning, Speed" /></div>
+              </div>
+            </div>
+
+            {/* Content & Social */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Megaphone className="h-3 w-3" /> Content & Social</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Content Pillars <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('contentPillars')} onChange={e => setArr('contentPillars', e.target.value)} placeholder="Education, Behind the scenes, Client results, Culture" /></div>
+                <div className="col-span-2"><Label className="text-xs">Tone Notes</Label><Textarea value={form.contentTone ?? ''} onChange={e => set('contentTone', e.target.value)} placeholder="Nuances about how this brand communicates across channels" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Website URL</Label><Input value={form.websiteUrl ?? ''} onChange={e => set('websiteUrl', e.target.value)} placeholder="https://brand.com" /></div>
+                <div><Label className="text-xs">Instagram</Label><Input value={form.socialInstagram ?? ''} onChange={e => set('socialInstagram', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">LinkedIn</Label><Input value={form.socialLinkedin ?? ''} onChange={e => set('socialLinkedin', e.target.value)} placeholder="@handle or company slug" /></div>
+                <div><Label className="text-xs">X (Twitter)</Label><Input value={form.socialTwitter ?? ''} onChange={e => set('socialTwitter', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">TikTok</Label><Input value={form.socialTiktok ?? ''} onChange={e => set('socialTiktok', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">YouTube</Label><Input value={form.socialYoutube ?? ''} onChange={e => set('socialYoutube', e.target.value)} placeholder="@channel" /></div>
+                <div><Label className="text-xs">Facebook</Label><Input value={form.socialFacebook ?? ''} onChange={e => set('socialFacebook', e.target.value)} placeholder="page name or handle" /></div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Saving…</> : 'Save Brand Profile'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({
-  orgId: _orgId,
+  orgId,
+  orgName,
   projectEntries,
   projectCount,
   clientCount: _clientCount,
@@ -172,6 +642,7 @@ function OverviewTab({
   onSwitchTab,
 }: {
   orgId: string;
+  orgName: string;
   projectEntries: { id: string; name: string }[];
   projectCount: number;
   clientCount: number;
@@ -704,6 +1175,7 @@ function AddDataSourceDialog({
   const [description, setDescription] = useState(editingSource?.description ?? '');
   const [content, setContent] = useState(editingSource?.content ?? '');
   const [file, setFile] = useState<File | null>(null);
+  const [folder, setFolder] = useState(editingSource?.folder ?? '');
 
   // Reset form when dialog opens/closes or editingSource changes
   const resetForm = () => {
@@ -713,6 +1185,7 @@ function AddDataSourceDialog({
     setTitle(editingSource?.title ?? '');
     setDescription(editingSource?.description ?? '');
     setContent(editingSource?.content ?? '');
+    setFolder(editingSource?.folder ?? '');
     setFile(null);
   };
 
@@ -727,6 +1200,7 @@ function AddDataSourceDialog({
         if (description.trim()) formData.append('description', description.trim());
         if (projId) formData.append('project_id', projId);
         formData.append('organization_id', orgId);
+        if (folder.trim()) formData.append('folder', folder.trim());
         return dataSourcesApi.upload(formData);
       }
       return dataSourcesApi.create({
@@ -737,6 +1211,7 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+        folder: folder.trim() || undefined,
       });
     },
     onSuccess: () => {
@@ -764,6 +1239,7 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+        folder: folder.trim() || undefined,
       });
     } else {
       createMutation.mutate();
@@ -837,6 +1313,16 @@ function AddDataSourceDialog({
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Folder (optional)</Label>
+            <Input
+              placeholder="e.g. Meetings or Meetings/Google Meet"
+              value={folder}
+              onChange={(e) => setFolder(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Use / to create subfolders. Leave blank to file under "Unfiled".</p>
           </div>
 
           {/* Conditional input based on source type */}
@@ -959,6 +1445,9 @@ function DataSourcesView({
   const [deleteTarget, setDeleteTarget] = useState<DataSourceRecord | null>(null);
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['Meetings', 'Documents']));
+  const [search, setSearch] = useState('');
 
   const { data: sources = [], isLoading } = useQuery({
     queryKey: ['dataSources', orgId],
@@ -988,8 +1477,40 @@ function DataSourcesView({
     return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
   };
 
+  // Build folder tree from sources
+  const folderTree = useMemo(() => {
+    const tree: Record<string, Record<string, number>> = {}; // root → { sub: count }
+    sources.forEach(s => {
+      const f = (s as any).folder || 'Unfiled';
+      const parts = f.split('/');
+      const root = parts[0];
+      const sub = parts[1] || null;
+      if (!tree[root]) tree[root] = {};
+      if (sub) {
+        tree[root][sub] = (tree[root][sub] || 0) + 1;
+      } else {
+        tree[root]['__self__'] = (tree[root]['__self__'] || 0) + 1;
+      }
+    });
+    return tree;
+  }, [sources]);
+
+  const allFolderCount = sources.length;
+
   const sorted = useMemo(() => {
-    const arr = [...sources];
+    let arr = [...sources];
+    // Folder filter
+    if (selectedFolder) {
+      arr = arr.filter(s => {
+        const f = (s as any).folder || 'Unfiled';
+        return f === selectedFolder || f.startsWith(selectedFolder + '/');
+      });
+    }
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      arr = arr.filter(s => s.title.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q));
+    }
     arr.sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
@@ -1001,7 +1522,7 @@ function DataSourcesView({
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return arr;
-  }, [sources, sortField, sortDir]);
+  }, [sources, sortField, sortDir, selectedFolder, search]);
 
   const dataTypeLabel = (dt: string) =>
     DATA_TYPE_OPTIONS.find(o => o.value === dt)?.label ?? dt;
@@ -1032,6 +1553,20 @@ function DataSourcesView({
     );
   };
 
+  const toggleFolder = (f: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f); else next.add(f);
+      return next;
+    });
+  };
+
+  const folderCount = (f: string) =>
+    sources.filter(s => {
+      const sf = (s as any).folder || 'Unfiled';
+      return sf === f || sf.startsWith(f + '/');
+    }).length;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1048,7 +1583,7 @@ function DataSourcesView({
 
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground text-sm">Loading data sources...</div>
-      ) : sorted.length === 0 ? (
+      ) : sources.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Database className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>No data sources yet</p>
@@ -1058,6 +1593,83 @@ function DataSourcesView({
           </Button>
         </div>
       ) : (
+        <div className="flex gap-4">
+          {/* Folder sidebar */}
+          <div className="w-48 shrink-0">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-1">Folders</div>
+            <nav className="space-y-0.5">
+              {/* All */}
+              <button
+                onClick={() => setSelectedFolder(null)}
+                className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted/60 transition-colors ${!selectedFolder ? 'bg-muted font-medium' : ''}`}
+              >
+                <span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />All</span>
+                <span className="text-xs text-muted-foreground">{allFolderCount}</span>
+              </button>
+              {/* Root folders */}
+              {Object.entries(folderTree).sort(([a],[b]) => a.localeCompare(b)).map(([root, subs]) => {
+                const subKeys = Object.keys(subs).filter(k => k !== '__self__');
+                const hasChildren = subKeys.length > 0;
+                const isExpanded = expandedFolders.has(root);
+                const cnt = folderCount(root);
+                return (
+                  <div key={root}>
+                    <button
+                      onClick={() => { if (hasChildren) toggleFolder(root); setSelectedFolder(root); }}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted/60 transition-colors ${selectedFolder === root ? 'bg-muted font-medium' : ''}`}
+                    >
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        {hasChildren
+                          ? (isExpanded ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />)
+                          : <span className="w-3 shrink-0" />}
+                        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{root}</span>
+                      </span>
+                      <span className="text-xs text-muted-foreground shrink-0 ml-1">{cnt}</span>
+                    </button>
+                    {hasChildren && isExpanded && (
+                      <div className="pl-4 space-y-0.5">
+                        {subKeys.sort().map(sub => {
+                          const fullPath = `${root}/${sub}`;
+                          const subCnt = folderCount(fullPath);
+                          return (
+                            <button
+                              key={sub}
+                              onClick={() => setSelectedFolder(fullPath)}
+                              className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-muted/60 transition-colors ${selectedFolder === fullPath ? 'bg-muted font-medium' : ''}`}
+                            >
+                              <span className="flex items-center gap-1.5 min-w-0">
+                                <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                <span className="truncate">{sub}</span>
+                              </span>
+                              <span className="text-xs text-muted-foreground">{subCnt}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Main content */}
+          <div className="flex-1 min-w-0 space-y-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search sources…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-sm border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            {sorted.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">No sources in this folder.</div>
+            ) : (
         <Card className="bg-card/80 backdrop-blur-sm border-border/50">
           <Table>
             <TableHeader>
@@ -1150,6 +1762,9 @@ function DataSourcesView({
             </TableBody>
           </Table>
         </Card>
+            )}
+          </div>
+        </div>
       )}
 
       <AddDataSourceDialog
@@ -3281,6 +3896,116 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
 
   const { contacts } = useOrgContacts(orgId);
 
+  const qc = useQueryClient();
+  const { data: brandProfile } = useQuery<OrgBrandProfile | null>({
+    queryKey: ['orgBrandProfile', orgId],
+    queryFn: () => organizationsApi.getBrandProfile(orgId!),
+    enabled: !!orgId,
+    staleTime: 5 * 60_000,
+  });
+  const [brandEditing, setBrandEditing] = useState(false);
+  const [brandForm, setBrandForm] = useState<Partial<OrgBrandProfile>>({});
+  const [brandSaving, setBrandSaving] = useState(false);
+
+  const openBrandEdit = () => {
+    setBrandForm({
+      tagline: brandProfile?.tagline ?? '',
+      primaryColor: brandProfile?.primaryColor ?? '#2563EB',
+      secondaryColor: brandProfile?.secondaryColor ?? '#EC4899',
+      accentColor: brandProfile?.accentColor ?? '',
+      typographyHeading: brandProfile?.typographyHeading ?? '',
+      typographyBody: brandProfile?.typographyBody ?? '',
+      logoUrl: brandProfile?.logoUrl ?? '',
+      industry: brandProfile?.industry ?? '',
+      marketPosition: brandProfile?.marketPosition ?? '',
+      uniqueValueProposition: brandProfile?.uniqueValueProposition ?? '',
+      missionStatement: brandProfile?.missionStatement ?? '',
+      visionStatement: brandProfile?.visionStatement ?? '',
+      brandValues: brandProfile?.brandValues ?? '[]',
+      brandVoice: brandProfile?.brandVoice ?? '',
+      brandArchetype: brandProfile?.brandArchetype ?? '',
+      targetAudience: brandProfile?.targetAudience ?? '',
+      icpDescription: brandProfile?.icpDescription ?? '',
+      icpCompanySize: brandProfile?.icpCompanySize ?? '',
+      icpIndustries: brandProfile?.icpIndustries ?? '[]',
+      competitorBrands: brandProfile?.competitorBrands ?? '[]',
+      differentiators: brandProfile?.differentiators ?? '[]',
+      contentPillars: brandProfile?.contentPillars ?? '[]',
+      contentTone: brandProfile?.contentTone ?? '',
+      websiteUrl: brandProfile?.websiteUrl ?? '',
+      socialInstagram: brandProfile?.socialInstagram ?? '',
+      socialTwitter: brandProfile?.socialTwitter ?? '',
+      socialLinkedin: brandProfile?.socialLinkedin ?? '',
+      socialFacebook: brandProfile?.socialFacebook ?? '',
+      socialYoutube: brandProfile?.socialYoutube ?? '',
+      socialTiktok: brandProfile?.socialTiktok ?? '',
+    });
+    setBrandEditing(true);
+  };
+  const saveBrand = async () => {
+    setBrandSaving(true);
+    try {
+      await organizationsApi.upsertBrandProfile(orgId!, brandForm);
+      qc.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      setBrandEditing(false);
+    } finally {
+      setBrandSaving(false);
+    }
+  };
+  const bset = (k: keyof OrgBrandProfile, v: string) => setBrandForm(f => ({ ...f, [k]: v }));
+  const bgetArr = (k: keyof OrgBrandProfile) => parseJsonArray(brandForm[k] as string).join(', ');
+  const bsetArr = (k: keyof OrgBrandProfile, v: string) =>
+    bset(k, JSON.stringify(v.split(',').map((s: string) => s.trim()).filter(Boolean)));
+
+  // ── Brand research ──────────────────────────────────────────────────────────
+  const seedProjectMutation = useMutation({
+    mutationFn: () => organizationsApi.seedBrandProject(orgId!),
+    onSuccess: (data) => {
+      const projectId = data?.data?.project_id;
+      if (projectId) {
+        window.open(`/projects/${projectId}`, '_blank');
+      }
+    },
+  });
+
+  const [brandResearching, setBrandResearching] = useState(false);
+  const [intakeUrl, setIntakeUrl] = useState<string | null>(null);
+  const [intakeCopied, setIntakeCopied] = useState(false);
+
+  const triggerResearch = async () => {
+    if (!orgId) return;
+    setBrandResearching(true);
+    try {
+      await organizationsApi.triggerBrandResearch(orgId);
+      // Poll until done
+      const poll = setInterval(async () => {
+        const status = await organizationsApi.getBrandResearchStatus(orgId);
+        if (status.status === 'done' || status.status === 'failed') {
+          clearInterval(poll);
+          setBrandResearching(false);
+          qc.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+        }
+      }, 3000);
+      // Safety timeout
+      setTimeout(() => { clearInterval(poll); setBrandResearching(false); }, 120_000);
+    } catch {
+      setBrandResearching(false);
+    }
+  };
+
+  const generateIntake = async () => {
+    if (!orgId) return;
+    const result = await organizationsApi.generateIntakeToken(orgId);
+    setIntakeUrl(result.url);
+  };
+
+  const copyIntake = () => {
+    if (!intakeUrl) return;
+    navigator.clipboard.writeText(intakeUrl);
+    setIntakeCopied(true);
+    setTimeout(() => setIntakeCopied(false), 2000);
+  };
+
   const sidebarOrg = sidebarTree
     ? [...(sidebarTree.owned_orgs || []), ...(sidebarTree.member_orgs || [])].find(o => o.id === orgId)
     : undefined;
@@ -3319,34 +4044,165 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="border-b bg-card/50 backdrop-blur-sm shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-6 py-5">
-          <div className="flex items-center gap-4">
-            <Link to="/projects" className="text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div className="p-2.5 bg-blue-100 dark:bg-blue-950 rounded-xl">
-              <Building2 className="w-6 h-6 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-foreground">{org.name}</h1>
-              {org.description && (
-                <p className="text-sm text-muted-foreground mt-0.5 truncate">{org.description}</p>
-              )}
-            </div>
-            <div className="ml-auto flex items-center gap-3">
-              <Badge variant={org.is_active ? 'default' : 'secondary'} className="text-xs">
-                {org.is_active ? 'Active' : 'Inactive'}
-              </Badge>
-            </div>
-          </div>
+      <div className="border-b shadow-sm overflow-hidden">
+        {/* Brand accent bar */}
+        {brandProfile && (
+          <div
+            className="h-[3px]"
+            style={{ background: `linear-gradient(90deg, ${brandProfile.primaryColor} 0%, ${brandProfile.accentColor ?? brandProfile.secondaryColor} 100%)` }}
+          />
+        )}
+        <div className="bg-card/50 backdrop-blur-sm">
+          <div className="max-w-[1600px] mx-auto px-6 py-4">
+            <div className="flex items-center gap-4">
+              <Link to="/projects" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                <ArrowLeft className="h-5 w-5" />
+              </Link>
 
-          {/* Stat pills */}
-          <div className="flex items-center gap-3 mt-4 flex-wrap">
-            <StatPill icon={FolderOpen} label="Projects" value={allProjects.length} />
-            <StatPill icon={Briefcase} label="Clients" value={clients.length} />
-            <StatPill icon={Users} label="Members" value={members.length} />
-            <StatPill icon={DollarSign} label="Pipeline" value={formatCurrency(totalDealValue)} />
+              {/* Brand avatar */}
+              {brandProfile?.logoUrl ? (
+                <div
+                  className="h-11 w-11 rounded-xl shrink-0 shadow-sm overflow-hidden flex items-center justify-center"
+                  style={{ backgroundColor: brandProfile.primaryColor }}
+                >
+                  <img
+                    src={resolveApiUrl(brandProfile.logoUrl)}
+                    alt={org.name}
+                    className="h-full w-full object-contain p-1"
+                  />
+                </div>
+              ) : brandProfile ? (
+                <div
+                  className="h-11 w-11 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm select-none"
+                  style={{ background: `linear-gradient(135deg, ${brandProfile.primaryColor}, ${brandProfile.accentColor ?? brandProfile.secondaryColor})` }}
+                >
+                  {org.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()}
+                </div>
+              ) : (
+                <div className="p-2.5 bg-blue-100 dark:bg-blue-950 rounded-xl shrink-0">
+                  <Building2 className="w-6 h-6 text-blue-600" />
+                </div>
+              )}
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2.5 flex-wrap">
+                  <h1 className="text-2xl font-bold text-foreground leading-none">{org.name}</h1>
+                  {brandProfile?.typographyHeading && (
+                    <span className="text-xs text-muted-foreground tracking-widest uppercase font-medium">{brandProfile.typographyHeading}</span>
+                  )}
+                </div>
+                {brandProfile?.tagline ? (
+                  <p className="text-sm text-muted-foreground mt-0.5 italic truncate">"{brandProfile.tagline}"</p>
+                ) : org.description ? (
+                  <p className="text-sm text-muted-foreground mt-0.5 truncate">{org.description}</p>
+                ) : null}
+                {org.address && (
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    {org.address}
+                  </p>
+                )}
+                {brandProfile && (
+                  <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
+                    {/* Colour swatches */}
+                    <div className="flex items-center gap-1">
+                      <div className="h-3.5 w-3.5 rounded-full border border-border/60 shadow-sm" style={{ backgroundColor: brandProfile.primaryColor }} title={`Primary: ${brandProfile.primaryColor}`} />
+                      <div className="h-3.5 w-3.5 rounded-full border border-border/60 shadow-sm" style={{ backgroundColor: brandProfile.secondaryColor }} title={`Secondary: ${brandProfile.secondaryColor}`} />
+                      {brandProfile.accentColor && <div className="h-3.5 w-3.5 rounded-full border border-border/60 shadow-sm" style={{ backgroundColor: brandProfile.accentColor }} title={`Accent: ${brandProfile.accentColor}`} />}
+                    </div>
+                    {brandProfile.industry && <Badge variant="secondary" className="text-[10px] h-4 py-0">{brandProfile.industry}</Badge>}
+                    {brandProfile.marketPosition && <Badge variant="outline" className="text-[10px] h-4 py-0 capitalize">{brandProfile.marketPosition}</Badge>}
+                    {brandProfile.brandArchetype && <Badge className="text-[10px] h-4 py-0 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">{brandProfile.brandArchetype}</Badge>}
+                  </div>
+                )}
+              </div>
+
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                <Badge variant={org.is_active ? 'default' : 'secondary'} className="text-xs">
+                  {org.is_active ? 'Active' : 'Inactive'}
+                </Badge>
+
+                {/* Triage completeness ring */}
+                {brandProfile && (() => {
+                  const scores = [
+                    brandProfile.logoUrl ? 3 : 0,
+                    brandProfile.accentColor ? 3 : brandProfile.primaryColor && brandProfile.secondaryColor ? 2 : 1,
+                    brandProfile.typographyBody ? 3 : brandProfile.typographyHeading ? 2 : 0,
+                    brandProfile.brandVoice && brandProfile.brandArchetype && brandProfile.contentTone ? 3 : brandProfile.brandVoice ? 1 : 0,
+                    brandProfile.missionStatement && brandProfile.uniqueValueProposition && brandProfile.brandValues ? 3 : brandProfile.missionStatement ? 1 : 0,
+                    brandProfile.targetAudience && brandProfile.icpDescription ? 3 : brandProfile.targetAudience ? 1 : 0,
+                    brandProfile.websiteUrl && brandProfile.socialLinkedin && brandProfile.socialInstagram ? 3 : brandProfile.websiteUrl ? 1 : 0,
+                  ];
+                  const pct = Math.round(scores.reduce((a, b) => a + b, 0) / (scores.length * 3) * 100);
+                  const color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+                  const r = 10; const circ = 2 * Math.PI * r;
+                  return (
+                    <button onClick={openBrandEdit} title={`Brand completeness: ${pct}%`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      <svg width="28" height="28" viewBox="0 0 28 28">
+                        <circle cx="14" cy="14" r={r} fill="none" stroke="currentColor" strokeWidth="3" className="text-border" />
+                        <circle cx="14" cy="14" r={r} fill="none" stroke={color} strokeWidth="3"
+                          strokeDasharray={`${circ * pct / 100} ${circ}`}
+                          strokeLinecap="round"
+                          transform="rotate(-90 14 14)" />
+                        <text x="14" y="14" textAnchor="middle" dominantBaseline="central" fontSize="7" fontWeight="600" fill={color}>{pct}%</text>
+                      </svg>
+                    </button>
+                  );
+                })()}
+
+                {/* Research button */}
+                <Button
+                  variant="outline" size="sm"
+                  onClick={brandResearching ? undefined : triggerResearch}
+                  disabled={brandResearching}
+                  className="text-xs gap-1.5"
+                  title="Research brand presence with Exa"
+                >
+                  {brandResearching
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Researching…</>
+                    : <><RefreshCw className="h-3.5 w-3.5" />Research</>
+                  }
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => seedProjectMutation.mutate()}
+                  disabled={seedProjectMutation.isPending}
+                  className="text-xs gap-1.5"
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  {seedProjectMutation.isPending ? 'Seeding...' : 'Seed Brand Project'}
+                </Button>
+
+                {brandProfile ? (
+                  <>
+                    <Link to={`/organizations/${orgId}/brand-guide`}>
+                      <Button variant="outline" size="sm" className="text-xs gap-1.5">
+                        <BookOpen className="h-3.5 w-3.5" />
+                        View Guide
+                      </Button>
+                    </Link>
+                    <Button variant="ghost" size="sm" onClick={openBrandEdit} className="text-xs gap-1.5 text-muted-foreground">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={openBrandEdit} className="text-xs gap-1.5">
+                    <Palette className="h-3.5 w-3.5" />
+                    Set Up Brand
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Stat pills */}
+            <div className="flex items-center gap-3 mt-4 flex-wrap">
+              <StatPill icon={FolderOpen} label="Projects" value={allProjects.length} />
+              <StatPill icon={Briefcase} label="Clients" value={clients.length} />
+              <StatPill icon={Users} label="Members" value={members.length} />
+              <StatPill icon={DollarSign} label="Pipeline" value={formatCurrency(totalDealValue)} />
+            </div>
           </div>
         </div>
       </div>
@@ -3402,6 +4258,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
             <TabsContent value="overview">
               <OverviewTab
                 orgId={orgId}
+                orgName={org.name}
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                 projectCount={allProjects.length}
                 clientCount={clients.length}
@@ -3451,6 +4308,149 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
           </Tabs>
         </div>
       </div>
+
+      {/* Brand Guide Edit Dialog */}
+      <Dialog open={brandEditing} onOpenChange={setBrandEditing}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Palette className="h-5 w-5 text-amber-500" />
+              Brand Guide — {org.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 py-2">
+            {/* Visual */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Palette className="h-3 w-3" /> Visual Identity</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Tagline</Label><Input value={brandForm.tagline ?? ''} onChange={e => bset('tagline', e.target.value)} placeholder="One-liner that captures the brand" /></div>
+                <div><Label className="text-xs">Industry</Label><Input value={brandForm.industry ?? ''} onChange={e => bset('industry', e.target.value)} placeholder="e.g. Luxury Agency, SaaS" /></div>
+                <div>
+                  <Label className="text-xs">Primary Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={brandForm.primaryColor ?? '#2563EB'} onChange={e => bset('primaryColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={brandForm.primaryColor ?? ''} onChange={e => bset('primaryColor', e.target.value)} placeholder="#2563EB" className="font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Secondary Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={brandForm.secondaryColor ?? '#EC4899'} onChange={e => bset('secondaryColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={brandForm.secondaryColor ?? ''} onChange={e => bset('secondaryColor', e.target.value)} placeholder="#EC4899" className="font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Accent Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={brandForm.accentColor ?? '#000000'} onChange={e => bset('accentColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={brandForm.accentColor ?? ''} onChange={e => bset('accentColor', e.target.value)} placeholder="#000000" className="font-mono" />
+                  </div>
+                </div>
+                <div><Label className="text-xs">Heading Font</Label><Input value={brandForm.typographyHeading ?? ''} onChange={e => bset('typographyHeading', e.target.value)} placeholder="e.g. Cinzel, Playfair Display" /></div>
+                <div><Label className="text-xs">Body Font</Label><Input value={brandForm.typographyBody ?? ''} onChange={e => bset('typographyBody', e.target.value)} placeholder="e.g. Inter, DM Sans" /></div>
+                <div><Label className="text-xs">Logo URL</Label><Input value={brandForm.logoUrl ?? ''} onChange={e => bset('logoUrl', e.target.value)} placeholder="https://..." /></div>
+              </div>
+            </div>
+            {/* Positioning */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Lightbulb className="h-3 w-3" /> Positioning</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Unique Value Proposition</Label><Input value={brandForm.uniqueValueProposition ?? ''} onChange={e => bset('uniqueValueProposition', e.target.value)} placeholder="What makes this brand irreplaceable?" /></div>
+                <div className="col-span-2"><Label className="text-xs">Mission Statement</Label><Textarea value={brandForm.missionStatement ?? ''} onChange={e => bset('missionStatement', e.target.value)} placeholder="Why does this brand exist?" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Vision Statement</Label><Textarea value={brandForm.visionStatement ?? ''} onChange={e => bset('visionStatement', e.target.value)} placeholder="Where is this brand going?" rows={2} /></div>
+                <div>
+                  <Label className="text-xs">Brand Voice</Label>
+                  <Select value={brandForm.brandVoice ?? ''} onValueChange={v => bset('brandVoice', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select voice" /></SelectTrigger>
+                    <SelectContent>{BRAND_VOICE_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Brand Archetype</Label>
+                  <Select value={brandForm.brandArchetype ?? ''} onValueChange={v => bset('brandArchetype', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select archetype" /></SelectTrigger>
+                    <SelectContent>{BRAND_ARCHETYPE_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Market Position</Label>
+                  <Select value={brandForm.marketPosition ?? ''} onValueChange={v => bset('marketPosition', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
+                    <SelectContent>{MARKET_POSITION_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">Brand Values <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('brandValues')} onChange={e => bsetArr('brandValues', e.target.value)} placeholder="Integrity, Innovation, Excellence" /></div>
+              </div>
+            </div>
+            {/* Audience */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Crosshair className="h-3 w-3" /> Audience & ICP</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Target Audience</Label><Textarea value={brandForm.targetAudience ?? ''} onChange={e => bset('targetAudience', e.target.value)} placeholder="Who is this brand speaking to?" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Ideal Customer Profile (ICP)</Label><Textarea value={brandForm.icpDescription ?? ''} onChange={e => bset('icpDescription', e.target.value)} placeholder="Describe the perfect client in detail" rows={3} /></div>
+                <div>
+                  <Label className="text-xs">ICP Company Size</Label>
+                  <Select value={brandForm.icpCompanySize ?? ''} onValueChange={v => bset('icpCompanySize', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select size" /></SelectTrigger>
+                    <SelectContent>{ICP_COMPANY_SIZE_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">ICP Industries <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('icpIndustries')} onChange={e => bsetArr('icpIndustries', e.target.value)} placeholder="Hospitality, Real Estate, Fashion" /></div>
+              </div>
+            </div>
+            {/* Competitive */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Zap className="h-3 w-3" /> Competitive Intelligence</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Competitors <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('competitorBrands')} onChange={e => bsetArr('competitorBrands', e.target.value)} placeholder="Competitor A, Competitor B" /></div>
+                <div><Label className="text-xs">Differentiators <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('differentiators')} onChange={e => bsetArr('differentiators', e.target.value)} placeholder="End-to-end, Luxury positioning, Speed" /></div>
+              </div>
+            </div>
+            {/* Content & Social */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Megaphone className="h-3 w-3" /> Content & Social</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Content Pillars <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('contentPillars')} onChange={e => bsetArr('contentPillars', e.target.value)} placeholder="Education, Behind the scenes, Client results" /></div>
+                <div className="col-span-2"><Label className="text-xs">Tone Notes</Label><Textarea value={brandForm.contentTone ?? ''} onChange={e => bset('contentTone', e.target.value)} placeholder="Nuances about how this brand communicates" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Website URL</Label><Input value={brandForm.websiteUrl ?? ''} onChange={e => bset('websiteUrl', e.target.value)} placeholder="https://brand.com" /></div>
+                <div><Label className="text-xs">Instagram</Label><Input value={brandForm.socialInstagram ?? ''} onChange={e => bset('socialInstagram', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">LinkedIn</Label><Input value={brandForm.socialLinkedin ?? ''} onChange={e => bset('socialLinkedin', e.target.value)} placeholder="@handle or company slug" /></div>
+                <div><Label className="text-xs">X (Twitter)</Label><Input value={brandForm.socialTwitter ?? ''} onChange={e => bset('socialTwitter', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">TikTok</Label><Input value={brandForm.socialTiktok ?? ''} onChange={e => bset('socialTiktok', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">YouTube</Label><Input value={brandForm.socialYoutube ?? ''} onChange={e => bset('socialYoutube', e.target.value)} placeholder="@channel" /></div>
+                <div><Label className="text-xs">Facebook</Label><Input value={brandForm.socialFacebook ?? ''} onChange={e => bset('socialFacebook', e.target.value)} placeholder="page name or handle" /></div>
+              </div>
+            </div>
+          </div>
+          {/* Intake link generator */}
+          <div className="border-t pt-4 mt-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+              <LinkIcon className="h-3 w-3" /> Client Intake Link
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">Generate a shareable link so your client can fill in this questionnaire directly.</p>
+            {intakeUrl ? (
+              <div className="flex items-center gap-2">
+                <Input value={intakeUrl} readOnly className="text-xs font-mono h-8 flex-1" />
+                <Button size="sm" variant="outline" onClick={copyIntake} className="text-xs shrink-0 gap-1">
+                  <CheckCircle2 className={`h-3 w-3 ${intakeCopied ? 'text-green-500' : ''}`} />
+                  {intakeCopied ? 'Copied!' : 'Copy'}
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" onClick={generateIntake} className="text-xs gap-1.5">
+                <LinkIcon className="h-3.5 w-3.5" /> Generate Intake Link
+              </Button>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBrandEditing(false)}>Cancel</Button>
+            <Button onClick={saveBrand} disabled={brandSaving}>
+              {brandSaving ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Saving…</> : 'Save Brand Guide'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

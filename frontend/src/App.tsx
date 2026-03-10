@@ -73,6 +73,8 @@ const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
 const MediaLibraryPage        = lazy(() => import('@/pages/media-library').then(m => ({ default: m.MediaLibraryPage })));
 const ReviewPage              = lazy(() => import('@/pages/review').then(m => ({ default: m.ReviewPage })));
+const BrandIntakePage         = lazy(() => import('@/pages/brand-intake').then(m => ({ default: m.BrandIntakePage })));
+const BrandGuidePage          = lazy(() => import('@/pages/brand-guide').then(m => ({ default: m.BrandGuidePage })));
 const OssLibraryListenerPage  = lazy(() => import('@/pages/oss-library-listener').then(m => ({ default: m.OssLibraryListenerPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
@@ -385,6 +387,8 @@ function AppContent() {
                         element={<ProtectedRoute><MediaLibraryPage /></ProtectedRoute>}
                       />
                       <Route path="/review/:token" element={<ReviewPage />} />
+                      <Route path="/intake/:token" element={<BrandIntakePage />} />
+                      <Route path="/organizations/:orgId/brand-guide" element={<ProtectedRoute><BrandGuidePage /></ProtectedRoute>} />
                       <Route
                         path="/oss-library-listener"
                         element={<ProtectedRoute><OssLibraryListenerPage /></ProtectedRoute>}

@@ -99,7 +99,21 @@ function SourceCard({
             </div>
           </div>
           <div className="flex gap-1 shrink-0">
-            {source.source_summary && (
+            {source.source_type === 'conversation' && source.source_id && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground"
+                onClick={() => {
+                  // Navigate to Nora meetings tab - deep link via URL hash
+                  window.location.href = `/nora#meeting-${source.source_id}`;
+                }}
+              >
+                <Eye className="h-3 w-3 mr-1" />
+                Open
+              </Button>
+            )}
+            {source.source_summary && source.source_type !== 'conversation' && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -107,6 +121,16 @@ function SourceCard({
                 onClick={() => onView(source)}
               >
                 <Eye className="h-3 w-3 mr-1" />
+                View
+              </Button>
+            )}
+            {source.source_summary && source.source_type === 'conversation' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground"
+                onClick={() => onView(source)}
+              >
                 View
               </Button>
             )}

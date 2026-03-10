@@ -3880,6 +3880,7 @@ export interface OrganizationData {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  address?: string;
 }
 
 export interface ClientData {
@@ -4049,6 +4050,38 @@ export const organizationsApi = {
       body: JSON.stringify(data),
     });
     return handleApiResponse<PersonOrgContact>(response);
+  },
+
+  // Brand profile
+  getBrandProfile: async (orgId: string): Promise<OrgBrandProfile | null> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/brand-profile`);
+    return handleApiResponse<OrgBrandProfile | null>(response);
+  },
+  upsertBrandProfile: async (orgId: string, data: Partial<OrgBrandProfile>): Promise<OrgBrandProfile> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/brand-profile`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<OrgBrandProfile>(response);
+  },
+  triggerBrandResearch: async (orgId: string): Promise<{ orgId: string; status: string; message: string }> => {
+    const r = await makeRequest(`/api/organizations/${orgId}/brand-research`, { method: 'POST' });
+    return handleApiResponse(r);
+  },
+  seedBrandProject: async (orgId: string) => {
+    const r = await fetch(`${API_BASE}/organizations/${orgId}/seed-brand-project`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return r.json();
+  },
+  getBrandResearchStatus: async (orgId: string): Promise<{ orgId: string; status: string; summary?: string; ranAt?: string }> => {
+    const r = await makeRequest(`/api/organizations/${orgId}/brand-research/status`);
+    return handleApiResponse(r);
+  },
+  generateIntakeToken: async (orgId: string): Promise<{ token: string; url: string; expiresAt: string }> => {
+    const r = await makeRequest(`/api/organizations/${orgId}/intake-token`, { method: 'POST' });
+    return handleApiResponse(r);
   },
 };
 
@@ -5381,6 +5414,8 @@ export interface DataSourceRecord {
   metadata: string; // JSON string
   status: string;
   processing_error?: string;
+  /** Slash-delimited folder path, e.g. "Meetings/Google Meet" */
+  folder: string;
   created_at: string;
   updated_at: string;
   archived_at?: string;
@@ -5398,6 +5433,7 @@ export interface CreateDataSourceRequest {
   /** Raw text content (for source_type = "text") */
   content?: string;
   metadata?: Record<string, unknown>;
+  folder?: string;
 }
 
 export interface UpdateDataSourceRequest {
@@ -5409,6 +5445,7 @@ export interface UpdateDataSourceRequest {
   metadata?: string;
   status?: string;
   processing_error?: string;
+  folder?: string;
 }
 
 export const SOURCE_TYPE_OPTIONS = [
@@ -5668,6 +5705,66 @@ export const mediaApi = {
   delete: async (id: string) => {
     const r = await makeRequest(`/api/media/${id}`, { method: 'DELETE' });
     return handleApiResponse<void>(r);
+  },
+};
+
+export interface OrgBrandProfile {
+  id: string;
+  organizationId: string;
+  // Visual
+  tagline?: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor?: string | null;
+  typographyHeading?: string | null;
+  typographyBody?: string | null;
+  logoUrl?: string | null;
+  // Positioning
+  industry?: string | null;
+  marketPosition?: string | null;
+  uniqueValueProposition?: string | null;
+  missionStatement?: string | null;
+  visionStatement?: string | null;
+  brandValues?: string | null;      // JSON array
+  brandVoice?: string | null;
+  brandArchetype?: string | null;
+  // Audience
+  targetAudience?: string | null;
+  icpDescription?: string | null;
+  icpCompanySize?: string | null;
+  icpIndustries?: string | null;    // JSON array
+  // Competitive
+  competitorBrands?: string | null; // JSON array
+  differentiators?: string | null;  // JSON array
+  // Content & Social
+  contentPillars?: string | null;   // JSON array
+  contentTone?: string | null;
+  websiteUrl?: string | null;
+  socialInstagram?: string | null;
+  socialTwitter?: string | null;
+  socialLinkedin?: string | null;
+  socialFacebook?: string | null;
+  socialYoutube?: string | null;
+  socialTiktok?: string | null;
+  // Research
+  researchStatus: string;
+  researchRanAt?: string | null;
+  researchSummary?: string | null;
+  moodBoardUrls?: string;      // JSON array of DALL-E image URLs
+  clearbitLogoUrl?: string;    // Auto-discovered logo from Clearbit CDN
+  brandPhotographyNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const intakeApi = {
+  getContext: async (token: string): Promise<{ orgName: string; orgId: string; existing: Record<string, string | null> }> => {
+    const r = await makeRequest(`/api/intake/${token}`);
+    return handleApiResponse(r);
+  },
+  submit: async (token: string, data: Record<string, string>): Promise<{ message: string }> => {
+    const r = await makeRequest(`/api/intake/${token}`, { method: 'POST', body: JSON.stringify(data) });
+    return handleApiResponse(r);
   },
 };
 

@@ -41,6 +41,9 @@ pub struct DataSource {
     pub status: String,
     pub processing_error: Option<String>,
 
+    /// Slash-delimited folder path, e.g. "Meetings/Google Meet"
+    pub folder: String,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
@@ -67,6 +70,7 @@ pub struct CreateDataSource {
     pub file_size_bytes: Option<i64>,
     pub file_hash: Option<String>,
     pub metadata: Option<String>,
+    pub folder: Option<String>,
 }
 
 // ── Update input ────────────────────────────────────────────────────────────
@@ -82,6 +86,7 @@ pub struct UpdateDataSource {
     pub metadata: Option<String>,
     pub status: Option<String>,
     pub processing_error: Option<String>,
+    pub folder: Option<String>,
 }
 
 // ── Metadata templates by data_type ─────────────────────────────────────────
@@ -172,14 +177,15 @@ impl DataSource {
         let user_bytes = input.created_by.map(|u| u.as_bytes().to_vec());
         let metadata = input.metadata.unwrap_or_else(|| "{}".to_string());
         let source_type = input.source_type.unwrap_or_else(|| "file".to_string());
+        let folder = input.folder.unwrap_or_else(|| "Unfiled".to_string());
 
         sqlx::query(
             r#"INSERT INTO data_sources
                 (id, organization_id, project_id, created_by,
                  title, description, data_type, source_type, file_type,
                  content, file_name, file_path, file_size_bytes, file_hash,
-                 metadata, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')"#,
+                 metadata, status, folder)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)"#,
         )
         .bind(&id_bytes)
         .bind(&org_bytes)
@@ -196,6 +202,7 @@ impl DataSource {
         .bind(input.file_size_bytes)
         .bind(&input.file_hash)
         .bind(&metadata)
+        .bind(&folder)
         .execute(pool)
         .await?;
 
@@ -311,6 +318,10 @@ impl DataSource {
         if let Some(ref err) = input.processing_error {
             sets.push("processing_error = ?");
             binds.push(Some(err.clone()));
+        }
+        if let Some(ref f) = input.folder {
+            sets.push("folder = ?");
+            binds.push(Some(f.clone()));
         }
 
         if sets.is_empty() {
