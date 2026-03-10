@@ -105,6 +105,7 @@ import {
   crmDealsApi,
   crmActivitiesApi,
   knowledgeApi,
+  pulseApi,
   socialApi,
   tasksApi,
   emailApi,
@@ -2755,6 +2756,429 @@ function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
 
 
 
+// ── Data Sources Intel View (restored from main — summary cards) ──────────────
+
+function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string; projectEntries: { id: string; name: string }[] }) {
+  const { data: orgSources = [], isLoading: orgLoading } = useQuery({
+    queryKey: ['dataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    staleTime: 60_000,
+  });
+
+  const projSourceQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['dataSourcesProject', entry.id],
+      queryFn: () => dataSourcesApi.listByProject(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const isLoading = orgLoading || projSourceQueries.some(q => q.isLoading);
+
+  const sources = useMemo(() => {
+    const projSources = projSourceQueries.flatMap(q => q.data || []);
+    const all = [...orgSources, ...projSources];
+    const seen = new Set<string>();
+    return all.filter(s => {
+      if (seen.has((s as any).id)) return false;
+      seen.add((s as any).id);
+      return true;
+    });
+  }, [orgSources, projSourceQueries]);
+
+  const typeCount = useMemo(() => {
+    const counts: Record<string, number> = {};
+    sources.forEach((s: any) => { counts[s.data_type] = (counts[s.data_type] || 0) + 1; });
+    return counts;
+  }, [sources]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground">Data Library Summary</h3>
+        <Link
+          to={`/organizations/${orgId}/intelligence/data-sources`}
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <Database className="h-3.5 w-3.5" />
+          Open Full Library
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+          <Loader2 className="h-4 w-4 animate-spin" />Loading data sources...
+        </div>
+      ) : sources.length === 0 ? (
+        <Card className="bg-card/80 border-border/50">
+          <CardContent className="py-8 text-center">
+            <Database className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No data sources yet.</p>
+            <Link to={`/organizations/${orgId}/intelligence/data-sources`} className="text-sm text-primary hover:underline mt-1 inline-block">
+              Add your first data source →
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Object.entries(typeCount).map(([type, count]) => (
+            <Card key={type} className="bg-card/80 border-border/50">
+              <CardContent className="pt-4 pb-4">
+                <p className="text-xs text-muted-foreground capitalize">{type.replace(/_/g, ' ')}</p>
+                <p className="text-2xl font-bold mt-1">{count as number}</p>
+              </CardContent>
+            </Card>
+          ))}
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="pt-4 pb-4">
+              <p className="text-xs text-muted-foreground">Total Files</p>
+              <p className="text-2xl font-bold mt-1 text-primary">{sources.length}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Artifacts Intel View (restored from main — knowledge graph) ───────────────
+
+function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const knowledgeQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['projectKnowledge', entry.id],
+      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const artifacts = useMemo(() => {
+    const all: { title: string; summary?: string; projectName: string; projectId: string }[] = [];
+    knowledgeQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      ((q.data as any).sources_by_type?.artifact || []).forEach((src: any) => {
+        all.push({ title: src.source_title, summary: src.source_summary, projectName: entry.name, projectId: entry.id });
+      });
+    });
+    return all;
+  }, [knowledgeQueries, projectEntries]);
+
+  const isLoading = knowledgeQueries.some(q => q.isLoading);
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+      <Loader2 className="h-4 w-4 animate-spin" />Loading knowledge graph artifacts...
+    </div>
+  );
+
+  if (artifacts.length === 0) return (
+    <Card className="bg-card/80 border-border/50">
+      <CardContent className="py-8 text-center">
+        <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">No artifacts in the knowledge graph yet.</p>
+        <p className="text-xs text-muted-foreground mt-1">Artifacts are added automatically when deliverables are marked done.</p>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-medium text-muted-foreground">Knowledge Graph Artifacts</h3>
+      <p className="text-xs text-muted-foreground">{artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''} across {new Set(artifacts.map(a => a.projectId)).size} project{new Set(artifacts.map(a => a.projectId)).size !== 1 ? 's' : ''}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {artifacts.map((a, i) => (
+          <Card key={i} className="bg-card/80 border-border/50">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <FileText className="h-4 w-4 text-[hsl(var(--brand))] shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{a.title}</p>
+                  {a.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.summary}</p>}
+                  <Link to={`/projects/${a.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── System Automations Section (restored from main) ───────────────────────────
+
+function SystemAutomationsSection() {
+  const { data: automations = [] } = useQuery({
+    queryKey: ['system-automations'],
+    queryFn: async () => {
+      const r = await fetch('/api/automations', { credentials: 'include' });
+      const d = await r.json();
+      return d.data || [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  if (automations.length === 0) return null;
+
+  return (
+    <div className="border-t pt-6">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        System Automations ({automations.length} active)
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {automations.map((a: any) => (
+          <Card key={a.id} className="bg-card/80 border-border/50">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <Activity className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{a.name}</p>
+                  {a.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.description}</p>}
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Badge variant="default" className="text-[9px] bg-green-500/10 text-green-700 border-green-200">Active</Badge>
+                    {a.schedule && <span className="text-[9px] text-muted-foreground">{a.schedule}</span>}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Pulse View — alerts + signals aggregated across projects ──────────────────
+
+function PulseView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const alertQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['pulse-alerts-org', entry.id],
+      queryFn: () => pulseApi.getAlerts(entry.id, 20),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const contentQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['pulse-content-org', entry.id],
+      queryFn: () => pulseApi.getLatestContent(entry.id, 10),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const aggregated = useMemo(() => {
+    const allAlerts: any[] = [];
+    const allContent: any[] = [];
+
+    alertQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      (q.data as any[]).forEach((a: any) => allAlerts.push({ ...a, _projectName: entry.name }));
+    });
+
+    contentQueries.forEach((q, i) => {
+      if (!q.data?.items) return;
+      const entry = projectEntries[i];
+      q.data.items.forEach((c: any) => allContent.push({ ...c, _projectName: entry.name }));
+    });
+
+    allAlerts.sort((a, b) => new Date(b.triggered_at || b.created_at).getTime() - new Date(a.triggered_at || a.created_at).getTime());
+    allContent.sort((a, b) => new Date(b.collected_at || b.created_at).getTime() - new Date(a.collected_at || a.created_at).getTime());
+
+    const unacknowledged = allAlerts.filter(a => !a.acknowledged_at).length;
+    return { alerts: allAlerts.slice(0, 20), content: allContent.slice(0, 20), unacknowledged };
+  }, [alertQueries, contentQueries, projectEntries]);
+
+  const fmtDate = (iso: string) => {
+    try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+    catch { return '—'; }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Unacknowledged Alerts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <span className={`text-2xl font-bold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
+              {aggregated.unacknowledged}
+              {aggregated.unacknowledged > 0 && (
+                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+              )}
+            </span>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Recent Signals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <span className="text-2xl font-bold">{aggregated.content.length}</span>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Recent Alerts
+              {aggregated.unacknowledged > 0 && (
+                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {aggregated.alerts.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p>No alerts</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2 pr-3">
+                  {aggregated.alerts.map((alert: any) => (
+                    <div
+                      key={alert.id}
+                      className={`p-3 rounded-lg border border-border/50 ${!alert.acknowledged_at ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{alert.rule_name || 'Alert'}</p>
+                          {alert.message && (
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{alert.message}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-[9px]">{alert._projectName}</Badge>
+                            <span className="text-[10px] text-muted-foreground">
+                              {fmtDate(alert.triggered_at || alert.created_at)}
+                            </span>
+                          </div>
+                        </div>
+                        {!alert.acknowledged_at && (
+                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Radio className="h-4 w-4 text-blue-500" />
+              Latest Signals
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {aggregated.content.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Radio className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p>No signals collected yet</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2 pr-3">
+                  {aggregated.content.map((item: any) => (
+                    <div key={item.id} className="p-3 rounded-lg border border-border/50">
+                      <p className="text-sm font-medium line-clamp-2">{item.title || item.content_preview || 'Signal'}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-[9px]">{item._projectName}</Badge>
+                        {item.source_name && (
+                          <span className="text-[10px] text-muted-foreground">{item.source_name}</span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {fmtDate(item.collected_at || item.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Topology View — knowledge graph topology snapshots ─────────────────────────
+
+function TopologyView({
+  projectEntries,
+  aggregated,
+  isLoading,
+  loadedCount,
+}: {
+  projectEntries: { id: string; name: string }[];
+  aggregated: { byType: Record<string, { source: ProjectKnowledgeSource; projectName: string; projectId: string }[]> };
+  isLoading: boolean;
+  loadedCount: number;
+}) {
+  const topologyItems = aggregated.byType['topology_snapshot'] || [];
+
+  if (isLoading && topologyItems.length === 0) return (
+    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+      <Loader2 className="h-4 w-4 animate-spin" />Loading topology data ({loadedCount}/{projectEntries.length} projects)...
+    </div>
+  );
+
+  if (topologyItems.length === 0) return (
+    <Card className="bg-card/80 border-border/50">
+      <CardContent className="py-8 text-center">
+        <Network className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">No topology snapshots in the knowledge graph yet.</p>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Network className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Topology</h2>
+        <Badge variant="secondary">{topologyItems.length}</Badge>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {topologyItems.map(({ source, projectName, projectId }) => (
+          <Card key={source.id} className={`bg-card/80 ${source.is_stale ? 'border-yellow-500/30' : 'border-border/50'}`}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <Network className="h-4 w-4 text-[hsl(var(--info))] shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{source.source_title}</p>
+                  {source.source_summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{source.source_summary}</p>}
+                  <div className="flex items-center justify-between mt-1.5">
+                    <Link to={`/projects/${projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground">{projectName}</Link>
+                    <span className="text-[10px] text-muted-foreground">{Math.round(source.coverage_score * 100)}% coverage</span>
+                  </div>
+                  {source.is_stale && <Badge variant="outline" className="text-[9px] mt-1 text-yellow-600 border-yellow-600">Stale</Badge>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Knowledge Tab (main intelligence container) ───────────────────────────────
+
 function KnowledgeTab({
   orgId,
   projectEntries,
@@ -2817,21 +3241,27 @@ function KnowledgeTab({
   if (view && view !== 'overview') {
     if (view === 'datasources') {
       return (
-        <DataSourcesView
-          orgId={orgId}
-          projectEntries={projectEntries}
-        />
+        <div className="space-y-6">
+          <DataSourcesIntelView orgId={orgId} projectEntries={projectEntries} />
+          <DataSourcesView orgId={orgId} projectEntries={projectEntries} />
+        </div>
       );
     }
 
     if (view === 'artifacts') {
-      return <ArtifactsView orgId={orgId} />;
+      return (
+        <div className="space-y-6">
+          <ArtifactsIntelView projectEntries={projectEntries} />
+          <ArtifactsView orgId={orgId} />
+        </div>
+      );
     }
 
     if (view === 'workflows') {
       return (
         <div className="space-y-8">
           <EditableWorkflowsView orgId={orgId} />
+          <SystemAutomationsSection />
           <div className="border-t pt-6">
             <div className="flex items-center gap-2 mb-4">
               <Network className="h-5 w-5 text-muted-foreground" />
@@ -2847,10 +3277,17 @@ function KnowledgeTab({
       );
     }
 
+    if (view === 'pulse') {
+      return <PulseView projectEntries={projectEntries} />;
+    }
+
+    if (view === 'topology') {
+      return <TopologyView projectEntries={projectEntries} aggregated={aggregated} isLoading={isLoading} loadedCount={loadedCount} />;
+    }
+
+    // Generic fallback for other knowledge source types (e.g. conversations)
     const typeKey =
       view === 'conversations' ? 'conversation'
-      : view === 'pulse'      ? 'pulse_content'
-      : view === 'topology'   ? 'topology_snapshot'
       : null;
     const items = typeKey ? (aggregated.byType[typeKey] || []) : [];
     const meta = typeKey ? SOURCE_TYPE_META[typeKey] : null;
