@@ -21,7 +21,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use sqlx::Row;
+use sqlx::{Row, SqlitePool};
 use db::models::agent_conversation::{
     AgentConversation, AgentConversationMessage, ConversationStatus,
 };
@@ -1810,17 +1810,62 @@ async fn process_sms_with_nora(
     message: &str,
     from_number: &str,
     context: Option<serde_json::Value>,
+    pool: &SqlitePool,
+    raw_user_text: &str,
 ) -> Result<String, String> {
+    let session_id = format!("sms-{}", from_number.trim_start_matches('+'));
+
+    // ── Get Nora agent ID for conversation persistence ────────────────────────
+    let nora_agent_id: Option<Uuid> = sqlx::query(
+        "SELECT id FROM agents WHERE short_name = 'Nora' LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|row| {
+        use sqlx::Row;
+        let bytes: Vec<u8> = row.try_get("id").ok()?;
+        Uuid::from_slice(&bytes).ok()
+    });
+
+    // ── Load recent conversation history for context ──────────────────────────
+    let past_context = if let Some(agent_id) = nora_agent_id {
+        match AgentConversation::find_by_agent_session(pool, agent_id, &session_id).await {
+            Ok(Some(conv)) => {
+                match AgentConversationMessage::find_recent(pool, conv.id, 20).await {
+                    Ok(msgs) if !msgs.is_empty() => {
+                        let history = msgs.iter()
+                            .map(|m| format!("[{}]: {}", m.role.to_uppercase(), &m.content[..m.content.len().min(300)]))
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        Some(format!("\n\n[CONVERSATION HISTORY — last {} messages]:\n{}\n[END HISTORY]", msgs.len(), history))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    // Inject history into the message content if available
+    let enriched_message = if let Some(ref history) = past_context {
+        format!("{}{}", message, history)
+    } else {
+        message.to_string()
+    };
+
     // ── Primary: full NoraAgent with tool access ──────────────────────────────
     if let Ok(nora_arc) = get_nora_instance().await {
         let guard = nora_arc.read().await;
         if let Some(nora) = guard.as_ref() {
-            let session_id = format!("sms-{}", from_number.trim_start_matches('+'));
             let request = NoraRequest {
                 request_id: Uuid::new_v4().to_string(),
-                session_id,
+                session_id: session_id.clone(),
                 request_type: NoraRequestType::TextInteraction,
-                content: message.to_string(),
+                content: enriched_message.clone(),
                 context: context.clone(),
                 voice_enabled: false,
                 priority: RequestPriority::Normal,
@@ -1829,6 +1874,26 @@ async fn process_sms_with_nora(
             match timeout(Duration::from_secs(90), nora.process_request(request)).await {
                 Ok(Ok(response)) => {
                     info!("NoraAgent SMS response: {} chars", response.content.len());
+                    // ── Persist conversation to DB ────────────────────────────
+                    if let Some(agent_id) = nora_agent_id {
+                        let pool_p = pool.clone();
+                        let sid = session_id.clone();
+                        let user_text = raw_user_text.to_string();
+                        let assistant_text = response.content.clone();
+                        tokio::spawn(async move {
+                            match AgentConversation::get_or_create(&pool_p, agent_id, &sid, None).await {
+                                Ok(conv) => {
+                                    if let Err(e) = AgentConversationMessage::add_user_message(&pool_p, conv.id, &user_text).await {
+                                        warn!("Failed to persist SMS user message: {}", e);
+                                    }
+                                    if let Err(e) = AgentConversationMessage::add_assistant_message(&pool_p, conv.id, &assistant_text, None, None, None, None, None).await {
+                                        warn!("Failed to persist SMS assistant message: {}", e);
+                                    }
+                                }
+                                Err(e) => warn!("Failed to get/create SMS conversation: {}", e),
+                            }
+                        });
+                    }
                     return Ok(response.content);
                 }
                 Ok(Err(e)) => warn!("NoraAgent SMS processing failed: {}", e),
