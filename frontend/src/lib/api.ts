@@ -3848,6 +3848,8 @@ export interface SidebarClient {
   active_issues_count?: number;
   knowledge_completeness?: number;
   last_activity_at?: string;
+  crm_person_id?: string;
+  crm_confidence?: number;
   projects: SidebarProject[];
 }
 

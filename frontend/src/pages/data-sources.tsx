@@ -5,10 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  ArrowLeft, Search, List, FileText, Table2, Music, Image,
+  Search, List, FileText, Table2, Music, Image,
   Film, Layers, Folder, MessageSquare, File, Database,
   Upload, ChevronRight, ChevronDown, Palette,
-  Download, Trash2, X, Info, Eye, Plus, RefreshCw,
+  Download, Trash2, X, Info, RefreshCw,
   SortAsc, SortDesc, FolderOpen, LayoutGrid,
 } from 'lucide-react';
 import { dataSourcesApi, type DataSourceRecord } from '@/lib/api';
@@ -88,12 +88,6 @@ function formatDate(iso?: string | null): string {
   try {
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   } catch { return '—'; }
-}
-
-function isPreviewable(source: DataSourceRecord): boolean {
-  const ext = (source.file_type || '').toLowerCase();
-  return source.source_type === 'text' || source.source_type === 'upload' &&
-    ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'txt', 'md', 'csv'].includes(ext);
 }
 
 function hasLocalFile(source: DataSourceRecord): boolean {
@@ -219,10 +213,10 @@ function PreviewPanel({ source, onClose, onDelete }: {
         )}
 
         {/* Summary / text preview */}
-        {source.summary && (
+        {(source as any).summary && (
           <div>
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Summary</p>
-            <p className="text-sm text-muted-foreground leading-relaxed">{source.summary}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">{(source as any).summary}</p>
           </div>
         )}
 
@@ -240,10 +234,10 @@ function PreviewPanel({ source, onClose, onDelete }: {
         <div>
           <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Details</p>
           <div className="space-y-1.5 text-sm">
-            {source.file_size && (
+            {source.file_size_bytes && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Size</span>
-                <span className="font-mono text-xs">{formatSize(source.file_size)}</span>
+                <span className="font-mono text-xs">{formatSize(source.file_size_bytes)}</span>
               </div>
             )}
             <div className="flex justify-between">
@@ -510,7 +504,7 @@ export default function DataSourcesPage() {
 
   const DATA_TYPES = useMemo(() => {
     const types = new Set(sources.map((s: DataSourceRecord) => s.data_type).filter(Boolean));
-    return ['all', ...Array.from(types)];
+    return ['all', ...Array.from(types)] as string[];
   }, [sources]);
 
   function toggleSort(field: SortField) {
@@ -526,7 +520,7 @@ export default function DataSourcesPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['dataSources'] });
 
   // Stats
-  const totalSize = sources.reduce((acc: number, s: DataSourceRecord) => acc + (s.file_size || 0), 0);
+  const totalSize = sources.reduce((acc: number, s: DataSourceRecord) => acc + (s.file_size_bytes || 0), 0);
   const localFiles = sources.filter((s: DataSourceRecord) => hasLocalFile(s)).length;
 
   return (
@@ -721,7 +715,7 @@ export default function DataSourcesPage() {
                           <Badge variant="outline" className="text-[10px] capitalize">{source.data_type}</Badge>
                         </td>
                         <td className="px-2 py-2 text-right font-mono text-xs text-muted-foreground">
-                          {formatSize(source.file_size)}
+                          {formatSize(source.file_size_bytes)}
                         </td>
                         <td className="px-4 py-2 text-right text-xs text-muted-foreground">
                           {formatDate(source.created_at)}
@@ -769,7 +763,6 @@ export default function DataSourcesPage() {
               <div className="p-4 grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
                 {filtered.map((source: DataSourceRecord) => {
                   const isSelected = selectedSource?.id === source.id;
-                  const meta = parseMetadata(source.metadata);
                   const ext = (source.file_type || '').toLowerCase();
                   const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
                   const downloadable = hasLocalFile(source);
@@ -791,7 +784,7 @@ export default function DataSourcesPage() {
                         ) : fileIcon(source, 'lg')}
                       </div>
                       <p className="text-xs font-medium truncate">{source.title}</p>
-                      <p className="text-[10px] text-muted-foreground capitalize mt-0.5">{source.data_type} · {formatSize(source.file_size)}</p>
+                      <p className="text-[10px] text-muted-foreground capitalize mt-0.5">{source.data_type} · {formatSize(source.file_size_bytes)}</p>
 
                       {/* Hover actions */}
                       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

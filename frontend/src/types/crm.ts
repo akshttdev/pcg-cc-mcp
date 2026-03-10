@@ -23,7 +23,8 @@ export interface CrmPipelineStage {
 // Pipeline (matches backend CrmPipeline)
 export interface CrmPipeline {
   id: string;
-  project_id: string;
+  organization_id?: string;
+  project_id?: string;
   name: string;
   description?: string;
   pipeline_type: string;
@@ -265,7 +266,8 @@ export type CrmActivityType =
 
 export interface CrmContact {
   id: string;
-  project_id: string;
+  organization_id?: string;
+  project_id?: string;
   first_name?: string;
   last_name?: string;
   full_name?: string;
@@ -311,7 +313,7 @@ export interface CrmContact {
 }
 
 export interface CreateCrmContact {
-  project_id: string;
+  organization_id: string;
   first_name?: string;
   last_name?: string;
   email?: string;
@@ -367,7 +369,8 @@ export interface UpdateCrmContact {
 
 export interface CrmDeal {
   id: string;
-  project_id: string;
+  organization_id?: string;
+  project_id?: string;
   crm_contact_id?: string;
   name: string;
   description?: string;
@@ -393,7 +396,8 @@ export interface CrmDeal {
 
 export interface CrmActivity {
   id: string;
-  project_id: string;
+  organization_id?: string;
+  project_id?: string;
   crm_contact_id?: string;
   crm_deal_id?: string;
   activity_type: CrmActivityType;

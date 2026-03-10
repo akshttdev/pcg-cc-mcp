@@ -23,7 +23,6 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
-  Users,
   AlertTriangle,
   History,
   ExternalLink,

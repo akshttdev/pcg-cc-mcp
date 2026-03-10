@@ -34,7 +34,6 @@ import {
   FileText,
   LayoutDashboard,
   Receipt,
-  Sparkles,
   LayoutGrid,
   Brain,
   Bot,
