@@ -38,7 +38,7 @@ import {
 import { getLanguageOptions } from '@/i18n/languages';
 
 import { toPrettyCase } from '@/utils/string';
-import { useTheme } from '@/components/theme-provider';
+import { useTheme, type TextSize } from '@/components/theme-provider';
 import { useUserSystem } from '@/components/config-provider';
 import { TaskTemplateManager } from '@/components/TaskTemplateManager';
 import NiceModal from '@ebay/nice-modal-react';
@@ -66,7 +66,7 @@ export function GeneralSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const { setTheme } = useTheme();
+  const { setTheme, textSize, setTextSize } = useTheme();
 
   // When config loads or changes externally, update draft only if not dirty
   useEffect(() => {
@@ -272,6 +272,27 @@ export function GeneralSettings() {
             </Select>
             <p className="text-sm text-muted-foreground">
               {t('settings.general.appearance.language.helper')}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="text-size">Text Size</Label>
+            <Select
+              value={textSize}
+              onValueChange={(value: string) => setTextSize(value as TextSize)}
+            >
+              <SelectTrigger id="text-size">
+                <SelectValue placeholder="Select text size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="small">Small (14px)</SelectItem>
+                <SelectItem value="default">Default (16px)</SelectItem>
+                <SelectItem value="large">Large (18px)</SelectItem>
+                <SelectItem value="extra-large">Extra Large (20px)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              Adjust the base text size across the application. All UI elements scale proportionally.
             </p>
           </div>
         </CardContent>
