@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,9 +23,9 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
-  Users,
   AlertTriangle,
   History,
+  ExternalLink,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, stagingApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
 import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
@@ -72,7 +72,7 @@ export function DataSourceDetailPage() {
   const { data: stagingRecords = [] } = useQuery({
     queryKey: ['staging', workflowResult?.workflow_run_id],
     queryFn: () => stagingApi.listByRun(workflowResult.workflow_run_id),
-    enabled: !!workflowResult?.workflow_run_id && workflowResult?.staged_records > 0,
+    enabled: !!workflowResult?.workflow_run_id,
   });
 
   // Compute summary stats from staging records
@@ -101,6 +101,12 @@ export function DataSourceDetailPage() {
 
   const effectiveModel = selectedModel || availableModels?.find((m) => m.is_default)?.id || '';
 
+  // Clear stale results when switching workflows
+  useEffect(() => {
+    setWorkflowResult(null);
+    setReviewRunId(null);
+  }, [selectedWorkflowId]);
+
   // Auto-select first workflow when loaded
   const effectiveWorkflowId = selectedWorkflowId || (Array.isArray(workflows) && workflows.length > 0 ? workflows[0].id : '');
 
@@ -109,10 +115,6 @@ export function DataSourceDetailPage() {
       dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId, effectiveModel || undefined, opts?.force),
     onSuccess: (data) => {
       setWorkflowResult(data);
-      // Auto-open review panel if there are staged records
-      if (data.workflow_run_id && data.staged_records > 0) {
-        setReviewRunId(data.workflow_run_id);
-      }
       queryClient.invalidateQueries({ queryKey: ['dataSourceArtifacts', dataSourceId] });
     },
   });
@@ -414,6 +416,16 @@ export function DataSourceDetailPage() {
               )}
               <Button
                 size="sm"
+                variant="ghost"
+                className="gap-1.5 text-xs"
+                onClick={() => navigate(`/workflows`)}
+                title="Open workflow in the Workflow Builder"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Builder
+              </Button>
+              <Button
+                size="sm"
                 variant="outline"
                 className="gap-1.5"
                 onClick={() => setShowRunHistory(true)}
@@ -485,7 +497,7 @@ export function DataSourceDetailPage() {
             </div>
           )}
 
-          {workflowResult?.staged_records > 0 && (
+          {(workflowResult?.staged_records > 0 || stagingRecords.length > 0) && (
             <div className="mb-4 p-4 rounded-md border bg-muted/20 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Run Results</p>
@@ -493,10 +505,10 @@ export function DataSourceDetailPage() {
                   size="sm"
                   variant="outline"
                   className="gap-1.5"
-                  onClick={() => setReviewRunId(workflowResult.workflow_run_id)}
+                  onClick={() => navigate('/workflows?tab=staging&run=' + workflowResult.workflow_run_id)}
                 >
-                  <Users className="h-3.5 w-3.5" />
-                  Review Records
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Review in Staging
                 </Button>
               </div>
 

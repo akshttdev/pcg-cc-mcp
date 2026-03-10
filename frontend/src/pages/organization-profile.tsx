@@ -97,6 +97,7 @@ import {
   Copy,
   Phone,
   MapPin,
+  Play,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -212,6 +213,13 @@ function OverviewTab({
     })),
   });
 
+  // Fetch recent workflow runs for the organization
+  const { data: recentWorkflowRuns = [] } = useQuery({
+    queryKey: ['workflow-runs', orgId],
+    queryFn: () => workflowsApi.listRecentRuns({ organization_id: orgId, limit: 10 }),
+    staleTime: 60_000,
+  });
+
   const recentActivities = useMemo(() => {
     const all: (CrmActivityRecord & { _projectName: string })[] = [];
     activityQueries.forEach((q, i) => {
@@ -299,23 +307,62 @@ function OverviewTab({
         ))}
       </div>
 
-      {/* Recent activity - aggregated across all projects */}
+      {/* Recent activity - workflow runs + CRM activities */}
       <Card className="bg-card/80 backdrop-blur-sm border-border/50">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Activity className="h-4 w-4" />
             Recent Activity
           </CardTitle>
-          <CardDescription>Latest CRM activity across all {projectCount} projects</CardDescription>
+          <CardDescription>Latest workflow runs and CRM activity</CardDescription>
         </CardHeader>
         <CardContent>
-          {recentActivities.length === 0 ? (
+          {recentWorkflowRuns.length === 0 && recentActivities.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No recent activity</p>
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Workflow runs */}
+              {recentWorkflowRuns.map((run: any) => {
+                const statusColor = run.status === 'completed' ? 'text-green-600' : run.status === 'failed' ? 'text-red-600' : 'text-blue-600';
+                const statusBg = run.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30' : run.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-blue-100 dark:bg-blue-900/30';
+                return (
+                  <div key={run.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
+                    <div className={`h-8 w-8 rounded-full ${statusBg} flex items-center justify-center shrink-0`}>
+                      <Play className={`h-4 w-4 ${statusColor}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px]">workflow run</Badge>
+                        <Badge variant="secondary" className={`text-[10px] ${statusColor}`}>
+                          {run.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm mt-1 font-medium">{run.workflow_name}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        {run.total_records_staged > 0 && (
+                          <span>{run.total_records_staged} staged</span>
+                        )}
+                        {run.total_records_committed > 0 && (
+                          <span className="text-green-600">{run.total_records_committed} committed</span>
+                        )}
+                        {run.total_duplicates_found > 0 && (
+                          <span className="text-amber-600">{run.total_duplicates_found} duplicates</span>
+                        )}
+                        {run.model_used && (
+                          <span>{run.model_used}</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        {formatDate(run.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* CRM activities */}
               {recentActivities.map((activity) => (
                 <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
                   <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">

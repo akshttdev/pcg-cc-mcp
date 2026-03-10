@@ -1422,6 +1422,36 @@ function NodeConfigPanel({
                       {'{{content}}'}
                       <span className="text-[9px] font-sans text-muted-foreground">raw input</span>
                     </button>
+                    {currentInputs.map((sourceId) => {
+                      const sourceNode = allNodes.find((n) => n.id === sourceId);
+                      const rawSchema = (sourceNode?.parameters?.output_schema as string) ?? '';
+                      const schemaName = rawSchema.replace(/\[\]$/, '');
+                      if (!schemaName) return null;
+                      const varName = `{{${schemaName}}}`;
+                      return (
+                        <button
+                          key={sourceId}
+                          type="button"
+                          onClick={() => {
+                            const ta = document.querySelector<HTMLTextAreaElement>(`[data-prompt-node="${node.id}"]`);
+                            if (ta) {
+                              const pos = ta.selectionStart ?? ta.value.length;
+                              const before = ta.value.slice(0, pos);
+                              const after = ta.value.slice(pos);
+                              onUpdateParameter('prompt_template', before + varName + after);
+                            } else {
+                              onUpdateParameter('prompt_template', (node.parameters.prompt_template ?? '') + varName);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md bg-green-500/10 border border-green-500/20 px-2 py-0.5 text-[11px] font-mono text-green-700 dark:text-green-300 hover:bg-green-500/20 transition-colors"
+                        >
+                          {varName}
+                          <span className="text-[9px] font-sans text-muted-foreground">
+                            from {sourceNode?.name ?? sourceId}
+                          </span>
+                        </button>
+                      );
+                    })}
                     {currentInputs.length > 0 && (
                       <button
                         type="button"
@@ -1440,7 +1470,7 @@ function NodeConfigPanel({
                       >
                         {'{{previous_results}}'}
                         <span className="text-[9px] font-sans text-muted-foreground">
-                          from {currentInputs.length} node{currentInputs.length !== 1 ? 's' : ''}
+                          all inputs combined
                         </span>
                       </button>
                     )}
@@ -1451,7 +1481,7 @@ function NodeConfigPanel({
                     onChange={(e) =>
                       onUpdateParameter('prompt_template', e.target.value)
                     }
-                    placeholder={`Analyze the following content and...\n\nContent:\n{{content}}\n\nPrevious results:\n{{previous_results}}`}
+                    placeholder={`Analyze the following content and...\n\nContent:\n{{content}}\n\nContacts:\n{{contacts}}\n\nOr all upstream:\n{{previous_results}}`}
                     className="text-sm font-mono min-h-[200px] resize-y"
                   />
                 </div>

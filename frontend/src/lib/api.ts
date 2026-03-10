@@ -231,6 +231,11 @@ const handleApiResponseAsResult = async <T, E>(
   response: Response
 ): Promise<Result<T, E>> => {
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('session_id');
+      document.cookie = 'session_id=; Path=/; Max-Age=0';
+      window.location.href = '/login?expired=1';
+    }
     // HTTP error - no structured error data
     let errorMessage = `Request failed with status ${response.status}`;
 
@@ -265,6 +270,12 @@ const handleApiResponseAsResult = async <T, E>(
 
 const handleApiResponse = async <T, E = T>(response: Response): Promise<T> => {
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('session_id');
+      document.cookie = 'session_id=; Path=/; Max-Age=0';
+      window.location.href = '/login?expired=1';
+      throw new Error('Session expired');
+    }
     let errorMessage = `Request failed with status ${response.status}`;
 
     try {

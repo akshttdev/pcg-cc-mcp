@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 
 import {
   UserSystemProvider,
@@ -80,6 +80,12 @@ function HomeRedirect() {
     return <Navigate to={`/organizations/${firstOrg.id}`} replace />;
   }
   return <Projects />;
+}
+
+/** Redirects /workflows/staging/:runId to /workflows?tab=staging&run=:runId */
+function StagingRedirect() {
+  const { runId } = useParams();
+  return <Navigate to={`/workflows?tab=staging&run=${runId}`} replace />;
 }
 
 function App() {
@@ -237,6 +243,7 @@ function App() {
           <Route path="/global-tasks" element={<AdminRoute><GlobalTasksPage /></AdminRoute>} />
           <Route path="/mission-control" element={<ProtectedRoute><MissionControlPage /></ProtectedRoute>} />
           <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
+          <Route path="/workflows/staging/:runId" element={<ProtectedRoute><StagingRedirect /></ProtectedRoute>} />
           <Route
             path="/social-command"
             element={<ProtectedRoute><SocialPage /></ProtectedRoute>}
