@@ -1,10 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useParams, useSearchParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-// Tabs UI removed — navigation now driven entirely by sidebar + URL routing
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -43,6 +42,7 @@ import {
 } from '@/components/ui/table';
 import {
   Building2,
+  MapPin,
   Users,
   FolderOpen,
   Briefcase,
@@ -51,6 +51,7 @@ import {
   ArrowLeft,
   Globe,
   ExternalLink,
+  LayoutGrid,
   Contact2,
   DollarSign,
   Activity,
@@ -90,18 +91,19 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  UserPlus,
-  Link2,
-  Eye,
-  Shield,
-  Copy,
-  Phone,
-  MapPin,
-  Play,
+  Palette,
+  Mic,
+  Type,
+  Zap,
+  Heart,
+  Link as LinkIcon,
+  Tag,
+  Megaphone,
+  Lightbulb,
+  Crosshair,
 } from 'lucide-react';
 import {
   organizationsApi,
-  crmApi,
   crmDealsApi,
   crmActivitiesApi,
   knowledgeApi,
@@ -113,6 +115,7 @@ import {
   airtableApi,
   githubAuthApi,
   discordApi,
+  pulseApi,
   type DiscordSessionSummary,
   type OrganizationData,
   type ClientData,
@@ -123,7 +126,6 @@ import {
   type SocialMentionRecord,
   type PersonOrgContact,
   dataSourcesApi,
-  companiesApi,
   workflowsApi,
   resolveApiUrl,
   type DataSourceRecord,
@@ -131,6 +133,7 @@ import {
   type ExecutionArtifact,
   DATA_TYPE_OPTIONS,
   type EmailAccountRecord,
+  type OrgBrandProfile,
 } from '@/lib/api';
 import { useUserSystem } from '@/components/config-provider';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
@@ -138,7 +141,7 @@ import type { WorkflowDefinition } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
 import { useOrgContacts, type OrgContact } from '@/hooks/useOrgContacts';
-import { LIFECYCLE_STAGE_INFO, CONTACT_SOURCE_INFO, type LifecycleStage } from '@/types/crm';
+import { LIFECYCLE_STAGE_INFO, type LifecycleStage } from '@/types/crm';
 import type { PipelineType } from '@/types/crm';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -168,10 +171,468 @@ function formatCurrency(amount: number) {
   return `$${amount.toFixed(0)}`;
 }
 
+// ── Brand Identity Card ───────────────────────────────────────────────────────
+
+const BRAND_VOICE_OPTIONS = ['formal', 'casual', 'playful', 'authoritative', 'bold', 'sophisticated'];
+const BRAND_ARCHETYPE_OPTIONS = ['Hero', 'Creator', 'Sage', 'Outlaw', 'Explorer', 'Ruler', 'Caregiver', 'Innocent', 'Jester', 'Lover', 'Magician', 'Regular Guy'];
+const MARKET_POSITION_OPTIONS = ['luxury', 'premium', 'mid-market', 'budget'];
+const ICP_COMPANY_SIZE_OPTIONS = ['solo', 'startup', 'smb', 'mid-market', 'enterprise'];
+
+function parseJsonArray(val: string | null | undefined): string[] {
+  if (!val) return [];
+  try { return JSON.parse(val); } catch { return []; }
+}
+
+function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: string }) {
+  const qc = useQueryClient();
+  const { data: profile, isLoading } = useQuery<OrgBrandProfile | null>({
+    queryKey: ['orgBrandProfile', orgId],
+    queryFn: () => organizationsApi.getBrandProfile(orgId),
+    staleTime: 5 * 60_000,
+  });
+
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<Partial<OrgBrandProfile>>({});
+  const [saving, setSaving] = useState(false);
+
+  const openEdit = () => {
+    setForm({
+      tagline: profile?.tagline ?? '',
+      primaryColor: profile?.primaryColor ?? '#2563EB',
+      secondaryColor: profile?.secondaryColor ?? '#EC4899',
+      accentColor: profile?.accentColor ?? '',
+      typographyHeading: profile?.typographyHeading ?? '',
+      typographyBody: profile?.typographyBody ?? '',
+      logoUrl: profile?.logoUrl ?? '',
+      industry: profile?.industry ?? '',
+      marketPosition: profile?.marketPosition ?? '',
+      uniqueValueProposition: profile?.uniqueValueProposition ?? '',
+      missionStatement: profile?.missionStatement ?? '',
+      visionStatement: profile?.visionStatement ?? '',
+      brandValues: profile?.brandValues ?? '[]',
+      brandVoice: profile?.brandVoice ?? '',
+      brandArchetype: profile?.brandArchetype ?? '',
+      targetAudience: profile?.targetAudience ?? '',
+      icpDescription: profile?.icpDescription ?? '',
+      icpCompanySize: profile?.icpCompanySize ?? '',
+      icpIndustries: profile?.icpIndustries ?? '[]',
+      competitorBrands: profile?.competitorBrands ?? '[]',
+      differentiators: profile?.differentiators ?? '[]',
+      contentPillars: profile?.contentPillars ?? '[]',
+      contentTone: profile?.contentTone ?? '',
+      websiteUrl: profile?.websiteUrl ?? '',
+      socialInstagram: profile?.socialInstagram ?? '',
+      socialTwitter: profile?.socialTwitter ?? '',
+      socialLinkedin: profile?.socialLinkedin ?? '',
+      socialFacebook: profile?.socialFacebook ?? '',
+      socialYoutube: profile?.socialYoutube ?? '',
+      socialTiktok: profile?.socialTiktok ?? '',
+    });
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await organizationsApi.upsertBrandProfile(orgId, form);
+      qc.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const set = (k: keyof OrgBrandProfile, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  // helper: comma-separated ↔ JSON array
+  const getArr = (k: keyof OrgBrandProfile) => parseJsonArray(form[k] as string).join(', ');
+  const setArr = (k: keyof OrgBrandProfile, v: string) =>
+    set(k, JSON.stringify(v.split(',').map(s => s.trim()).filter(Boolean)));
+
+  const values = parseJsonArray(profile?.brandValues);
+  const pillars = parseJsonArray(profile?.contentPillars);
+  const competitors = parseJsonArray(profile?.competitorBrands);
+  const differentiators = parseJsonArray(profile?.differentiators);
+
+  const initials = orgName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+  return (
+    <>
+      <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+        <CardHeader className="flex flex-row items-start justify-between pb-2">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Palette className="h-4 w-4 text-[hsl(var(--brand))]" />
+              Brand Identity
+            </CardTitle>
+            <CardDescription>Visual language, positioning, audience, and content strategy</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={openEdit} className="shrink-0">
+            <Pencil className="h-3 w-3 mr-1.5" />
+            {profile ? 'Edit' : 'Set up brand'}
+          </Button>
+        </CardHeader>
+
+        {isLoading ? (
+          <CardContent className="flex items-center gap-2 text-muted-foreground py-6">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          </CardContent>
+        ) : !profile ? (
+          <CardContent className="py-8 text-center text-muted-foreground">
+            <Palette className="h-8 w-8 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No brand profile yet. Click <strong>Set up brand</strong> to get started.</p>
+          </CardContent>
+        ) : (
+          <CardContent className="space-y-6">
+            {/* Hero row */}
+            <div className="flex items-start gap-4">
+              <div
+                className="h-16 w-16 rounded-xl flex items-center justify-center text-white text-xl font-bold shrink-0 shadow"
+                style={{ background: `linear-gradient(135deg, ${profile.primaryColor}, ${profile.secondaryColor})` }}
+              >
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-lg leading-tight">{orgName}</p>
+                {profile.tagline && <p className="text-muted-foreground text-sm mt-0.5 italic">"{profile.tagline}"</p>}
+                <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                  {profile.industry && <Badge variant="secondary" className="text-[10px]">{profile.industry}</Badge>}
+                  {profile.marketPosition && <Badge variant="outline" className="text-[10px] capitalize">{profile.marketPosition}</Badge>}
+                  {profile.brandArchetype && <Badge className="text-[10px] bg-[hsl(var(--brand))]/10 text-[hsl(var(--brand))] border-[hsl(var(--brand))]/20">{profile.brandArchetype}</Badge>}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Visual Identity */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Palette className="h-3 w-3" /> Visual Identity
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-md border shadow-sm shrink-0" style={{ backgroundColor: profile.primaryColor }} />
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Primary</p>
+                    <p className="text-xs font-mono font-medium">{profile.primaryColor}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-md border shadow-sm shrink-0" style={{ backgroundColor: profile.secondaryColor }} />
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Secondary</p>
+                    <p className="text-xs font-mono font-medium">{profile.secondaryColor}</p>
+                  </div>
+                </div>
+                {profile.accentColor && (
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-md border shadow-sm shrink-0" style={{ backgroundColor: profile.accentColor }} />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Accent</p>
+                      <p className="text-xs font-mono font-medium">{profile.accentColor}</p>
+                    </div>
+                  </div>
+                )}
+                {profile.typographyHeading && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Type className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Heading Font</p>
+                      <p className="text-xs font-medium">{profile.typographyHeading}</p>
+                    </div>
+                  </div>
+                )}
+                {profile.typographyBody && (
+                  <div className="flex items-center gap-2">
+                    <Type className="h-3.5 w-3.5 text-muted-foreground shrink-0 opacity-60" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Body Font</p>
+                      <p className="text-xs font-medium">{profile.typographyBody}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Positioning */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Lightbulb className="h-3 w-3" /> Positioning
+                </p>
+                {profile.uniqueValueProposition && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Unique Value Proposition</p>
+                    <p className="text-xs leading-relaxed">{profile.uniqueValueProposition}</p>
+                  </div>
+                )}
+                {profile.missionStatement && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Mission</p>
+                    <p className="text-xs leading-relaxed">{profile.missionStatement}</p>
+                  </div>
+                )}
+                {profile.visionStatement && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Vision</p>
+                    <p className="text-xs leading-relaxed">{profile.visionStatement}</p>
+                  </div>
+                )}
+                {values.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-1">Brand Values</p>
+                    <div className="flex flex-wrap gap-1">
+                      {values.map(v => <Badge key={v} variant="outline" className="text-[10px]">{v}</Badge>)}
+                    </div>
+                  </div>
+                )}
+                {profile.brandVoice && (
+                  <div className="flex items-center gap-2">
+                    <Mic className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Brand Voice</p>
+                      <p className="text-xs font-medium capitalize">{profile.brandVoice}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Audience */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Crosshair className="h-3 w-3" /> Audience & ICP
+                </p>
+                {profile.targetAudience && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Target Audience</p>
+                    <p className="text-xs leading-relaxed">{profile.targetAudience}</p>
+                  </div>
+                )}
+                {profile.icpDescription && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Ideal Customer Profile</p>
+                    <p className="text-xs leading-relaxed">{profile.icpDescription}</p>
+                  </div>
+                )}
+                {profile.icpCompanySize && (
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Company Size</p>
+                      <p className="text-xs font-medium capitalize">{profile.icpCompanySize}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Content Strategy */}
+              {(pillars.length > 0 || profile.contentTone) && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Megaphone className="h-3 w-3" /> Content Strategy
+                  </p>
+                  {pillars.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-1">Content Pillars</p>
+                      <div className="flex flex-wrap gap-1">
+                        {pillars.map(p => <Badge key={p} variant="secondary" className="text-[10px]">{p}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                  {profile.contentTone && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Tone Notes</p>
+                      <p className="text-xs leading-relaxed">{profile.contentTone}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Competitive */}
+              {(competitors.length > 0 || differentiators.length > 0) && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Zap className="h-3 w-3" /> Competitive
+                  </p>
+                  {competitors.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-1">Competitors</p>
+                      <div className="flex flex-wrap gap-1">
+                        {competitors.map(c => <Badge key={c} variant="outline" className="text-[10px] border-destructive/30 text-destructive">{c}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                  {differentiators.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-1">Differentiators</p>
+                      <div className="flex flex-wrap gap-1">
+                        {differentiators.map(d => <Badge key={d} variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-600">{d}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Online Presence */}
+              {(profile.websiteUrl || profile.socialInstagram || profile.socialLinkedin || profile.socialTwitter || profile.socialTiktok || profile.socialYoutube) && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Globe className="h-3 w-3" /> Online Presence
+                  </p>
+                  {profile.websiteUrl && (
+                    <a href={profile.websiteUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-primary hover:underline">
+                      <LinkIcon className="h-3 w-3" /> {profile.websiteUrl.replace(/^https?:\/\//, '')}
+                    </a>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {profile.socialInstagram && <a href={`https://instagram.com/${profile.socialInstagram.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Instagram className="h-3.5 w-3.5" />{profile.socialInstagram}</a>}
+                    {profile.socialLinkedin && <a href={`https://linkedin.com/in/${profile.socialLinkedin.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Linkedin className="h-3.5 w-3.5" />{profile.socialLinkedin}</a>}
+                    {profile.socialTwitter && <a href={`https://twitter.com/${profile.socialTwitter.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Twitter className="h-3.5 w-3.5" />{profile.socialTwitter}</a>}
+                    {profile.socialTiktok && <a href={`https://tiktok.com/@${profile.socialTiktok.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Heart className="h-3.5 w-3.5" />{profile.socialTiktok}</a>}
+                    {profile.socialYoutube && <a href={`https://youtube.com/@${profile.socialYoutube.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Youtube className="h-3.5 w-3.5" />{profile.socialYoutube}</a>}
+                    {profile.socialFacebook && <a href={`https://facebook.com/${profile.socialFacebook.replace('@','')}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"><Facebook className="h-3.5 w-3.5" />{profile.socialFacebook}</a>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={editing} onOpenChange={setEditing}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Palette className="h-5 w-5 text-[hsl(var(--brand))]" />
+              Brand Profile — {orgName}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-2">
+            {/* Visual */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Palette className="h-3 w-3" /> Visual Identity</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Tagline</Label><Input value={form.tagline ?? ''} onChange={e => set('tagline', e.target.value)} placeholder="One-liner that captures the brand" /></div>
+                <div><Label className="text-xs">Industry</Label><Input value={form.industry ?? ''} onChange={e => set('industry', e.target.value)} placeholder="e.g. Luxury Agency, SaaS" /></div>
+                <div>
+                  <Label className="text-xs">Primary Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={form.primaryColor ?? '#2563EB'} onChange={e => set('primaryColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={form.primaryColor ?? ''} onChange={e => set('primaryColor', e.target.value)} placeholder="#2563EB" className="font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Secondary Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={form.secondaryColor ?? '#EC4899'} onChange={e => set('secondaryColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={form.secondaryColor ?? ''} onChange={e => set('secondaryColor', e.target.value)} placeholder="#EC4899" className="font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Accent Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={form.accentColor ?? '#000000'} onChange={e => set('accentColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={form.accentColor ?? ''} onChange={e => set('accentColor', e.target.value)} placeholder="#000000" className="font-mono" />
+                  </div>
+                </div>
+                <div><Label className="text-xs">Heading Font</Label><Input value={form.typographyHeading ?? ''} onChange={e => set('typographyHeading', e.target.value)} placeholder="e.g. Anton, Playfair Display" /></div>
+                <div><Label className="text-xs">Body Font</Label><Input value={form.typographyBody ?? ''} onChange={e => set('typographyBody', e.target.value)} placeholder="e.g. Inter, DM Sans" /></div>
+                <div><Label className="text-xs">Logo URL</Label><Input value={form.logoUrl ?? ''} onChange={e => set('logoUrl', e.target.value)} placeholder="https://..." /></div>
+              </div>
+            </div>
+
+            {/* Positioning */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Lightbulb className="h-3 w-3" /> Positioning</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Unique Value Proposition</Label><Input value={form.uniqueValueProposition ?? ''} onChange={e => set('uniqueValueProposition', e.target.value)} placeholder="What makes this brand irreplaceable?" /></div>
+                <div className="col-span-2"><Label className="text-xs">Mission Statement</Label><Textarea value={form.missionStatement ?? ''} onChange={e => set('missionStatement', e.target.value)} placeholder="Why does this brand exist?" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Vision Statement</Label><Textarea value={form.visionStatement ?? ''} onChange={e => set('visionStatement', e.target.value)} placeholder="Where is this brand going?" rows={2} /></div>
+                <div>
+                  <Label className="text-xs">Brand Voice</Label>
+                  <Select value={form.brandVoice ?? ''} onValueChange={v => set('brandVoice', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select voice" /></SelectTrigger>
+                    <SelectContent>{BRAND_VOICE_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Brand Archetype</Label>
+                  <Select value={form.brandArchetype ?? ''} onValueChange={v => set('brandArchetype', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select archetype" /></SelectTrigger>
+                    <SelectContent>{BRAND_ARCHETYPE_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Market Position</Label>
+                  <Select value={form.marketPosition ?? ''} onValueChange={v => set('marketPosition', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
+                    <SelectContent>{MARKET_POSITION_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">Brand Values <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('brandValues')} onChange={e => setArr('brandValues', e.target.value)} placeholder="Integrity, Innovation, Excellence" /></div>
+              </div>
+            </div>
+
+            {/* Audience */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Crosshair className="h-3 w-3" /> Audience & ICP</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Target Audience</Label><Textarea value={form.targetAudience ?? ''} onChange={e => set('targetAudience', e.target.value)} placeholder="Who is this brand speaking to?" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Ideal Customer Profile (ICP)</Label><Textarea value={form.icpDescription ?? ''} onChange={e => set('icpDescription', e.target.value)} placeholder="Describe the perfect client in detail — pain points, goals, context" rows={3} /></div>
+                <div>
+                  <Label className="text-xs">ICP Company Size</Label>
+                  <Select value={form.icpCompanySize ?? ''} onValueChange={v => set('icpCompanySize', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select size" /></SelectTrigger>
+                    <SelectContent>{ICP_COMPANY_SIZE_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">ICP Industries <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('icpIndustries')} onChange={e => setArr('icpIndustries', e.target.value)} placeholder="Hospitality, Real Estate, Fashion" /></div>
+              </div>
+            </div>
+
+            {/* Competitive */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Zap className="h-3 w-3" /> Competitive Intelligence</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Competitors <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('competitorBrands')} onChange={e => setArr('competitorBrands', e.target.value)} placeholder="Competitor A, Competitor B" /></div>
+                <div><Label className="text-xs">Differentiators <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('differentiators')} onChange={e => setArr('differentiators', e.target.value)} placeholder="End-to-end, Luxury positioning, Speed" /></div>
+              </div>
+            </div>
+
+            {/* Content & Social */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Megaphone className="h-3 w-3" /> Content & Social</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Content Pillars <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={getArr('contentPillars')} onChange={e => setArr('contentPillars', e.target.value)} placeholder="Education, Behind the scenes, Client results, Culture" /></div>
+                <div className="col-span-2"><Label className="text-xs">Tone Notes</Label><Textarea value={form.contentTone ?? ''} onChange={e => set('contentTone', e.target.value)} placeholder="Nuances about how this brand communicates across channels" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Website URL</Label><Input value={form.websiteUrl ?? ''} onChange={e => set('websiteUrl', e.target.value)} placeholder="https://brand.com" /></div>
+                <div><Label className="text-xs">Instagram</Label><Input value={form.socialInstagram ?? ''} onChange={e => set('socialInstagram', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">LinkedIn</Label><Input value={form.socialLinkedin ?? ''} onChange={e => set('socialLinkedin', e.target.value)} placeholder="@handle or company slug" /></div>
+                <div><Label className="text-xs">X (Twitter)</Label><Input value={form.socialTwitter ?? ''} onChange={e => set('socialTwitter', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">TikTok</Label><Input value={form.socialTiktok ?? ''} onChange={e => set('socialTiktok', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">YouTube</Label><Input value={form.socialYoutube ?? ''} onChange={e => set('socialYoutube', e.target.value)} placeholder="@channel" /></div>
+                <div><Label className="text-xs">Facebook</Label><Input value={form.socialFacebook ?? ''} onChange={e => set('socialFacebook', e.target.value)} placeholder="page name or handle" /></div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Saving…</> : 'Save Brand Profile'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({
   orgId,
+  orgName,
   projectEntries,
   projectCount,
   clientCount: _clientCount,
@@ -179,8 +640,10 @@ function OverviewTab({
   totalDealValue,
   totalDeals,
   contactCount,
+  onSwitchTab,
 }: {
   orgId: string;
+  orgName: string;
   projectEntries: { id: string; name: string }[];
   projectCount: number;
   clientCount: number;
@@ -188,6 +651,7 @@ function OverviewTab({
   totalDealValue: number;
   totalDeals: number;
   contactCount: number;
+  onSwitchTab: (tab: string) => void;
 }) {
   // Aggregate tasks across all projects
   const taskQueries = useQueries({
@@ -208,17 +672,10 @@ function OverviewTab({
   const activityQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['crm-activities-org', entry.id],
-      queryFn: () => crmActivitiesApi.listActivities({ organization_id: entry.id, limit: 10 }),
+      queryFn: () => crmActivitiesApi.listActivities({ project_id: entry.id, limit: 10 }),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
     })),
-  });
-
-  // Fetch recent workflow runs for the organization
-  const { data: recentWorkflowRuns = [] } = useQuery({
-    queryKey: ['workflow-runs', orgId],
-    queryFn: () => workflowsApi.listRecentRuns({ organization_id: orgId, limit: 10 }),
-    staleTime: 60_000,
   });
 
   const recentActivities = useMemo(() => {
@@ -286,84 +743,43 @@ function OverviewTab({
       {/* Quick links */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {[
-          { label: 'Pipelines', icon: Target, path: 'crm/pipeline', color: 'text-amber-500', summary: `${totalDeals} deals · ${formatCurrency(totalDealValue)}` },
-          { label: 'Contacts', icon: Contact2, path: 'crm/contacts', color: 'text-blue-500', summary: `${contactCount} contacts` },
-          { label: 'Projects', icon: FolderOpen, path: 'projects', color: 'text-emerald-500', summary: `${projectCount} active` },
-          { label: 'Intelligence', icon: Brain, path: 'intelligence', color: 'text-orange-500', summary: 'Data sources & workflows' },
-          { label: 'Members', icon: Users, path: 'members', color: 'text-purple-500', summary: 'Team & roles' },
-          { label: 'Integrations', icon: Plug, path: 'integrations', color: 'text-indigo-500', summary: 'Connected services' },
-        ].map(({ label, icon: Icon, path, color, summary }) => (
-          <Link
-            key={path}
-            to={`/organizations/${orgId}/${path}`}
-            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group cursor-pointer"
+          { label: 'Pipelines', icon: Target, tab: 'pipelines', color: 'text-amber-500' },
+          { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
+          { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
+          { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
+          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
+          { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
+          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
+        ].map(({ label, icon: Icon, tab, color }) => (
+          <button
+            key={tab}
+            onClick={() => onSwitchTab(tab)}
+            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group"
           >
             <Icon className={`h-5 w-5 ${color} group-hover:scale-110 transition-transform`} />
-            <div className="min-w-0">
-              <span className="text-sm font-medium block">{label}</span>
-              <span className="text-xs text-muted-foreground">{summary}</span>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-          </Link>
+            <span className="text-sm font-medium">{label}</span>
+            <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
         ))}
       </div>
 
-      {/* Recent activity - workflow runs + CRM activities */}
+      {/* Recent activity - aggregated across all projects */}
       <Card className="bg-card/80 backdrop-blur-sm border-border/50">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Activity className="h-4 w-4" />
             Recent Activity
           </CardTitle>
-          <CardDescription>Latest workflow runs and CRM activity</CardDescription>
+          <CardDescription>Latest CRM activity across all {projectCount} projects</CardDescription>
         </CardHeader>
         <CardContent>
-          {recentWorkflowRuns.length === 0 && recentActivities.length === 0 ? (
+          {recentActivities.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No recent activity</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {/* Workflow runs */}
-              {recentWorkflowRuns.map((run: any) => {
-                const statusColor = run.status === 'completed' ? 'text-green-600' : run.status === 'failed' ? 'text-red-600' : 'text-blue-600';
-                const statusBg = run.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30' : run.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-blue-100 dark:bg-blue-900/30';
-                return (
-                  <div key={run.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
-                    <div className={`h-8 w-8 rounded-full ${statusBg} flex items-center justify-center shrink-0`}>
-                      <Play className={`h-4 w-4 ${statusColor}`} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-[10px]">workflow run</Badge>
-                        <Badge variant="secondary" className={`text-[10px] ${statusColor}`}>
-                          {run.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm mt-1 font-medium">{run.workflow_name}</p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                        {run.total_records_staged > 0 && (
-                          <span>{run.total_records_staged} staged</span>
-                        )}
-                        {run.total_records_committed > 0 && (
-                          <span className="text-green-600">{run.total_records_committed} committed</span>
-                        )}
-                        {run.total_duplicates_found > 0 && (
-                          <span className="text-amber-600">{run.total_duplicates_found} duplicates</span>
-                        )}
-                        {run.model_used && (
-                          <span>{run.model_used}</span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        {formatDate(run.created_at)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-              {/* CRM activities */}
               {recentActivities.map((activity) => (
                 <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
                   <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -440,214 +856,12 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
   );
 }
 
-// ── Create Contact Dialog ─────────────────────────────────────────────────────
-
-function CreateContactDialog({
-  open,
-  onClose,
-  orgId,
-}: {
-  open: boolean;
-  onClose: () => void;
-  orgId: string;
-}) {
-  const queryClient = useQueryClient();
-  const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
-    mobile: '',
-    company_name: '',
-    job_title: '',
-    department: '',
-    linkedin_url: '',
-    twitter_handle: '',
-    website: '',
-    lifecycle_stage: 'lead',
-    source: '',
-    tags: '',
-  });
-
-  const resetForm = useCallback(() => {
-    setFormData({
-      first_name: '', last_name: '', email: '', phone: '', mobile: '',
-      company_name: '', job_title: '', department: '',
-      linkedin_url: '', twitter_handle: '', website: '',
-      lifecycle_stage: 'lead', source: '', tags: '',
-    });
-  }, []);
-
-  const handleFieldChange = useCallback(
-    (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
-    },
-    [],
-  );
-
-  const handleSelectChange = useCallback(
-    (field: string) => (value: string) => {
-      setFormData((prev) => ({ ...prev, [field]: value === '__none__' ? '' : value }));
-    },
-    [],
-  );
-
-  const create = useMutation({
-    mutationFn: async () => {
-      const parsedTags = formData.tags
-        ? formData.tags.split(',').map((t) => t.trim()).filter(Boolean)
-        : undefined;
-      const res = await fetch(resolveApiUrl('/api/crm/contacts'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          organization_id: orgId,
-          first_name: formData.first_name || undefined,
-          last_name: formData.last_name || undefined,
-          email: formData.email || undefined,
-          phone: formData.phone || undefined,
-          mobile: formData.mobile || undefined,
-          company_name: formData.company_name || undefined,
-          job_title: formData.job_title || undefined,
-          department: formData.department || undefined,
-          linkedin_url: formData.linkedin_url || undefined,
-          twitter_handle: formData.twitter_handle || undefined,
-          website: formData.website || undefined,
-          lifecycle_stage: formData.lifecycle_stage || undefined,
-          source: formData.source || undefined,
-          tags: parsedTags,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to create contact');
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-contacts', orgId] });
-      toast.success('Contact created');
-      resetForm();
-      onClose();
-    },
-    onError: () => toast.error('Failed to create contact'),
-  });
-
-  const handleOpenChange = useCallback((v: boolean) => { if (!v) onClose(); }, [onClose]);
-  const handleCreate = useCallback(() => { create.mutate(); }, [create]);
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>New Contact</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-fn">First Name</Label>
-              <Input id="ct-fn" value={formData.first_name} onChange={handleFieldChange('first_name')} placeholder="Jane" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-ln">Last Name</Label>
-              <Input id="ct-ln" value={formData.last_name} onChange={handleFieldChange('last_name')} placeholder="Doe" />
-            </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="ct-em">Email</Label>
-            <Input id="ct-em" type="email" value={formData.email} onChange={handleFieldChange('email')} placeholder="jane@example.com" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-ph">Phone</Label>
-              <Input id="ct-ph" value={formData.phone} onChange={handleFieldChange('phone')} placeholder="+1 555-0100" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-mob">Mobile</Label>
-              <Input id="ct-mob" value={formData.mobile} onChange={handleFieldChange('mobile')} placeholder="+1 555-0101" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-co">Company</Label>
-              <Input id="ct-co" value={formData.company_name} onChange={handleFieldChange('company_name')} placeholder="Acme Corp" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-jt">Job Title</Label>
-              <Input id="ct-jt" value={formData.job_title} onChange={handleFieldChange('job_title')} placeholder="VP of Sales" />
-            </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="ct-dept">Department</Label>
-            <Input id="ct-dept" value={formData.department} onChange={handleFieldChange('department')} placeholder="Engineering, Sales, Marketing..." />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-stage">Lifecycle Stage</Label>
-              <Select value={formData.lifecycle_stage} onValueChange={handleSelectChange('lifecycle_stage')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(LIFECYCLE_STAGE_INFO).map(([key, info]) => (
-                    <SelectItem key={key} value={key}>{info.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-src">Source</Label>
-              <Select value={formData.source || '__none__'} onValueChange={handleSelectChange('source')}>
-                <SelectTrigger><SelectValue placeholder="Select source" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Not specified</SelectItem>
-                  {Object.entries(CONTACT_SOURCE_INFO).map(([key, info]) => (
-                    <SelectItem key={key} value={key}>{info.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="ct-li">LinkedIn URL</Label>
-            <Input id="ct-li" value={formData.linkedin_url} onChange={handleFieldChange('linkedin_url')} placeholder="https://linkedin.com/in/..." />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-tw">Twitter Handle</Label>
-              <Input id="ct-tw" value={formData.twitter_handle} onChange={handleFieldChange('twitter_handle')} placeholder="@handle" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="ct-web">Website</Label>
-              <Input id="ct-web" value={formData.website} onChange={handleFieldChange('website')} placeholder="https://..." />
-            </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="ct-tags">Tags</Label>
-            <Input id="ct-tags" value={formData.tags} onChange={handleFieldChange('tags')} placeholder="Comma-separated tags, e.g. vip, conference-2026" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button
-            disabled={(!formData.first_name.trim() && !formData.last_name.trim() && !formData.email.trim()) || create.isPending}
-            onClick={handleCreate}
-          >
-            Create
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ── Contacts Tab ──────────────────────────────────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
-  const [searchParams] = useSearchParams();
   const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
-  const [showCreateContact, setShowCreateContact] = useState(false);
-  const contactFromUrl = searchParams.get('contact');
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(contactFromUrl);
-  const selectedContact = contacts.find(c => c.id === selectedContactId);
 
   const { data: personContacts = [] } = useQuery<PersonOrgContact[]>({
     queryKey: ['org-person-contacts', orgId],
@@ -703,45 +917,22 @@ function ContactsTab({ orgId }: { orgId: string }) {
             <option key={key} value={key}>{info.label}</option>
           ))}
         </select>
-        <Button size="sm" onClick={() => setShowCreateContact(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          Add Contact
-        </Button>
         {isLoading && (
           <span className="text-xs text-muted-foreground">Loading contacts…</span>
         )}
       </div>
 
-      <CreateContactDialog
-        open={showCreateContact}
-        onClose={() => setShowCreateContact(false)}
-        orgId={orgId}
-      />
-
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
-          <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowCreateContact(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Add Contact
-          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} onClick={() => setSelectedContactId(contact.id)} />
+            <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
           ))}
         </div>
-      )}
-
-      {selectedContact && (
-        <ContactDetailModal
-          contact={selectedContact}
-          orgId={orgId}
-          open={!!selectedContactId}
-          onClose={() => setSelectedContactId(null)}
-        />
       )}
     </div>
   );
@@ -755,23 +946,13 @@ const CONTEXT_COLORS: Record<string, string> = {
   contact: 'bg-gray-100 text-gray-600',
 };
 
-function ContactCard({ contact, context, onClick }: { contact: OrgContact; context?: string; onClick?: () => void }) {
+function ContactCard({ contact, context }: { contact: OrgContact; context?: string }) {
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
 
-  // Check if contact was imported via workflow
-  let importedViaWorkflow = false;
-  if (contact.custom_fields) {
-    try {
-      const cf = typeof contact.custom_fields === 'string' ? JSON.parse(contact.custom_fields) : contact.custom_fields;
-      importedViaWorkflow = !!cf.source_workflow_run_id;
-    } catch { /* ignore */ }
-  }
-
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="block w-full text-left p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
+    <Link
+      to={`/people/${contact.id}`}
+      className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -812,738 +993,8 @@ function ContactCard({ contact, context, onClick }: { contact: OrgContact; conte
             {context}
           </span>
         )}
-        {importedViaWorkflow && (
-          <Badge variant="outline" className="text-[10px] gap-0.5" title="Imported via workflow">
-            <GitBranch className="h-2.5 w-2.5" />
-            Workflow
-          </Badge>
-        )}
       </div>
-    </button>
-  );
-}
-
-// ── Contact Detail Modal ──────────────────────────────────────────────────────
-
-function ContactDetailModal({
-  contact,
-  orgId,
-  open,
-  onClose,
-}: {
-  contact: OrgContact;
-  orgId: string;
-  open: boolean;
-  onClose: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({
-    first_name: contact.first_name ?? '',
-    last_name: contact.last_name ?? '',
-    email: contact.email ?? '',
-    phone: contact.phone ?? '',
-    company_name: contact.company_name ?? '',
-    job_title: contact.job_title ?? '',
-    department: contact.department ?? '',
-    linkedin_url: contact.linkedin_url ?? '',
-    website: contact.website ?? '',
-  });
-
-  const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
-
-  const { data: deals = [] } = useQuery({
-    queryKey: ['contact-deals', contact.id],
-    queryFn: () => crmDealsApi.listDeals({ contact_id: contact.id }),
-    enabled: open,
-    staleTime: 30_000,
-  });
-
-  const { data: activities = [] } = useQuery<CrmActivityRecord[]>({
-    queryKey: ['contact-activities', contact.id],
-    queryFn: () => crmActivitiesApi.listActivities({ organization_id: orgId, contact_id: contact.id }),
-    enabled: open,
-    staleTime: 30_000,
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: () => crmApi.updateContact(contact.id, editData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-crm-contacts'] });
-      setIsEditing(false);
-      toast.success('Contact updated');
-    },
-    onError: () => toast.error('Failed to update contact'),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: () => crmApi.deleteContact(contact.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-crm-contacts'] });
-      onClose();
-      toast.success('Contact deleted');
-    },
-    onError: () => toast.error('Failed to delete contact'),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-lg">
-              {contact.full_name || `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim() || 'Unnamed Contact'}
-            </DialogTitle>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setIsEditing(!isEditing)}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => {
-                if (confirm('Delete this contact?')) deleteMutation.mutate();
-              }}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        </DialogHeader>
-
-        {/* Contact Info */}
-        <div className="space-y-4">
-          {isEditing ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">First Name</Label>
-                <Input value={editData.first_name} onChange={(e) => setEditData(d => ({ ...d, first_name: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Last Name</Label>
-                <Input value={editData.last_name} onChange={(e) => setEditData(d => ({ ...d, last_name: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Email</Label>
-                <Input value={editData.email} onChange={(e) => setEditData(d => ({ ...d, email: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Phone</Label>
-                <Input value={editData.phone} onChange={(e) => setEditData(d => ({ ...d, phone: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Company</Label>
-                <Input value={editData.company_name} onChange={(e) => setEditData(d => ({ ...d, company_name: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Job Title</Label>
-                <Input value={editData.job_title} onChange={(e) => setEditData(d => ({ ...d, job_title: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">Department</Label>
-                <Input value={editData.department} onChange={(e) => setEditData(d => ({ ...d, department: e.target.value }))} />
-              </div>
-              <div>
-                <Label className="text-xs">LinkedIn URL</Label>
-                <Input value={editData.linkedin_url} onChange={(e) => setEditData(d => ({ ...d, linkedin_url: e.target.value }))} />
-              </div>
-              <div className="col-span-2 flex gap-2 justify-end">
-                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
-                <Button size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? 'Saving...' : 'Save'}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 flex-wrap">
-                {stageInfo && (
-                  <Badge variant="secondary" style={{ backgroundColor: stageInfo.color + '20', color: stageInfo.color }}>
-                    {stageInfo.label}
-                  </Badge>
-                )}
-                {contact.lead_score > 0 && (
-                  <Badge variant="outline">Score: {contact.lead_score}</Badge>
-                )}
-                {contact.source && (
-                  <Badge variant="outline" className="capitalize">{contact.source}</Badge>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                {contact.email && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Mail className="h-3.5 w-3.5 shrink-0" />
-                    <a href={`mailto:${contact.email}`} className="truncate hover:text-foreground">{contact.email}</a>
-                  </div>
-                )}
-                {contact.phone && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Phone className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{contact.phone}</span>
-                  </div>
-                )}
-                {contact.company_name && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Building2 className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{contact.company_name}</span>
-                  </div>
-                )}
-                {contact.job_title && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Briefcase className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{contact.job_title}</span>
-                  </div>
-                )}
-                {contact.department && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Users className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{contact.department}</span>
-                  </div>
-                )}
-                {contact.linkedin_url && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Linkedin className="h-3.5 w-3.5 shrink-0" />
-                    <a href={contact.linkedin_url} target="_blank" rel="noreferrer" className="truncate hover:text-foreground">LinkedIn</a>
-                  </div>
-                )}
-                {(contact.city || contact.country) && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{[contact.city, contact.state, contact.country].filter(Boolean).join(', ')}</span>
-                  </div>
-                )}
-                {contact.website && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Globe className="h-3.5 w-3.5 shrink-0" />
-                    <a href={contact.website} target="_blank" rel="noreferrer" className="truncate hover:text-foreground">{contact.website}</a>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Deals */}
-          {deals.length > 0 && (
-            <div>
-              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Deals ({deals.length})</h4>
-              <div className="space-y-1.5">
-                {deals.map((deal: { id: string; name: string; amount?: number | null; currency?: string; stage?: string }) => (
-                  <div key={deal.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm">
-                    <span className="truncate">{deal.name}</span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {deal.amount != null && (
-                        <span className="text-xs font-medium">
-                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: deal.currency || 'USD' }).format(deal.amount)}
-                        </span>
-                      )}
-                      {deal.stage && (
-                        <Badge variant="outline" className="text-[10px]">{deal.stage}</Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recent Activity */}
-          {activities.length > 0 && (
-            <div>
-              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Recent Activity</h4>
-              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                {activities.slice(0, 10).map((activity) => (
-                  <div key={activity.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Activity className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="truncate">{activity.subject || activity.activity_type}</span>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">
-                      {new Date(activity.activity_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Metadata */}
-          <div className="text-[10px] text-muted-foreground pt-2 border-t border-border/50 flex items-center justify-between">
-            <span>Created {new Date(contact.created_at).toLocaleDateString()}</span>
-            {contact.last_activity_at && (
-              <span>Last active {new Date(contact.last_activity_at).toLocaleDateString()}</span>
-            )}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ── Companies Tab ─────────────────────────────────────────────────────────────
-
-interface CompanyRecord {
-  id: string;
-  name: string;
-  domain?: string;
-  industry?: string;
-  size?: string;
-  description?: string;
-  phone?: string;
-  email?: string;
-  city?: string;
-  country?: string;
-  linkedin_url?: string;
-  tags?: string;
-  created_at?: string;
-}
-
-function CreateCompanyInlineDialog({
-  open,
-  onClose,
-  orgId,
-  onCreated,
-}: {
-  open: boolean;
-  onClose: () => void;
-  orgId: string;
-  onCreated: () => void;
-}) {
-  const [formData, setFormData] = useState({
-    name: '',
-    website: '',
-    industry: '',
-    description: '',
-    headquarters: '',
-    phone: '',
-    email: '',
-    linkedin_url: '',
-    twitter_handle: '',
-    instagram_handle: '',
-  });
-
-  const resetForm = useCallback(() => {
-    setFormData({
-      name: '',
-      website: '',
-      industry: '',
-      description: '',
-      headquarters: '',
-      phone: '',
-      email: '',
-      linkedin_url: '',
-      twitter_handle: '',
-      instagram_handle: '',
-    });
-  }, []);
-
-  const create = useMutation({
-    mutationFn: () =>
-      companiesApi.create({
-        name: formData.name,
-        website: formData.website || undefined,
-        industry: formData.industry || undefined,
-        description: formData.description || undefined,
-        headquarters: formData.headquarters || undefined,
-        created_by_org_id: orgId,
-      }),
-    onSuccess: (company) => {
-      const extraFields: Record<string, string> = {};
-      if (formData.phone) extraFields.phone = formData.phone;
-      if (formData.email) extraFields.email = formData.email;
-      if (formData.linkedin_url) extraFields.linkedin_url = formData.linkedin_url;
-      if (formData.twitter_handle) extraFields.twitter_handle = formData.twitter_handle;
-      if (formData.instagram_handle) extraFields.instagram_handle = formData.instagram_handle;
-
-      if (Object.keys(extraFields).length > 0) {
-        companiesApi.update(company.id, extraFields).catch(() => {});
-      }
-
-      onCreated();
-      toast.success('Company created');
-      resetForm();
-      onClose();
-    },
-    onError: () => toast.error('Failed to create company'),
-  });
-
-  const handleFieldChange = useCallback(
-    (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
-    },
-    [],
-  );
-
-  const handleOpenChange = useCallback(
-    (v: boolean) => { if (!v) onClose(); },
-    [onClose],
-  );
-
-  const handleSubmit = useCallback(() => {
-    create.mutate();
-  }, [create]);
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[550px]">
-        <DialogHeader>
-          <DialogTitle>New Company</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
-          <div className="grid gap-1.5">
-            <Label htmlFor="co-name">Name *</Label>
-            <Input
-              id="co-name"
-              value={formData.name}
-              onChange={handleFieldChange('name')}
-              placeholder="Acme Corp"
-            />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor="co-web">Website</Label>
-              <Input
-                id="co-web"
-                value={formData.website}
-                onChange={handleFieldChange('website')}
-                placeholder="https://example.com"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="co-ind">Industry</Label>
-              <Input
-                id="co-ind"
-                value={formData.industry}
-                onChange={handleFieldChange('industry')}
-                placeholder="Technology"
-              />
-            </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="co-desc">Description</Label>
-            <Textarea
-              id="co-desc"
-              value={formData.description}
-              onChange={handleFieldChange('description')}
-              placeholder="Brief description of the company..."
-              rows={2}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="co-hq">Headquarters</Label>
-            <Input
-              id="co-hq"
-              value={formData.headquarters}
-              onChange={handleFieldChange('headquarters')}
-              placeholder="Miami, FL"
-            />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor="co-phone">Phone</Label>
-              <Input
-                id="co-phone"
-                value={formData.phone}
-                onChange={handleFieldChange('phone')}
-                placeholder="+1 555-0100"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="co-email">Email</Label>
-              <Input
-                id="co-email"
-                type="email"
-                value={formData.email}
-                onChange={handleFieldChange('email')}
-                placeholder="info@company.com"
-              />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="co-li">LinkedIn</Label>
-              <Input
-                id="co-li"
-                value={formData.linkedin_url}
-                onChange={handleFieldChange('linkedin_url')}
-                placeholder="linkedin.com/company/..."
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="co-tw">Twitter</Label>
-              <Input
-                id="co-tw"
-                value={formData.twitter_handle}
-                onChange={handleFieldChange('twitter_handle')}
-                placeholder="@handle"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="co-ig">Instagram</Label>
-              <Input
-                id="co-ig"
-                value={formData.instagram_handle}
-                onChange={handleFieldChange('instagram_handle')}
-                placeholder="@handle"
-              />
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button
-            disabled={!formData.name.trim() || create.isPending}
-            onClick={handleSubmit}
-          >
-            Create
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function CompaniesTab({ orgId }: { orgId: string }) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [industryFilter, setIndustryFilter] = useState('all');
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const queryClient = useQueryClient();
-
-  const { data: companies = [], isLoading } = useQuery<CompanyRecord[]>({
-    queryKey: ['org-companies', orgId],
-    queryFn: async () => {
-      const res = await fetch(resolveApiUrl(`/api/organizations/${orgId}/companies`), { credentials: 'include' });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : (data?.data ?? []);
-    },
-    staleTime: 30_000,
-  });
-
-  const industries = useMemo(() => {
-    const set = new Set<string>();
-    companies.forEach(c => { if (c.industry) set.add(c.industry); });
-    return Array.from(set).sort();
-  }, [companies]);
-
-  const filtered = useMemo(() => {
-    let result = companies;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(c =>
-        c.name.toLowerCase().includes(q) ||
-        (c.domain && c.domain.toLowerCase().includes(q)) ||
-        (c.industry && c.industry.toLowerCase().includes(q))
-      );
-    }
-    if (industryFilter !== 'all') {
-      result = result.filter(c => c.industry === industryFilter);
-    }
-    return result;
-  }, [companies, searchQuery, industryFilter]);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search companies..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        {industries.length > 0 && (
-          <select
-            value={industryFilter}
-            onChange={(e) => setIndustryFilter(e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="all">All Industries</option>
-            {industries.map(ind => (
-              <option key={ind} value={ind}>{ind}</option>
-            ))}
-          </select>
-        )}
-        {isLoading && (
-          <span className="text-xs text-muted-foreground">Loading companies...</span>
-        )}
-        <Button size="sm" onClick={() => setShowCreateDialog(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          Add Company
-        </Button>
-      </div>
-
-      <CreateCompanyInlineDialog
-        open={showCreateDialog}
-        onClose={() => setShowCreateDialog(false)}
-        orgId={orgId}
-        onCreated={() => queryClient.invalidateQueries({ queryKey: ['org-companies', orgId] })}
-      />
-
-      {filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>{isLoading ? 'Loading companies...' : 'No companies found'}</p>
-          <p className="text-xs mt-1">Add a company manually or let workflow pipelines extract them automatically.</p>
-          <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowCreateDialog(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Add Company
-          </Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((company) => (
-            <div
-              key={company.id}
-              className="p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{company.name}</p>
-                  {company.domain && (
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{company.domain}</p>
-                  )}
-                  {company.email && (
-                    <p className="text-xs text-muted-foreground truncate">{company.email}</p>
-                  )}
-                </div>
-                {company.size && (
-                  <Badge variant="outline" className="text-[10px] shrink-0">{company.size}</Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2 mt-3 flex-wrap">
-                {company.industry && (
-                  <Badge variant="secondary" className="text-[10px]">{company.industry}</Badge>
-                )}
-                {company.city && (
-                  <span className="text-[10px] text-muted-foreground">{company.city}{company.country ? `, ${company.country}` : ''}</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Deliverables Tab ─────────────────────────────────────────────────────────
-
-function DeliverablesTab({
-  projectEntries,
-}: {
-  orgId: string;
-  projectEntries: { id: string; name: string }[];
-}) {
-  const deliverableQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['deliverables', entry.id],
-      queryFn: async () => {
-        const res = await fetch(resolveApiUrl(`/api/projects/${entry.id}/deliverables`), { credentials: 'include' });
-        if (!res.ok) return [];
-        const data = await res.json();
-        const items = Array.isArray(data) ? data : (data?.data ?? []);
-        return items.map((d: any) => ({ ...d, _projectName: entry.name }));
-      },
-      staleTime: 30_000,
-    })),
-  });
-
-  const isLoading = deliverableQueries.some((q) => q.isLoading);
-  const allDeliverables = deliverableQueries.flatMap((q) => q.data ?? []);
-
-  const statusGroups = useMemo(() => {
-    const groups: Record<string, typeof allDeliverables> = {
-      draft: [],
-      in_progress: [],
-      review: [],
-      delivered: [],
-    };
-    allDeliverables.forEach((d) => {
-      const status = d.status || 'draft';
-      if (!groups[status]) groups[status] = [];
-      groups[status].push(d);
-    });
-    return groups;
-  }, [allDeliverables]);
-
-  const statusLabels: Record<string, { label: string; color: string }> = {
-    draft: { label: 'Draft', color: 'text-muted-foreground' },
-    in_progress: { label: 'In Progress', color: 'text-blue-500' },
-    review: { label: 'In Review', color: 'text-amber-500' },
-    delivered: { label: 'Delivered', color: 'text-green-500' },
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin mr-2" />
-        Loading deliverables...
-      </div>
-    );
-  }
-
-  if (allDeliverables.length === 0) {
-    return (
-      <div className="text-center py-16 text-muted-foreground">
-        <Boxes className="h-10 w-10 mx-auto mb-3 opacity-30" />
-        <p className="font-medium text-foreground mb-1">No deliverables yet</p>
-        <p className="text-sm max-w-md mx-auto">
-          Deliverables are tangible outputs produced for clients — reports, designs, assets, or completed work products.
-          Create them from individual project pages.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">{allDeliverables.length} Deliverables</h2>
-          <p className="text-sm text-muted-foreground">Across {projectEntries.length} projects</p>
-        </div>
-      </div>
-
-      {Object.entries(statusGroups).map(([status, items]) => {
-        if (items.length === 0) return null;
-        const info = statusLabels[status] || { label: status, color: 'text-muted-foreground' };
-        return (
-          <div key={status}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`text-sm font-medium ${info.color}`}>{info.label}</span>
-              <Badge variant="secondary" className="text-[10px]">{items.length}</Badge>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {items.map((d: any) => (
-                <Card key={d.id} className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{d.title}</p>
-                      {d.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{d.description}</p>
-                      )}
-                    </div>
-                    {d.deliverable_type && (
-                      <Badge variant="outline" className="text-[10px] shrink-0 capitalize">{d.deliverable_type}</Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-3 text-[10px] text-muted-foreground">
-                    <FolderOpen className="h-3 w-3" />
-                    <span>{d._projectName}</span>
-                    {d.due_date && (
-                      <>
-                        <span className="mx-1">·</span>
-                        <Clock className="h-3 w-3" />
-                        <span>Due {formatDate(d.due_date)}</span>
-                      </>
-                    )}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    </Link>
   );
 }
 
@@ -1649,19 +1100,43 @@ function ProjectsTab({
   );
 }
 
-function ProjectRow({ project, folderName }: { project: any; folderName?: string }) {
+function ProjectRow({ project, folderName, depth = 0 }: { project: any; folderName?: string; depth?: number }) {
+  const hasChildren = project.children && project.children.length > 0;
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <Link
-      to={`/projects/${project.id}`}
-      className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors"
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="text-sm font-medium truncate">{project.name}</span>
-        {folderName && <Badge variant="secondary" className="text-xs shrink-0">{folderName}</Badge>}
+    <div>
+      <div className="flex items-center gap-1">
+        {hasChildren && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="p-0.5 hover:bg-muted rounded shrink-0"
+          >
+            {expanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+          </button>
+        )}
+        <Link
+          to={`/projects/${project.id}`}
+          className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors flex-1 min-w-0"
+          style={hasChildren ? undefined : { marginLeft: depth > 0 ? '0' : '1.25rem' }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium truncate">{project.name}</span>
+            {folderName && <Badge variant="secondary" className="text-xs shrink-0">{folderName}</Badge>}
+            {hasChildren && <Badge variant="outline" className="text-[10px] shrink-0">{project.children.length}</Badge>}
+          </div>
+          <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
+        </Link>
       </div>
-      <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
-    </Link>
+      {hasChildren && expanded && (
+        <div className="pl-4 border-l border-border/50 ml-3 mt-0.5 space-y-0.5">
+          {project.children.map((child: any) => (
+            <ProjectRow key={child.id} project={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1701,6 +1176,7 @@ function AddDataSourceDialog({
   const [description, setDescription] = useState(editingSource?.description ?? '');
   const [content, setContent] = useState(editingSource?.content ?? '');
   const [file, setFile] = useState<File | null>(null);
+  const [folder, setFolder] = useState(editingSource?.folder ?? '');
 
   // Reset form when dialog opens/closes or editingSource changes
   const resetForm = () => {
@@ -1710,6 +1186,7 @@ function AddDataSourceDialog({
     setTitle(editingSource?.title ?? '');
     setDescription(editingSource?.description ?? '');
     setContent(editingSource?.content ?? '');
+    setFolder(editingSource?.folder ?? '');
     setFile(null);
   };
 
@@ -1724,6 +1201,7 @@ function AddDataSourceDialog({
         if (description.trim()) formData.append('description', description.trim());
         if (projId) formData.append('project_id', projId);
         formData.append('organization_id', orgId);
+        if (folder.trim()) formData.append('folder', folder.trim());
         return dataSourcesApi.upload(formData);
       }
       return dataSourcesApi.create({
@@ -1734,6 +1212,7 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+        folder: folder.trim() || undefined,
       });
     },
     onSuccess: () => {
@@ -1761,6 +1240,7 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
+        folder: folder.trim() || undefined,
       });
     } else {
       createMutation.mutate();
@@ -1834,6 +1314,16 @@ function AddDataSourceDialog({
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Folder (optional)</Label>
+            <Input
+              placeholder="e.g. Meetings or Meetings/Google Meet"
+              value={folder}
+              onChange={(e) => setFolder(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Use / to create subfolders. Leave blank to file under "Unfiled".</p>
           </div>
 
           {/* Conditional input based on source type */}
@@ -1956,6 +1446,9 @@ function DataSourcesView({
   const [deleteTarget, setDeleteTarget] = useState<DataSourceRecord | null>(null);
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['Meetings', 'Documents']));
+  const [search, setSearch] = useState('');
 
   const { data: sources = [], isLoading } = useQuery({
     queryKey: ['dataSources', orgId],
@@ -1985,8 +1478,40 @@ function DataSourcesView({
     return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
   };
 
+  // Build folder tree from sources
+  const folderTree = useMemo(() => {
+    const tree: Record<string, Record<string, number>> = {}; // root → { sub: count }
+    sources.forEach(s => {
+      const f = (s as any).folder || 'Unfiled';
+      const parts = f.split('/');
+      const root = parts[0];
+      const sub = parts[1] || null;
+      if (!tree[root]) tree[root] = {};
+      if (sub) {
+        tree[root][sub] = (tree[root][sub] || 0) + 1;
+      } else {
+        tree[root]['__self__'] = (tree[root]['__self__'] || 0) + 1;
+      }
+    });
+    return tree;
+  }, [sources]);
+
+  const allFolderCount = sources.length;
+
   const sorted = useMemo(() => {
-    const arr = [...sources];
+    let arr = [...sources];
+    // Folder filter
+    if (selectedFolder) {
+      arr = arr.filter(s => {
+        const f = (s as any).folder || 'Unfiled';
+        return f === selectedFolder || f.startsWith(selectedFolder + '/');
+      });
+    }
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      arr = arr.filter(s => s.title.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q));
+    }
     arr.sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
@@ -1998,7 +1523,7 @@ function DataSourcesView({
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return arr;
-  }, [sources, sortField, sortDir]);
+  }, [sources, sortField, sortDir, selectedFolder, search]);
 
   const dataTypeLabel = (dt: string) =>
     DATA_TYPE_OPTIONS.find(o => o.value === dt)?.label ?? dt;
@@ -2029,6 +1554,20 @@ function DataSourcesView({
     );
   };
 
+  const toggleFolder = (f: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f); else next.add(f);
+      return next;
+    });
+  };
+
+  const folderCount = (f: string) =>
+    sources.filter(s => {
+      const sf = (s as any).folder || 'Unfiled';
+      return sf === f || sf.startsWith(f + '/');
+    }).length;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -2045,7 +1584,7 @@ function DataSourcesView({
 
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground text-sm">Loading data sources...</div>
-      ) : sorted.length === 0 ? (
+      ) : sources.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Database className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>No data sources yet</p>
@@ -2055,6 +1594,83 @@ function DataSourcesView({
           </Button>
         </div>
       ) : (
+        <div className="flex gap-4">
+          {/* Folder sidebar */}
+          <div className="w-48 shrink-0">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 px-1">Folders</div>
+            <nav className="space-y-0.5">
+              {/* All */}
+              <button
+                onClick={() => setSelectedFolder(null)}
+                className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted/60 transition-colors ${!selectedFolder ? 'bg-muted font-medium' : ''}`}
+              >
+                <span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />All</span>
+                <span className="text-xs text-muted-foreground">{allFolderCount}</span>
+              </button>
+              {/* Root folders */}
+              {Object.entries(folderTree).sort(([a],[b]) => a.localeCompare(b)).map(([root, subs]) => {
+                const subKeys = Object.keys(subs).filter(k => k !== '__self__');
+                const hasChildren = subKeys.length > 0;
+                const isExpanded = expandedFolders.has(root);
+                const cnt = folderCount(root);
+                return (
+                  <div key={root}>
+                    <button
+                      onClick={() => { if (hasChildren) toggleFolder(root); setSelectedFolder(root); }}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm hover:bg-muted/60 transition-colors ${selectedFolder === root ? 'bg-muted font-medium' : ''}`}
+                    >
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        {hasChildren
+                          ? (isExpanded ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />)
+                          : <span className="w-3 shrink-0" />}
+                        <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{root}</span>
+                      </span>
+                      <span className="text-xs text-muted-foreground shrink-0 ml-1">{cnt}</span>
+                    </button>
+                    {hasChildren && isExpanded && (
+                      <div className="pl-4 space-y-0.5">
+                        {subKeys.sort().map(sub => {
+                          const fullPath = `${root}/${sub}`;
+                          const subCnt = folderCount(fullPath);
+                          return (
+                            <button
+                              key={sub}
+                              onClick={() => setSelectedFolder(fullPath)}
+                              className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-muted/60 transition-colors ${selectedFolder === fullPath ? 'bg-muted font-medium' : ''}`}
+                            >
+                              <span className="flex items-center gap-1.5 min-w-0">
+                                <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                <span className="truncate">{sub}</span>
+                              </span>
+                              <span className="text-xs text-muted-foreground">{subCnt}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Main content */}
+          <div className="flex-1 min-w-0 space-y-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search sources…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-sm border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            {sorted.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">No sources in this folder.</div>
+            ) : (
         <Card className="bg-card/80 backdrop-blur-sm border-border/50">
           <Table>
             <TableHeader>
@@ -2147,6 +1763,9 @@ function DataSourcesView({
             </TableBody>
           </Table>
         </Card>
+            )}
+          </div>
+        </div>
       )}
 
       <AddDataSourceDialog
@@ -2174,8 +1793,8 @@ function ArtifactsView({ orgId }: { orgId: string }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const { data: artifacts = [], isLoading } = useQuery({
-    queryKey: ['recentArtifacts', orgId],
-    queryFn: () => workflowsApi.listRecentArtifacts(orgId),
+    queryKey: ['recentArtifacts'],
+    queryFn: () => workflowsApi.listRecentArtifacts(),
   });
 
   const toggleExpand = (id: string) => {
@@ -3193,27 +2812,19 @@ function KnowledgeTab({
       queryKey: ['projectKnowledge', entry.id],
       queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
       staleTime: 60_000,
+      enabled: projectEntries.length > 0,
     })),
-  });
-
-  // Fetch org-level data sources for accurate stats
-  const { data: orgDataSources = [] } = useQuery({
-    queryKey: ['orgDataSources', orgId],
-    queryFn: () => dataSourcesApi.listByOrganization(orgId),
-    staleTime: 60_000,
   });
 
   const isLoading = knowledgeQueries.some(q => q.isLoading);
   const loadedCount = knowledgeQueries.filter(q => q.isSuccess).length;
 
-  // Aggregate across all projects
   const aggregated = useMemo(() => {
     let totalSources = 0;
     let staleSources = 0;
     let totalCoverage = 0;
     let coverageCount = 0;
     const sourcesByProject: { projectName: string; projectId: string; data: ProjectKnowledgeResponse }[] = [];
-    const byType: Record<string, { source: ProjectKnowledgeSource; projectName: string; projectId: string }[]> = {};
 
     knowledgeQueries.forEach((q, i) => {
       if (!q.data) return;
@@ -3227,14 +2838,10 @@ function KnowledgeTab({
       if (q.data.total_sources > 0) {
         sourcesByProject.push({ projectName: entry.name, projectId: entry.id, data: q.data });
       }
-      Object.entries(q.data.sources_by_type).forEach(([type, sources]) => {
-        if (!byType[type]) byType[type] = [];
-        sources.forEach(s => byType[type].push({ source: s, projectName: entry.name, projectId: entry.id }));
-      });
     });
 
     const avgCompleteness = coverageCount > 0 ? Math.round((totalCoverage / coverageCount) * 100) : 0;
-    return { totalSources, staleSources, avgCompleteness, sourcesByProject, byType };
+    return { totalSources, staleSources, avgCompleteness, sourcesByProject };
   }, [knowledgeQueries, projectEntries]);
 
   // Deep view: "datasources" shows the new data sources table; others filter knowledge by type
@@ -3351,7 +2958,6 @@ function KnowledgeTab({
   // Overview (default)
   return (
     <div className="space-y-6">
-      {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-card/80 backdrop-blur-sm border-border/50">
           <CardHeader className="pb-2">
@@ -3370,11 +2976,8 @@ function KnowledgeTab({
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold">{aggregated.totalSources + orgDataSources.length}</span>
-              <span className="text-sm text-muted-foreground">
-                {orgDataSources.length > 0 && `${orgDataSources.length} org · `}
-                {aggregated.totalSources} across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}
-              </span>
+              <span className="text-2xl font-bold">{aggregated.totalSources}</span>
+              <span className="text-sm text-muted-foreground">across {projectEntries.length} projects</span>
             </div>
           </CardContent>
         </Card>
@@ -3390,44 +2993,14 @@ function KnowledgeTab({
         </Card>
       </div>
 
-      {/* Source type breakdown pills */}
-      {aggregated.totalSources > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {Object.entries(SOURCE_TYPE_META).map(([type, meta]) => {
-            const count = (aggregated.byType[type] || []).length;
-            if (count === 0) return null;
-            const Icon = meta.icon;
-            return (
-              <Card key={type} className="bg-card/80 backdrop-blur-sm border-border/50">
-                <CardContent className="p-3 flex items-center gap-3">
-                  <Icon className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <div>
-                    <p className="font-semibold text-sm">{count}</p>
-                    <p className="text-xs text-muted-foreground">{meta.label}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
       {isLoading && (
         <p className="text-xs text-muted-foreground">Loading {loadedCount}/{projectEntries.length} projects...</p>
       )}
 
-      {/* Per-project knowledge */}
       {aggregated.sourcesByProject.length === 0 && !isLoading ? (
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>
-            {projectEntries.length === 0
-              ? 'No projects loaded — navigate to a project to index knowledge'
-              : 'No knowledge sources indexed yet'}
-          </p>
-          <p className="text-xs mt-1 opacity-70">
-            Use the sidebar Intelligence links to browse by category
-          </p>
+          <p>No knowledge sources indexed yet</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -3484,6 +3057,494 @@ function KnowledgeTab({
     </div>
   );
 }
+
+// ── Pulse Section ─────────────────────────────────────────────────────────────
+
+function PulseSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const alertQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['pulse-alerts-org', entry.id],
+      queryFn: () => pulseApi.getAlerts(entry.id, 20),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const contentQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['pulse-content-org', entry.id],
+      queryFn: () => pulseApi.getLatestContent(entry.id, 10),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const aggregated = useMemo(() => {
+    const allAlerts: any[] = [];
+    const allContent: any[] = [];
+
+    alertQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      q.data.forEach((a: any) => allAlerts.push({ ...a, _projectName: entry.name }));
+    });
+
+    contentQueries.forEach((q, i) => {
+      if (!q.data?.items) return;
+      const entry = projectEntries[i];
+      q.data.items.forEach((c: any) => allContent.push({ ...c, _projectName: entry.name }));
+    });
+
+    allAlerts.sort((a, b) => new Date(b.triggered_at || b.created_at).getTime() - new Date(a.triggered_at || a.created_at).getTime());
+    allContent.sort((a, b) => new Date(b.collected_at || b.created_at).getTime() - new Date(a.collected_at || a.created_at).getTime());
+
+    const unacknowledged = allAlerts.filter(a => !a.acknowledged_at).length;
+    return { alerts: allAlerts.slice(0, 20), content: allContent.slice(0, 20), unacknowledged };
+  }, [alertQueries, contentQueries, projectEntries]);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Unacknowledged Alerts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <span className={`text-2xl font-bold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
+              {aggregated.unacknowledged}
+              {aggregated.unacknowledged > 0 && (
+                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+              )}
+            </span>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Recent Signals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <span className="text-2xl font-bold">{aggregated.content.length}</span>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Recent Alerts
+              {aggregated.unacknowledged > 0 && (
+                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {aggregated.alerts.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p>No alerts</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2 pr-3">
+                  {aggregated.alerts.map((alert: any) => (
+                    <div
+                      key={alert.id}
+                      className={`p-3 rounded-lg border border-border/50 ${!alert.acknowledged_at ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{alert.rule_name || 'Alert'}</p>
+                          {alert.message && (
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{alert.message}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-[9px]">{alert._projectName}</Badge>
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatDate(alert.triggered_at || alert.created_at)}
+                            </span>
+                          </div>
+                        </div>
+                        {!alert.acknowledged_at && (
+                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Radio className="h-4 w-4 text-blue-500" />
+              Latest Signals
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {aggregated.content.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Radio className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p>No signals collected yet</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2 pr-3">
+                  {aggregated.content.map((item: any) => (
+                    <div key={item.id} className="p-3 rounded-lg border border-border/50">
+                      <p className="text-sm font-medium line-clamp-2">{item.title || item.content_preview || 'Signal'}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-[9px]">{item._projectName}</Badge>
+                        {item.source_name && (
+                          <span className="text-[10px] text-muted-foreground">{item.source_name}</span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {formatDate(item.collected_at || item.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Intelligence Tab (Social + Knowledge + Pulse combined) ────────────────────
+
+function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const viewFromUrl = searchParams.get('view') || 'overview';
+
+  const views = [
+    { key: 'overview',    label: 'Overview',      icon: Brain },
+    { key: 'datasources', label: 'Data Sources',  icon: Database },
+    { key: 'artifacts',   label: 'Artifacts',     icon: FileText },
+    { key: 'workflows',   label: 'Workflows',     icon: GitBranch },
+    { key: 'pulse',       label: 'Pulse',         icon: Radio },
+    { key: 'topology',    label: 'Topology',      icon: Network },
+  ];
+
+  const setView = (view: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (view === 'overview') {
+      params.delete('view');
+    } else {
+      params.set('view', view);
+    }
+    setSearchParams(params, { replace: true });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit flex-wrap">
+        {views.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setView(key)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+              viewFromUrl === key
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {viewFromUrl === 'overview'    && <KnowledgeSection projectEntries={projectEntries} />}
+      {viewFromUrl === 'datasources' && <DataSourcesIntelView orgId={orgId} projectEntries={projectEntries} />}
+      {viewFromUrl === 'artifacts'   && <ArtifactsIntelView projectEntries={projectEntries} />}
+      {viewFromUrl === 'workflows'   && <WorkflowsIntelView orgId={orgId} />}
+      {viewFromUrl === 'pulse'       && <PulseSection projectEntries={projectEntries} />}
+      {viewFromUrl === 'topology'    && <TopologyIntelView projectEntries={projectEntries} />}
+    </div>
+  );
+}
+
+function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string; projectEntries: { id: string; name: string }[] }) {
+  const { data: orgSources = [], isLoading: orgLoading } = useQuery({
+    queryKey: ['dataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    staleTime: 60_000,
+  });
+
+  const projSourceQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['dataSourcesProject', entry.id],
+      queryFn: () => dataSourcesApi.listByProject(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const isLoading = orgLoading || projSourceQueries.some(q => q.isLoading);
+
+  const sources = useMemo(() => {
+    const projSources = projSourceQueries.flatMap(q => q.data || []);
+    // Deduplicate by id
+    const all = [...orgSources, ...projSources];
+    const seen = new Set<string>();
+    return all.filter(s => {
+      if (seen.has((s as any).id)) return false;
+      seen.add((s as any).id);
+      return true;
+    });
+  }, [orgSources, projSourceQueries]);
+
+  const typeCount = useMemo(() => {
+    const counts: Record<string, number> = {};
+    sources.forEach((s: any) => { counts[s.data_type] = (counts[s.data_type] || 0) + 1; });
+    return counts;
+  }, [sources]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground">Data Library</h3>
+        <Link
+          to={`/organizations/${orgId}/data-sources`}
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <Database className="h-3.5 w-3.5" />
+          Open Full Library
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+          <Loader2 className="h-4 w-4 animate-spin" />Loading data sources...
+        </div>
+      ) : sources.length === 0 ? (
+        <Card className="bg-card/80 border-border/50">
+          <CardContent className="py-8 text-center">
+            <Database className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No data sources yet.</p>
+            <Link to={`/organizations/${orgId}/data-sources`} className="text-sm text-primary hover:underline mt-1 inline-block">
+              Add your first data source →
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Object.entries(typeCount).map(([type, count]) => (
+            <Card key={type} className="bg-card/80 border-border/50">
+              <CardContent className="pt-4 pb-4">
+                <p className="text-xs text-muted-foreground capitalize">{type.replace(/_/g, ' ')}</p>
+                <p className="text-2xl font-bold mt-1">{count as number}</p>
+              </CardContent>
+            </Card>
+          ))}
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="pt-4 pb-4">
+              <p className="text-xs text-muted-foreground">Total Files</p>
+              <p className="text-2xl font-bold mt-1 text-primary">{sources.length}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const knowledgeQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['projectKnowledge', entry.id],
+      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const artifacts = useMemo(() => {
+    const all: { title: string; summary?: string; projectName: string; projectId: string }[] = [];
+    knowledgeQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      ((q.data as any).sources_by_type?.artifact || []).forEach((src: any) => {
+        all.push({ title: src.source_title, summary: src.source_summary, projectName: entry.name, projectId: entry.id });
+      });
+    });
+    return all;
+  }, [knowledgeQueries, projectEntries]);
+
+  const isLoading = knowledgeQueries.some(q => q.isLoading);
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+      <Loader2 className="h-4 w-4 animate-spin" />Loading artifacts...
+    </div>
+  );
+
+  if (artifacts.length === 0) return (
+    <Card className="bg-card/80 border-border/50">
+      <CardContent className="py-8 text-center">
+        <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">No artifacts in the knowledge graph yet.</p>
+        <p className="text-xs text-muted-foreground mt-1">Artifacts are added automatically when deliverables are marked done.</p>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">{artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''} across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {artifacts.map((a, i) => (
+          <Card key={i} className="bg-card/80 border-border/50">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <FileText className="h-4 w-4 text-[hsl(var(--brand))] shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{a.title}</p>
+                  {a.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.summary}</p>}
+                  <Link to={`/projects/${a.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowsIntelView({ orgId }: { orgId: string }) {
+  const { data: automations = [] } = useQuery({
+    queryKey: ['system-automations'],
+    queryFn: async () => {
+      const r = await fetch('/api/automations', { credentials: 'include' });
+      const d = await r.json();
+      return d.data || [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground">Workflows & Automations</h3>
+        <Link
+          to="/workflows"
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <GitBranch className="h-3.5 w-3.5" />
+          Live Workflow Monitor
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+
+      {/* System Automations */}
+      {automations.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">System Automations ({automations.length} active)</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {automations.map((a: any) => (
+              <Card key={a.id} className="bg-card/80 border-border/50">
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start gap-2">
+                    <Activity className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{a.name}</p>
+                      {a.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.description}</p>}
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Badge variant="default" className="text-[9px] bg-green-500/10 text-green-700 border-green-200">Active</Badge>
+                        {a.schedule && <span className="text-[9px] text-muted-foreground">{a.schedule}</span>}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pipeline Blueprints — Conference, Editron, and API templates */}
+      <div>
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Pipeline Blueprints</p>
+        <LegacyPipelinesView orgId={orgId} />
+      </div>
+    </div>
+  );
+}
+
+function TopologyIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const knowledgeQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['projectKnowledge', entry.id],
+      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const topologyItems = useMemo(() => {
+    const all: { title: string; summary?: string; coverage?: number; projectName: string; projectId: string; isStale: boolean }[] = [];
+    knowledgeQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      ((q.data as any).sources_by_type?.topology_snapshot || []).forEach((src: any) => {
+        all.push({ title: src.source_title, summary: src.source_summary, coverage: src.coverage_score, projectName: entry.name, projectId: entry.id, isStale: src.is_stale || false });
+      });
+    });
+    return all;
+  }, [knowledgeQueries, projectEntries]);
+
+  const isLoading = knowledgeQueries.some(q => q.isLoading);
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+      <Loader2 className="h-4 w-4 animate-spin" />Loading topology data...
+    </div>
+  );
+
+  if (topologyItems.length === 0) return (
+    <Card className="bg-card/80 border-border/50">
+      <CardContent className="py-8 text-center">
+        <Network className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">No topology snapshots in the knowledge graph yet.</p>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {topologyItems.map((t, i) => (
+          <Card key={i} className={`bg-card/80 ${t.isStale ? 'border-yellow-500/30' : 'border-border/50'}`}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <Network className="h-4 w-4 text-[hsl(var(--info))] shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{t.title}</p>
+                  {t.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.summary}</p>}
+                  <div className="flex items-center justify-between mt-1.5">
+                    <Link to={`/projects/${t.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground">{t.projectName}</Link>
+                    {t.coverage != null && <span className="text-[10px] text-muted-foreground">{Math.round(t.coverage * 100)}% coverage</span>}
+                  </div>
+                  {t.isStale && <Badge variant="outline" className="text-[9px] mt-1 text-yellow-600 border-yellow-600">Stale</Badge>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 
 // ── Social Tab ────────────────────────────────────────────────────────────────
 
@@ -3816,7 +3877,6 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
     queryKey: ['qb-status-org', orgId],
     queryFn: () => quickbooksApi.getStatus(orgId),
     staleTime: 30_000,
-    retry: false,
   });
 
   const handleQbConnect = () => { window.location.href = quickbooksApi.getConnectUrl(orgId); };
@@ -4154,7 +4214,6 @@ function CommunicationSection() {
     queryKey: ['discord-active-sessions'],
     queryFn: () => discordApi.activeSessions(),
     staleTime: 30_000,
-    retry: false,
   });
 
   return (
@@ -4270,505 +4329,82 @@ function DevelopmentSection() {
 
 // ── Members Tab ───────────────────────────────────────────────────────────────
 
-function MemberAssignments({ orgId, userId }: { orgId: string; userId: string }) {
-  const queryClient = useQueryClient();
-  const { data: assignments, isLoading } = useQuery({
-    queryKey: ['member-assignments', orgId, userId],
-    queryFn: () => organizationsApi.getMemberAssignments(orgId, userId),
-  });
-
-  // Fetch org projects and clients for assignment dropdowns
-  const { data: orgClients = [] } = useQuery<ClientData[]>({
-    queryKey: ['orgClients', orgId],
-    queryFn: () => organizationsApi.getClients(orgId),
-  });
-
-  const [assignType, setAssignType] = useState<string>('');
-  const [assignTargetId, setAssignTargetId] = useState('');
-  const [assignRole, setAssignRole] = useState('editor');
-
-  // Fetch org projects via API
-  const { data: orgProjects = [] } = useQuery<any[]>({
-    queryKey: ['org-projects-list', orgId],
-    queryFn: async () => {
-      const res = await fetch(resolveApiUrl(`/api/projects?organization_id=${orgId}`), { credentials: 'include' });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.data || [];
-    },
-  });
-
-  const assignMutation = useMutation({
-    mutationFn: () => organizationsApi.assignMember(orgId, userId, assignType, assignTargetId, assignRole),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
-      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
-      setAssignType('');
-      setAssignTargetId('');
-    },
-  });
-
-  const unassignProjectMutation = useMutation({
-    mutationFn: (projectId: string) => organizationsApi.unassignProject(orgId, userId, projectId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
-      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
-    },
-  });
-
-  const unassignClientMutation = useMutation({
-    mutationFn: (clientId: string) => organizationsApi.unassignClient(orgId, userId, clientId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
-      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
-    },
-  });
-
-  if (isLoading) return <div className="text-xs text-muted-foreground py-2">Loading assignments...</div>;
-
-  const projectAssignments = assignments?.projects || [];
-  const clientAssignments = assignments?.clients || [];
-  const taskAssignments = assignments?.tasks || [];
-  const watchedTasks = assignments?.watched_tasks || [];
-
-  return (
-    <div className="pl-11 pb-3 space-y-3">
-      {/* Assigned projects */}
-      {projectAssignments.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-1">Projects</p>
-          <div className="flex flex-wrap gap-1">
-            {projectAssignments.map((p: any) => (
-              <Badge key={p.project_id} variant="secondary" className="text-xs gap-1">
-                <FolderOpen className="h-3 w-3" />
-                {p.project_name} ({p.role})
-                <button onClick={() => unassignProjectMutation.mutate(p.project_id)} className="ml-1 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Assigned clients */}
-      {clientAssignments.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-1">Clients</p>
-          <div className="flex flex-wrap gap-1">
-            {clientAssignments.map((c: any) => (
-              <Badge key={c.client_id} variant="secondary" className="text-xs gap-1">
-                <Briefcase className="h-3 w-3" />
-                {c.client_name} ({c.role})
-                <button onClick={() => unassignClientMutation.mutate(c.client_id)} className="ml-1 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Assigned tasks */}
-      {taskAssignments.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-1">Tasks (assignee)</p>
-          <div className="flex flex-wrap gap-1">
-            {taskAssignments.map((t: any) => (
-              <Badge key={t.task_id} variant="outline" className="text-xs">
-                {t.title} <span className="text-muted-foreground ml-1">({t.project_name})</span>
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Watched tasks */}
-      {watchedTasks.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground mb-1">Tasks (watching)</p>
-          <div className="flex flex-wrap gap-1">
-            {watchedTasks.map((t: any) => (
-              <Badge key={t.task_id} variant="outline" className="text-xs">
-                <Eye className="h-3 w-3 mr-1" />
-                {t.title} <span className="text-muted-foreground ml-1">({t.project_name})</span>
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {projectAssignments.length === 0 && clientAssignments.length === 0 && taskAssignments.length === 0 && (
-        <p className="text-xs text-muted-foreground">No assignments yet</p>
-      )}
-
-      {/* Quick assign */}
-      <div className="flex items-center gap-2 pt-1">
-        <Select value={assignType} onValueChange={(v) => { setAssignType(v); setAssignTargetId(''); }}>
-          <SelectTrigger className="w-[120px] h-7 text-xs">
-            <SelectValue placeholder="Assign to..." />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="project">Project</SelectItem>
-            <SelectItem value="client">Client</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {assignType === 'project' && (
-          <>
-            <Select value={assignTargetId} onValueChange={setAssignTargetId}>
-              <SelectTrigger className="w-[180px] h-7 text-xs">
-                <SelectValue placeholder="Select project..." />
-              </SelectTrigger>
-              <SelectContent>
-                {orgProjects
-                  .filter((p: any) => !projectAssignments.some((a: any) => a.project_id === p.id))
-                  .map((p: any) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            <Select value={assignRole} onValueChange={setAssignRole}>
-              <SelectTrigger className="w-[90px] h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="viewer">Viewer</SelectItem>
-                <SelectItem value="editor">Editor</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-              </SelectContent>
-            </Select>
-          </>
-        )}
-
-        {assignType === 'client' && (
-          <Select value={assignTargetId} onValueChange={setAssignTargetId}>
-            <SelectTrigger className="w-[180px] h-7 text-xs">
-              <SelectValue placeholder="Select client..." />
-            </SelectTrigger>
-            <SelectContent>
-              {orgClients
-                .filter((c: any) => !clientAssignments.some((a: any) => a.client_id === c.id))
-                .map((c: any) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {assignType && assignTargetId && (
-          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => assignMutation.mutate()} disabled={assignMutation.isPending}>
-            <Plus className="h-3 w-3 mr-1" />
-            Assign
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
-  const queryClient = useQueryClient();
-  const { data: members = [], isLoading } = useQuery<OrgMember[]>({
+  const { data: members = [] } = useQuery<OrgMember[]>({
     queryKey: ['org-members', orgId],
     queryFn: () => organizationsApi.getMembers(orgId),
     enabled: !!orgId,
   });
 
-  // All users for add-member dropdown
-  const { data: allUsers = [] } = useQuery<any[]>({
-    queryKey: ['all-users'],
-    queryFn: async () => {
-      const res = await fetch(resolveApiUrl('/api/users'), { credentials: 'include' });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.data || [];
-    },
-  });
-
-  const [expandedMember, setExpandedMember] = useState<string | null>(null);
-  const [showAddMember, setShowAddMember] = useState(false);
-  const [addUserId, setAddUserId] = useState('');
-  const [addRole, setAddRole] = useState('member');
-  const [showInviteDialog, setShowInviteDialog] = useState(false);
-  const [inviteRole, setInviteRole] = useState('member');
-  const [inviteLink, setInviteLink] = useState('');
-  const [copied, setCopied] = useState(false);
-
-  const availableUsers = allUsers.filter(
-    (u: any) => !members.some((m) => m.user_id === u.id)
-  );
-
-  const addMemberMutation = useMutation({
-    mutationFn: () => organizationsApi.addMember(orgId, addUserId, addRole),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
-      setAddUserId('');
-      setAddRole('member');
-      setShowAddMember(false);
-    },
-  });
-
-  const removeMemberMutation = useMutation({
-    mutationFn: (userId: string) => organizationsApi.removeMember(orgId, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
-    },
-  });
-
-  const changeRoleMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
-      organizationsApi.changeMemberRole(orgId, userId, role),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
-    },
-  });
-
-  const createInviteMutation = useMutation({
-    mutationFn: () => organizationsApi.createInvitation(orgId, inviteRole),
-    onSuccess: (data: any) => {
-      setInviteLink(data.invite_url || '');
-    },
-  });
-
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(inviteLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <Card className="bg-card/80 backdrop-blur-sm border-border/50">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Team Members</CardTitle>
-            <CardDescription>Manage who has access to {orgName}</CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => { setShowInviteDialog(true); setInviteLink(''); }}>
-              <Link2 className="h-4 w-4 mr-2" />
-              Invite Link
-            </Button>
-            <Button size="sm" onClick={() => setShowAddMember(true)}>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add Member
-            </Button>
-          </div>
-        </div>
+        <CardTitle>Team Members</CardTitle>
+        <CardDescription>People with access to {orgName}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Add member inline form */}
-        {showAddMember && (
-          <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
-            <Select value={addUserId} onValueChange={setAddUserId}>
-              <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Select user..." />
-              </SelectTrigger>
-              <SelectContent>
-                {availableUsers.map((u: any) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.full_name || u.username} <span className="text-muted-foreground ml-1">@{u.username}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={addRole} onValueChange={setAddRole}>
-              <SelectTrigger className="w-[120px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="viewer">Viewer</SelectItem>
-                <SelectItem value="member">Member</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button size="sm" onClick={() => addMemberMutation.mutate()} disabled={!addUserId || addMemberMutation.isPending}>
-              Add
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setShowAddMember(false)}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-
-        {/* Member list */}
-        {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin" />
-            Loading members...
-          </div>
-        ) : members.length === 0 ? (
+      <CardContent>
+        {members.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p>No members yet. Add members or send an invite link.</p>
+            <p>No members found</p>
           </div>
         ) : (
-          <div className="space-y-1">
-            {members.map((m: OrgMember) => {
-              const isExpanded = expandedMember === m.user_id;
-              const displayName = m.user?.full_name || m.user?.username || m.user_id;
-              return (
-                <div key={m.id} className="border rounded-lg">
-                  <div
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50"
-                    onClick={() => setExpandedMember(isExpanded ? null : m.user_id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
-                        {displayName[0].toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{displayName}</p>
-                        {m.user?.email && (
-                          <p className="text-xs text-muted-foreground">{m.user.email}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Select
-                        value={m.role}
-                        onValueChange={(role) => changeRoleMutation.mutate({ userId: m.user_id, role })}
-                      >
-                        <SelectTrigger className="w-[110px] h-7 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="viewer"><div className="flex items-center gap-1"><Eye className="h-3 w-3" /> Viewer</div></SelectItem>
-                          <SelectItem value="member"><div className="flex items-center gap-1"><Users className="h-3 w-3" /> Member</div></SelectItem>
-                          <SelectItem value="admin"><div className="flex items-center gap-1"><Shield className="h-3 w-3" /> Admin</div></SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <span className="text-xs text-muted-foreground hidden sm:inline">
-                        {formatDate(m.joined_at)}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0"
-                        onClick={() => removeMemberMutation.mutate(m.user_id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </div>
+          <div className="space-y-2">
+            {members.map((m: OrgMember) => (
+              <div key={m.id} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
+                    {(m.user?.full_name || m.user?.username || '?')[0].toUpperCase()}
                   </div>
-                  {isExpanded && (
-                    <MemberAssignments orgId={orgId} userId={m.user_id} />
-                  )}
+                  <div>
+                    <p className="text-sm font-medium">
+                      {m.user?.full_name || m.user?.username || m.user_id}
+                    </p>
+                    {m.user?.email && (
+                      <p className="text-xs text-muted-foreground">{m.user.email}</p>
+                    )}
+                  </div>
                 </div>
-              );
-            })}
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="capitalize">{m.role}</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    Since {formatDate(m.joined_at)}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </CardContent>
-
-      {/* Invite Link Dialog */}
-      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create Invite Link</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Role for new members</Label>
-              <Select value={inviteRole} onValueChange={setInviteRole}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="viewer">Viewer</SelectItem>
-                  <SelectItem value="member">Member</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {!inviteLink ? (
-              <Button onClick={() => createInviteMutation.mutate()} disabled={createInviteMutation.isPending} className="w-full">
-                {createInviteMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
-                Generate Link
-              </Button>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Input value={inviteLink} readOnly className="text-xs" />
-                  <Button size="sm" variant="outline" onClick={handleCopyLink}>
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                {copied && <p className="text-xs text-green-600">Copied to clipboard!</p>}
-                <p className="text-xs text-muted-foreground">This link expires in 7 days.</p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowInviteDialog(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-// Map from path segments to tab names
-const PATH_TO_TAB: Record<string, string> = {
-  crm: 'overview',
-  'crm/contacts': 'contacts',
-  'crm/companies': 'companies',
-  'crm/pipeline': 'pipelines',
-  'crm/deliverables': 'deliverables',
-  social: 'social',
-  intelligence: 'knowledge',
-  'intelligence/data-sources': 'knowledge',
-  'intelligence/artifacts': 'knowledge',
-  'intelligence/workflows': 'knowledge',
-  'intelligence/pulse': 'knowledge',
-  'intelligence/topology': 'knowledge',
-  members: 'members',
-  projects: 'projects',
-  integrations: 'integrations',
-};
-
-// Map from path segments to intelligence view
-const PATH_TO_VIEW: Record<string, string> = {
-  'intelligence/data-sources': 'datasources',
-  'intelligence/artifacts': 'artifacts',
-  'intelligence/workflows': 'workflows',
-  'intelligence/pulse': 'pulse',
-  'intelligence/topology': 'topology',
-};
-
 export function OrganizationProfilePage({ defaultTab, defaultPipeline }: OrganizationProfilePageProps = {}) {
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const location = useLocation();
-  const navigate = useNavigate();
 
-  // Derive tab from URL path (new route pattern) or search params (legacy)
-  const orgBase = `/organizations/${orgId}`;
-  const pathSuffix = location.pathname.startsWith(orgBase)
-    ? location.pathname.slice(orgBase.length + 1) // strip leading "/"
-    : '';
-
-  const tabFromPath = pathSuffix ? PATH_TO_TAB[pathSuffix] : undefined;
-  const viewFromPath = pathSuffix ? PATH_TO_VIEW[pathSuffix] : undefined;
-  const usingPathRoutes = !!tabFromPath;
-
-  const tabFromUrl = tabFromPath || searchParams.get('tab') || defaultTab || 'overview';
+  const tabFromUrl = searchParams.get('tab') || defaultTab || 'overview';
   const pipelineFromUrl = searchParams.get('pipeline') || defaultPipeline;
   const clientFilter = searchParams.get('client');
-  const viewFromUrl = viewFromPath || searchParams.get('view');
+  // viewFromUrl kept for potential future deep-link use
+  const _viewFromUrl = searchParams.get('view'); void _viewFromUrl;
+
+  const setTab = (tab: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', tab);
+    if (tab !== 'pipelines') params.delete('pipeline');
+    if (tab !== 'projects') params.delete('client');
+    if (tab !== 'knowledge') params.delete('view');
+    setSearchParams(params, { replace: true });
+  };
 
   const clearClientFilter = () => {
-    if (usingPathRoutes) {
-      navigate(`${orgBase}/projects`);
-    } else {
-      const params = new URLSearchParams(searchParams);
-      params.delete('client');
-      setSearchParams(params, { replace: true });
-    }
+    const params = new URLSearchParams(searchParams);
+    params.delete('client');
+    setSearchParams(params, { replace: true });
   };
 
   const { data: org, isLoading: orgLoading } = useQuery<OrganizationData>({
@@ -4803,6 +4439,116 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
   });
 
   const { contacts } = useOrgContacts(orgId);
+
+  const qc = useQueryClient();
+  const { data: brandProfile } = useQuery<OrgBrandProfile | null>({
+    queryKey: ['orgBrandProfile', orgId],
+    queryFn: () => organizationsApi.getBrandProfile(orgId!),
+    enabled: !!orgId,
+    staleTime: 5 * 60_000,
+  });
+  const [brandEditing, setBrandEditing] = useState(false);
+  const [brandForm, setBrandForm] = useState<Partial<OrgBrandProfile>>({});
+  const [brandSaving, setBrandSaving] = useState(false);
+
+  const openBrandEdit = () => {
+    setBrandForm({
+      tagline: brandProfile?.tagline ?? '',
+      primaryColor: brandProfile?.primaryColor ?? '#2563EB',
+      secondaryColor: brandProfile?.secondaryColor ?? '#EC4899',
+      accentColor: brandProfile?.accentColor ?? '',
+      typographyHeading: brandProfile?.typographyHeading ?? '',
+      typographyBody: brandProfile?.typographyBody ?? '',
+      logoUrl: brandProfile?.logoUrl ?? '',
+      industry: brandProfile?.industry ?? '',
+      marketPosition: brandProfile?.marketPosition ?? '',
+      uniqueValueProposition: brandProfile?.uniqueValueProposition ?? '',
+      missionStatement: brandProfile?.missionStatement ?? '',
+      visionStatement: brandProfile?.visionStatement ?? '',
+      brandValues: brandProfile?.brandValues ?? '[]',
+      brandVoice: brandProfile?.brandVoice ?? '',
+      brandArchetype: brandProfile?.brandArchetype ?? '',
+      targetAudience: brandProfile?.targetAudience ?? '',
+      icpDescription: brandProfile?.icpDescription ?? '',
+      icpCompanySize: brandProfile?.icpCompanySize ?? '',
+      icpIndustries: brandProfile?.icpIndustries ?? '[]',
+      competitorBrands: brandProfile?.competitorBrands ?? '[]',
+      differentiators: brandProfile?.differentiators ?? '[]',
+      contentPillars: brandProfile?.contentPillars ?? '[]',
+      contentTone: brandProfile?.contentTone ?? '',
+      websiteUrl: brandProfile?.websiteUrl ?? '',
+      socialInstagram: brandProfile?.socialInstagram ?? '',
+      socialTwitter: brandProfile?.socialTwitter ?? '',
+      socialLinkedin: brandProfile?.socialLinkedin ?? '',
+      socialFacebook: brandProfile?.socialFacebook ?? '',
+      socialYoutube: brandProfile?.socialYoutube ?? '',
+      socialTiktok: brandProfile?.socialTiktok ?? '',
+    });
+    setBrandEditing(true);
+  };
+  const saveBrand = async () => {
+    setBrandSaving(true);
+    try {
+      await organizationsApi.upsertBrandProfile(orgId!, brandForm);
+      qc.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      setBrandEditing(false);
+    } finally {
+      setBrandSaving(false);
+    }
+  };
+  const bset = (k: keyof OrgBrandProfile, v: string) => setBrandForm(f => ({ ...f, [k]: v }));
+  const bgetArr = (k: keyof OrgBrandProfile) => parseJsonArray(brandForm[k] as string).join(', ');
+  const bsetArr = (k: keyof OrgBrandProfile, v: string) =>
+    bset(k, JSON.stringify(v.split(',').map((s: string) => s.trim()).filter(Boolean)));
+
+  // ── Brand research ──────────────────────────────────────────────────────────
+  const seedProjectMutation = useMutation({
+    mutationFn: () => organizationsApi.seedBrandProject(orgId!),
+    onSuccess: (data) => {
+      const projectId = data?.data?.project_id;
+      if (projectId) {
+        window.open(`/projects/${projectId}`, '_blank');
+      }
+    },
+  });
+
+  const [brandResearching, setBrandResearching] = useState(false);
+  const [intakeUrl, setIntakeUrl] = useState<string | null>(null);
+  const [intakeCopied, setIntakeCopied] = useState(false);
+
+  const triggerResearch = async () => {
+    if (!orgId) return;
+    setBrandResearching(true);
+    try {
+      await organizationsApi.triggerBrandResearch(orgId);
+      // Poll until done
+      const poll = setInterval(async () => {
+        const status = await organizationsApi.getBrandResearchStatus(orgId);
+        if (status.status === 'done' || status.status === 'failed') {
+          clearInterval(poll);
+          setBrandResearching(false);
+          qc.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+        }
+      }, 3000);
+      // Safety timeout
+      setTimeout(() => { clearInterval(poll); setBrandResearching(false); }, 120_000);
+    } catch {
+      setBrandResearching(false);
+    }
+  };
+
+  const generateIntake = async () => {
+    if (!orgId) return;
+    const result = await organizationsApi.generateIntakeToken(orgId);
+    setIntakeUrl(result.url);
+  };
+
+  const copyIntake = () => {
+    if (!intakeUrl) return;
+    navigator.clipboard.writeText(intakeUrl);
+    setIntakeCopied(true);
+    setTimeout(() => setIntakeCopied(false), 2000);
+  };
 
   const sidebarOrg = sidebarTree
     ? [...(sidebarTree.owned_orgs || []), ...(sidebarTree.member_orgs || [])].find(o => o.id === orgId)
@@ -4842,46 +4588,221 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="border-b bg-card/50 backdrop-blur-sm shadow-sm">
-        <div className="max-w-[1600px] mx-auto px-6 py-5">
-          <div className="flex items-center gap-4">
-            <Link to="/projects" className="text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div className="p-2.5 bg-blue-100 dark:bg-blue-950 rounded-xl">
-              <Building2 className="w-6 h-6 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-foreground">{org.name}</h1>
-              {org.description && (
-                <p className="text-sm text-muted-foreground mt-0.5 truncate">{org.description}</p>
-              )}
-            </div>
-            <div className="ml-auto flex items-center gap-3">
-              <Badge variant={org.is_active ? 'default' : 'secondary'} className="text-xs">
-                {org.is_active ? 'Active' : 'Inactive'}
-              </Badge>
-            </div>
-          </div>
+      <div className="border-b shadow-sm overflow-hidden">
+        {/* Brand accent bar */}
+        {brandProfile && (
+          <div
+            className="h-[3px]"
+            style={{ background: `linear-gradient(90deg, ${brandProfile.primaryColor} 0%, ${brandProfile.accentColor ?? brandProfile.secondaryColor} 100%)` }}
+          />
+        )}
+        <div className="bg-card/50 backdrop-blur-sm">
+          <div className="max-w-[1600px] mx-auto px-6 py-4">
+            <div className="flex items-center gap-4">
+              <Link to="/projects" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                <ArrowLeft className="h-5 w-5" />
+              </Link>
 
-          {/* Stat pills — overview only */}
-          {tabFromUrl === 'overview' && (
+              {/* Brand avatar */}
+              {brandProfile?.logoUrl ? (
+                <div
+                  className="h-11 w-11 rounded-xl shrink-0 shadow-sm overflow-hidden flex items-center justify-center"
+                  style={{ backgroundColor: brandProfile.primaryColor }}
+                >
+                  <img
+                    src={resolveApiUrl(brandProfile.logoUrl)}
+                    alt={org.name}
+                    className="h-full w-full object-contain p-1"
+                  />
+                </div>
+              ) : brandProfile ? (
+                <div
+                  className="h-11 w-11 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm select-none"
+                  style={{ background: `linear-gradient(135deg, ${brandProfile.primaryColor}, ${brandProfile.accentColor ?? brandProfile.secondaryColor})` }}
+                >
+                  {org.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()}
+                </div>
+              ) : (
+                <div className="p-2.5 bg-blue-100 dark:bg-blue-950 rounded-xl shrink-0">
+                  <Building2 className="w-6 h-6 text-blue-600" />
+                </div>
+              )}
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2.5 flex-wrap">
+                  <h1 className="text-2xl font-bold text-foreground leading-none">{org.name}</h1>
+                  {brandProfile?.typographyHeading && (
+                    <span className="text-xs text-muted-foreground tracking-widest uppercase font-medium">{brandProfile.typographyHeading}</span>
+                  )}
+                </div>
+                {brandProfile?.tagline ? (
+                  <p className="text-sm text-muted-foreground mt-0.5 italic truncate">"{brandProfile.tagline}"</p>
+                ) : org.description ? (
+                  <p className="text-sm text-muted-foreground mt-0.5 truncate">{org.description}</p>
+                ) : null}
+                {org.address && (
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    {org.address}
+                  </p>
+                )}
+                {brandProfile && (
+                  <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
+                    {/* Colour swatches */}
+                    <div className="flex items-center gap-1">
+                      <div className="h-3.5 w-3.5 rounded-full border border-border/60 shadow-sm" style={{ backgroundColor: brandProfile.primaryColor }} title={`Primary: ${brandProfile.primaryColor}`} />
+                      <div className="h-3.5 w-3.5 rounded-full border border-border/60 shadow-sm" style={{ backgroundColor: brandProfile.secondaryColor }} title={`Secondary: ${brandProfile.secondaryColor}`} />
+                      {brandProfile.accentColor && <div className="h-3.5 w-3.5 rounded-full border border-border/60 shadow-sm" style={{ backgroundColor: brandProfile.accentColor }} title={`Accent: ${brandProfile.accentColor}`} />}
+                    </div>
+                    {brandProfile.industry && <Badge variant="secondary" className="text-[10px] h-4 py-0">{brandProfile.industry}</Badge>}
+                    {brandProfile.marketPosition && <Badge variant="outline" className="text-[10px] h-4 py-0 capitalize">{brandProfile.marketPosition}</Badge>}
+                    {brandProfile.brandArchetype && <Badge className="text-[10px] h-4 py-0 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">{brandProfile.brandArchetype}</Badge>}
+                  </div>
+                )}
+              </div>
+
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                <Badge variant={org.is_active ? 'default' : 'secondary'} className="text-xs">
+                  {org.is_active ? 'Active' : 'Inactive'}
+                </Badge>
+
+                {/* Triage completeness ring */}
+                {brandProfile && (() => {
+                  const scores = [
+                    brandProfile.logoUrl ? 3 : 0,
+                    brandProfile.accentColor ? 3 : brandProfile.primaryColor && brandProfile.secondaryColor ? 2 : 1,
+                    brandProfile.typographyBody ? 3 : brandProfile.typographyHeading ? 2 : 0,
+                    brandProfile.brandVoice && brandProfile.brandArchetype && brandProfile.contentTone ? 3 : brandProfile.brandVoice ? 1 : 0,
+                    brandProfile.missionStatement && brandProfile.uniqueValueProposition && brandProfile.brandValues ? 3 : brandProfile.missionStatement ? 1 : 0,
+                    brandProfile.targetAudience && brandProfile.icpDescription ? 3 : brandProfile.targetAudience ? 1 : 0,
+                    brandProfile.websiteUrl && brandProfile.socialLinkedin && brandProfile.socialInstagram ? 3 : brandProfile.websiteUrl ? 1 : 0,
+                  ];
+                  const pct = Math.round(scores.reduce((a, b) => a + b, 0) / (scores.length * 3) * 100);
+                  const color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+                  const r = 10; const circ = 2 * Math.PI * r;
+                  return (
+                    <button onClick={openBrandEdit} title={`Brand completeness: ${pct}%`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      <svg width="28" height="28" viewBox="0 0 28 28">
+                        <circle cx="14" cy="14" r={r} fill="none" stroke="currentColor" strokeWidth="3" className="text-border" />
+                        <circle cx="14" cy="14" r={r} fill="none" stroke={color} strokeWidth="3"
+                          strokeDasharray={`${circ * pct / 100} ${circ}`}
+                          strokeLinecap="round"
+                          transform="rotate(-90 14 14)" />
+                        <text x="14" y="14" textAnchor="middle" dominantBaseline="central" fontSize="7" fontWeight="600" fill={color}>{pct}%</text>
+                      </svg>
+                    </button>
+                  );
+                })()}
+
+                {/* Research button */}
+                <Button
+                  variant="outline" size="sm"
+                  onClick={brandResearching ? undefined : triggerResearch}
+                  disabled={brandResearching}
+                  className="text-xs gap-1.5"
+                  title="Research brand presence with Exa"
+                >
+                  {brandResearching
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Researching…</>
+                    : <><RefreshCw className="h-3.5 w-3.5" />Research</>
+                  }
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => seedProjectMutation.mutate()}
+                  disabled={seedProjectMutation.isPending}
+                  className="text-xs gap-1.5"
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  {seedProjectMutation.isPending ? 'Seeding...' : 'Seed Brand Project'}
+                </Button>
+
+                {brandProfile ? (
+                  <>
+                    <Link to={`/organizations/${orgId}/brand-guide`}>
+                      <Button variant="outline" size="sm" className="text-xs gap-1.5">
+                        <BookOpen className="h-3.5 w-3.5" />
+                        View Guide
+                      </Button>
+                    </Link>
+                    <Button variant="ghost" size="sm" onClick={openBrandEdit} className="text-xs gap-1.5 text-muted-foreground">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={openBrandEdit} className="text-xs gap-1.5">
+                    <Palette className="h-3.5 w-3.5" />
+                    Set Up Brand
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Stat pills */}
             <div className="flex items-center gap-3 mt-4 flex-wrap">
               <StatPill icon={FolderOpen} label="Projects" value={allProjects.length} />
               <StatPill icon={Briefcase} label="Clients" value={clients.length} />
               <StatPill icon={Users} label="Members" value={members.length} />
               <StatPill icon={DollarSign} label="Pipeline" value={formatCurrency(totalDealValue)} />
             </div>
-          )}
+          </div>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-[1600px] mx-auto px-6 py-5">
-          {tabFromUrl === 'overview' && (
+          <Tabs value={tabFromUrl} onValueChange={setTab}>
+            <div className="flex items-center justify-between mb-6">
+            <TabsList>
+              <TabsTrigger value="overview">
+                <LayoutGrid className="h-4 w-4 mr-2" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="pipelines">
+                <Target className="h-4 w-4 mr-2" />
+                Pipelines
+              </TabsTrigger>
+              <TabsTrigger value="contacts">
+                <Contact2 className="h-4 w-4 mr-2" />
+                Contacts
+              </TabsTrigger>
+              <TabsTrigger value="projects">
+                <FolderOpen className="h-4 w-4 mr-2" />
+                Projects
+              </TabsTrigger>
+              <TabsTrigger value="social">
+                <Share2 className="h-4 w-4 mr-2" />
+                Social
+              </TabsTrigger>
+              <TabsTrigger value="knowledge">
+                <Brain className="h-4 w-4 mr-2" />
+                Intelligence
+              </TabsTrigger>
+              <TabsTrigger value="members">
+                <Users className="h-4 w-4 mr-2" />
+                Members
+              </TabsTrigger>
+              <TabsTrigger value="integrations">
+                <Plug className="h-4 w-4 mr-2" />
+                Integrations
+              </TabsTrigger>
+            </TabsList>
+            <Link
+              to={`/organizations/${orgId}/data-sources`}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground border rounded-md px-3 py-1.5 transition-colors"
+            >
+              <Database className="h-3.5 w-3.5" />
+              Data Library
+            </Link>
+            </div>
+
+            <TabsContent value="overview">
               <OverviewTab
                 orgId={orgId}
+                orgName={org.name}
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                 projectCount={allProjects.length}
                 clientCount={clients.length}
@@ -4889,55 +4810,191 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
                 contactCount={contacts.length}
+                onSwitchTab={setTab}
               />
-            )}
+            </TabsContent>
 
-            {tabFromUrl === 'pipelines' && (
+            <TabsContent value="pipelines">
               <PipelinesTab orgId={orgId} defaultPipeline={pipelineFromUrl || undefined} />
-            )}
+            </TabsContent>
 
-            {tabFromUrl === 'contacts' && (
+            <TabsContent value="contacts">
               <ContactsTab orgId={orgId} />
-            )}
+            </TabsContent>
 
-            {tabFromUrl === 'companies' && (
-              <CompaniesTab orgId={orgId} />
-            )}
-
-            {tabFromUrl === 'deliverables' && (
-              <DeliverablesTab orgId={orgId} projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
-            )}
-
-            {tabFromUrl === 'projects' && (
+            <TabsContent value="projects">
               <ProjectsTab
                 orgId={orgId}
                 sidebarOrg={sidebarOrg}
                 clientFilter={clientFilter}
                 onClearClientFilter={clearClientFilter}
               />
-            )}
+            </TabsContent>
 
-            {tabFromUrl === 'social' && (
+            <TabsContent value="social">
               <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
-            )}
+            </TabsContent>
 
-            {tabFromUrl === 'knowledge' && (
-              <KnowledgeTab
-                orgId={orgId!}
+            <TabsContent value="knowledge">
+              <IntelligenceTab
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
-                view={viewFromUrl}
+                orgId={orgId}
               />
-            )}
+            </TabsContent>
 
-            {tabFromUrl === 'members' && (
+            <TabsContent value="members">
               <MembersTab orgId={orgId} orgName={org.name} />
-            )}
+            </TabsContent>
 
-            {tabFromUrl === 'integrations' && (
+            <TabsContent value="integrations">
               <IntegrationsTab orgId={orgId} />
-            )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
+
+      {/* Brand Guide Edit Dialog */}
+      <Dialog open={brandEditing} onOpenChange={setBrandEditing}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Palette className="h-5 w-5 text-amber-500" />
+              Brand Guide — {org.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 py-2">
+            {/* Visual */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Palette className="h-3 w-3" /> Visual Identity</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Tagline</Label><Input value={brandForm.tagline ?? ''} onChange={e => bset('tagline', e.target.value)} placeholder="One-liner that captures the brand" /></div>
+                <div><Label className="text-xs">Industry</Label><Input value={brandForm.industry ?? ''} onChange={e => bset('industry', e.target.value)} placeholder="e.g. Luxury Agency, SaaS" /></div>
+                <div>
+                  <Label className="text-xs">Primary Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={brandForm.primaryColor ?? '#2563EB'} onChange={e => bset('primaryColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={brandForm.primaryColor ?? ''} onChange={e => bset('primaryColor', e.target.value)} placeholder="#2563EB" className="font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Secondary Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={brandForm.secondaryColor ?? '#EC4899'} onChange={e => bset('secondaryColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={brandForm.secondaryColor ?? ''} onChange={e => bset('secondaryColor', e.target.value)} placeholder="#EC4899" className="font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Accent Color</Label>
+                  <div className="flex gap-2 mt-1">
+                    <input type="color" value={brandForm.accentColor ?? '#000000'} onChange={e => bset('accentColor', e.target.value)} className="h-9 w-12 rounded border cursor-pointer" />
+                    <Input value={brandForm.accentColor ?? ''} onChange={e => bset('accentColor', e.target.value)} placeholder="#000000" className="font-mono" />
+                  </div>
+                </div>
+                <div><Label className="text-xs">Heading Font</Label><Input value={brandForm.typographyHeading ?? ''} onChange={e => bset('typographyHeading', e.target.value)} placeholder="e.g. Cinzel, Playfair Display" /></div>
+                <div><Label className="text-xs">Body Font</Label><Input value={brandForm.typographyBody ?? ''} onChange={e => bset('typographyBody', e.target.value)} placeholder="e.g. Inter, DM Sans" /></div>
+                <div><Label className="text-xs">Logo URL</Label><Input value={brandForm.logoUrl ?? ''} onChange={e => bset('logoUrl', e.target.value)} placeholder="https://..." /></div>
+              </div>
+            </div>
+            {/* Positioning */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Lightbulb className="h-3 w-3" /> Positioning</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Unique Value Proposition</Label><Input value={brandForm.uniqueValueProposition ?? ''} onChange={e => bset('uniqueValueProposition', e.target.value)} placeholder="What makes this brand irreplaceable?" /></div>
+                <div className="col-span-2"><Label className="text-xs">Mission Statement</Label><Textarea value={brandForm.missionStatement ?? ''} onChange={e => bset('missionStatement', e.target.value)} placeholder="Why does this brand exist?" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Vision Statement</Label><Textarea value={brandForm.visionStatement ?? ''} onChange={e => bset('visionStatement', e.target.value)} placeholder="Where is this brand going?" rows={2} /></div>
+                <div>
+                  <Label className="text-xs">Brand Voice</Label>
+                  <Select value={brandForm.brandVoice ?? ''} onValueChange={v => bset('brandVoice', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select voice" /></SelectTrigger>
+                    <SelectContent>{BRAND_VOICE_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Brand Archetype</Label>
+                  <Select value={brandForm.brandArchetype ?? ''} onValueChange={v => bset('brandArchetype', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select archetype" /></SelectTrigger>
+                    <SelectContent>{BRAND_ARCHETYPE_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Market Position</Label>
+                  <Select value={brandForm.marketPosition ?? ''} onValueChange={v => bset('marketPosition', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select position" /></SelectTrigger>
+                    <SelectContent>{MARKET_POSITION_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">Brand Values <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('brandValues')} onChange={e => bsetArr('brandValues', e.target.value)} placeholder="Integrity, Innovation, Excellence" /></div>
+              </div>
+            </div>
+            {/* Audience */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Crosshair className="h-3 w-3" /> Audience & ICP</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Target Audience</Label><Textarea value={brandForm.targetAudience ?? ''} onChange={e => bset('targetAudience', e.target.value)} placeholder="Who is this brand speaking to?" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Ideal Customer Profile (ICP)</Label><Textarea value={brandForm.icpDescription ?? ''} onChange={e => bset('icpDescription', e.target.value)} placeholder="Describe the perfect client in detail" rows={3} /></div>
+                <div>
+                  <Label className="text-xs">ICP Company Size</Label>
+                  <Select value={brandForm.icpCompanySize ?? ''} onValueChange={v => bset('icpCompanySize', v)}>
+                    <SelectTrigger><SelectValue placeholder="Select size" /></SelectTrigger>
+                    <SelectContent>{ICP_COMPANY_SIZE_OPTIONS.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-xs">ICP Industries <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('icpIndustries')} onChange={e => bsetArr('icpIndustries', e.target.value)} placeholder="Hospitality, Real Estate, Fashion" /></div>
+              </div>
+            </div>
+            {/* Competitive */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Zap className="h-3 w-3" /> Competitive Intelligence</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Competitors <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('competitorBrands')} onChange={e => bsetArr('competitorBrands', e.target.value)} placeholder="Competitor A, Competitor B" /></div>
+                <div><Label className="text-xs">Differentiators <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('differentiators')} onChange={e => bsetArr('differentiators', e.target.value)} placeholder="End-to-end, Luxury positioning, Speed" /></div>
+              </div>
+            </div>
+            {/* Content & Social */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5"><Megaphone className="h-3 w-3" /> Content & Social</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><Label className="text-xs">Content Pillars <span className="text-muted-foreground font-normal">(comma-separated)</span></Label><Input value={bgetArr('contentPillars')} onChange={e => bsetArr('contentPillars', e.target.value)} placeholder="Education, Behind the scenes, Client results" /></div>
+                <div className="col-span-2"><Label className="text-xs">Tone Notes</Label><Textarea value={brandForm.contentTone ?? ''} onChange={e => bset('contentTone', e.target.value)} placeholder="Nuances about how this brand communicates" rows={2} /></div>
+                <div className="col-span-2"><Label className="text-xs">Website URL</Label><Input value={brandForm.websiteUrl ?? ''} onChange={e => bset('websiteUrl', e.target.value)} placeholder="https://brand.com" /></div>
+                <div><Label className="text-xs">Instagram</Label><Input value={brandForm.socialInstagram ?? ''} onChange={e => bset('socialInstagram', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">LinkedIn</Label><Input value={brandForm.socialLinkedin ?? ''} onChange={e => bset('socialLinkedin', e.target.value)} placeholder="@handle or company slug" /></div>
+                <div><Label className="text-xs">X (Twitter)</Label><Input value={brandForm.socialTwitter ?? ''} onChange={e => bset('socialTwitter', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">TikTok</Label><Input value={brandForm.socialTiktok ?? ''} onChange={e => bset('socialTiktok', e.target.value)} placeholder="@handle" /></div>
+                <div><Label className="text-xs">YouTube</Label><Input value={brandForm.socialYoutube ?? ''} onChange={e => bset('socialYoutube', e.target.value)} placeholder="@channel" /></div>
+                <div><Label className="text-xs">Facebook</Label><Input value={brandForm.socialFacebook ?? ''} onChange={e => bset('socialFacebook', e.target.value)} placeholder="page name or handle" /></div>
+              </div>
+            </div>
+          </div>
+          {/* Intake link generator */}
+          <div className="border-t pt-4 mt-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+              <LinkIcon className="h-3 w-3" /> Client Intake Link
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">Generate a shareable link so your client can fill in this questionnaire directly.</p>
+            {intakeUrl ? (
+              <div className="flex items-center gap-2">
+                <Input value={intakeUrl} readOnly className="text-xs font-mono h-8 flex-1" />
+                <Button size="sm" variant="outline" onClick={copyIntake} className="text-xs shrink-0 gap-1">
+                  <CheckCircle2 className={`h-3 w-3 ${intakeCopied ? 'text-green-500' : ''}`} />
+                  {intakeCopied ? 'Copied!' : 'Copy'}
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" onClick={generateIntake} className="text-xs gap-1.5">
+                <LinkIcon className="h-3.5 w-3.5" /> Generate Intake Link
+              </Button>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBrandEditing(false)}>Cancel</Button>
+            <Button onClick={saveBrand} disabled={brandSaving}>
+              {brandSaving ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Saving…</> : 'Save Brand Guide'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

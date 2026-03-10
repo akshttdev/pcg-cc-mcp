@@ -76,6 +76,8 @@ const McpSettings       = lazy(() => import('@/pages/settings/McpSettings').then
 const WalletSettings    = lazy(() => import('@/pages/settings/WalletSettings').then(m => ({ default: m.WalletSettings })));
 const KeysSettings      = lazy(() => import('@/pages/settings/KeysSettings').then(m => ({ default: m.KeysSettings })));
 const NetworkSettings   = lazy(() => import('@/pages/settings/NetworkSettings').then(m => ({ default: m.NetworkSettings })));
+const BrandIntakePage   = lazy(() => import('@/pages/brand-intake').then(m => ({ default: m.BrandIntakePage })));
+const BrandGuidePage    = lazy(() => import('@/pages/brand-guide').then(m => ({ default: m.BrandGuidePage })));
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -267,6 +269,11 @@ function App() {
           <Route
             path="/organizations/:orgId/data-sources/:dataSourceId"
             element={<ProtectedRoute><DataSourceDetailPage /></ProtectedRoute>}
+          />
+          <Route path="/intake/:token" element={<BrandIntakePage />} />
+          <Route
+            path="/organizations/:orgId/brand-guide"
+            element={<ProtectedRoute><BrandGuidePage /></ProtectedRoute>}
           />
           <Route
             path="/projects/:projectId/knowledge"
