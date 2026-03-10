@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -13,7 +12,6 @@ import {
   Clock,
   CheckCircle2,
   Circle,
-  Loader2,
   Instagram,
   Linkedin,
   Twitter,
@@ -121,7 +119,7 @@ export default function CalendarPage() {
       if (!projectIds.length) return [];
       const all = await Promise.all(
         projectIds.map((id: string) =>
-          tasksApi.list(id).catch(() => [])
+          tasksApi.getAll(id).catch(() => [])
         )
       );
       return all.flat();

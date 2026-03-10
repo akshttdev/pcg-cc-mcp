@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { organizationsApi, projectsApi } from '@/lib/api';
 import { UserCircle, Users, Layers, ChevronDown, ChevronRight, LayoutGrid } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
 import { Button } from '@/components/ui/button';
@@ -130,7 +130,7 @@ export function ClientOverview() {
           <p className="text-sm text-muted-foreground py-4">No projects yet.</p>
         ) : (
           <div className="space-y-2">
-            {projects.map((project: any, idx: number) => {
+            {projects.map((project: any, _idx: number) => {
               const isContainer = !project.git_repo_path || project.git_repo_path === '' || project.git_repo_path.startsWith('container:');
               const nonContainerIdx = nonContainerProjects.findIndex((p: any) => p.id === project.id);
               const boardQuery = !isContainer && nonContainerIdx >= 0 ? boardQueries[nonContainerIdx] : null;

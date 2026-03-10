@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   FolderKanban,
@@ -17,6 +17,15 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useOrganization } from '@/contexts/organization-context';
+import { useQuery } from '@tanstack/react-query';
+import { projectsApi } from '@/lib/api';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface DirectoryLink {
   label: string;
@@ -29,9 +38,13 @@ interface DirectoryCategory {
   title: string;
   icon: React.ReactNode;
   links: DirectoryLink[];
+  /** If true, this category renders its own custom content instead of the generic link list */
+  isProjectCategory?: boolean;
 }
 
-function buildCategories(orgId: string | undefined): DirectoryCategory[] {
+function buildCategories(
+  orgId: string | undefined,
+): DirectoryCategory[] {
   const o = orgId ? `/organizations/${orgId}` : undefined;
 
   return [
@@ -42,6 +55,7 @@ function buildCategories(orgId: string | undefined): DirectoryCategory[] {
         { label: 'Projects', to: '/projects' },
         { label: 'My Tasks', to: '/my-tasks' },
         { label: 'My Workflows', to: '/workflows' },
+        { label: 'Calendar', to: '/calendar' },
         { label: 'Global Tasks', to: '/global-tasks', admin: true },
       ],
     },
@@ -55,12 +69,14 @@ function buildCategories(orgId: string | undefined): DirectoryCategory[] {
               { label: 'Members', to: `${o}/members` },
               { label: 'Projects', to: `${o}/projects` },
               { label: 'Integrations', to: `${o}/integrations` },
+              { label: 'Brand Guide', to: `${o}/brand-guide` },
             ]
           : [
               { label: 'Organization Overview', note: 'Select an organization first' },
               { label: 'Members', note: 'Select an organization first' },
               { label: 'Projects', note: 'Select an organization first' },
               { label: 'Integrations', note: 'Select an organization first' },
+              { label: 'Brand Guide', note: 'Select an organization first' },
             ]),
         { label: 'Client Detail', note: 'Navigate from organization clients list' },
       ],
@@ -115,21 +131,13 @@ function buildCategories(orgId: string | undefined): DirectoryCategory[] {
               { label: 'Topology', note: 'Select an organization first' },
             ]),
         { label: 'Data Source Detail', note: 'Navigate from data sources list' },
-        { label: 'Project Knowledge', note: 'Navigate from project detail' },
       ],
     },
     {
       title: 'Project Views',
       icon: <Layers className="h-5 w-5" />,
-      links: [
-        { label: 'Project Detail', note: 'Brand profile, boards, assets — open from Projects' },
-        { label: 'Project Tasks', note: 'Kanban board — open from project sidebar' },
-        { label: 'Project Controller', note: 'Agent execution — open from project sidebar' },
-        { label: 'Project Deliverables', note: 'Delivery tracking — open from project sidebar' },
-        { label: 'Project Media Library', note: 'Media assets — open from project sidebar' },
-        { label: 'Project Pulse', note: 'Monitoring — open from project sidebar' },
-        { label: 'Project CRM', note: 'Project-scoped CRM — open from project sidebar' },
-      ],
+      links: [],
+      isProjectCategory: true,
     },
     {
       title: 'Social & Communications',
@@ -168,7 +176,8 @@ function buildCategories(orgId: string | undefined): DirectoryCategory[] {
       icon: <BarChart3 className="h-5 w-5" />,
       links: [
         { label: 'Site Directory', to: '/site-directory', admin: true },
-        { label: 'Review Portal', note: 'Public, token-based access' },
+        { label: 'Brand Intake', note: 'Public, token-based access (/intake/:token)' },
+        { label: 'Review Portal', note: 'Public, token-based access (/review/:token)' },
       ],
     },
     {
@@ -193,10 +202,142 @@ function buildCategories(orgId: string | undefined): DirectoryCategory[] {
   ];
 }
 
+function ProjectLinksCard({
+  allProjects,
+  selectedProjectId,
+  onProjectChange,
+}: {
+  allProjects: { id: string; name: string }[];
+  selectedProjectId: string;
+  onProjectChange: (id: string) => void;
+}) {
+  const p = selectedProjectId ? `/projects/${selectedProjectId}` : undefined;
+
+  const links: DirectoryLink[] = p
+    ? [
+        { label: 'Project Detail', to: p },
+        { label: 'Project Tasks', to: `${p}/tasks` },
+        { label: 'Project Controller', to: `${p}/control` },
+        { label: 'Project Knowledge', to: `${p}/knowledge` },
+        { label: 'Project Deliverables', to: `${p}/deliverables` },
+        { label: 'Project Media Library', to: `${p}/media` },
+        { label: 'Project Pulse', to: `${p}/pulse` },
+        { label: 'Project Social', to: `${p}/social` },
+        { label: 'Project CRM', to: `${p}/crm` },
+        { label: 'Project CRM Sales', to: `${p}/crm/sales` },
+        { label: 'Project CRM Delivery', to: `${p}/crm/delivery` },
+        { label: 'Project CRM Clients', to: `${p}/crm/clients` },
+        { label: 'Project CRM Conferences', to: `${p}/crm/conferences` },
+      ]
+    : [];
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Layers className="h-5 w-5" />
+          Project Views
+        </CardTitle>
+        <Select value={selectedProjectId} onValueChange={onProjectChange}>
+          <SelectTrigger className="w-full mt-2">
+            <SelectValue placeholder="Select a project..." />
+          </SelectTrigger>
+          <SelectContent>
+            {allProjects.map((proj) => (
+              <SelectItem key={proj.id} value={proj.id}>
+                {proj.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-1 pt-0">
+        {links.length === 0 ? (
+          <div className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>Select a project to see links</span>
+          </div>
+        ) : (
+          links.map((link) => (
+            <Link
+              key={link.label}
+              to={link.to!}
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span>{link.label}</span>
+            </Link>
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DirectoryLinkList({ links }: { links: DirectoryLink[] }) {
+  return (
+    <>
+      {links.map((link) =>
+        link.to ? (
+          <Link
+            key={link.label}
+            to={link.to}
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span>{link.label}</span>
+            {link.admin && (
+              <Badge
+                variant="secondary"
+                className="ml-auto text-[10px] px-1.5 py-0"
+              >
+                ADMIN
+              </Badge>
+            )}
+          </Link>
+        ) : (
+          <div
+            key={link.label}
+            className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground"
+          >
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <div>
+              <span>{link.label}</span>
+              {link.note && (
+                <p className="text-xs text-muted-foreground/70">
+                  {link.note}
+                </p>
+              )}
+            </div>
+          </div>
+        ),
+      )}
+    </>
+  );
+}
+
 export function SiteDirectoryPage() {
   const { orgId, organizations } = useOrganization();
   const effectiveOrgId = orgId || organizations?.[0]?.id;
-  const categories = useMemo(() => buildCategories(effectiveOrgId), [effectiveOrgId]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+
+  const { data: allProjects = [] } = useQuery({
+    queryKey: ['allProjectsDirectory'],
+    queryFn: () => projectsApi.getAll(),
+    staleTime: 60_000,
+  });
+
+  // Default to first project
+  useEffect(() => {
+    if (!selectedProjectId && allProjects.length > 0) {
+      setSelectedProjectId(allProjects[0].id);
+    }
+  }, [allProjects, selectedProjectId]);
+
+  const categories = useMemo(
+    () => buildCategories(effectiveOrgId),
+    [effectiveOrgId],
+  );
 
   return (
     <div className="container mx-auto max-w-7xl px-4 py-8">
@@ -205,7 +346,15 @@ export function SiteDirectoryPage() {
         <p className="mt-1 text-muted-foreground">
           Complete map of every section in the platform.
           {effectiveOrgId && organizations?.length ? (
-            <> Organization links point to <strong>{organizations.find(o => o.id === effectiveOrgId)?.name || effectiveOrgId}</strong>.</>
+            <>
+              {' '}
+              Organization links point to{' '}
+              <strong>
+                {organizations.find((o) => o.id === effectiveOrgId)?.name ||
+                  effectiveOrgId}
+              </strong>
+              .
+            </>
           ) : (
             <> Select an organization to enable org-scoped links.</>
           )}
@@ -213,48 +362,28 @@ export function SiteDirectoryPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {categories.map((category) => (
-          <Card key={category.title} className="flex flex-col">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                {category.icon}
-                {category.title}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-1 pt-0">
-              {category.links.map((link) =>
-                link.to ? (
-                  <Link
-                    key={link.label}
-                    to={link.to}
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span>{link.label}</span>
-                    {link.admin && (
-                      <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">
-                        ADMIN
-                      </Badge>
-                    )}
-                  </Link>
-                ) : (
-                  <div
-                    key={link.label}
-                    className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground"
-                  >
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <div>
-                      <span>{link.label}</span>
-                      {link.note && (
-                        <p className="text-xs text-muted-foreground/70">{link.note}</p>
-                      )}
-                    </div>
-                  </div>
-                )
-              )}
-            </CardContent>
-          </Card>
-        ))}
+        {categories.map((category) =>
+          category.isProjectCategory ? (
+            <ProjectLinksCard
+              key={category.title}
+              allProjects={allProjects}
+              selectedProjectId={selectedProjectId}
+              onProjectChange={setSelectedProjectId}
+            />
+          ) : (
+            <Card key={category.title} className="flex flex-col">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  {category.icon}
+                  {category.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-1 pt-0">
+                <DirectoryLinkList links={category.links} />
+              </CardContent>
+            </Card>
+          ),
+        )}
       </div>
     </div>
   );

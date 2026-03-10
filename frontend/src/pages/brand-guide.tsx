@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { organizationsApi, type OrgBrandProfile, type OrgKnowledgeSource, resolveApiUrl } from '@/lib/api';
-import { Loader2, ArrowLeft, Globe, Instagram, Linkedin, Twitter, Facebook, Youtube, ExternalLink, Download, MapPin, Printer } from 'lucide-react';
+import { Loader2, ArrowLeft, Globe, Instagram, Linkedin, Twitter, Facebook, Youtube, ExternalLink, MapPin, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -52,10 +52,6 @@ function PageLabel({ children }: { children: React.ReactNode }) {
   return (
     <p className="text-[9px] uppercase tracking-[0.25em] text-gray-300 mb-8 font-medium">{children}</p>
   );
-}
-
-function Rule({ color }: { color: string }) {
-  return <div className="h-px w-full my-8" style={{ background: color }} />;
 }
 
 // Large landscape colour swatch card
@@ -553,8 +549,8 @@ export function BrandGuidePage() {
               Brand Standards · Confidential
             </p>
             <div className="h-px flex-1" style={{ background: accent, opacity: 0.3 }} />
-            {org.address && (
-              <p className="text-[9px] tracking-wider" style={{ color: `${secondary}40` }}>{org.address}</p>
+            {(org as any).address && (
+              <p className="text-[9px] tracking-wider" style={{ color: `${secondary}40` }}>{(org as any).address}</p>
             )}
           </div>
         </div>
@@ -679,7 +675,7 @@ export function BrandGuidePage() {
             <div className="flex gap-2 flex-wrap">
               {[...primaryTints.map((t, i) => ({ color: t, label: `Primary ${(i + 1) * 25}%` })),
                 ...accentTints.map((t, i) => ({ color: t, label: `Accent ${(i + 1) * 25}%` }))
-              ].map(({ color, label }, i) => (
+              ].map(({ color, label: _label }, i) => (
                 <div key={i} className="flex flex-col items-center gap-1">
                   <div className="h-10 w-10 rounded-lg border border-black/8 shadow-sm" style={{ background: color }} />
                   <p className="text-[8px] font-mono text-gray-400">{color}</p>
@@ -1170,7 +1166,7 @@ export function BrandGuidePage() {
             {/* Letterhead */}
             <div>
               <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Letterhead</p>
-              <LetterheadMockup org={org.name} primary={primary} accent={accent} logoUrl={effectiveLogo} address={org.address} />
+              <LetterheadMockup org={org.name} primary={primary} accent={accent} logoUrl={effectiveLogo} address={(org as any).address} />
             </div>
           </div>
         </div>
@@ -1277,7 +1273,7 @@ export function BrandGuidePage() {
           </div>
 
           {/* HQ address */}
-          {org.address && (
+          {(org as any).address && (
             <div
               className="flex items-center gap-4 rounded-2xl px-6 py-4 mb-8 border"
               style={{ borderColor: `${accent}30` }}
@@ -1285,7 +1281,7 @@ export function BrandGuidePage() {
               <MapPin className="h-5 w-5 shrink-0" style={{ color: accent }} />
               <div>
                 <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-0.5">Headquarters</p>
-                <p className="text-sm font-semibold text-gray-800">{org.address}</p>
+                <p className="text-sm font-semibold text-gray-800">{(org as any).address}</p>
               </div>
             </div>
           )}

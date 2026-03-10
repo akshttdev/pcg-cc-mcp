@@ -1055,8 +1055,6 @@ function ClientGroup({
     const stored = localStorage.getItem(storageKey);
     return stored !== null ? stored === 'true' : false;
   });
-  const navigate = useNavigate();
-
   const handleSetExpanded = (next: boolean) => {
     setExpanded(next);
     localStorage.setItem(storageKey, String(next));
@@ -1262,6 +1260,17 @@ function OrgSection({
           >
             <Users className="h-3 w-3 shrink-0 text-muted-foreground" />
             <span>Members</span>
+          </Link>
+
+          <Link
+            to={`/organizations/${org.id}/projects`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/organizations/${org.id}/projects` && 'bg-primary/10 text-foreground font-medium'
+            )}
+          >
+            <Folder className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span>Projects</span>
           </Link>
 
           <Link
