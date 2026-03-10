@@ -5221,7 +5221,7 @@ export const companiesApi = {
     return handleApiResponse<CompanyRecord>(response);
   },
 
-  create: async (data: { name: string; website?: string; industry?: string; description?: string; created_by_org_id?: string }): Promise<CompanyRecord> => {
+  create: async (data: { name: string; website?: string; industry?: string; description?: string; headquarters?: string; created_by_org_id?: string }): Promise<CompanyRecord> => {
     const response = await makeRequest('/api/companies', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -5709,8 +5709,9 @@ export const workflowsApi = {
     return handleApiResponse<PreviewNodeResult[]>(response);
   },
 
-  listRecentArtifacts: async () => {
-    const response = await makeRequest('/api/artifacts/recent');
+  listRecentArtifacts: async (organizationId?: string) => {
+    const params = organizationId ? `?organization_id=${organizationId}` : '';
+    const response = await makeRequest(`/api/artifacts/recent${params}`);
     return handleApiResponse<ExecutionArtifact[]>(response);
   },
 

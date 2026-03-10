@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     routing::{get, post, put, delete},
 };
 use db::models::data_source::DataSource;
@@ -2099,15 +2099,53 @@ async fn delete_workflow_definition(
     Ok(Json(ApiResponse::success(())))
 }
 
-/// GET /api/artifacts/recent
+/// GET /api/artifacts/recent?organization_id=...
+///
+/// When `organization_id` is provided the query is scoped to artifacts whose
+/// originating data source belongs to that organization.  Without it the
+/// endpoint falls back to global (for backwards-compat / admin use).
+#[derive(Deserialize)]
+struct ArtifactRecentParams {
+    organization_id: Option<String>,
+}
+
 async fn list_recent_artifacts(
     State(deployment): State<DeploymentImpl>,
+    Query(params): Query<ArtifactRecentParams>,
 ) -> Result<Json<ApiResponse<Vec<ExecutionArtifact>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let artifacts = sqlx::query_as::<_, ExecutionArtifact>(
-        r#"SELECT * FROM execution_artifacts WHERE json_extract(metadata, '$.workflow_id') IS NOT NULL ORDER BY created_at DESC LIMIT 100"#,
-    ).fetch_all(pool).await
-    .map_err(|e| ApiError::InternalError(format!("Failed to query artifacts: {e}")))?;
+
+    let artifacts = if let Some(ref org_id) = params.organization_id {
+        // Scope artifacts to those created from data sources owned by this org.
+        // data_sources.id is a BLOB UUID so we convert to hyphenated text for
+        // comparison with json_extract(metadata, '$.data_source_id') which is TEXT.
+        sqlx::query_as::<_, ExecutionArtifact>(
+            r#"SELECT ea.*
+               FROM execution_artifacts ea
+               JOIN data_sources ds
+                 ON LOWER(
+                      SUBSTR(hex(ds.id), 1, 8) || '-' ||
+                      SUBSTR(hex(ds.id), 9, 4) || '-' ||
+                      SUBSTR(hex(ds.id), 13, 4) || '-' ||
+                      SUBSTR(hex(ds.id), 17, 4) || '-' ||
+                      SUBSTR(hex(ds.id), 21, 12)
+                    ) = json_extract(ea.metadata, '$.data_source_id')
+               WHERE json_extract(ea.metadata, '$.workflow_id') IS NOT NULL
+                 AND LOWER(
+                      SUBSTR(hex(ds.organization_id), 1, 8) || '-' ||
+                      SUBSTR(hex(ds.organization_id), 9, 4) || '-' ||
+                      SUBSTR(hex(ds.organization_id), 13, 4) || '-' ||
+                      SUBSTR(hex(ds.organization_id), 17, 4) || '-' ||
+                      SUBSTR(hex(ds.organization_id), 21, 12)
+                    ) = ?1
+               ORDER BY ea.created_at DESC
+               LIMIT 100"#,
+        ).bind(org_id).fetch_all(pool).await
+    } else {
+        sqlx::query_as::<_, ExecutionArtifact>(
+            r#"SELECT * FROM execution_artifacts WHERE json_extract(metadata, '$.workflow_id') IS NOT NULL ORDER BY created_at DESC LIMIT 100"#,
+        ).fetch_all(pool).await
+    }.map_err(|e| ApiError::InternalError(format!("Failed to query artifacts: {e}")))?;
 
     Ok(Json(ApiResponse::success(artifacts)))
 }
