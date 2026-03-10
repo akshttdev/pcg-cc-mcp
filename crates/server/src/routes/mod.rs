@@ -80,6 +80,7 @@ pub mod pulse;
 pub mod pythia;
 pub mod wallet;
 pub mod invitations;
+pub mod org_invitations;
 pub mod organizations;
 pub mod clients;
 pub mod project_folders;
@@ -100,20 +101,20 @@ pub mod command_center;
 pub mod automations;
 pub mod feedback;
 pub mod intelligence;
+pub mod graph;
+pub mod invite_dispatch;
+pub mod companies;
 pub mod media_library;
 pub mod review;
-pub mod pcg_router;
-pub mod oss_listener;
-pub mod oss_listener_bg;
 pub mod data_sources;
 pub mod data_source_workflows;
 pub mod workflow_staging;
 pub mod workflow_triggers;
 pub mod output_schemas;
+pub mod pcg_router;
 pub mod discord;
-pub mod companies;
-pub mod graph;
-pub mod invite_dispatch;
+pub mod oss_listener;
+pub mod oss_listener_bg;
 // pub mod meet; // file not yet committed
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
@@ -169,6 +170,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(wallet::router())
         .merge(pulse::router(&deployment))
         .merge(organizations::router(&deployment))
+        .merge(org_invitations::router(&deployment))
         .merge(clients::router(&deployment))
         // project_folders routes deprecated — projects now use parent_project_id nesting
         .merge(board_shares::router(&deployment))
@@ -187,6 +189,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
         .merge(companies::router(&deployment))
+        .merge(data_sources::router(&deployment))
         .merge(data_source_workflows::router(&deployment))
         .merge(workflow_staging::router(&deployment))
         .merge(workflow_triggers::router(&deployment))
@@ -198,7 +201,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(oss_listener::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
-        .merge(data_sources::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -215,6 +217,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(execution_summaries::routes())
         .merge(auth::router(&deployment))
         .merge(invitations::public_router(&deployment))
+        .merge(org_invitations::public_router(&deployment))
         .merge(filesystem::router())
         .merge(events::router(&deployment))
         .nest("/images", images::routes())

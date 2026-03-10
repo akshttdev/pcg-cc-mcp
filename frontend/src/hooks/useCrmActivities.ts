@@ -23,7 +23,7 @@ export function useCrmActivities(options: {
     queryKey,
     queryFn: () =>
       crmActivitiesApi.listActivities({
-        project_id: options.projectId,
+        organization_id: options.projectId,
         contact_id: options.contactId,
         deal_id: options.dealId,
         limit: options.limit,

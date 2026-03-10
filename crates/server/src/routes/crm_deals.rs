@@ -19,7 +19,8 @@ use db::models::crm_deal::{
 
 #[derive(Debug, Deserialize)]
 pub struct ListDealsQuery {
-    pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+
     pub pipeline_id: Option<Uuid>,
     pub stage_id: Option<Uuid>,
     pub contact_id: Option<Uuid>,
@@ -44,11 +45,12 @@ async fn list_deals(
         CrmDeal::find_by_stage(pool, stage_id).await?
     } else if let Some(contact_id) = query.contact_id {
         CrmDeal::find_by_contact(pool, contact_id).await?
-    } else if let Some(project_id) = query.project_id {
-        CrmDeal::find_by_project(pool, project_id).await?
+    } else if let Some(org_id) = query.organization_id {
+        CrmDeal::find_by_organization(pool, org_id).await?
     } else {
         return Err(ApiError::BadRequest(
-            "Must provide project_id, pipeline_id, stage_id, or contact_id".to_string(),
+            "Must provide organization_id, pipeline_id, stage_id, or contact_id".to_string(),
+
         ));
     };
 
@@ -93,14 +95,16 @@ async fn create_deal(
     sqlx::query(
         r#"
         INSERT INTO crm_activities (
-            id, project_id, crm_contact_id, crm_deal_id, activity_type,
+            id, organization_id, crm_contact_id, crm_deal_id, activity_type,
+
             subject, activity_at
         )
         VALUES (?1, ?2, ?3, ?4, 'deal_created', ?5, datetime('now', 'subsec'))
         "#,
     )
     .bind(Uuid::new_v4())
-    .bind(deal.project_id)
+    .bind(deal.organization_id)
+
     .bind(deal.crm_contact_id)
     .bind(deal.id)
     .bind(format!("Created deal: {}", deal.name))
@@ -154,59 +158,63 @@ async fn move_deal_stage(
                 db::models::crm_pipeline::CrmPipeline::find_by_id(pool, pipeline_id).await
             {
                 if pipeline.pipeline_type == "sales" {
-                    // Find the delivery pipeline for this project
-                    if let Ok(Some(delivery_pipeline)) =
-                        db::models::crm_pipeline::CrmPipeline::find_by_type(
-                            pool,
-                            deal.project_id,
-                            db::models::crm_pipeline::PipelineType::Delivery,
-                        )
-                        .await
-                    {
-                        // Check if a delivery deal already exists for this contact
-                        let has_delivery_deal = if let Some(contact_id) = deal.crm_contact_id {
-                            let contact_deals =
-                                CrmDeal::find_by_contact(pool, contact_id).await.unwrap_or_default();
-                            contact_deals
-                                .iter()
-                                .any(|d| d.crm_pipeline_id == Some(delivery_pipeline.id))
-                        } else {
-                            false
-                        };
-
-                        if !has_delivery_deal {
-                            // Get the first stage (Onboarding) of the delivery pipeline
-                            let delivery_stages =
-                                db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(
-                                    pool,
-                                    delivery_pipeline.id,
-                                )
-                                .await
-                                .unwrap_or_default();
-
-                            let onboarding_stage = delivery_stages.first();
-
-                            // Create delivery deal
-                            let _ = CrmDeal::create(
+                    // Find the delivery pipeline for this organization
+                    if let Some(deal_org_id) = deal.organization_id {
+                        if let Ok(Some(delivery_pipeline)) =
+                            db::models::crm_pipeline::CrmPipeline::find_by_type_for_org(
                                 pool,
-                                CreateCrmDeal {
-                                    project_id: deal.project_id,
-                                    crm_contact_id: deal.crm_contact_id,
-                                    crm_pipeline_id: Some(delivery_pipeline.id),
-                                    crm_stage_id: onboarding_stage.map(|s| s.id),
-                                    name: format!("{} - Delivery", deal.name),
-                                    description: Some(format!(
-                                        "Auto-created from won sales deal: {}",
-                                        deal.name
-                                    )),
-                                    amount: deal.amount,
-                                    currency: Some(deal.currency.clone()),
-                                    expected_close_date: None,
-                                    tags: None,
-                                    custom_fields: None,
-                                },
+                                deal_org_id,
+                                db::models::crm_pipeline::PipelineType::Delivery,
                             )
-                            .await;
+                            .await
+                        {
+                            // Check if a delivery deal already exists for this contact
+                            let has_delivery_deal = if let Some(contact_id) = deal.crm_contact_id {
+                                let contact_deals =
+                                    CrmDeal::find_by_contact(pool, contact_id).await.unwrap_or_default();
+                                contact_deals
+                                    .iter()
+                                    .any(|d| d.crm_pipeline_id == Some(delivery_pipeline.id))
+                            } else {
+                                false
+                            };
+
+                            if !has_delivery_deal {
+                                // Get the first stage (Onboarding) of the delivery pipeline
+                                let delivery_stages =
+                                    db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(
+                                        pool,
+                                        delivery_pipeline.id,
+                                    )
+                                    .await
+                                    .unwrap_or_default();
+
+                                let onboarding_stage = delivery_stages.first();
+
+                                // Create delivery deal
+                                let _ = CrmDeal::create(
+                                    pool,
+                                    CreateCrmDeal {
+                                        organization_id: deal.organization_id.unwrap_or(Uuid::nil()),
+                                        client_id: deal.client_id,
+                                        crm_contact_id: deal.crm_contact_id,
+                                        crm_pipeline_id: Some(delivery_pipeline.id),
+                                        crm_stage_id: onboarding_stage.map(|s| s.id),
+                                        name: format!("{} - Delivery", deal.name),
+                                        description: Some(format!(
+                                            "Auto-created from won sales deal: {}",
+                                            deal.name
+                                        )),
+                                        amount: deal.amount,
+                                        currency: Some(deal.currency.clone()),
+                                        expected_close_date: None,
+                                        tags: None,
+                                        custom_fields: None,
+                                    },
+                                )
+                                .await;
+                            }
+
                         }
                     }
                 }
@@ -216,6 +224,17 @@ async fn move_deal_stage(
 
     Ok(Json(ApiResponse::success(deal)))
 }
+
+/// GET /organizations/:org_id/crm/deals - List deals for an organization
+async fn list_org_deals(
+    State(deployment): State<DeploymentImpl>,
+    Path(org_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<CrmDeal>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let deals = CrmDeal::find_by_organization(pool, org_id).await?;
+    Ok(Json(ApiResponse::success(deals)))
+}
+
 
 /// DELETE /crm/deals/:id - Delete deal
 async fn delete_deal(
@@ -229,7 +248,8 @@ async fn delete_deal(
 
 #[derive(Debug, Deserialize)]
 pub struct MetricsQuery {
-    pub project_id: Uuid,
+    pub organization_id: Uuid,
+
     pub pipeline_id: Option<Uuid>,
 }
 
@@ -273,7 +293,8 @@ async fn get_metrics(
     let deals = if let Some(pipeline_id) = query.pipeline_id {
         CrmDeal::find_by_pipeline(pool, pipeline_id).await?
     } else {
-        CrmDeal::find_by_project(pool, query.project_id).await?
+        CrmDeal::find_by_organization(pool, query.organization_id).await?
+
     };
 
     let total_deals = deals.len() as i64;
@@ -367,4 +388,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/deals/{id}", patch(update_deal))
         .route("/crm/deals/{id}", delete(delete_deal))
         .route("/crm/deals/{id}/stage", patch(move_deal_stage))
+        // Org-scoped CRM deal routes
+        .route("/organizations/{org_id}/crm/deals", get(list_org_deals))
+
 }

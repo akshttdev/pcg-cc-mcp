@@ -547,6 +547,7 @@ async fn import_records_from_table(
             image_ids: None,
             priority: Some(Priority::Medium),
             assignee_id: None,
+            assignee_type: None,
             assigned_agent: None,
             agent_id: None,
             assigned_mcps: None,

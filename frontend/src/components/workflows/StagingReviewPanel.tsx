@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -21,12 +21,21 @@ import {
   XCircle,
   Loader2,
   AlertTriangle,
-  Send,
   Edit3,
+  RotateCcw,
+  ArrowLeft,
+  ChevronRight,
+  Plus,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { stagingApi } from '@/lib/api';
-import type { WorkflowStagingRecord, CommitResult } from '@/lib/api';
+import { stagingApi, schemasApi } from '@/lib/api';
+import type { WorkflowStagingRecord, CommitResult, FieldDef, TargetSchema } from '@/lib/api';
 
 // Inline confidence badge helper
 const ConfidenceBadge = ({ value }: { value: number | null }) => {
@@ -42,6 +51,80 @@ const ConfidenceBadge = ({ value }: { value: number | null }) => {
   );
 };
 
+// Inline editable field — schema-aware (click-to-edit)
+function InlineField({
+  fieldKey,
+  value,
+  recordId,
+  onSave,
+  fieldDef,
+}: {
+  fieldKey: string;
+  value: string;
+  recordId: string;
+  onSave: (recordId: string, key: string, value: string) => void;
+  fieldDef?: FieldDef;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const inputRef = useCallback((el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null) => {
+    if (el) el.focus();
+  }, []);
+
+  const handleSave = useCallback(() => {
+    setEditing(false);
+    if (editValue !== value) onSave(recordId, fieldKey, editValue);
+  }, [editValue, value, recordId, fieldKey, onSave]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(); }
+    if (e.key === 'Escape') { setEditValue(value); setEditing(false); }
+  }, [handleSave, value]);
+
+  if (editing) {
+    const hasEnum = fieldDef?.enum_values && fieldDef.enum_values.length > 0;
+    const isLong = value.length > 80 || fieldDef?.type === 'array';
+    const inputType = fieldDef?.type === 'number' ? 'number'
+      : fieldDef?.format === 'email' ? 'email'
+      : fieldDef?.format === 'url' ? 'url'
+      : (fieldDef?.format === 'date' || fieldDef?.format === 'date-time') ? 'date'
+      : 'text';
+
+    if (hasEnum) {
+      return (
+        <select ref={inputRef as any} value={editValue} onChange={e => { setEditValue(e.target.value); }}
+          onBlur={handleSave} className="w-full text-xs bg-background border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring">
+          <option value="">— select —</option>
+          {fieldDef!.enum_values!.map(v => <option key={v} value={v}>{v.replace(/_/g, ' ')}</option>)}
+        </select>
+      );
+    }
+    if (isLong) {
+      return (
+        <textarea ref={inputRef as any} value={editValue} onChange={e => setEditValue(e.target.value)}
+          onBlur={handleSave} onKeyDown={handleKeyDown}
+          placeholder={fieldDef?.type === 'array' ? 'Comma-separated values' : undefined}
+          className="w-full text-xs bg-background border rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring min-h-[60px] resize-y" />
+      );
+    }
+    return (
+      <input ref={inputRef as any} type={inputType} value={editValue} onChange={e => setEditValue(e.target.value)}
+        onBlur={handleSave} onKeyDown={handleKeyDown}
+        className="w-full text-xs bg-background border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring" />
+    );
+  }
+
+  return (
+    <dd
+      onClick={() => { setEditValue(value); setEditing(true); }}
+      className="text-xs mt-0.5 cursor-text hover:bg-muted/40 rounded px-1 -mx-1 transition-colors truncate"
+      title={`Click to edit${fieldDef ? ` (${fieldDef.type})` : ''}`}
+    >
+      {value || <span className="text-muted-foreground italic">empty</span>}
+    </dd>
+  );
+}
+
 const TARGET_TYPE_CONFIG = {
   crm_contact: { label: 'Contacts', icon: Users, color: 'text-blue-500' },
   company: { label: 'Companies', icon: Building2, color: 'text-purple-500' },
@@ -49,29 +132,106 @@ const TARGET_TYPE_CONFIG = {
   task: { label: 'Tasks', icon: ListTodo, color: 'text-orange-500' },
 } as const;
 
-interface StagingReviewPanelProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  workflowRunId: string;
-  workflowName?: string;
+// ─── Record action buttons (extracted to avoid anonymous functions in props) ───
+
+function RecordActions({
+  record,
+  onEdit,
+  onApprove,
+  onReject,
+  onRetry,
+  retryPending,
+  onStopPropagation,
+}: {
+  record: WorkflowStagingRecord;
+  onEdit: (record: WorkflowStagingRecord) => void;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+  onRetry: (id: string) => void;
+  retryPending: boolean;
+  onStopPropagation: (e: React.MouseEvent) => void;
+}) {
+  const handleEdit = useCallback(() => onEdit(record), [onEdit, record]);
+  const handleApprove = useCallback(() => onApprove(record.id), [onApprove, record.id]);
+  const handleReject = useCallback(() => onReject(record.id), [onReject, record.id]);
+  const handleRetry = useCallback(() => onRetry(record.id), [onRetry, record.id]);
+
+  return (
+    <div className="flex items-center gap-0.5 justify-end" onClick={onStopPropagation}>
+      {record.status === 'pending_review' && (
+        <>
+          <button onClick={handleEdit} className="p-1 rounded hover:bg-muted" title="Edit">
+            <Edit3 className="h-3 w-3 text-muted-foreground" />
+          </button>
+          <button onClick={handleApprove} className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900" title="Approve & Commit">
+            <Check className="h-3 w-3 text-green-600" />
+          </button>
+          <button onClick={handleReject} className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900" title="Reject">
+            <X className="h-3 w-3 text-red-500" />
+          </button>
+        </>
+      )}
+      {record.status === 'error' && (
+        <>
+          <button onClick={handleEdit} className="p-1 rounded hover:bg-muted" title="Edit">
+            <Edit3 className="h-3 w-3 text-muted-foreground" />
+          </button>
+          <button onClick={handleRetry} className="p-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900" title="Retry" disabled={retryPending}>
+            <RotateCcw className={cn('h-3 w-3 text-amber-600', retryPending && 'animate-spin')} />
+          </button>
+        </>
+      )}
+    </div>
+  );
 }
 
-export function StagingReviewPanel({
-  open,
-  onOpenChange,
+// ─── Shared content component (used by both inline and dialog modes) ───
+
+interface StagingReviewContentProps {
+  workflowRunId: string;
+  workflowName?: string;
+  onBack?: () => void;
+  /** When true, data is always fetched (no `enabled` guard) */
+  alwaysEnabled?: boolean;
+}
+
+export function StagingReviewContent({
   workflowRunId,
   workflowName,
-}: StagingReviewPanelProps) {
+  onBack,
+  alwaysEnabled,
+}: StagingReviewContentProps) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Record<string, any>>({});
-  const [filter, setFilter] = useState<'all' | 'valid' | 'duplicates' | 'validation_issues' | 'approved' | 'rejected'>('all');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'valid' | 'duplicates' | 'validation_issues' | 'approved' | 'rejected' | 'error'>('all');
   const [commitErrors, setCommitErrors] = useState<Record<string, string>>({});
 
   const { data: records = [], isLoading } = useQuery({
     queryKey: ['staging', workflowRunId],
     queryFn: () => stagingApi.listByRun(workflowRunId),
-    enabled: open && !!workflowRunId,
+    enabled: alwaysEnabled ? !!workflowRunId : !!workflowRunId,
+  });
+
+  // Fetch schemas for target types in records
+  const targetTypes = useMemo(() => [...new Set(records.map(r => r.target_type))], [records]);
+
+  const { data: schemasMap = {} } = useQuery({
+    queryKey: ['schemas', targetTypes],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        targetTypes.map(async (tt) => {
+          try {
+            const schema = await schemasApi.get(tt);
+            return [tt, schema] as [string, TargetSchema];
+          } catch { return null; }
+        })
+      );
+      return Object.fromEntries(entries.filter(Boolean) as [string, TargetSchema][]);
+    },
+    enabled: targetTypes.length > 0,
+    staleTime: 60000,
   });
 
   const hasValidationErrors = useCallback((r: WorkflowStagingRecord): boolean => {
@@ -83,6 +243,24 @@ export function StagingReviewPanel({
   }, []);
 
   const validationIssueCount = useMemo(() => records.filter(hasValidationErrors).length, [records, hasValidationErrors]);
+
+  // Auto-select "Validation Issues" tab if all records have validation errors
+  useEffect(() => {
+    if (records.length > 0) {
+      const allHaveIssues = records.every(r => {
+        if (!r.validation_errors) return false;
+        try {
+          const errs = typeof r.validation_errors === 'string' ? JSON.parse(r.validation_errors) : r.validation_errors;
+          return Array.isArray(errs) && errs.length > 0;
+        } catch {
+          return false;
+        }
+      });
+      if (allHaveIssues) {
+        setFilter('validation_issues');
+      }
+    }
+  }, [records]);
 
   const avgConfidence = useMemo(() => {
     const withConf = records.filter(r => r.confidence !== null && r.confidence !== undefined);
@@ -109,6 +287,9 @@ export function StagingReviewPanel({
       case 'rejected':
         filtered = records.filter(r => r.status === 'rejected');
         break;
+      case 'error':
+        filtered = records.filter(r => r.status === 'error');
+        break;
     }
     const groups: Record<string, WorkflowStagingRecord[]> = {};
     for (const r of filtered) {
@@ -123,6 +304,7 @@ export function StagingReviewPanel({
   const committedCount = records.filter(r => r.status === 'committed').length;
   const duplicateCount = records.filter(r => r.duplicate_of_id != null).length;
   const validPendingCount = records.filter(r => r.status === 'pending_review' && !r.duplicate_of_id).length;
+  const errorCount = records.filter(r => r.status === 'error').length;
   const duplicatePendingCount = records.filter(r => r.status === 'pending_review' && r.duplicate_of_id != null).length;
 
   const updateMutation = useMutation({
@@ -130,6 +312,17 @@ export function StagingReviewPanel({
       stagingApi.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
   });
+
+  // Inline field save for expanded view (schema-aware editing)
+  const handleInlineFieldSave = useCallback((recordId: string, fieldKey: string, newValue: string) => {
+    const record = records.find(r => r.id === recordId);
+    if (!record) return;
+    try {
+      const data = JSON.parse(record.record_data);
+      data[fieldKey] = newValue;
+      updateMutation.mutate({ id: recordId, data: { record_data: data } });
+    } catch {}
+  }, [records, updateMutation]);
 
   const commitMutation = useMutation({
     mutationFn: (id: string) => stagingApi.commit(id),
@@ -158,8 +351,23 @@ export function StagingReviewPanel({
   });
 
   const autoApproveMutation = useMutation({
-    mutationFn: () => stagingApi.autoApprove(workflowRunId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
+    mutationFn: async () => {
+      await stagingApi.autoApprove(workflowRunId);
+      // Auto-commit after approving
+      return stagingApi.batchCommit(workflowRunId);
+    },
+    onSuccess: (result) => {
+      if (result?.results) {
+        const newErrors: Record<string, string> = {};
+        for (const r of result.results) {
+          if (r.error) newErrors[r.id] = r.error;
+        }
+        if (Object.keys(newErrors).length > 0) {
+          setCommitErrors(prev => ({ ...prev, ...newErrors }));
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] });
+    },
   });
 
   const rejectDuplicatesMutation = useMutation({
@@ -167,11 +375,39 @@ export function StagingReviewPanel({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
   });
 
-  const handleApprove = (id: string) => updateMutation.mutate({ id, data: { status: 'approved' } });
-  const handleReject = (id: string) => updateMutation.mutate({ id, data: { status: 'rejected' } });
+  const retryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await stagingApi.update(id, { status: 'approved' });
+      return stagingApi.commit(id);
+    },
+    onSuccess: (result: CommitResult) => {
+      if (result.error) {
+        setCommitErrors(prev => ({ ...prev, [result.id]: result.error! }));
+      } else {
+        setCommitErrors(prev => {
+          const next = { ...prev };
+          delete next[result.id];
+          return next;
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] });
+    },
+  });
 
+  const handleApprove = useCallback((id: string) => {
+    // Auto-commit: approve then immediately commit to CRM
+    updateMutation.mutate({ id, data: { status: 'approved' } }, {
+      onSuccess: () => {
+        commitMutation.mutate(id);
+      },
+    });
+  }, [updateMutation, commitMutation]);
 
-  const handleStartEdit = (record: WorkflowStagingRecord) => {
+  const handleReject = useCallback((id: string) => {
+    updateMutation.mutate({ id, data: { status: 'rejected' } });
+  }, [updateMutation]);
+
+  const handleStartEdit = useCallback((record: WorkflowStagingRecord) => {
     try {
       setEditData(JSON.parse(record.record_data));
       setEditingId(record.id);
@@ -179,367 +415,513 @@ export function StagingReviewPanel({
       setEditData({});
       setEditingId(record.id);
     }
-  };
+  }, []);
 
-  const handleSaveEdit = (id: string) => {
+  const handleCancelEdit = useCallback(() => {
+    setEditingId(null);
+  }, []);
+
+  const handleSaveEdit = useCallback((id: string) => {
     updateMutation.mutate({ id, data: { record_data: editData } });
     setEditingId(null);
-  };
+  }, [updateMutation, editData]);
 
-  const renderRecordFields = (record: WorkflowStagingRecord) => {
-    let data: Record<string, any> = {};
-    try { data = JSON.parse(record.record_data); } catch { return null; }
+  const handleEditField = useCallback((key: string, value: string) => {
+    setEditData(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handleRetry = useCallback((id: string) => {
+    retryMutation.mutate(id);
+  }, [retryMutation]);
+
+  const handleRejectDuplicates = useCallback(() => {
+    rejectDuplicatesMutation.mutate();
+  }, [rejectDuplicatesMutation]);
+
+  const handleAutoApprove = useCallback(() => {
+    autoApproveMutation.mutate();
+  }, [autoApproveMutation]);
+
+  const handleClearFilter = useCallback(() => {
+    setFilter('all');
+  }, []);
+
+  const handleStopPropagation = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedId(prev => prev === id ? null : id);
+  }, []);
+
+  const renderRecordFields = useCallback((record: WorkflowStagingRecord) => {
+    try { JSON.parse(record.record_data); } catch { return null; }
 
     if (editingId === record.id) {
       return (
-        <div className="space-y-2 mt-2">
-          {Object.entries(editData).map(([key, value]) => (
-            <div key={key} className="flex items-center gap-2">
-              <Label className="text-[10px] text-muted-foreground w-24 shrink-0 text-right">{key}</Label>
-              <Input
-                value={typeof value === 'string' ? value : JSON.stringify(value) || ''}
-                onChange={(e) => setEditData(prev => ({ ...prev, [key]: e.target.value }))}
-                className="h-7 text-xs"
-              />
-            </div>
-          ))}
-          <div className="flex gap-2 justify-end mt-2">
-            <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="h-6 text-xs">Cancel</Button>
-            <Button size="sm" onClick={() => handleSaveEdit(record.id)} className="h-6 text-xs">Save</Button>
+        <div className="px-4 py-2 bg-muted/20 border-b space-y-1.5">
+          <div className="grid grid-cols-2 gap-2">
+            {Object.entries(editData).map(([key, value]) => (
+              <div key={key} className="flex items-center gap-2">
+                <Label className="text-[10px] text-muted-foreground w-20 shrink-0 text-right">{key}</Label>
+                <Input
+                  value={typeof value === 'string' ? value : JSON.stringify(value) || ''}
+                  onChange={(e) => handleEditField(key, e.target.value)}
+                  className="h-6 text-xs"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-5 text-[10px] px-2">Cancel</Button>
+            <Button size="sm" onClick={() => handleSaveEdit(record.id)} className="h-5 text-[10px] px-2">Save</Button>
           </div>
         </div>
       );
     }
 
-    return (
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2">
-        {Object.entries(data).map(([key, value]) => {
-          if (value === null || value === undefined) return null;
-          const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
-          return (
-            <div key={key} className="flex items-baseline gap-1.5 py-0.5">
-              <span className="text-[10px] text-muted-foreground shrink-0">{key}:</span>
-              <span className="text-xs truncate">{displayValue}</span>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+    return null;
+  }, [editingId, editData, handleEditField, handleCancelEdit, handleSaveEdit]);
+
+  // Flatten all records for table view
+  const flatRecords = useMemo(() => {
+    const result: { record: WorkflowStagingRecord; targetType: string; displayName: string; data: Record<string, any> }[] = [];
+    for (const [targetType, groupRecords] of Object.entries(grouped)) {
+      for (const record of groupRecords) {
+        let data: Record<string, any> = {};
+        try { data = JSON.parse(record.record_data); } catch {}
+        const displayName = data.first_name
+          ? `${data.first_name} ${data.last_name || ''}`
+          : data.name || data.title || 'Untitled';
+        result.push({ record, targetType, displayName, data });
+      }
+    }
+    return result;
+  }, [grouped]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[900px] w-full max-h-[85vh] p-0 flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <div>
-            <DialogTitle className="text-lg">Review Staged Records</DialogTitle>
-            {workflowName && (
-              <p className="text-sm text-muted-foreground mt-0.5">{workflowName}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>{records.length} total</span>
-              {avgConfidence !== null && (
-                <Badge variant="outline" className={cn('text-[10px]',
-                  avgConfidence >= 0.8 ? 'text-green-600 border-green-200'
-                    : avgConfidence >= 0.5 ? 'text-amber-600 border-amber-200'
-                    : 'text-red-600 border-red-200'
-                )}>
-                  avg {Math.round(avgConfidence * 100)}%
-                </Badge>
-              )}
-              {duplicateCount > 0 && (
-                <Badge variant="outline" className="text-amber-600 border-amber-200">
-                  {duplicateCount} duplicates
-                </Badge>
-              )}
-              {validationIssueCount > 0 && (
-                <Badge variant="outline" className="text-amber-600 border-amber-200">
-                  {validationIssueCount} validation issues
-                </Badge>
-              )}
-              <Badge variant="outline">{pendingCount} pending</Badge>
-              <Badge variant="outline" className="text-green-600 border-green-200">{approvedCount} approved</Badge>
-              <Badge variant="outline" className="text-blue-600 border-blue-200">{committedCount} committed</Badge>
-            </div>
-          </div>
+    <div className="flex flex-col h-full">
+      {/* Compact header */}
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b">
+        {onBack && (
+          <Button variant="ghost" size="sm" onClick={onBack} className="h-7 w-7 p-0">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        )}
+        <h2 className="text-sm font-semibold">Review Staged Records</h2>
+        {workflowName && (
+          <span className="text-xs text-muted-foreground">— {workflowName}</span>
+        )}
+        <div className="flex-1" />
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <span>{records.length} total</span>
+          {avgConfidence !== null && (
+            <Badge variant="outline" className={cn('text-[9px] h-5',
+              avgConfidence >= 0.8 ? 'text-green-600 border-green-200'
+                : avgConfidence >= 0.5 ? 'text-amber-600 border-amber-200'
+                : 'text-red-600 border-red-200'
+            )}>
+              avg {Math.round(avgConfidence * 100)}%
+            </Badge>
+          )}
+          {duplicateCount > 0 && (
+            <Badge variant="outline" className="text-[9px] h-5 text-amber-600 border-amber-200">{duplicateCount} dups</Badge>
+          )}
+          {validationIssueCount > 0 && (
+            <Badge variant="outline" className="text-[9px] h-5 text-amber-600 border-amber-200">{validationIssueCount} issues</Badge>
+          )}
+          <Badge variant="outline" className="text-[9px] h-5">{pendingCount} pending</Badge>
+          <Badge variant="outline" className="text-[9px] h-5 text-green-600 border-green-200">{approvedCount} approved</Badge>
+          <Badge variant="outline" className="text-[9px] h-5 text-blue-600 border-blue-200">{committedCount} committed</Badge>
+          {errorCount > 0 && (
+            <Badge variant="outline" className="text-[9px] h-5 text-red-600 border-red-200">{errorCount} errors</Badge>
+          )}
         </div>
+      </div>
 
-        {/* Filter tabs + smart actions toolbar */}
-        {records.length > 0 && (
-          <div className="flex items-center gap-2 px-6 py-2 border-b bg-muted/30">
-            {/* Filter tabs */}
-            <div className="flex items-center gap-1 mr-2">
-              {(['all', 'valid', 'duplicates', 'validation_issues', 'approved', 'rejected'] as const).map((f) => {
-                const counts = {
-                  all: records.length,
-                  valid: validPendingCount,
-                  duplicates: duplicateCount,
-                  validation_issues: validationIssueCount,
-                  approved: approvedCount,
-                  rejected: records.filter(r => r.status === 'rejected').length,
-                };
-                if (counts[f] === 0 && f !== 'all') return null;
-                const labels: Record<string, string> = {
-                  all: 'All',
-                  valid: 'Valid',
-                  duplicates: 'Duplicates',
-                  validation_issues: 'Validation Issues',
-                  approved: 'Approved',
-                  rejected: 'Rejected',
-                };
-                return (
-                  <button
-                    key={f}
-                    onClick={() => setFilter(f)}
-                    className={cn(
-                      'px-2 py-1 rounded text-xs transition-colors',
-                      filter === f
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-muted text-muted-foreground',
-                      f === 'validation_issues' && counts[f] > 0 && filter !== f && 'text-amber-600'
-                    )}
-                  >
-                    {labels[f]}
-                    {counts[f] > 0 && ` (${counts[f]})`}
-                  </button>
-                );
-              })}
-            </div>
+      {/* Filter tabs + smart actions toolbar */}
+      {records.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-1.5 border-b bg-muted/30">
+          <div className="flex items-center gap-0.5 mr-2">
+            {(['all', 'valid', 'duplicates', 'validation_issues', 'approved', 'rejected', 'error'] as const).map((f) => {
+              const counts = {
+                all: records.length,
+                valid: validPendingCount,
+                duplicates: duplicateCount,
+                validation_issues: validationIssueCount,
+                approved: approvedCount,
+                rejected: records.filter(r => r.status === 'rejected').length,
+                error: errorCount,
+              };
+              if (counts[f] === 0 && f !== 'all') return null;
+              const labels: Record<string, string> = {
+                all: 'All',
+                valid: 'Valid',
+                duplicates: 'Dups',
+                validation_issues: 'Issues',
+                approved: 'Approved',
+                rejected: 'Rejected',
+                error: 'Errors',
+              };
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={cn(
+                    'px-2 py-0.5 rounded text-[11px] transition-colors',
+                    filter === f
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-muted text-muted-foreground',
+                    f === 'validation_issues' && counts[f] > 0 && filter !== f && 'text-amber-600',
+                    f === 'error' && counts[f] > 0 && filter !== f && 'text-red-600'
+                  )}
+                >
+                  {labels[f]} ({counts[f]})
+                </button>
+              );
+            })}
+          </div>
 
-            <div className="flex-1" />
+          <div className="flex-1" />
 
-            {/* Smart action buttons */}
-            {duplicatePendingCount > 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1 text-amber-600 border-amber-200 hover:bg-amber-50"
-                onClick={() => rejectDuplicatesMutation.mutate()}
-                disabled={rejectDuplicatesMutation.isPending}
-              >
-                <XCircle className="h-3 w-3" />
-                {rejectDuplicatesMutation.isPending ? 'Removing...' : `Remove ${duplicatePendingCount} duplicates`}
-              </Button>
-            )}
+          {duplicatePendingCount > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-[10px] gap-1 text-amber-600 border-amber-200 hover:bg-amber-50"
+              onClick={handleRejectDuplicates}
+              disabled={rejectDuplicatesMutation.isPending}
+            >
+              <XCircle className="h-3 w-3" />
+              {rejectDuplicatesMutation.isPending ? 'Removing...' : `Remove ${duplicatePendingCount} dups`}
+            </Button>
+          )}
 
-            {validPendingCount > 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1 text-green-600 border-green-200 hover:bg-green-50"
-                onClick={() => autoApproveMutation.mutate()}
-                disabled={autoApproveMutation.isPending}
-              >
-                <CheckCheck className="h-3 w-3" />
-                {autoApproveMutation.isPending ? 'Approving...' : `Auto-approve ${validPendingCount} valid (\u226570% confidence)`}
-              </Button>
-            )}
+          {validPendingCount > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-[10px] gap-1 text-green-600 border-green-200 hover:bg-green-50"
+              onClick={handleAutoApprove}
+              disabled={autoApproveMutation.isPending}
+            >
+              <CheckCheck className="h-3 w-3" />
+              {autoApproveMutation.isPending ? 'Approving & committing...' : `Approve & commit ${validPendingCount}`}
+            </Button>
+          )}
+        </div>
+      )}
 
-            {approvedCount > 0 && (
-              <Button
-                size="sm"
-                className="h-7 text-xs gap-1"
-                onClick={() => batchCommitMutation.mutate()}
-                disabled={batchCommitMutation.isPending}
-              >
-                <Send className="h-3 w-3" />
-                {batchCommitMutation.isPending ? 'Committing...' : `Commit ${approvedCount} to CRM`}
-              </Button>
-            )}
+      {/* Table-style records */}
+      <ScrollArea className="flex-1">
+        {isLoading && (
+          <div className="text-center py-12 text-muted-foreground">
+            <Loader2 className="h-6 w-6 mx-auto mb-2 animate-spin" />
+            <p className="text-sm">Loading staged records...</p>
           </div>
         )}
 
-        {/* Records list */}
-        <ScrollArea className="flex-1">
-          <div className="p-6 space-y-6">
-            {isLoading && (
-              <div className="text-center py-12 text-muted-foreground">
-                <Loader2 className="h-6 w-6 mx-auto mb-2 animate-spin" />
-                <p className="text-sm">Loading staged records...</p>
-              </div>
-            )}
+        {!isLoading && records.length === 0 && (
+          <div className="text-center py-12 text-muted-foreground">
+            <p className="text-sm">No staged records for this workflow run.</p>
+          </div>
+        )}
 
-            {!isLoading && records.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                <p className="text-sm">No staged records for this workflow run.</p>
-              </div>
-            )}
+        {!isLoading && records.length > 0 && flatRecords.length === 0 && (
+          <div className="text-center py-12 text-muted-foreground">
+            <p className="text-sm">No records match the "{filter}" filter.</p>
+            <Button size="sm" variant="ghost" className="mt-2" onClick={handleClearFilter}>
+              Show all records
+            </Button>
+          </div>
+        )}
 
-            {!isLoading && records.length > 0 && Object.keys(grouped).length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                <p className="text-sm">No records match the "{filter}" filter.</p>
-                <Button size="sm" variant="ghost" className="mt-2" onClick={() => setFilter('all')}>
-                  Show all records
-                </Button>
-              </div>
-            )}
+        {flatRecords.length > 0 && (
+          <div className="w-full">
+            {/* Table header */}
+            <div className="grid grid-cols-[20px_28px_minmax(120px,1fr)_80px_60px_60px_minmax(160px,2fr)_100px] gap-2 px-4 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider border-b bg-muted/20 sticky top-0">
+              <div />
+              <div />
+              <div>Name</div>
+              <div>Type</div>
+              <div>Status</div>
+              <div>Conf.</div>
+              <div>Details</div>
+              <div className="text-right">Actions</div>
+            </div>
 
-            {Object.entries(grouped).map(([targetType, groupRecords]) => {
+            {/* Table rows */}
+            {flatRecords.map(({ record, targetType, displayName, data }) => {
               const config = TARGET_TYPE_CONFIG[targetType as keyof typeof TARGET_TYPE_CONFIG];
-              if (!config) return null;
-              const Icon = config.icon;
+              const Icon = config?.icon || Users;
+              const isExpanded = expandedId === record.id;
+
+              // Get key detail fields (first 3 non-name fields)
+              const detailFields = Object.entries(data)
+                .filter(([k, v]) => v != null && !['first_name', 'last_name', 'name', 'title'].includes(k))
+                .slice(0, 4);
+
+              // All data fields for expanded view
+              const allFields = Object.entries(data).filter(([, v]) => v != null && v !== '');
+
+              let validationErrs: string[] = [];
+              if (record.validation_errors) {
+                try { validationErrs = JSON.parse(record.validation_errors); } catch {}
+              }
 
               return (
-                <div key={targetType}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Icon className={cn('h-4 w-4', config.color)} />
-                    <h3 className="text-sm font-medium">{config.label}</h3>
-                    <Badge variant="outline" className="text-[10px]">{groupRecords.length}</Badge>
+                <div key={record.id}>
+                  <div
+                    role="row"
+                    tabIndex={0}
+                    onClick={() => toggleExpand(record.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggleExpand(record.id);
+                      }
+                    }}
+                    className={cn(
+                      'grid grid-cols-[20px_28px_minmax(120px,1fr)_80px_60px_60px_minmax(160px,2fr)_100px] gap-2 px-4 py-1.5 items-center border-b text-xs hover:bg-muted/30 transition-colors cursor-pointer select-none focus:outline-none focus:ring-1 focus:ring-ring focus:ring-inset',
+                      record.status === 'approved' && 'bg-green-50/30 dark:bg-green-950/10',
+                      record.status === 'rejected' && 'bg-red-50/30 dark:bg-red-950/10 opacity-50',
+                      record.status === 'committed' && 'bg-blue-50/30 dark:bg-blue-950/10',
+                      record.status === 'error' && 'bg-red-50/50 dark:bg-red-950/20',
+                      hasValidationErrors(record) && record.status === 'pending_review' && 'bg-amber-50/20 dark:bg-amber-950/5',
+                      isExpanded && 'bg-muted/40 border-b-0',
+                    )}
+                  >
+                    {/* Expand chevron */}
+                    <ChevronRight className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', isExpanded && 'rotate-90')} />
+
+                    {/* Type icon */}
+                    <Icon className={cn('h-3.5 w-3.5', config?.color || 'text-muted-foreground')} />
+
+                    {/* Name + flags */}
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-medium truncate">{displayName}</span>
+                      {record.duplicate_of_id && (
+                        <span title="Potential duplicate"><AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" /></span>
+                      )}
+                      {validationErrs.length > 0 && !record.duplicate_of_id && (
+                        <span title={`${validationErrs.length} validation issue(s)`}><AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" /></span>
+                      )}
+                    </div>
+
+                    {/* Type label */}
+                    <span className="text-[10px] text-muted-foreground">{config?.label || targetType}</span>
+
+                    {/* Status */}
+                    <Badge
+                      variant="outline"
+                      className={cn('text-[9px] h-5 px-1.5 justify-center', {
+                        'text-amber-600 border-amber-200': record.status === 'pending_review',
+                        'text-green-600 border-green-200': record.status === 'approved',
+                        'text-red-600 border-red-200': record.status === 'rejected',
+                        'text-blue-600 border-blue-200': record.status === 'committed',
+                        'text-red-700 border-red-300': record.status === 'error',
+                      })}
+                    >
+                      {record.status === 'pending_review' ? 'pending' : record.status}
+                    </Badge>
+
+                    {/* Confidence */}
+                    <ConfidenceBadge value={record.confidence} />
+
+                    {/* Key detail fields inline */}
+                    <div className="flex items-center gap-3 min-w-0 overflow-hidden">
+                      {detailFields.map(([key, value]) => {
+                        const dv = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                        return (
+                          <span key={key} className="text-[10px] text-muted-foreground truncate">
+                            <span className="opacity-60">{key}:</span> {dv}
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    {/* Actions — stop propagation so clicks don't toggle expand */}
+                    <RecordActions
+                      record={record}
+                      onEdit={handleStartEdit}
+                      onApprove={handleApprove}
+                      onReject={handleReject}
+                      onRetry={handleRetry}
+                      retryPending={retryMutation.isPending}
+                      onStopPropagation={handleStopPropagation}
+                    />
                   </div>
 
-                  <div className="space-y-2">
-                    {groupRecords.map((record) => {
-                      let data: Record<string, any> = {};
-                      try { data = JSON.parse(record.record_data); } catch {}
-                      const displayName = data.first_name
-                        ? `${data.first_name} ${data.last_name || ''}`
-                        : data.name || data.title || 'Untitled';
+                  {/* Expanded detail panel — schema-aware inline editing */}
+                  {isExpanded && editingId !== record.id && (() => {
+                    const schema = schemasMap[record.target_type];
+                    const schemaFields = schema?.fields || {};
+                    const existingKeys = new Set(allFields.map(([k]) => k));
+                    const missingFields = Object.entries(schemaFields).filter(([k]) => !existingKeys.has(k));
+                    const canEdit = record.status === 'pending_review';
 
-                      return (
-                        <div
-                          key={record.id}
-                          className={cn(
-                            'rounded-lg border p-3',
-                            record.status === 'approved' && 'border-green-200 bg-green-50/50 dark:bg-green-950/20',
-                            record.status === 'rejected' && 'border-red-200 bg-red-50/50 dark:bg-red-950/20 opacity-60',
-                            record.status === 'committed' && 'border-blue-200 bg-blue-50/50 dark:bg-blue-950/20',
-                            record.status === 'error' && 'border-red-300 bg-red-50 dark:bg-red-950/30',
-                            hasValidationErrors(record) && record.status !== 'rejected' && 'border-amber-300 bg-amber-50/30 dark:bg-amber-950/10',
-                          )}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium flex-1">{displayName}</span>
+                    return (
+                    <div className="border-b bg-muted/20 px-4 py-3" onClick={handleStopPropagation}>
+                      <div className="grid grid-cols-[1fr_1fr] lg:grid-cols-[1fr_1fr_1fr] gap-x-6 gap-y-2">
+                        {allFields.map(([key, value]) => {
+                          const dv = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+                          const isLong = dv.length > 80;
+                          const fd = schemaFields[key];
+                          return (
+                            <div key={key} className={cn(isLong && 'col-span-2 lg:col-span-3')}>
+                              <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                                {key.replace(/_/g, ' ')}
+                                {fd?.required && <span className="text-red-400 ml-0.5">*</span>}
+                              </dt>
+                              {canEdit ? (
+                                <InlineField
+                                  fieldKey={key}
+                                  value={dv}
+                                  recordId={record.id}
+                                  onSave={handleInlineFieldSave}
+                                  fieldDef={fd}
+                                />
+                              ) : (
+                                <dd className={cn('text-xs mt-0.5', isLong ? 'whitespace-pre-wrap break-words' : 'truncate')}>
+                                  {dv || <span className="text-muted-foreground italic">empty</span>}
+                                </dd>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                            {record.duplicate_of_id && (
-                              <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 gap-1">
-                                <AlertTriangle className="h-2.5 w-2.5" /> Potential duplicate
-                              </Badge>
-                            )}
-
-                            {record.validation_errors && (() => {
-                              try {
-                                const errs = JSON.parse(record.validation_errors);
-                                return errs.length > 0 ? (
-                                  <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 gap-1">
-                                    <AlertTriangle className="h-2.5 w-2.5" /> {errs.length} validation {errs.length === 1 ? 'issue' : 'issues'}
-                                  </Badge>
-                                ) : null;
-                              } catch { return null; }
-                            })()}
-
-                            <Badge
-                              variant="outline"
-                              className={cn('text-[10px]', {
-                                'text-amber-600 border-amber-200': record.status === 'pending_review',
-                                'text-green-600 border-green-200': record.status === 'approved',
-                                'text-red-600 border-red-200': record.status === 'rejected',
-                                'text-blue-600 border-blue-200': record.status === 'committed',
-                                'text-red-700 border-red-300': record.status === 'error',
-                              })}
-                            >
-                              {record.status.replace('_', ' ')}
-                            </Badge>
-
-                            <ConfidenceBadge value={record.confidence} />
-
-                            {record.status === 'pending_review' && (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => handleStartEdit(record)}
-                                  className="p-1 rounded hover:bg-muted transition-colors"
-                                  title="Edit"
-                                >
-                                  <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />
-                                </button>
-                                <button
-                                  onClick={() => handleApprove(record.id)}
-                                  className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900 transition-colors"
-                                  title="Approve"
-                                >
-                                  <Check className="h-3.5 w-3.5 text-green-600" />
-                                </button>
-                                <button
-                                  onClick={() => handleReject(record.id)}
-                                  className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
-                                  title="Reject"
-                                >
-                                  <X className="h-3.5 w-3.5 text-red-500" />
-                                </button>
-                              </div>
-                            )}
-
-                            {record.status === 'approved' && (
-                              <button
-                                onClick={() => commitMutation.mutate(record.id)}
-                                className="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
-                                title="Commit to CRM"
-                                disabled={commitMutation.isPending}
+                      {/* Add field dropdown for missing schema fields */}
+                      {canEdit && missingFields.length > 0 && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                              <Plus className="h-3 w-3" /> Add field
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                            {missingFields.map(([fieldName, fieldDef]) => (
+                              <DropdownMenuItem
+                                key={fieldName}
+                                onClick={() => handleInlineFieldSave(record.id, fieldName, '')}
+                                className="text-xs"
                               >
-                                <Send className="h-3.5 w-3.5 text-blue-500" />
-                              </button>
-                            )}
-                          </div>
+                                <span>{fieldName.replace(/_/g, ' ')}</span>
+                                {fieldDef.required && <span className="text-red-400 ml-1">*</span>}
+                                <span className="ml-auto text-[10px] text-muted-foreground pl-4">{fieldDef.type}</span>
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
 
-                          {(record.error_message || commitErrors[record.id]) && (
-                            <p className="text-xs text-red-600 mt-1">
-                              {record.error_message || commitErrors[record.id]}
-                            </p>
-                          )}
+                      {/* Metadata row */}
+                      <div className="flex items-center gap-4 mt-3 pt-2 border-t border-muted text-[10px] text-muted-foreground">
+                        <span>ID: <code className="text-[9px]">{record.id.slice(0, 8)}</code></span>
+                        <span>Run: <code className="text-[9px]">{record.workflow_run_id.slice(0, 8)}</code></span>
+                        {record.duplicate_of_id && (
+                          <span className="text-amber-600">Duplicate of: <code className="text-[9px]">{record.duplicate_of_id.slice(0, 8)}</code></span>
+                        )}
+                        {(record as any).committed_entity_id && (
+                          <span className="text-blue-600">Entity: <code className="text-[9px]">{(record as any).committed_entity_id.slice(0, 8)}</code></span>
+                        )}
+                        {record.created_at && <span>Created: {new Date(record.created_at).toLocaleString()}</span>}
+                      </div>
 
-                          {(() => {
-                            let validationErrs: string[] = [];
-                            if (record.validation_errors) {
-                              try { validationErrs = JSON.parse(record.validation_errors); } catch {}
-                            }
-                            return validationErrs.length > 0 ? (
-                              <div className="flex items-start gap-1.5 mt-1.5 p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-                                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-                                <div className="space-y-0.5">
-                                  <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">Validation warnings</p>
-                                  {validationErrs.map((err, i) => (
-                                    <p key={i} className="text-[10px] text-amber-600 dark:text-amber-500">{err}</p>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null;
-                          })()}
-
-                          {renderRecordFields(record)}
+                      {/* Validation errors in expanded view */}
+                      {validationErrs.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800">
+                          <p className="text-[10px] font-medium text-amber-600 mb-1">Validation Issues</p>
+                          <ul className="space-y-0.5">
+                            {validationErrs.map((err, i) => (
+                              <li key={i} className="text-[10px] text-amber-600 flex items-start gap-1.5">
+                                <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                                {err}
+                              </li>
+                            ))}
+                          </ul>
                         </div>
-                      );
-                    })}
-                  </div>
+                      )}
+
+                      {/* Error message in expanded view */}
+                      {(record.error_message || commitErrors[record.id]) && (
+                        <div className="mt-2 pt-2 border-t border-red-200 dark:border-red-800">
+                          <p className="text-[10px] font-medium text-red-600 mb-1">Error</p>
+                          <p className="text-[10px] text-red-600">{record.error_message || commitErrors[record.id]}</p>
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })()}
+
+                  {/* Expandable: edit form */}
+                  {editingId === record.id && renderRecordFields(record)}
+
+                  {/* Compact inline warnings when NOT expanded */}
+                  {!isExpanded && (record.error_message || commitErrors[record.id]) && (
+                    <div className="px-4 py-1 bg-red-50/50 dark:bg-red-950/20 border-b">
+                      <p className="text-[10px] text-red-600">{record.error_message || commitErrors[record.id]}</p>
+                    </div>
+                  )}
+
+                  {!isExpanded && validationErrs.length > 0 && record.status !== 'rejected' && editingId !== record.id && (
+                    <div className="px-4 py-1 bg-amber-50/50 dark:bg-amber-950/10 border-b flex items-center gap-1.5">
+                      <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                      <span className="text-[10px] text-amber-600">{validationErrs.join(' · ')}</span>
+                    </div>
+                  )}
                 </div>
               );
             })}
+          </div>
+        )}
 
-            {batchCommitMutation.isSuccess && (
-              <div className={cn(
-                'rounded-lg border p-4 text-center',
-                batchCommitMutation.data?.errors
-                  ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/20'
-                  : 'border-green-200 bg-green-50 dark:bg-green-950/20'
-              )}>
-                {batchCommitMutation.data?.errors ? (
-                  <>
-                    <AlertTriangle className="h-5 w-5 text-amber-600 mx-auto mb-1" />
-                    <p className="text-sm font-medium text-amber-700">
-                      {batchCommitMutation.data.committed} committed, {batchCommitMutation.data.errors} failed
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <CheckCheck className="h-5 w-5 text-green-600 mx-auto mb-1" />
-                    <p className="text-sm font-medium text-green-700">Records committed successfully</p>
-                  </>
-                )}
-              </div>
+        {batchCommitMutation.isSuccess && (
+          <div className={cn(
+            'mx-4 my-3 rounded-lg border p-3 text-center',
+            batchCommitMutation.data?.errors
+              ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/20'
+              : 'border-green-200 bg-green-50 dark:bg-green-950/20'
+          )}>
+            {batchCommitMutation.data?.errors ? (
+              <p className="text-xs font-medium text-amber-700">
+                {batchCommitMutation.data.committed} committed, {batchCommitMutation.data.errors} failed
+              </p>
+            ) : (
+              <p className="text-xs font-medium text-green-700">Records committed successfully</p>
             )}
           </div>
-        </ScrollArea>
+        )}
+      </ScrollArea>
+    </div>
+  );
+}
+
+// ─── Dialog wrapper (backward compat for RunsTab etc.) ───
+
+interface StagingReviewPanelProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  workflowRunId: string;
+  workflowName?: string;
+}
+
+export function StagingReviewPanel({
+  open,
+  onOpenChange,
+  workflowRunId,
+  workflowName,
+}: StagingReviewPanelProps) {
+  if (!open) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[90vw] w-full max-h-[90vh] p-0 flex flex-col overflow-hidden">
+        <DialogTitle className="sr-only">Review Staged Records</DialogTitle>
+        <StagingReviewContent
+          workflowRunId={workflowRunId}
+          workflowName={workflowName}
+        />
       </DialogContent>
     </Dialog>
   );

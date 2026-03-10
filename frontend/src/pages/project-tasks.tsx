@@ -258,7 +258,7 @@ export function ProjectTasks() {
     { scope: Scope.KANBAN }
   );
 
-  // Toggle fullscreen with Cmd+Enter
+  // Toggle fullscreen with 'f' key
   useKeyToggleFullscreen(() => toggleFullscreen(!isFullscreen), {
     scope: Scope.KANBAN,
   });
@@ -273,14 +273,14 @@ export function ProjectTasks() {
   ] as const;
 
   // Memoize filtered tasks based on search query and filters
-  const archivedCount = useMemo(() => tasks.filter((t) => (t as Record<string, unknown>).archived_at).length, [tasks]);
+  const archivedCount = useMemo(() => tasks.filter((t) => t.archived_at).length, [tasks]);
 
   const filteredTasks = useMemo(() => {
     let result = tasks;
 
     // Hide archived tasks unless explicitly requested
     if (!showArchived) {
-      result = result.filter((t) => !(t as Record<string, unknown>).archived_at);
+      result = result.filter((t) => !t.archived_at);
     }
 
     if (boardFilter) {
@@ -477,7 +477,7 @@ export function ProjectTasks() {
   const handleArchiveTask = useCallback(
     async (task: Task) => {
       try {
-        if ((task as Record<string, unknown>).archived_at) {
+        if (task.archived_at) {
           await tasksApi.unarchive(task.id);
         } else {
           await tasksApi.archive(task.id);

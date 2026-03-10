@@ -35,7 +35,7 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let filter_string = format!(
-        "warn,server={level},services={level},db={level},executors={level},deployment={level},local_deployment={level},utils={level},nora={level},discord_bots={level},serenity=warn,songbird=warn",
+        "warn,server={level},services={level},db={level},executors={level},deployment={level},local_deployment={level},utils={level},nora={level},discord_bot={level},discord_bots={level},serenity=warn,songbird=warn",
         level = log_level
     );
     let env_filter = EnvFilter::try_new(filter_string).expect("Failed to create tracing filter");
@@ -126,6 +126,13 @@ async fn main() -> Result<(), VibeKanbanError> {
         tracing::warn!("Failed to auto-initialize Topsi on startup: {}", e);
         tracing::warn!("Topsi can still be initialized later via POST /api/topsi/initialize");
     }
+
+    // Spawn Discord voice bot (no-op if DISCORD_BOT_TOKEN is not set)
+    let server_port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(3000);
+    discord_bot::spawn_discord_bot(deployment.db().pool.clone(), server_port).await;
 
     // Start Discord bot agents (Nora + Topsi) if tokens are configured
     discord_bots::spawn_discord_bots();

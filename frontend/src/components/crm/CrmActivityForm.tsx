@@ -62,7 +62,7 @@ export function CrmActivityForm({
     e.preventDefault();
     try {
       await createActivity.mutateAsync({
-        project_id: projectId,
+        organization_id: projectId,
         crm_contact_id: contactId,
         crm_deal_id: dealId,
         activity_type: formData.activity_type,

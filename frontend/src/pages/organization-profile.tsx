@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+// Tabs UI removed — navigation now driven entirely by sidebar + URL routing
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -50,7 +51,6 @@ import {
   ArrowLeft,
   Globe,
   ExternalLink,
-  LayoutGrid,
   Contact2,
   DollarSign,
   Activity,
@@ -90,9 +90,18 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  UserPlus,
+  Link2,
+  Eye,
+  Shield,
+  Copy,
+  Phone,
+  MapPin,
+  Play,
 } from 'lucide-react';
 import {
   organizationsApi,
+  crmApi,
   crmDealsApi,
   crmActivitiesApi,
   knowledgeApi,
@@ -103,7 +112,6 @@ import {
   airtableApi,
   githubAuthApi,
   discordApi,
-  pulseApi,
   type DiscordSessionSummary,
   type OrganizationData,
   type ClientData,
@@ -114,6 +122,7 @@ import {
   type SocialMentionRecord,
   type PersonOrgContact,
   dataSourcesApi,
+  companiesApi,
   workflowsApi,
   resolveApiUrl,
   type DataSourceRecord,
@@ -161,7 +170,7 @@ function formatCurrency(amount: number) {
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({
-  orgId: _orgId,
+  orgId,
   projectEntries,
   projectCount,
   clientCount: _clientCount,
@@ -169,7 +178,6 @@ function OverviewTab({
   totalDealValue,
   totalDeals,
   contactCount,
-  onSwitchTab,
 }: {
   orgId: string;
   projectEntries: { id: string; name: string }[];
@@ -179,7 +187,6 @@ function OverviewTab({
   totalDealValue: number;
   totalDeals: number;
   contactCount: number;
-  onSwitchTab: (tab: string) => void;
 }) {
   // Aggregate tasks across all projects
   const taskQueries = useQueries({
@@ -200,10 +207,17 @@ function OverviewTab({
   const activityQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['crm-activities-org', entry.id],
-      queryFn: () => crmActivitiesApi.listActivities({ project_id: entry.id, limit: 10 }),
+      queryFn: () => crmActivitiesApi.listActivities({ organization_id: entry.id, limit: 10 }),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
     })),
+  });
+
+  // Fetch recent workflow runs for the organization
+  const { data: recentWorkflowRuns = [] } = useQuery({
+    queryKey: ['workflow-runs', orgId],
+    queryFn: () => workflowsApi.listRecentRuns({ organization_id: orgId, limit: 10 }),
+    staleTime: 60_000,
   });
 
   const recentActivities = useMemo(() => {
@@ -271,43 +285,84 @@ function OverviewTab({
       {/* Quick links */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {[
-          { label: 'Pipelines', icon: Target, tab: 'pipelines', color: 'text-amber-500' },
-          { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
-          { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
-          { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
-          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
-          { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
-          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
-        ].map(({ label, icon: Icon, tab, color }) => (
-          <button
-            key={tab}
-            onClick={() => onSwitchTab(tab)}
-            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group"
+          { label: 'Pipelines', icon: Target, path: 'crm/pipeline', color: 'text-amber-500', summary: `${totalDeals} deals · ${formatCurrency(totalDealValue)}` },
+          { label: 'Contacts', icon: Contact2, path: 'crm/contacts', color: 'text-blue-500', summary: `${contactCount} contacts` },
+          { label: 'Projects', icon: FolderOpen, path: 'projects', color: 'text-emerald-500', summary: `${projectCount} active` },
+          { label: 'Intelligence', icon: Brain, path: 'intelligence', color: 'text-orange-500', summary: 'Data sources & workflows' },
+          { label: 'Members', icon: Users, path: 'members', color: 'text-purple-500', summary: 'Team & roles' },
+          { label: 'Integrations', icon: Plug, path: 'integrations', color: 'text-indigo-500', summary: 'Connected services' },
+        ].map(({ label, icon: Icon, path, color, summary }) => (
+          <Link
+            key={path}
+            to={`/organizations/${orgId}/${path}`}
+            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group cursor-pointer"
           >
             <Icon className={`h-5 w-5 ${color} group-hover:scale-110 transition-transform`} />
-            <span className="text-sm font-medium">{label}</span>
-            <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
+            <div className="min-w-0">
+              <span className="text-sm font-medium block">{label}</span>
+              <span className="text-xs text-muted-foreground">{summary}</span>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+          </Link>
         ))}
       </div>
 
-      {/* Recent activity - aggregated across all projects */}
+      {/* Recent activity - workflow runs + CRM activities */}
       <Card className="bg-card/80 backdrop-blur-sm border-border/50">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Activity className="h-4 w-4" />
             Recent Activity
           </CardTitle>
-          <CardDescription>Latest CRM activity across all {projectCount} projects</CardDescription>
+          <CardDescription>Latest workflow runs and CRM activity</CardDescription>
         </CardHeader>
         <CardContent>
-          {recentActivities.length === 0 ? (
+          {recentWorkflowRuns.length === 0 && recentActivities.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No recent activity</p>
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Workflow runs */}
+              {recentWorkflowRuns.map((run: any) => {
+                const statusColor = run.status === 'completed' ? 'text-green-600' : run.status === 'failed' ? 'text-red-600' : 'text-blue-600';
+                const statusBg = run.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30' : run.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-blue-100 dark:bg-blue-900/30';
+                return (
+                  <div key={run.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
+                    <div className={`h-8 w-8 rounded-full ${statusBg} flex items-center justify-center shrink-0`}>
+                      <Play className={`h-4 w-4 ${statusColor}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px]">workflow run</Badge>
+                        <Badge variant="secondary" className={`text-[10px] ${statusColor}`}>
+                          {run.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm mt-1 font-medium">{run.workflow_name}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        {run.total_records_staged > 0 && (
+                          <span>{run.total_records_staged} staged</span>
+                        )}
+                        {run.total_records_committed > 0 && (
+                          <span className="text-green-600">{run.total_records_committed} committed</span>
+                        )}
+                        {run.total_duplicates_found > 0 && (
+                          <span className="text-amber-600">{run.total_duplicates_found} duplicates</span>
+                        )}
+                        {run.model_used && (
+                          <span>{run.model_used}</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        {formatDate(run.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* CRM activities */}
               {recentActivities.map((activity) => (
                 <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
                   <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -384,12 +439,106 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
   );
 }
 
+// ── Create Contact Dialog ─────────────────────────────────────────────────────
+
+function CreateContactDialog({
+  open,
+  onClose,
+  orgId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  orgId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [companyName, setCompanyName] = useState('');
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(resolveApiUrl('/api/crm/contacts'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          organization_id: orgId,
+          first_name: firstName || undefined,
+          last_name: lastName || undefined,
+          email: email || undefined,
+          phone: phone || undefined,
+          company_name: companyName || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to create contact');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-contacts', orgId] });
+      toast.success('Contact created');
+      setFirstName(''); setLastName(''); setEmail(''); setPhone(''); setCompanyName('');
+      onClose();
+    },
+    onError: () => toast.error('Failed to create contact'),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Contact</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-fn">First Name</Label>
+              <Input id="ct-fn" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Jane" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-ln">Last Name</Label>
+              <Input id="ct-ln" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Doe" />
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="ct-em">Email</Label>
+            <Input id="ct-em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="ct-ph">Phone</Label>
+            <Input id="ct-ph" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555-0123" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="ct-co">Company</Label>
+            <Input id="ct-co" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme Corp" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={(!firstName.trim() && !lastName.trim() && !email.trim()) || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Contacts Tab ──────────────────────────────────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
+  const [searchParams] = useSearchParams();
   const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
+  const [showCreateContact, setShowCreateContact] = useState(false);
+  const contactFromUrl = searchParams.get('contact');
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(contactFromUrl);
+  const selectedContact = contacts.find(c => c.id === selectedContactId);
 
   const { data: personContacts = [] } = useQuery<PersonOrgContact[]>({
     queryKey: ['org-person-contacts', orgId],
@@ -445,22 +594,45 @@ function ContactsTab({ orgId }: { orgId: string }) {
             <option key={key} value={key}>{info.label}</option>
           ))}
         </select>
+        <Button size="sm" onClick={() => setShowCreateContact(true)}>
+          <Plus className="h-4 w-4 mr-1" />
+          Add Contact
+        </Button>
         {isLoading && (
           <span className="text-xs text-muted-foreground">Loading contacts…</span>
         )}
       </div>
 
+      <CreateContactDialog
+        open={showCreateContact}
+        onClose={() => setShowCreateContact(false)}
+        orgId={orgId}
+      />
+
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowCreateContact(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Contact
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
+            <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} onClick={() => setSelectedContactId(contact.id)} />
           ))}
         </div>
+      )}
+
+      {selectedContact && (
+        <ContactDetailModal
+          contact={selectedContact}
+          orgId={orgId}
+          open={!!selectedContactId}
+          onClose={() => setSelectedContactId(null)}
+        />
       )}
     </div>
   );
@@ -474,13 +646,23 @@ const CONTEXT_COLORS: Record<string, string> = {
   contact: 'bg-gray-100 text-gray-600',
 };
 
-function ContactCard({ contact, context }: { contact: OrgContact; context?: string }) {
+function ContactCard({ contact, context, onClick }: { contact: OrgContact; context?: string; onClick?: () => void }) {
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
 
+  // Check if contact was imported via workflow
+  let importedViaWorkflow = false;
+  if (contact.custom_fields) {
+    try {
+      const cf = typeof contact.custom_fields === 'string' ? JSON.parse(contact.custom_fields) : contact.custom_fields;
+      importedViaWorkflow = !!cf.source_workflow_run_id;
+    } catch { /* ignore */ }
+  }
+
   return (
-    <Link
-      to={`/people/${contact.id}`}
-      className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full text-left p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -521,8 +703,267 @@ function ContactCard({ contact, context }: { contact: OrgContact; context?: stri
             {context}
           </span>
         )}
+        {importedViaWorkflow && (
+          <Badge variant="outline" className="text-[10px] gap-0.5" title="Imported via workflow">
+            <GitBranch className="h-2.5 w-2.5" />
+            Workflow
+          </Badge>
+        )}
       </div>
-    </Link>
+    </button>
+  );
+}
+
+// ── Contact Detail Modal ──────────────────────────────────────────────────────
+
+function ContactDetailModal({
+  contact,
+  orgId,
+  open,
+  onClose,
+}: {
+  contact: OrgContact;
+  orgId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({
+    first_name: contact.first_name ?? '',
+    last_name: contact.last_name ?? '',
+    email: contact.email ?? '',
+    phone: contact.phone ?? '',
+    company_name: contact.company_name ?? '',
+    job_title: contact.job_title ?? '',
+    department: contact.department ?? '',
+    linkedin_url: contact.linkedin_url ?? '',
+    website: contact.website ?? '',
+  });
+
+  const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
+
+  const { data: deals = [] } = useQuery({
+    queryKey: ['contact-deals', contact.id],
+    queryFn: () => crmDealsApi.listDeals({ contact_id: contact.id }),
+    enabled: open,
+    staleTime: 30_000,
+  });
+
+  const { data: activities = [] } = useQuery<CrmActivityRecord[]>({
+    queryKey: ['contact-activities', contact.id],
+    queryFn: () => crmActivitiesApi.listActivities({ organization_id: orgId, contact_id: contact.id }),
+    enabled: open,
+    staleTime: 30_000,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: () => crmApi.updateContact(contact.id, editData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-crm-contacts'] });
+      setIsEditing(false);
+      toast.success('Contact updated');
+    },
+    onError: () => toast.error('Failed to update contact'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => crmApi.deleteContact(contact.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-crm-contacts'] });
+      onClose();
+      toast.success('Contact deleted');
+    },
+    onError: () => toast.error('Failed to delete contact'),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-lg">
+              {contact.full_name || `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim() || 'Unnamed Contact'}
+            </DialogTitle>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setIsEditing(!isEditing)}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => {
+                if (confirm('Delete this contact?')) deleteMutation.mutate();
+              }}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </DialogHeader>
+
+        {/* Contact Info */}
+        <div className="space-y-4">
+          {isEditing ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">First Name</Label>
+                <Input value={editData.first_name} onChange={(e) => setEditData(d => ({ ...d, first_name: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Last Name</Label>
+                <Input value={editData.last_name} onChange={(e) => setEditData(d => ({ ...d, last_name: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Email</Label>
+                <Input value={editData.email} onChange={(e) => setEditData(d => ({ ...d, email: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Phone</Label>
+                <Input value={editData.phone} onChange={(e) => setEditData(d => ({ ...d, phone: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Company</Label>
+                <Input value={editData.company_name} onChange={(e) => setEditData(d => ({ ...d, company_name: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Job Title</Label>
+                <Input value={editData.job_title} onChange={(e) => setEditData(d => ({ ...d, job_title: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Department</Label>
+                <Input value={editData.department} onChange={(e) => setEditData(d => ({ ...d, department: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">LinkedIn URL</Label>
+                <Input value={editData.linkedin_url} onChange={(e) => setEditData(d => ({ ...d, linkedin_url: e.target.value }))} />
+              </div>
+              <div className="col-span-2 flex gap-2 justify-end">
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+                <Button size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                {stageInfo && (
+                  <Badge variant="secondary" style={{ backgroundColor: stageInfo.color + '20', color: stageInfo.color }}>
+                    {stageInfo.label}
+                  </Badge>
+                )}
+                {contact.lead_score > 0 && (
+                  <Badge variant="outline">Score: {contact.lead_score}</Badge>
+                )}
+                {contact.source && (
+                  <Badge variant="outline" className="capitalize">{contact.source}</Badge>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {contact.email && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    <a href={`mailto:${contact.email}`} className="truncate hover:text-foreground">{contact.email}</a>
+                  </div>
+                )}
+                {contact.phone && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{contact.phone}</span>
+                  </div>
+                )}
+                {contact.company_name && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Building2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{contact.company_name}</span>
+                  </div>
+                )}
+                {contact.job_title && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{contact.job_title}</span>
+                  </div>
+                )}
+                {contact.department && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Users className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{contact.department}</span>
+                  </div>
+                )}
+                {contact.linkedin_url && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Linkedin className="h-3.5 w-3.5 shrink-0" />
+                    <a href={contact.linkedin_url} target="_blank" rel="noreferrer" className="truncate hover:text-foreground">LinkedIn</a>
+                  </div>
+                )}
+                {(contact.city || contact.country) && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{[contact.city, contact.state, contact.country].filter(Boolean).join(', ')}</span>
+                  </div>
+                )}
+                {contact.website && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Globe className="h-3.5 w-3.5 shrink-0" />
+                    <a href={contact.website} target="_blank" rel="noreferrer" className="truncate hover:text-foreground">{contact.website}</a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Deals */}
+          {deals.length > 0 && (
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Deals ({deals.length})</h4>
+              <div className="space-y-1.5">
+                {deals.map((deal: { id: string; name: string; amount?: number | null; currency?: string; stage?: string }) => (
+                  <div key={deal.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm">
+                    <span className="truncate">{deal.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {deal.amount != null && (
+                        <span className="text-xs font-medium">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: deal.currency || 'USD' }).format(deal.amount)}
+                        </span>
+                      )}
+                      {deal.stage && (
+                        <Badge variant="outline" className="text-[10px]">{deal.stage}</Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Activity */}
+          {activities.length > 0 && (
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Recent Activity</h4>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {activities.slice(0, 10).map((activity) => (
+                  <div key={activity.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Activity className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate">{activity.subject || activity.activity_type}</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      {new Date(activity.activity_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Metadata */}
+          <div className="text-[10px] text-muted-foreground pt-2 border-t border-border/50 flex items-center justify-between">
+            <span>Created {new Date(contact.created_at).toLocaleDateString()}</span>
+            {contact.last_activity_at && (
+              <span>Last active {new Date(contact.last_activity_at).toLocaleDateString()}</span>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -544,9 +985,94 @@ interface CompanyRecord {
   created_at?: string;
 }
 
+function CreateCompanyInlineDialog({
+  open,
+  onClose,
+  orgId,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  orgId: string;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [website, setWebsite] = useState('');
+  const [industry, setIndustry] = useState('');
+
+  const create = useMutation({
+    mutationFn: () =>
+      companiesApi.create({
+        name,
+        website: website || undefined,
+        industry: industry || undefined,
+        created_by_org_id: orgId,
+      }),
+    onSuccess: () => {
+      onCreated();
+      toast.success('Company created');
+      setName('');
+      setWebsite('');
+      setIndustry('');
+      onClose();
+    },
+    onError: () => toast.error('Failed to create company'),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Company</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3 py-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="co-name">Name *</Label>
+            <Input
+              id="co-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Acme Corp"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="co-web">Website</Label>
+            <Input
+              id="co-web"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="https://example.com"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="co-ind">Industry</Label>
+            <Input
+              id="co-ind"
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
+              placeholder="Technology"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={!name.trim() || create.isPending}
+            onClick={() => create.mutate()}
+          >
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CompaniesTab({ orgId }: { orgId: string }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [industryFilter, setIndustryFilter] = useState('all');
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: companies = [], isLoading } = useQuery<CompanyRecord[]>({
     queryKey: ['org-companies', orgId],
@@ -608,13 +1134,28 @@ function CompaniesTab({ orgId }: { orgId: string }) {
         {isLoading && (
           <span className="text-xs text-muted-foreground">Loading companies...</span>
         )}
+        <Button size="sm" onClick={() => setShowCreateDialog(true)}>
+          <Plus className="h-4 w-4 mr-1" />
+          Add Company
+        </Button>
       </div>
+
+      <CreateCompanyInlineDialog
+        open={showCreateDialog}
+        onClose={() => setShowCreateDialog(false)}
+        orgId={orgId}
+        onCreated={() => queryClient.invalidateQueries({ queryKey: ['org-companies', orgId] })}
+      />
 
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>{isLoading ? 'Loading companies...' : 'No companies found'}</p>
-          <p className="text-xs mt-1">Companies extracted by workflow pipelines will appear here.</p>
+          <p className="text-xs mt-1">Add a company manually or let workflow pipelines extract them automatically.</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowCreateDialog(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Company
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -649,6 +1190,128 @@ function CompaniesTab({ orgId }: { orgId: string }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Deliverables Tab ─────────────────────────────────────────────────────────
+
+function DeliverablesTab({
+  projectEntries,
+}: {
+  orgId: string;
+  projectEntries: { id: string; name: string }[];
+}) {
+  const deliverableQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['deliverables', entry.id],
+      queryFn: async () => {
+        const res = await fetch(resolveApiUrl(`/api/projects/${entry.id}/deliverables`), { credentials: 'include' });
+        if (!res.ok) return [];
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : (data?.data ?? []);
+        return items.map((d: any) => ({ ...d, _projectName: entry.name }));
+      },
+      staleTime: 30_000,
+    })),
+  });
+
+  const isLoading = deliverableQueries.some((q) => q.isLoading);
+  const allDeliverables = deliverableQueries.flatMap((q) => q.data ?? []);
+
+  const statusGroups = useMemo(() => {
+    const groups: Record<string, typeof allDeliverables> = {
+      draft: [],
+      in_progress: [],
+      review: [],
+      delivered: [],
+    };
+    allDeliverables.forEach((d) => {
+      const status = d.status || 'draft';
+      if (!groups[status]) groups[status] = [];
+      groups[status].push(d);
+    });
+    return groups;
+  }, [allDeliverables]);
+
+  const statusLabels: Record<string, { label: string; color: string }> = {
+    draft: { label: 'Draft', color: 'text-muted-foreground' },
+    in_progress: { label: 'In Progress', color: 'text-blue-500' },
+    review: { label: 'In Review', color: 'text-amber-500' },
+    delivered: { label: 'Delivered', color: 'text-green-500' },
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        Loading deliverables...
+      </div>
+    );
+  }
+
+  if (allDeliverables.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <Boxes className="h-10 w-10 mx-auto mb-3 opacity-30" />
+        <p className="font-medium text-foreground mb-1">No deliverables yet</p>
+        <p className="text-sm max-w-md mx-auto">
+          Deliverables are tangible outputs produced for clients — reports, designs, assets, or completed work products.
+          Create them from individual project pages.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">{allDeliverables.length} Deliverables</h2>
+          <p className="text-sm text-muted-foreground">Across {projectEntries.length} projects</p>
+        </div>
+      </div>
+
+      {Object.entries(statusGroups).map(([status, items]) => {
+        if (items.length === 0) return null;
+        const info = statusLabels[status] || { label: status, color: 'text-muted-foreground' };
+        return (
+          <div key={status}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`text-sm font-medium ${info.color}`}>{info.label}</span>
+              <Badge variant="secondary" className="text-[10px]">{items.length}</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {items.map((d: any) => (
+                <Card key={d.id} className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{d.title}</p>
+                      {d.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{d.description}</p>
+                      )}
+                    </div>
+                    {d.deliverable_type && (
+                      <Badge variant="outline" className="text-[10px] shrink-0 capitalize">{d.deliverable_type}</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-3 text-[10px] text-muted-foreground">
+                    <FolderOpen className="h-3 w-3" />
+                    <span>{d._projectName}</span>
+                    {d.due_date && (
+                      <>
+                        <span className="mx-1">·</span>
+                        <Clock className="h-3 w-3" />
+                        <span>Due {formatDate(d.due_date)}</span>
+                      </>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -755,43 +1418,19 @@ function ProjectsTab({
   );
 }
 
-function ProjectRow({ project, folderName, depth = 0 }: { project: any; folderName?: string; depth?: number }) {
-  const hasChildren = project.children && project.children.length > 0;
-  const [expanded, setExpanded] = useState(false);
-
+function ProjectRow({ project, folderName }: { project: any; folderName?: string }) {
   return (
-    <div>
-      <div className="flex items-center gap-1">
-        {hasChildren && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="p-0.5 hover:bg-muted rounded shrink-0"
-          >
-            {expanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-          </button>
-        )}
-        <Link
-          to={`/projects/${project.id}`}
-          className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors flex-1 min-w-0"
-          style={hasChildren ? undefined : { marginLeft: depth > 0 ? '0' : '1.25rem' }}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-sm font-medium truncate">{project.name}</span>
-            {folderName && <Badge variant="secondary" className="text-xs shrink-0">{folderName}</Badge>}
-            {hasChildren && <Badge variant="outline" className="text-[10px] shrink-0">{project.children.length}</Badge>}
-          </div>
-          <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
-        </Link>
+    <Link
+      to={`/projects/${project.id}`}
+      className="flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors"
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+        <span className="text-sm font-medium truncate">{project.name}</span>
+        {folderName && <Badge variant="secondary" className="text-xs shrink-0">{folderName}</Badge>}
       </div>
-      {hasChildren && expanded && (
-        <div className="pl-4 border-l border-border/50 ml-3 mt-0.5 space-y-0.5">
-          {project.children.map((child: any) => (
-            <ProjectRow key={child.id} project={child} depth={depth + 1} />
-          ))}
-        </div>
-      )}
-    </div>
+      <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
+    </Link>
   );
 }
 
@@ -1886,25 +2525,41 @@ function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
 
 
 
-function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+function KnowledgeTab({
+  orgId,
+  projectEntries,
+  view,
+}: {
+  orgId: string;
+  projectEntries: { id: string; name: string }[];
+  view?: string | null;
+}) {
   const knowledgeQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['projectKnowledge', entry.id],
       queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
       staleTime: 60_000,
-      enabled: projectEntries.length > 0,
     })),
+  });
+
+  // Fetch org-level data sources for accurate stats
+  const { data: orgDataSources = [] } = useQuery({
+    queryKey: ['orgDataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    staleTime: 60_000,
   });
 
   const isLoading = knowledgeQueries.some(q => q.isLoading);
   const loadedCount = knowledgeQueries.filter(q => q.isSuccess).length;
 
+  // Aggregate across all projects
   const aggregated = useMemo(() => {
     let totalSources = 0;
     let staleSources = 0;
     let totalCoverage = 0;
     let coverageCount = 0;
     const sourcesByProject: { projectName: string; projectId: string; data: ProjectKnowledgeResponse }[] = [];
+    const byType: Record<string, { source: ProjectKnowledgeSource; projectName: string; projectId: string }[]> = {};
 
     knowledgeQueries.forEach((q, i) => {
       if (!q.data) return;
@@ -1918,14 +2573,118 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
       if (q.data.total_sources > 0) {
         sourcesByProject.push({ projectName: entry.name, projectId: entry.id, data: q.data });
       }
+      Object.entries(q.data.sources_by_type).forEach(([type, sources]) => {
+        if (!byType[type]) byType[type] = [];
+        sources.forEach(s => byType[type].push({ source: s, projectName: entry.name, projectId: entry.id }));
+      });
     });
 
     const avgCompleteness = coverageCount > 0 ? Math.round((totalCoverage / coverageCount) * 100) : 0;
-    return { totalSources, staleSources, avgCompleteness, sourcesByProject };
+    return { totalSources, staleSources, avgCompleteness, sourcesByProject, byType };
   }, [knowledgeQueries, projectEntries]);
 
+  // Deep view: "datasources" shows the new data sources table; others filter knowledge by type
+  if (view && view !== 'overview') {
+    if (view === 'datasources') {
+      return (
+        <DataSourcesView
+          orgId={orgId}
+          projectEntries={projectEntries}
+        />
+      );
+    }
+
+    if (view === 'artifacts') {
+      return <ArtifactsView orgId={orgId} />;
+    }
+
+    if (view === 'workflows') {
+      return (
+        <div className="space-y-8">
+          <EditableWorkflowsView orgId={orgId} />
+          <div className="border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Network className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Pipeline Blueprints</h2>
+              <Badge variant="secondary" className="text-[10px]">Legacy</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Agent-based pipeline templates for client engagements and production workflows. These are read-only blueprints — use the workflow editor above to build custom pipelines.
+            </p>
+            <LegacyPipelinesView orgId={orgId} />
+          </div>
+        </div>
+      );
+    }
+
+    const typeKey =
+      view === 'conversations' ? 'conversation'
+      : view === 'pulse'      ? 'pulse_content'
+      : view === 'topology'   ? 'topology_snapshot'
+      : null;
+    const items = typeKey ? (aggregated.byType[typeKey] || []) : [];
+    const meta = typeKey ? SOURCE_TYPE_META[typeKey] : null;
+    const Icon = meta?.icon ?? BookOpen;
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Icon className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">{meta?.label ?? view}</h2>
+          <Badge variant="secondary">{items.length}</Badge>
+          {isLoading && (
+            <span className="text-xs text-muted-foreground ml-2">
+              Loading {loadedCount}/{projectEntries.length} projects…
+            </span>
+          )}
+        </div>
+        {items.length === 0 && !isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Icon className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>No {meta?.label.toLowerCase() ?? view} indexed yet</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {items.map(({ source, projectName, projectId }) => (
+              <Card key={source.id} className="bg-card/80 backdrop-blur-sm border-border/50">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{source.source_title}</p>
+                      {source.source_summary && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.source_summary}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <Link
+                          to={`/projects/${projectId}/knowledge`}
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                          {projectName}
+                        </Link>
+                        {source.is_stale && (
+                          <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">stale</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <Progress value={Math.round(source.coverage_score * 100)} className="w-16 h-1.5 mb-1" />
+                      <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}%</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Overview (default)
   return (
     <div className="space-y-6">
+      {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-card/80 backdrop-blur-sm border-border/50">
           <CardHeader className="pb-2">
@@ -1944,8 +2703,11 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold">{aggregated.totalSources}</span>
-              <span className="text-sm text-muted-foreground">across {projectEntries.length} projects</span>
+              <span className="text-2xl font-bold">{aggregated.totalSources + orgDataSources.length}</span>
+              <span className="text-sm text-muted-foreground">
+                {orgDataSources.length > 0 && `${orgDataSources.length} org · `}
+                {aggregated.totalSources} across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -1961,14 +2723,44 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
         </Card>
       </div>
 
+      {/* Source type breakdown pills */}
+      {aggregated.totalSources > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {Object.entries(SOURCE_TYPE_META).map(([type, meta]) => {
+            const count = (aggregated.byType[type] || []).length;
+            if (count === 0) return null;
+            const Icon = meta.icon;
+            return (
+              <Card key={type} className="bg-card/80 backdrop-blur-sm border-border/50">
+                <CardContent className="p-3 flex items-center gap-3">
+                  <Icon className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="font-semibold text-sm">{count}</p>
+                    <p className="text-xs text-muted-foreground">{meta.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {isLoading && (
         <p className="text-xs text-muted-foreground">Loading {loadedCount}/{projectEntries.length} projects...</p>
       )}
 
+      {/* Per-project knowledge */}
       {aggregated.sourcesByProject.length === 0 && !isLoading ? (
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>No knowledge sources indexed yet</p>
+          <p>
+            {projectEntries.length === 0
+              ? 'No projects loaded — navigate to a project to index knowledge'
+              : 'No knowledge sources indexed yet'}
+          </p>
+          <p className="text-xs mt-1 opacity-70">
+            Use the sidebar Intelligence links to browse by category
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -2025,494 +2817,6 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
     </div>
   );
 }
-
-// ── Pulse Section ─────────────────────────────────────────────────────────────
-
-function PulseSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
-  const alertQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['pulse-alerts-org', entry.id],
-      queryFn: () => pulseApi.getAlerts(entry.id, 20),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const contentQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['pulse-content-org', entry.id],
-      queryFn: () => pulseApi.getLatestContent(entry.id, 10),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const aggregated = useMemo(() => {
-    const allAlerts: any[] = [];
-    const allContent: any[] = [];
-
-    alertQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      q.data.forEach((a: any) => allAlerts.push({ ...a, _projectName: entry.name }));
-    });
-
-    contentQueries.forEach((q, i) => {
-      if (!q.data?.items) return;
-      const entry = projectEntries[i];
-      q.data.items.forEach((c: any) => allContent.push({ ...c, _projectName: entry.name }));
-    });
-
-    allAlerts.sort((a, b) => new Date(b.triggered_at || b.created_at).getTime() - new Date(a.triggered_at || a.created_at).getTime());
-    allContent.sort((a, b) => new Date(b.collected_at || b.created_at).getTime() - new Date(a.collected_at || a.created_at).getTime());
-
-    const unacknowledged = allAlerts.filter(a => !a.acknowledged_at).length;
-    return { alerts: allAlerts.slice(0, 20), content: allContent.slice(0, 20), unacknowledged };
-  }, [alertQueries, contentQueries, projectEntries]);
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Unacknowledged Alerts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className={`text-2xl font-bold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
-              {aggregated.unacknowledged}
-              {aggregated.unacknowledged > 0 && (
-                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
-              )}
-            </span>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Recent Signals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-bold">{aggregated.content.length}</span>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              Recent Alerts
-              {aggregated.unacknowledged > 0 && (
-                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {aggregated.alerts.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>No alerts</p>
-              </div>
-            ) : (
-              <ScrollArea className="h-[300px]">
-                <div className="space-y-2 pr-3">
-                  {aggregated.alerts.map((alert: any) => (
-                    <div
-                      key={alert.id}
-                      className={`p-3 rounded-lg border border-border/50 ${!alert.acknowledged_at ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{alert.rule_name || 'Alert'}</p>
-                          {alert.message && (
-                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{alert.message}</p>
-                          )}
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="outline" className="text-[9px]">{alert._projectName}</Badge>
-                            <span className="text-[10px] text-muted-foreground">
-                              {formatDate(alert.triggered_at || alert.created_at)}
-                            </span>
-                          </div>
-                        </div>
-                        {!alert.acknowledged_at && (
-                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1" />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Radio className="h-4 w-4 text-blue-500" />
-              Latest Signals
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {aggregated.content.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Radio className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>No signals collected yet</p>
-              </div>
-            ) : (
-              <ScrollArea className="h-[300px]">
-                <div className="space-y-2 pr-3">
-                  {aggregated.content.map((item: any) => (
-                    <div key={item.id} className="p-3 rounded-lg border border-border/50">
-                      <p className="text-sm font-medium line-clamp-2">{item.title || item.content_preview || 'Signal'}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-[9px]">{item._projectName}</Badge>
-                        {item.source_name && (
-                          <span className="text-[10px] text-muted-foreground">{item.source_name}</span>
-                        )}
-                        <span className="text-[10px] text-muted-foreground ml-auto">
-                          {formatDate(item.collected_at || item.created_at)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-// ── Intelligence Tab (Social + Knowledge + Pulse combined) ────────────────────
-
-function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const viewFromUrl = searchParams.get('view') || 'overview';
-
-  const views = [
-    { key: 'overview',    label: 'Overview',      icon: Brain },
-    { key: 'datasources', label: 'Data Sources',  icon: Database },
-    { key: 'artifacts',   label: 'Artifacts',     icon: FileText },
-    { key: 'workflows',   label: 'Workflows',     icon: GitBranch },
-    { key: 'pulse',       label: 'Pulse',         icon: Radio },
-    { key: 'topology',    label: 'Topology',      icon: Network },
-  ];
-
-  const setView = (view: string) => {
-    const params = new URLSearchParams(searchParams);
-    if (view === 'overview') {
-      params.delete('view');
-    } else {
-      params.set('view', view);
-    }
-    setSearchParams(params, { replace: true });
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit flex-wrap">
-        {views.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setView(key)}
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-              viewFromUrl === key
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {viewFromUrl === 'overview'    && <KnowledgeSection projectEntries={projectEntries} />}
-      {viewFromUrl === 'datasources' && <DataSourcesIntelView orgId={orgId} projectEntries={projectEntries} />}
-      {viewFromUrl === 'artifacts'   && <ArtifactsIntelView projectEntries={projectEntries} />}
-      {viewFromUrl === 'workflows'   && <WorkflowsIntelView orgId={orgId} />}
-      {viewFromUrl === 'pulse'       && <PulseSection projectEntries={projectEntries} />}
-      {viewFromUrl === 'topology'    && <TopologyIntelView projectEntries={projectEntries} />}
-    </div>
-  );
-}
-
-function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string; projectEntries: { id: string; name: string }[] }) {
-  const { data: orgSources = [], isLoading: orgLoading } = useQuery({
-    queryKey: ['dataSources', orgId],
-    queryFn: () => dataSourcesApi.listByOrganization(orgId),
-    staleTime: 60_000,
-  });
-
-  const projSourceQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['dataSourcesProject', entry.id],
-      queryFn: () => dataSourcesApi.listByProject(entry.id),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const isLoading = orgLoading || projSourceQueries.some(q => q.isLoading);
-
-  const sources = useMemo(() => {
-    const projSources = projSourceQueries.flatMap(q => q.data || []);
-    // Deduplicate by id
-    const all = [...orgSources, ...projSources];
-    const seen = new Set<string>();
-    return all.filter(s => {
-      if (seen.has((s as any).id)) return false;
-      seen.add((s as any).id);
-      return true;
-    });
-  }, [orgSources, projSourceQueries]);
-
-  const typeCount = useMemo(() => {
-    const counts: Record<string, number> = {};
-    sources.forEach((s: any) => { counts[s.data_type] = (counts[s.data_type] || 0) + 1; });
-    return counts;
-  }, [sources]);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">Data Library</h3>
-        <Link
-          to={`/organizations/${orgId}/data-sources`}
-          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-        >
-          <Database className="h-3.5 w-3.5" />
-          Open Full Library
-          <ExternalLink className="h-3 w-3" />
-        </Link>
-      </div>
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-          <Loader2 className="h-4 w-4 animate-spin" />Loading data sources...
-        </div>
-      ) : sources.length === 0 ? (
-        <Card className="bg-card/80 border-border/50">
-          <CardContent className="py-8 text-center">
-            <Database className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No data sources yet.</p>
-            <Link to={`/organizations/${orgId}/data-sources`} className="text-sm text-primary hover:underline mt-1 inline-block">
-              Add your first data source →
-            </Link>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {Object.entries(typeCount).map(([type, count]) => (
-            <Card key={type} className="bg-card/80 border-border/50">
-              <CardContent className="pt-4 pb-4">
-                <p className="text-xs text-muted-foreground capitalize">{type.replace(/_/g, ' ')}</p>
-                <p className="text-2xl font-bold mt-1">{count as number}</p>
-              </CardContent>
-            </Card>
-          ))}
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-muted-foreground">Total Files</p>
-              <p className="text-2xl font-bold mt-1 text-primary">{sources.length}</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
-  const knowledgeQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['projectKnowledge', entry.id],
-      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const artifacts = useMemo(() => {
-    const all: { title: string; summary?: string; projectName: string; projectId: string }[] = [];
-    knowledgeQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      ((q.data as any).sources_by_type?.artifact || []).forEach((src: any) => {
-        all.push({ title: src.source_title, summary: src.source_summary, projectName: entry.name, projectId: entry.id });
-      });
-    });
-    return all;
-  }, [knowledgeQueries, projectEntries]);
-
-  const isLoading = knowledgeQueries.some(q => q.isLoading);
-
-  if (isLoading) return (
-    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-      <Loader2 className="h-4 w-4 animate-spin" />Loading artifacts...
-    </div>
-  );
-
-  if (artifacts.length === 0) return (
-    <Card className="bg-card/80 border-border/50">
-      <CardContent className="py-8 text-center">
-        <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-        <p className="text-sm text-muted-foreground">No artifacts in the knowledge graph yet.</p>
-        <p className="text-xs text-muted-foreground mt-1">Artifacts are added automatically when deliverables are marked done.</p>
-      </CardContent>
-    </Card>
-  );
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">{artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''} across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {artifacts.map((a, i) => (
-          <Card key={i} className="bg-card/80 border-border/50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start gap-2">
-                <FileText className="h-4 w-4 text-[hsl(var(--brand))] shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{a.title}</p>
-                  {a.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.summary}</p>}
-                  <Link to={`/projects/${a.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function WorkflowsIntelView({ orgId }: { orgId: string }) {
-  const { data: automations = [] } = useQuery({
-    queryKey: ['system-automations'],
-    queryFn: async () => {
-      const r = await fetch('/api/automations', { credentials: 'include' });
-      const d = await r.json();
-      return d.data || [];
-    },
-    staleTime: 5 * 60_000,
-  });
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">Workflows & Automations</h3>
-        <Link
-          to="/workflows"
-          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-        >
-          <GitBranch className="h-3.5 w-3.5" />
-          Live Workflow Monitor
-          <ExternalLink className="h-3 w-3" />
-        </Link>
-      </div>
-
-      {/* System Automations */}
-      {automations.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">System Automations ({automations.length} active)</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {automations.map((a: any) => (
-              <Card key={a.id} className="bg-card/80 border-border/50">
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-start gap-2">
-                    <Activity className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{a.name}</p>
-                      {a.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.description}</p>}
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <Badge variant="default" className="text-[9px] bg-green-500/10 text-green-700 border-green-200">Active</Badge>
-                        {a.schedule && <span className="text-[9px] text-muted-foreground">{a.schedule}</span>}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Pipeline Blueprints — Conference, Editron, and API templates */}
-      <div>
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Pipeline Blueprints</p>
-        <LegacyPipelinesView orgId={orgId} />
-      </div>
-    </div>
-  );
-}
-
-function TopologyIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
-  const knowledgeQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['projectKnowledge', entry.id],
-      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const topologyItems = useMemo(() => {
-    const all: { title: string; summary?: string; coverage?: number; projectName: string; projectId: string; isStale: boolean }[] = [];
-    knowledgeQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      ((q.data as any).sources_by_type?.topology_snapshot || []).forEach((src: any) => {
-        all.push({ title: src.source_title, summary: src.source_summary, coverage: src.coverage_score, projectName: entry.name, projectId: entry.id, isStale: src.is_stale || false });
-      });
-    });
-    return all;
-  }, [knowledgeQueries, projectEntries]);
-
-  const isLoading = knowledgeQueries.some(q => q.isLoading);
-
-  if (isLoading) return (
-    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-      <Loader2 className="h-4 w-4 animate-spin" />Loading topology data...
-    </div>
-  );
-
-  if (topologyItems.length === 0) return (
-    <Card className="bg-card/80 border-border/50">
-      <CardContent className="py-8 text-center">
-        <Network className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-        <p className="text-sm text-muted-foreground">No topology snapshots in the knowledge graph yet.</p>
-      </CardContent>
-    </Card>
-  );
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {topologyItems.map((t, i) => (
-          <Card key={i} className={`bg-card/80 ${t.isStale ? 'border-yellow-500/30' : 'border-border/50'}`}>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start gap-2">
-                <Network className="h-4 w-4 text-[hsl(var(--info))] shrink-0 mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{t.title}</p>
-                  {t.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.summary}</p>}
-                  <div className="flex items-center justify-between mt-1.5">
-                    <Link to={`/projects/${t.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground">{t.projectName}</Link>
-                    {t.coverage != null && <span className="text-[10px] text-muted-foreground">{Math.round(t.coverage * 100)}% coverage</span>}
-                  </div>
-                  {t.isStale && <Badge variant="outline" className="text-[9px] mt-1 text-yellow-600 border-yellow-600">Stale</Badge>}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 
 // ── Social Tab ────────────────────────────────────────────────────────────────
 
@@ -2845,6 +3149,7 @@ function IntegrationsTab({ orgId }: { orgId: string }) {
     queryKey: ['qb-status-org', orgId],
     queryFn: () => quickbooksApi.getStatus(orgId),
     staleTime: 30_000,
+    retry: false,
   });
 
   const handleQbConnect = () => { window.location.href = quickbooksApi.getConnectUrl(orgId); };
@@ -3182,6 +3487,7 @@ function CommunicationSection() {
     queryKey: ['discord-active-sessions'],
     queryFn: () => discordApi.activeSessions(),
     staleTime: 30_000,
+    retry: false,
   });
 
   return (
@@ -3297,82 +3603,505 @@ function DevelopmentSection() {
 
 // ── Members Tab ───────────────────────────────────────────────────────────────
 
+function MemberAssignments({ orgId, userId }: { orgId: string; userId: string }) {
+  const queryClient = useQueryClient();
+  const { data: assignments, isLoading } = useQuery({
+    queryKey: ['member-assignments', orgId, userId],
+    queryFn: () => organizationsApi.getMemberAssignments(orgId, userId),
+  });
+
+  // Fetch org projects and clients for assignment dropdowns
+  const { data: orgClients = [] } = useQuery<ClientData[]>({
+    queryKey: ['orgClients', orgId],
+    queryFn: () => organizationsApi.getClients(orgId),
+  });
+
+  const [assignType, setAssignType] = useState<string>('');
+  const [assignTargetId, setAssignTargetId] = useState('');
+  const [assignRole, setAssignRole] = useState('editor');
+
+  // Fetch org projects via API
+  const { data: orgProjects = [] } = useQuery<any[]>({
+    queryKey: ['org-projects-list', orgId],
+    queryFn: async () => {
+      const res = await fetch(resolveApiUrl(`/api/projects?organization_id=${orgId}`), { credentials: 'include' });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.data || [];
+    },
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: () => organizationsApi.assignMember(orgId, userId, assignType, assignTargetId, assignRole),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
+      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+      setAssignType('');
+      setAssignTargetId('');
+    },
+  });
+
+  const unassignProjectMutation = useMutation({
+    mutationFn: (projectId: string) => organizationsApi.unassignProject(orgId, userId, projectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
+      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+    },
+  });
+
+  const unassignClientMutation = useMutation({
+    mutationFn: (clientId: string) => organizationsApi.unassignClient(orgId, userId, clientId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
+      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+    },
+  });
+
+  if (isLoading) return <div className="text-xs text-muted-foreground py-2">Loading assignments...</div>;
+
+  const projectAssignments = assignments?.projects || [];
+  const clientAssignments = assignments?.clients || [];
+  const taskAssignments = assignments?.tasks || [];
+  const watchedTasks = assignments?.watched_tasks || [];
+
+  return (
+    <div className="pl-11 pb-3 space-y-3">
+      {/* Assigned projects */}
+      {projectAssignments.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">Projects</p>
+          <div className="flex flex-wrap gap-1">
+            {projectAssignments.map((p: any) => (
+              <Badge key={p.project_id} variant="secondary" className="text-xs gap-1">
+                <FolderOpen className="h-3 w-3" />
+                {p.project_name} ({p.role})
+                <button onClick={() => unassignProjectMutation.mutate(p.project_id)} className="ml-1 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Assigned clients */}
+      {clientAssignments.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">Clients</p>
+          <div className="flex flex-wrap gap-1">
+            {clientAssignments.map((c: any) => (
+              <Badge key={c.client_id} variant="secondary" className="text-xs gap-1">
+                <Briefcase className="h-3 w-3" />
+                {c.client_name} ({c.role})
+                <button onClick={() => unassignClientMutation.mutate(c.client_id)} className="ml-1 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Assigned tasks */}
+      {taskAssignments.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">Tasks (assignee)</p>
+          <div className="flex flex-wrap gap-1">
+            {taskAssignments.map((t: any) => (
+              <Badge key={t.task_id} variant="outline" className="text-xs">
+                {t.title} <span className="text-muted-foreground ml-1">({t.project_name})</span>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Watched tasks */}
+      {watchedTasks.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">Tasks (watching)</p>
+          <div className="flex flex-wrap gap-1">
+            {watchedTasks.map((t: any) => (
+              <Badge key={t.task_id} variant="outline" className="text-xs">
+                <Eye className="h-3 w-3 mr-1" />
+                {t.title} <span className="text-muted-foreground ml-1">({t.project_name})</span>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {projectAssignments.length === 0 && clientAssignments.length === 0 && taskAssignments.length === 0 && (
+        <p className="text-xs text-muted-foreground">No assignments yet</p>
+      )}
+
+      {/* Quick assign */}
+      <div className="flex items-center gap-2 pt-1">
+        <Select value={assignType} onValueChange={(v) => { setAssignType(v); setAssignTargetId(''); }}>
+          <SelectTrigger className="w-[120px] h-7 text-xs">
+            <SelectValue placeholder="Assign to..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="project">Project</SelectItem>
+            <SelectItem value="client">Client</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {assignType === 'project' && (
+          <>
+            <Select value={assignTargetId} onValueChange={setAssignTargetId}>
+              <SelectTrigger className="w-[180px] h-7 text-xs">
+                <SelectValue placeholder="Select project..." />
+              </SelectTrigger>
+              <SelectContent>
+                {orgProjects
+                  .filter((p: any) => !projectAssignments.some((a: any) => a.project_id === p.id))
+                  .map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Select value={assignRole} onValueChange={setAssignRole}>
+              <SelectTrigger className="w-[90px] h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="viewer">Viewer</SelectItem>
+                <SelectItem value="editor">Editor</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        )}
+
+        {assignType === 'client' && (
+          <Select value={assignTargetId} onValueChange={setAssignTargetId}>
+            <SelectTrigger className="w-[180px] h-7 text-xs">
+              <SelectValue placeholder="Select client..." />
+            </SelectTrigger>
+            <SelectContent>
+              {orgClients
+                .filter((c: any) => !clientAssignments.some((a: any) => a.client_id === c.id))
+                .map((c: any) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {assignType && assignTargetId && (
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => assignMutation.mutate()} disabled={assignMutation.isPending}>
+            <Plus className="h-3 w-3 mr-1" />
+            Assign
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
-  const { data: members = [] } = useQuery<OrgMember[]>({
+  const queryClient = useQueryClient();
+  const { data: members = [], isLoading } = useQuery<OrgMember[]>({
     queryKey: ['org-members', orgId],
     queryFn: () => organizationsApi.getMembers(orgId),
     enabled: !!orgId,
   });
 
+  // All users for add-member dropdown
+  const { data: allUsers = [] } = useQuery<any[]>({
+    queryKey: ['all-users'],
+    queryFn: async () => {
+      const res = await fetch(resolveApiUrl('/api/users'), { credentials: 'include' });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.data || [];
+    },
+  });
+
+  const [expandedMember, setExpandedMember] = useState<string | null>(null);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [addUserId, setAddUserId] = useState('');
+  const [addRole, setAddRole] = useState('member');
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [inviteRole, setInviteRole] = useState('member');
+  const [inviteLink, setInviteLink] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const availableUsers = allUsers.filter(
+    (u: any) => !members.some((m) => m.user_id === u.id)
+  );
+
+  const addMemberMutation = useMutation({
+    mutationFn: () => organizationsApi.addMember(orgId, addUserId, addRole),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
+      setAddUserId('');
+      setAddRole('member');
+      setShowAddMember(false);
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (userId: string) => organizationsApi.removeMember(orgId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
+    },
+  });
+
+  const changeRoleMutation = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      organizationsApi.changeMemberRole(orgId, userId, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
+    },
+  });
+
+  const createInviteMutation = useMutation({
+    mutationFn: () => organizationsApi.createInvitation(orgId, inviteRole),
+    onSuccess: (data: any) => {
+      setInviteLink(data.invite_url || '');
+    },
+  });
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <Card className="bg-card/80 backdrop-blur-sm border-border/50">
       <CardHeader>
-        <CardTitle>Team Members</CardTitle>
-        <CardDescription>People with access to {orgName}</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Team Members</CardTitle>
+            <CardDescription>Manage who has access to {orgName}</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => { setShowInviteDialog(true); setInviteLink(''); }}>
+              <Link2 className="h-4 w-4 mr-2" />
+              Invite Link
+            </Button>
+            <Button size="sm" onClick={() => setShowAddMember(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Member
+            </Button>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent>
-        {members.length === 0 ? (
+      <CardContent className="space-y-3">
+        {/* Add member inline form */}
+        {showAddMember && (
+          <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+            <Select value={addUserId} onValueChange={setAddUserId}>
+              <SelectTrigger className="flex-1">
+                <SelectValue placeholder="Select user..." />
+              </SelectTrigger>
+              <SelectContent>
+                {availableUsers.map((u: any) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.full_name || u.username} <span className="text-muted-foreground ml-1">@{u.username}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={addRole} onValueChange={setAddRole}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="viewer">Viewer</SelectItem>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" onClick={() => addMemberMutation.mutate()} disabled={!addUserId || addMemberMutation.isPending}>
+              Add
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowAddMember(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* Member list */}
+        {isLoading ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin" />
+            Loading members...
+          </div>
+        ) : members.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p>No members found</p>
+            <p>No members yet. Add members or send an invite link.</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {members.map((m: OrgMember) => (
-              <div key={m.id} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
-                    {(m.user?.full_name || m.user?.username || '?')[0].toUpperCase()}
+          <div className="space-y-1">
+            {members.map((m: OrgMember) => {
+              const isExpanded = expandedMember === m.user_id;
+              const displayName = m.user?.full_name || m.user?.username || m.user_id;
+              return (
+                <div key={m.id} className="border rounded-lg">
+                  <div
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50"
+                    onClick={() => setExpandedMember(isExpanded ? null : m.user_id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
+                        {displayName[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{displayName}</p>
+                        {m.user?.email && (
+                          <p className="text-xs text-muted-foreground">{m.user.email}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        value={m.role}
+                        onValueChange={(role) => changeRoleMutation.mutate({ userId: m.user_id, role })}
+                      >
+                        <SelectTrigger className="w-[110px] h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="viewer"><div className="flex items-center gap-1"><Eye className="h-3 w-3" /> Viewer</div></SelectItem>
+                          <SelectItem value="member"><div className="flex items-center gap-1"><Users className="h-3 w-3" /> Member</div></SelectItem>
+                          <SelectItem value="admin"><div className="flex items-center gap-1"><Shield className="h-3 w-3" /> Admin</div></SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <span className="text-xs text-muted-foreground hidden sm:inline">
+                        {formatDate(m.joined_at)}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        onClick={() => removeMemberMutation.mutate(m.user_id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">
-                      {m.user?.full_name || m.user?.username || m.user_id}
-                    </p>
-                    {m.user?.email && (
-                      <p className="text-xs text-muted-foreground">{m.user.email}</p>
-                    )}
-                  </div>
+                  {isExpanded && (
+                    <MemberAssignments orgId={orgId} userId={m.user_id} />
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="capitalize">{m.role}</Badge>
-                  <span className="text-xs text-muted-foreground">
-                    Since {formatDate(m.joined_at)}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>
+
+      {/* Invite Link Dialog */}
+      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Invite Link</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Role for new members</Label>
+              <Select value={inviteRole} onValueChange={setInviteRole}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                  <SelectItem value="member">Member</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {!inviteLink ? (
+              <Button onClick={() => createInviteMutation.mutate()} disabled={createInviteMutation.isPending} className="w-full">
+                {createInviteMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
+                Generate Link
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Input value={inviteLink} readOnly className="text-xs" />
+                  <Button size="sm" variant="outline" onClick={handleCopyLink}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                {copied && <p className="text-xs text-green-600">Copied to clipboard!</p>}
+                <p className="text-xs text-muted-foreground">This link expires in 7 days.</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInviteDialog(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+// Map from path segments to tab names
+const PATH_TO_TAB: Record<string, string> = {
+  crm: 'overview',
+  'crm/contacts': 'contacts',
+  'crm/companies': 'companies',
+  'crm/pipeline': 'pipelines',
+  'crm/deliverables': 'deliverables',
+  social: 'social',
+  intelligence: 'knowledge',
+  'intelligence/data-sources': 'knowledge',
+  'intelligence/artifacts': 'knowledge',
+  'intelligence/workflows': 'knowledge',
+  'intelligence/pulse': 'knowledge',
+  'intelligence/topology': 'knowledge',
+  members: 'members',
+  projects: 'projects',
+  integrations: 'integrations',
+};
+
+// Map from path segments to intelligence view
+const PATH_TO_VIEW: Record<string, string> = {
+  'intelligence/data-sources': 'datasources',
+  'intelligence/artifacts': 'artifacts',
+  'intelligence/workflows': 'workflows',
+  'intelligence/pulse': 'pulse',
+  'intelligence/topology': 'topology',
+};
+
 export function OrganizationProfilePage({ defaultTab, defaultPipeline }: OrganizationProfilePageProps = {}) {
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const tabFromUrl = searchParams.get('tab') || defaultTab || 'overview';
+  // Derive tab from URL path (new route pattern) or search params (legacy)
+  const orgBase = `/organizations/${orgId}`;
+  const pathSuffix = location.pathname.startsWith(orgBase)
+    ? location.pathname.slice(orgBase.length + 1) // strip leading "/"
+    : '';
+
+  const tabFromPath = pathSuffix ? PATH_TO_TAB[pathSuffix] : undefined;
+  const viewFromPath = pathSuffix ? PATH_TO_VIEW[pathSuffix] : undefined;
+  const usingPathRoutes = !!tabFromPath;
+
+  const tabFromUrl = tabFromPath || searchParams.get('tab') || defaultTab || 'overview';
   const pipelineFromUrl = searchParams.get('pipeline') || defaultPipeline;
   const clientFilter = searchParams.get('client');
-  // viewFromUrl kept for potential future deep-link use
-  const _viewFromUrl = searchParams.get('view'); void _viewFromUrl;
-
-  const setTab = (tab: string) => {
-    const params = new URLSearchParams(searchParams);
-    params.set('tab', tab);
-    if (tab !== 'pipelines') params.delete('pipeline');
-    if (tab !== 'projects') params.delete('client');
-    if (tab !== 'knowledge') params.delete('view');
-    setSearchParams(params, { replace: true });
-  };
+  const viewFromUrl = viewFromPath || searchParams.get('view');
 
   const clearClientFilter = () => {
-    const params = new URLSearchParams(searchParams);
-    params.delete('client');
-    setSearchParams(params, { replace: true });
+    if (usingPathRoutes) {
+      navigate(`${orgBase}/projects`);
+    } else {
+      const params = new URLSearchParams(searchParams);
+      params.delete('client');
+      setSearchParams(params, { replace: true });
+    }
   };
 
   const { data: org, isLoading: orgLoading } = useQuery<OrganizationData>({
@@ -3468,69 +4197,22 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
             </div>
           </div>
 
-          {/* Stat pills */}
-          <div className="flex items-center gap-3 mt-4 flex-wrap">
-            <StatPill icon={FolderOpen} label="Projects" value={allProjects.length} />
-            <StatPill icon={Briefcase} label="Clients" value={clients.length} />
-            <StatPill icon={Users} label="Members" value={members.length} />
-            <StatPill icon={DollarSign} label="Pipeline" value={formatCurrency(totalDealValue)} />
-          </div>
+          {/* Stat pills — overview only */}
+          {tabFromUrl === 'overview' && (
+            <div className="flex items-center gap-3 mt-4 flex-wrap">
+              <StatPill icon={FolderOpen} label="Projects" value={allProjects.length} />
+              <StatPill icon={Briefcase} label="Clients" value={clients.length} />
+              <StatPill icon={Users} label="Members" value={members.length} />
+              <StatPill icon={DollarSign} label="Pipeline" value={formatCurrency(totalDealValue)} />
+            </div>
+          )}
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-[1600px] mx-auto px-6 py-5">
-          <Tabs value={tabFromUrl} onValueChange={setTab}>
-            <div className="flex items-center justify-between mb-6">
-            <TabsList>
-              <TabsTrigger value="overview">
-                <LayoutGrid className="h-4 w-4 mr-2" />
-                Overview
-              </TabsTrigger>
-              <TabsTrigger value="pipelines">
-                <Target className="h-4 w-4 mr-2" />
-                Pipelines
-              </TabsTrigger>
-              <TabsTrigger value="contacts">
-                <Contact2 className="h-4 w-4 mr-2" />
-                Contacts
-              </TabsTrigger>
-              <TabsTrigger value="companies">
-                <Building2 className="h-4 w-4 mr-2" />
-                Companies
-              </TabsTrigger>
-              <TabsTrigger value="projects">
-                <FolderOpen className="h-4 w-4 mr-2" />
-                Projects
-              </TabsTrigger>
-              <TabsTrigger value="social">
-                <Share2 className="h-4 w-4 mr-2" />
-                Social
-              </TabsTrigger>
-              <TabsTrigger value="knowledge">
-                <Brain className="h-4 w-4 mr-2" />
-                Intelligence
-              </TabsTrigger>
-              <TabsTrigger value="members">
-                <Users className="h-4 w-4 mr-2" />
-                Members
-              </TabsTrigger>
-              <TabsTrigger value="integrations">
-                <Plug className="h-4 w-4 mr-2" />
-                Integrations
-              </TabsTrigger>
-            </TabsList>
-            <Link
-              to={`/organizations/${orgId}/data-sources`}
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground border rounded-md px-3 py-1.5 transition-colors"
-            >
-              <Database className="h-3.5 w-3.5" />
-              Data Library
-            </Link>
-            </div>
-
-            <TabsContent value="overview">
+          {tabFromUrl === 'overview' && (
               <OverviewTab
                 orgId={orgId}
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
@@ -3540,50 +4222,53 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
                 contactCount={contacts.length}
-                onSwitchTab={setTab}
               />
-            </TabsContent>
+            )}
 
-            <TabsContent value="pipelines">
+            {tabFromUrl === 'pipelines' && (
               <PipelinesTab orgId={orgId} defaultPipeline={pipelineFromUrl || undefined} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="contacts">
+            {tabFromUrl === 'contacts' && (
               <ContactsTab orgId={orgId} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="companies">
+            {tabFromUrl === 'companies' && (
               <CompaniesTab orgId={orgId} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="projects">
+            {tabFromUrl === 'deliverables' && (
+              <DeliverablesTab orgId={orgId} projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
+            )}
+
+            {tabFromUrl === 'projects' && (
               <ProjectsTab
                 orgId={orgId}
                 sidebarOrg={sidebarOrg}
                 clientFilter={clientFilter}
                 onClearClientFilter={clearClientFilter}
               />
-            </TabsContent>
+            )}
 
-            <TabsContent value="social">
+            {tabFromUrl === 'social' && (
               <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="knowledge">
-              <IntelligenceTab
+            {tabFromUrl === 'knowledge' && (
+              <KnowledgeTab
+                orgId={orgId!}
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
-                orgId={orgId}
+                view={viewFromUrl}
               />
-            </TabsContent>
+            )}
 
-            <TabsContent value="members">
+            {tabFromUrl === 'members' && (
               <MembersTab orgId={orgId} orgName={org.name} />
-            </TabsContent>
+            )}
 
-            <TabsContent value="integrations">
+            {tabFromUrl === 'integrations' && (
               <IntegrationsTab orgId={orgId} />
-            </TabsContent>
-          </Tabs>
+            )}
         </div>
       </div>
     </div>

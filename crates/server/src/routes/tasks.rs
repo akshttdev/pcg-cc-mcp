@@ -479,6 +479,7 @@ pub async fn update_task(
     let board_id = board_change.unwrap_or(existing_task.board_id);
     let priority = payload.priority.unwrap_or(existing_task.priority.clone());
     let assignee_id = payload.assignee_id.or(existing_task.assignee_id.clone());
+    let assignee_type = payload.assignee_type.or(existing_task.assignee_type.clone());
     let assigned_agent = payload
         .assigned_agent
         .or(existing_task.assigned_agent.clone());
@@ -529,6 +530,7 @@ pub async fn update_task(
         board_id,
         priority,
         assignee_id,
+        assignee_type,
         assigned_agent,
         assigned_mcps,
         requires_approval,
@@ -655,6 +657,7 @@ pub async fn approve_task(
         task.board_id,
         task.priority,
         task.assignee_id,
+        task.assignee_type,
         task.assigned_agent,
         task.assigned_mcps,
         task.requires_approval,
@@ -689,6 +692,7 @@ pub async fn request_changes(
         task.board_id,
         task.priority,
         task.assignee_id,
+        task.assignee_type,
         task.assigned_agent,
         task.assigned_mcps,
         task.requires_approval,
@@ -785,6 +789,7 @@ pub async fn reject_task(
         task.board_id,
         task.priority,
         task.assignee_id,
+        task.assignee_type,
         task.assigned_agent,
         task.assigned_mcps,
         task.requires_approval,
@@ -801,30 +806,93 @@ pub async fn reject_task(
     Ok(ResponseJson(ApiResponse::success(rejected_task)))
 }
 
+/// POST /projects/:project_id/tasks/:task_id/watch — add current user as watcher
+pub async fn watch_task(
+    Extension(task): Extension<Task>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    let user_id = access_context.user_id.to_string();
+    Task::add_watcher(&deployment.db().pool, task.id, &user_id).await?;
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
+/// DELETE /projects/:project_id/tasks/:task_id/watch — remove current user as watcher
+pub async fn unwatch_task(
+    Extension(task): Extension<Task>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    let user_id = access_context.user_id.to_string();
+    Task::remove_watcher(&deployment.db().pool, task.id, &user_id).await?;
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
+/// GET /tasks/watched — get all tasks the current user is watching
+pub async fn get_watched_tasks(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<AssignedTask>>>, ApiError> {
+    use db::models::project::Project;
+
+    let user_id_str = access_context.user_id.to_string();
+    let tasks = Task::find_watched_by_user(&deployment.db().pool, &user_id_str).await?;
+
+    let mut project_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for task in &tasks {
+        let pid = task.project_id.to_string();
+        if !project_names.contains_key(&pid) {
+            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, task.project_id).await {
+                project_names.insert(pid, project.name);
+            }
+        }
+    }
+
+    let watched: Vec<AssignedTask> = tasks.into_iter().map(|task| {
+        let pid = task.project_id.to_string();
+        let priority_str = serde_json::to_value(&task.priority).ok()
+            .and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "low".to_string());
+        let status_str = serde_json::to_value(&task.status).ok()
+            .and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "todo".to_string());
+        AssignedTask {
+            id: task.id.to_string(),
+            title: task.title,
+            status: status_str,
+            priority: priority_str,
+            due_date: task.due_date.map(|d| d.to_rfc3339()),
+            project_name: project_names.get(&pid).cloned().unwrap_or_else(|| "Unknown".to_string()),
+            project_id: pid,
+        }
+    }).collect();
+
+    Ok(ResponseJson(ApiResponse::success(watched)))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let task_id_router = Router::new()
         .route("/", get(get_task).put(update_task).delete(delete_task))
         .route("/approve", post(approve_task))
         .route("/request-changes", post(request_changes))
         .route("/reject", post(reject_task))
+        .route("/watch", post(watch_task).delete(unwatch_task))
         .layer(from_fn_with_state(deployment.clone(), load_task_middleware));
 
     let inner = Router::new()
         .route("/", get(get_tasks).post(create_task))
         .route("/stream/ws", get(stream_tasks_ws))
         .route("/create-and-start", post(create_task_and_start))
+        .route("/assigned-to-me", get(get_assigned_to_me))
+        .route("/watched", get(get_watched_tasks))
         .nest("/{task_id}", task_id_router);
 
-    // mount under /projects/:project_id/tasks
+    // mount under /tasks
     Router::new().nest("/tasks", inner)
 }
 
 /// Global tasks router - mounts at /api/tasks (not nested under projects)
-pub fn global_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+/// Note: assigned-to-me and watched routes are now in the main router() to avoid
+/// conflicts with the /{task_id} parameterized route. This router is kept for
+/// backwards compatibility but delegates to the same routes via the main router.
+pub fn global_router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/tasks/assigned-to-me", get(get_assigned_to_me))
-        .layer(from_fn_with_state(
-            deployment.clone(),
-            crate::middleware::require_auth,
-        ))
 }

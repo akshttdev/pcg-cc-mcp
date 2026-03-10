@@ -250,7 +250,7 @@ impl Organization {
 
     pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
-            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at FROM organizations ORDER BY name ASC"
+            "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id FROM organizations ORDER BY name ASC"
         )
         .fetch_all(pool)
         .await

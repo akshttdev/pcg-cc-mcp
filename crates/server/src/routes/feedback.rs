@@ -95,6 +95,7 @@ pub async fn submit_feedback(
         image_ids: None,
         priority: Some(priority),
         assignee_id: None,
+        assignee_type: None,
         assigned_agent: None,
         agent_id: None,
         assigned_mcps: None,

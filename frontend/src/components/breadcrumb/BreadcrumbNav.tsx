@@ -113,19 +113,6 @@ export function BreadcrumbNav() {
   if (project && projectId && !taskId) {
     if (location.pathname.includes('/knowledge')) {
       items.push({ label: 'Knowledge', href: `/projects/${projectId}/knowledge` });
-    } else if (location.pathname.includes('/crm')) {
-      items.push({ label: 'CRM', href: `/projects/${projectId}/crm` });
-      if (location.pathname.includes('/crm/sales')) {
-        items.push({ label: 'Sales', href: `/projects/${projectId}/crm/sales` });
-      } else if (location.pathname.includes('/crm/delivery')) {
-        items.push({ label: 'Delivery', href: `/projects/${projectId}/crm/delivery` });
-      } else if (location.pathname.includes('/crm/clients')) {
-        items.push({ label: 'Clients', href: `/projects/${projectId}/crm/clients` });
-      } else if (location.pathname.includes('/crm/conferences')) {
-        items.push({ label: 'Conferences', href: `/projects/${projectId}/crm/conferences` });
-      } else if (location.pathname.includes('/crm/overview')) {
-        items.push({ label: 'Overview', href: `/projects/${projectId}/crm/overview` });
-      }
     } else if (location.pathname.includes('/deliverables')) {
       items.push({ label: 'Deliverables', href: `/projects/${projectId}/deliverables` });
     } else if (location.pathname.includes('/control')) {
@@ -140,11 +127,11 @@ export function BreadcrumbNav() {
     if (location.pathname.includes('/data-sources/')) {
       items.push({
         label: 'Intelligence',
-        href: `/organizations/${orgId}?tab=knowledge`,
+        href: `/organizations/${orgId}/intelligence`,
       });
       items.push({
         label: 'Data Sources',
-        href: `/organizations/${orgId}?tab=knowledge&view=datasources`,
+        href: `/organizations/${orgId}/intelligence/data-sources`,
       });
       if (dataSource) {
         const title = dataSource.title.length > 50
@@ -155,14 +142,40 @@ export function BreadcrumbNav() {
           href: `/organizations/${orgId}/data-sources/${dataSourceId}`,
         });
       }
-    } else if (location.pathname.includes('/crm/acquisition')) {
-      items.push({ label: 'CRM', href: `/organizations/${orgId}?tab=crm` });
-      items.push({ label: 'Acquisition', href: `/organizations/${orgId}/crm/acquisition` });
-    } else if (location.pathname.includes('/crm/lifecycle')) {
-      items.push({ label: 'CRM', href: `/organizations/${orgId}?tab=crm` });
-      items.push({ label: 'Lifecycle', href: `/organizations/${orgId}/crm/lifecycle` });
+    } else if (location.pathname.includes('/crm')) {
+      items.push({ label: 'CRM', href: `/organizations/${orgId}/crm` });
+      if (location.pathname.includes('/crm/contacts')) {
+        items.push({ label: 'Contacts', href: `/organizations/${orgId}/crm/contacts` });
+      } else if (location.pathname.includes('/crm/companies')) {
+        items.push({ label: 'Companies', href: `/organizations/${orgId}/crm/companies` });
+      } else if (location.pathname.includes('/crm/pipeline')) {
+        items.push({ label: 'Pipeline', href: `/organizations/${orgId}/crm/pipeline` });
+      } else if (location.pathname.includes('/crm/deliverables')) {
+        items.push({ label: 'Deliverables', href: `/organizations/${orgId}/crm/deliverables` });
+      }
+    } else if (location.pathname.includes('/intelligence')) {
+      items.push({ label: 'Intelligence', href: `/organizations/${orgId}/intelligence` });
+      if (location.pathname.includes('/intelligence/data-sources')) {
+        items.push({ label: 'Data Sources', href: `/organizations/${orgId}/intelligence/data-sources` });
+      } else if (location.pathname.includes('/intelligence/artifacts')) {
+        items.push({ label: 'Artifacts', href: `/organizations/${orgId}/intelligence/artifacts` });
+      } else if (location.pathname.includes('/intelligence/workflows')) {
+        items.push({ label: 'Workflows', href: `/organizations/${orgId}/intelligence/workflows` });
+      } else if (location.pathname.includes('/intelligence/pulse')) {
+        items.push({ label: 'Pulse', href: `/organizations/${orgId}/intelligence/pulse` });
+      } else if (location.pathname.includes('/intelligence/topology')) {
+        items.push({ label: 'Topology', href: `/organizations/${orgId}/intelligence/topology` });
+      }
+    } else if (location.pathname.includes('/social')) {
+      items.push({ label: 'Social', href: `/organizations/${orgId}/social` });
+    } else if (location.pathname.includes('/members')) {
+      items.push({ label: 'Members', href: `/organizations/${orgId}/members` });
+    } else if (location.pathname.includes('/projects')) {
+      items.push({ label: 'Projects', href: `/organizations/${orgId}/projects` });
+    } else if (location.pathname.includes('/integrations')) {
+      items.push({ label: 'Integrations', href: `/organizations/${orgId}/integrations` });
     } else if (location.pathname.includes('/clients/')) {
-      items.push({ label: 'Clients', href: `/organizations/${orgId}?tab=clients` });
+      items.push({ label: 'Clients', href: `/organizations/${orgId}/crm/companies` });
     }
   }
 

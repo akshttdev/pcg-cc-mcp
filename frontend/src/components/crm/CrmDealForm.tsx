@@ -100,7 +100,7 @@ export function CrmDealForm({
         await onSubmit(updateData);
       } else {
         const createData: CreateCrmDeal = {
-          project_id: projectId,
+          organization_id: projectId,
           crm_pipeline_id: pipelineId,
           crm_stage_id: formData.stageId || undefined,
           crm_contact_id: formData.contactId || undefined,

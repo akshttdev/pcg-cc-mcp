@@ -1,0 +1,35 @@
+[     507ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=eb1b6e59:4392
+[     508ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://localhost:3000/node_modules/.vite/deps/react-router-dom.js?v=eb1b6e59:4392
+[     517ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/auth/me:0
+[     520ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/auth/me:0
+[     560ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/sidebar/tree:0
+[     560ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:38:42.860Z} @ http://localhost:3000/src/lib/api.ts:98
+[     561ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/topsi/status:0
+[     561ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[     561ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:42.860Z} @ http://localhost:3000/src/lib/api.ts:98
+[     561ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/topsi/status:0
+[    1566ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[    1566ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:43.865Z} @ http://localhost:3000/src/lib/api.ts:98
+[    1566ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/sidebar/tree:0
+[    1566ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:38:43.866Z} @ http://localhost:3000/src/lib/api.ts:98
+[    3573ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/sidebar/tree:0
+[    3574ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:38:45.873Z} @ http://localhost:3000/src/lib/api.ts:98
+[    3574ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[    3574ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:45.873Z} @ http://localhost:3000/src/lib/api.ts:98
+[    7584ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/sidebar/tree:0
+[    7585ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/sidebar/tree, timestamp: 2026-03-06T17:38:49.884Z} @ http://localhost:3000/src/lib/api.ts:98
+[    7586ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[    7586ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:49.885Z} @ http://localhost:3000/src/lib/api.ts:98
+[    7593ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[    7593ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:49.893Z} @ http://localhost:3000/src/lib/api.ts:98
+[    8598ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[    8598ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:50.898Z} @ http://localhost:3000/src/lib/api.ts:98
+[   10604ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[   10604ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:52.904Z} @ http://localhost:3000/src/lib/api.ts:98
+[   14227ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/auth/login:0
+[   14227ms] [ERROR] Login failed: Error: Login failed
+    at login (http://localhost:3000/src/lib/auth-api.ts:14:11)
+    at async login (http://localhost:3000/src/contexts/AuthContext.tsx:49:27)
+    at async handleSubmit (http://localhost:3000/src/components/auth/LoginPage.tsx:39:7) @ http://localhost:3000/src/contexts/AuthContext.tsx:52
+[   14610ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:3000/api/projects:0
+[   14610ms] [ERROR] [API Error] {message: Unauthorized, status: 401, response: Response, endpoint: http://localhost:3000/api/projects, timestamp: 2026-03-06T17:38:56.910Z} @ http://localhost:3000/src/lib/api.ts:98

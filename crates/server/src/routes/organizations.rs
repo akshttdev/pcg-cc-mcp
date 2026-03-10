@@ -8,6 +8,7 @@ use db::models::person::Person;
 use db::models::user::{
     CreateOrganization, Organization, OrganizationMember, UpdateOrganization,
 };
+use db::models::company::Company;
 use db::models::person_association::{PersonOrgContact, UpsertPersonOrgContact};
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};
@@ -511,6 +512,380 @@ async fn add_org_person_contact(
     Ok(Json(ApiResponse::success(contact)))
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Member assignment endpoints
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct AssignMemberRequest {
+    /// "project", "client", or "task"
+    #[serde(rename = "type")]
+    pub assign_type: String,
+    pub target_id: Uuid,
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WatchTaskRequest {
+    pub task_id: Uuid,
+}
+
+/// Helper: verify caller is org admin or platform admin
+async fn require_org_admin_access(
+    pool: &sqlx::SqlitePool,
+    access_context: &AccessContext,
+    org_id: Uuid,
+) -> Result<(), ApiError> {
+    if access_context.is_admin {
+        return Ok(());
+    }
+    let role = Organization::get_user_role(pool, org_id, access_context.user_id).await?;
+    match role.as_deref() {
+        Some("admin") => Ok(()),
+        _ => Err(ApiError::Forbidden("Only org admins can manage member assignments".into())),
+    }
+}
+
+/// Helper: verify target user is an org member
+async fn require_is_org_member(
+    pool: &sqlx::SqlitePool,
+    org_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    let role = Organization::get_user_role(pool, org_id, user_id).await?;
+    if role.is_none() {
+        return Err(ApiError::BadRequest("User is not a member of this organization".into()));
+    }
+    Ok(())
+}
+
+/// POST /api/organizations/:id/members/:uid/assign — assign member to project/client/task
+pub async fn assign_member(
+    Path((org_id, user_id)): Path<(Uuid, Uuid)>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Json(data): Json<AssignMemberRequest>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    require_org_admin_access(pool, &access_context, org_id).await?;
+    require_is_org_member(pool, org_id, user_id).await?;
+
+    match data.assign_type.as_str() {
+        "project" => {
+            // Verify project belongs to this org
+            let org_id_bytes = org_id.as_bytes().to_vec();
+            let target_bytes = data.target_id.as_bytes().to_vec();
+            let belongs: Option<i64> = sqlx::query_scalar(
+                "SELECT 1 FROM projects WHERE id = ? AND organization_id = ? AND deleted_at IS NULL LIMIT 1"
+            )
+            .bind(&target_bytes)
+            .bind(&org_id_bytes)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+            if belongs.is_none() {
+                return Err(ApiError::BadRequest("Project not found in this organization".into()));
+            }
+
+            let role = data.role.as_deref().unwrap_or("editor");
+            let member_id = Uuid::new_v4();
+            sqlx::query(
+                r#"INSERT OR IGNORE INTO project_members (id, project_id, user_id, role, granted_by)
+                   VALUES (?, ?, ?, ?, ?)"#,
+            )
+            .bind(member_id.as_bytes().to_vec())
+            .bind(&target_bytes)
+            .bind(user_id.as_bytes().to_vec())
+            .bind(role)
+            .bind(access_context.user_id.as_bytes().to_vec())
+            .execute(pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to assign to project: {}", e)))?;
+
+            Ok(Json(ApiResponse::success(serde_json::json!({
+                "assigned": "project",
+                "project_id": data.target_id.to_string(),
+                "role": role,
+            }))))
+        }
+        "client" => {
+            // Verify client belongs to this org
+            let org_id_bytes = org_id.as_bytes().to_vec();
+            let target_bytes = data.target_id.as_bytes().to_vec();
+            let belongs: Option<i64> = sqlx::query_scalar(
+                "SELECT 1 FROM clients WHERE id = ? AND organization_id = ? AND deleted_at IS NULL LIMIT 1"
+            )
+            .bind(&target_bytes)
+            .bind(&org_id_bytes)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+            if belongs.is_none() {
+                return Err(ApiError::BadRequest("Client not found in this organization".into()));
+            }
+
+            let role = data.role.as_deref().unwrap_or("viewer");
+            let member_id = Uuid::new_v4();
+            sqlx::query(
+                r#"INSERT OR IGNORE INTO client_members (id, client_id, user_id, role, granted_by)
+                   VALUES (?, ?, ?, ?, ?)"#,
+            )
+            .bind(member_id.as_bytes().to_vec())
+            .bind(&target_bytes)
+            .bind(user_id.as_bytes().to_vec())
+            .bind(role)
+            .bind(access_context.user_id.as_bytes().to_vec())
+            .execute(pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to assign to client: {}", e)))?;
+
+            Ok(Json(ApiResponse::success(serde_json::json!({
+                "assigned": "client",
+                "client_id": data.target_id.to_string(),
+                "role": role,
+            }))))
+        }
+        "task" => {
+            // Verify task belongs to a project in this org
+            let org_id_bytes = org_id.as_bytes().to_vec();
+            let belongs: Option<i64> = sqlx::query_scalar(
+                r#"SELECT 1 FROM tasks t
+                   JOIN projects p ON p.id = t.project_id
+                   WHERE t.id = ? AND p.organization_id = ? AND t.deleted_at IS NULL LIMIT 1"#
+            )
+            .bind(data.target_id.to_string())
+            .bind(&org_id_bytes)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+            if belongs.is_none() {
+                return Err(ApiError::BadRequest("Task not found in this organization".into()));
+            }
+
+            sqlx::query(
+                "UPDATE tasks SET assignee_id = ?, assignee_type = 'user' WHERE id = ?"
+            )
+            .bind(user_id.to_string())
+            .bind(data.target_id.to_string())
+            .execute(pool)
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to assign task: {}", e)))?;
+
+            Ok(Json(ApiResponse::success(serde_json::json!({
+                "assigned": "task",
+                "task_id": data.target_id.to_string(),
+            }))))
+        }
+        _ => Err(ApiError::BadRequest("Invalid assignment type. Must be 'project', 'client', or 'task'".into())),
+    }
+}
+
+/// POST /api/organizations/:id/members/:uid/watch — add user as task watcher
+pub async fn watch_task_for_member(
+    Path((org_id, user_id)): Path<(Uuid, Uuid)>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+    Json(data): Json<WatchTaskRequest>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+    require_org_admin_access(pool, &access_context, org_id).await?;
+    require_is_org_member(pool, org_id, user_id).await?;
+
+    // Use the Task::add_watcher method from Phase 2
+    db::models::task::Task::add_watcher(pool, data.task_id, &user_id.to_string()).await
+        .map_err(|e| ApiError::InternalError(format!("Failed to add watcher: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "watching": "task",
+        "task_id": data.task_id.to_string(),
+        "user_id": user_id.to_string(),
+    }))))
+}
+
+/// GET /api/organizations/:id/members/:uid/assignments — get all assignments for a member
+pub async fn get_member_assignments(
+    Path((org_id, user_id)): Path<(Uuid, Uuid)>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // Any org member can view assignments; admins can view anyone's
+    if !access_context.is_admin && access_context.user_id != user_id {
+        require_org_admin_access(pool, &access_context, org_id).await?;
+    }
+    require_is_org_member(pool, org_id, user_id).await?;
+
+    let org_id_bytes = org_id.as_bytes().to_vec();
+    let user_id_bytes = user_id.as_bytes().to_vec();
+
+    // Projects assigned via project_members within this org
+    #[derive(sqlx::FromRow, serde::Serialize)]
+    struct ProjectAssignment {
+        project_id: Vec<u8>,
+        project_name: String,
+        role: String,
+    }
+    let projects: Vec<serde_json::Value> = sqlx::query_as::<_, ProjectAssignment>(
+        r#"SELECT pm.project_id, p.name as project_name, pm.role
+           FROM project_members pm
+           JOIN projects p ON p.id = pm.project_id
+           WHERE pm.user_id = ? AND p.organization_id = ? AND p.deleted_at IS NULL
+           ORDER BY p.name"#,
+    )
+    .bind(&user_id_bytes)
+    .bind(&org_id_bytes)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .filter_map(|r| {
+        let pid = uuid_from_bytes(&r.project_id)?;
+        Some(serde_json::json!({
+            "project_id": pid.to_string(),
+            "project_name": r.project_name,
+            "role": r.role,
+        }))
+    })
+    .collect();
+
+    // Clients assigned via client_members within this org
+    #[derive(sqlx::FromRow)]
+    struct ClientAssignment {
+        client_id: Vec<u8>,
+        client_name: String,
+        role: String,
+    }
+    let clients: Vec<serde_json::Value> = sqlx::query_as::<_, ClientAssignment>(
+        r#"SELECT cm.client_id, c.name as client_name, cm.role
+           FROM client_members cm
+           JOIN clients c ON c.id = cm.client_id
+           WHERE cm.user_id = ? AND c.organization_id = ? AND c.deleted_at IS NULL
+           ORDER BY c.name"#,
+    )
+    .bind(&user_id_bytes)
+    .bind(&org_id_bytes)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .filter_map(|r| {
+        let cid = uuid_from_bytes(&r.client_id)?;
+        Some(serde_json::json!({
+            "client_id": cid.to_string(),
+            "client_name": r.client_name,
+            "role": r.role,
+        }))
+    })
+    .collect();
+
+    // Tasks assigned to this user within this org
+    #[derive(sqlx::FromRow)]
+    struct TaskAssignment {
+        id: String,
+        title: String,
+        status: String,
+        project_name: String,
+    }
+    let tasks: Vec<serde_json::Value> = sqlx::query_as::<_, TaskAssignment>(
+        r#"SELECT t.id, t.title, t.status, p.name as project_name
+           FROM tasks t
+           JOIN projects p ON p.id = t.project_id
+           WHERE t.assignee_id = ? AND p.organization_id = ? AND t.deleted_at IS NULL
+           ORDER BY t.updated_at DESC"#,
+    )
+    .bind(user_id.to_string())
+    .bind(&org_id_bytes)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| serde_json::json!({
+        "task_id": r.id,
+        "title": r.title,
+        "status": r.status,
+        "project_name": r.project_name,
+        "type": "assignee",
+    }))
+    .collect();
+
+    // Tasks watched by this user within this org
+    let watched: Vec<serde_json::Value> = sqlx::query_as::<_, TaskAssignment>(
+        r#"SELECT t.id, t.title, t.status, p.name as project_name
+           FROM tasks t
+           JOIN projects p ON p.id = t.project_id
+           WHERE t.collaborators LIKE ?
+             AND p.organization_id = ? AND t.deleted_at IS NULL
+           ORDER BY t.updated_at DESC"#,
+    )
+    .bind(format!("%\"user_id\":\"{}\",%\"actor_type\":\"watcher\"%", user_id))
+    .bind(&org_id_bytes)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| serde_json::json!({
+        "task_id": r.id,
+        "title": r.title,
+        "status": r.status,
+        "project_name": r.project_name,
+        "type": "watcher",
+    }))
+    .collect();
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "projects": projects,
+        "clients": clients,
+        "tasks": tasks,
+        "watched_tasks": watched,
+    }))))
+}
+
+/// DELETE /api/organizations/:id/members/:uid/assignments/project/:pid
+pub async fn unassign_project(
+    Path((org_id, user_id, project_id)): Path<(Uuid, Uuid, Uuid)>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    require_org_admin_access(pool, &access_context, org_id).await?;
+
+    sqlx::query("DELETE FROM project_members WHERE project_id = ? AND user_id = ?")
+        .bind(project_id.as_bytes().to_vec())
+        .bind(user_id.as_bytes().to_vec())
+        .execute(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(())))
+}
+
+/// DELETE /api/organizations/:id/members/:uid/assignments/client/:cid
+pub async fn unassign_client(
+    Path((org_id, user_id, client_id)): Path<(Uuid, Uuid, Uuid)>,
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    require_org_admin_access(pool, &access_context, org_id).await?;
+
+    sqlx::query("DELETE FROM client_members WHERE client_id = ? AND user_id = ?")
+        .bind(client_id.as_bytes().to_vec())
+        .bind(user_id.as_bytes().to_vec())
+        .execute(pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+    Ok(Json(ApiResponse::success(())))
+}
+
+fn uuid_from_bytes(bytes: &[u8]) -> Option<Uuid> {
+    Uuid::from_slice(bytes).ok()
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/organizations", get(list_organizations).post(create_organization))
@@ -529,12 +904,44 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/organizations/{id}/members/{uid}",
             delete(remove_member),
         )
+        .route(
+            "/organizations/{id}/members/{uid}/assign",
+            post(assign_member),
+        )
+        .route(
+            "/organizations/{id}/members/{uid}/watch",
+            post(watch_task_for_member),
+        )
+        .route(
+            "/organizations/{id}/members/{uid}/assignments",
+            get(get_member_assignments),
+        )
+        .route(
+            "/organizations/{id}/members/{uid}/assignments/project/{pid}",
+            delete(unassign_project),
+        )
+        .route(
+            "/organizations/{id}/members/{uid}/assignments/client/{cid}",
+            delete(unassign_client),
+        )
         .route("/organizations/{id}/generate-invite", post(generate_invite))
         .route("/organizations/{id}/persons", get(get_org_persons))
-        .route("/organizations/{id}/data-sources", get(list_org_data_sources))
+        // data-sources routes handled by data_sources::router
         .route("/data-sources", get(list_data_sources))
         .route(
             "/organizations/{id}/person-contacts",
             get(list_org_person_contacts).post(add_org_person_contact),
         )
+        .route("/organizations/{id}/companies", get(list_org_companies))
+}
+
+/// GET /organizations/:id/companies — list companies created by this org
+async fn list_org_companies(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<Company>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let companies = Company::list(pool, Some(id), None, Some(200)).await
+        .map_err(|e| ApiError::InternalError(e.to_string()))?;
+    Ok(Json(companies))
 }

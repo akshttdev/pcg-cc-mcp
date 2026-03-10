@@ -21,7 +21,8 @@ use db::models::crm_pipeline::{
 
 #[derive(Debug, Deserialize)]
 pub struct ListPipelinesQuery {
-    pub project_id: Uuid,
+    pub organization_id: Uuid,
+
     pub pipeline_type: Option<String>,
 }
 
@@ -30,27 +31,31 @@ pub struct ReorderStagesRequest {
     pub stage_ids: Vec<Uuid>,
 }
 
-/// GET /crm/pipelines - List pipelines for a project
+/// GET /crm/pipelines - List pipelines for an organization
+
 async fn list_pipelines(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<ListPipelinesQuery>,
 ) -> Result<Json<ApiResponse<Vec<CrmPipeline>>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    // Ensure default pipelines exist
-    CrmPipeline::ensure_defaults(pool, query.project_id).await?;
+    // Ensure default pipelines exist for this org
+    CrmPipeline::ensure_defaults_for_org(pool, query.organization_id).await?;
+
 
     let pipelines = if let Some(type_str) = query.pipeline_type {
         let pipeline_type: PipelineType = type_str
             .parse()
             .map_err(|_| ApiError::BadRequest(format!("Invalid pipeline type: {}", type_str)))?;
 
-        CrmPipeline::find_by_type(pool, query.project_id, pipeline_type)
+        CrmPipeline::find_by_type_for_org(pool, query.organization_id, pipeline_type)
+
             .await?
             .into_iter()
             .collect()
     } else {
-        CrmPipeline::find_by_project(pool, query.project_id).await?
+        CrmPipeline::find_by_organization(pool, query.organization_id, None).await?
+
     };
 
     Ok(Json(ApiResponse::success(pipelines)))
@@ -164,13 +169,9 @@ async fn list_org_pipelines(
 ) -> Result<Json<ApiResponse<Vec<CrmPipeline>>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    // Ensure default pipelines exist for all projects in this org
-    let org_projects = db::models::project::Project::find_by_organization(pool, org_id)
-        .await
-        .unwrap_or_default();
-    for project in &org_projects {
-        let _ = CrmPipeline::ensure_defaults(pool, project.id).await;
-    }
+    // Ensure default pipelines exist for the organization
+    let _ = CrmPipeline::ensure_defaults_for_org(pool, org_id).await;
+
 
     let pipeline_type_filter = if let Some(ref type_str) = query.pipeline_type {
         Some(

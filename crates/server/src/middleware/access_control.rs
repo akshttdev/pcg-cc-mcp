@@ -207,13 +207,14 @@ impl AccessContext {
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(info) = &project_info {
-            // Check org membership
-            if let Some(ref org_id_bytes) = info.organization_id {
-                #[derive(sqlx::FromRow)]
-                struct RoleRow {
-                    role: String,
-                }
+            #[derive(sqlx::FromRow)]
+            struct RoleRow {
+                role: String,
+            }
 
+            // 2a. Check org membership — org admins get Admin access,
+            // regular org members get role-based access.
+            if let Some(ref org_id_bytes) = info.organization_id {
                 let org_role: Option<RoleRow> = sqlx::query_as(
                     "SELECT role FROM organization_members WHERE organization_id = ? AND user_id = ?"
                 )
@@ -223,7 +224,7 @@ impl AccessContext {
                 .await
                 .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
-                if let Some(or) = org_role {
+                if let Some(or) = &org_role {
                     let granted_role = match or.role.as_str() {
                         "admin" => ProjectRole::Admin,
                         "member" => ProjectRole::Editor,
@@ -242,13 +243,35 @@ impl AccessContext {
                 }
             }
 
-            // 3. Check client membership
+            // 2b. Org admin cascade: if the project belongs to a client that
+            // belongs to the user's org, org admins also get access.
             if let Some(ref client_id_bytes) = info.client_id {
-                #[derive(sqlx::FromRow)]
-                struct RoleRow {
-                    role: String,
+                let org_admin_via_client: Option<RoleRow> = sqlx::query_as(
+                    r#"SELECT om.role FROM organization_members om
+                       JOIN clients c ON c.organization_id = om.organization_id
+                       WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin'"#
+                )
+                .bind(client_id_bytes)
+                .bind(&user_id_bytes)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+                if org_admin_via_client.is_some() {
+                    let granted_role = ProjectRole::Admin;
+                    let has_access = match required_role {
+                        ProjectRole::Viewer => granted_role.can_read(),
+                        ProjectRole::Editor => granted_role.can_write(),
+                        ProjectRole::Admin => granted_role.can_manage_members(),
+                        ProjectRole::Owner => granted_role.can_delete(),
+                    };
+                    if has_access {
+                        return Ok(granted_role);
+                    }
                 }
 
+                // 3. Check direct client membership — all client members get
+                // access to projects under their client.
                 let client_role: Option<RoleRow> = sqlx::query_as(
                     "SELECT role FROM client_members WHERE client_id = ? AND user_id = ?"
                 )
@@ -351,6 +374,7 @@ impl AccessContext {
         .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
 
         if let Some(p) = &parent {
+            // Org member gets full access to org projects
             if let Some(ref org_id) = p.organization_id {
                 let org_member: Option<i64> = sqlx::query_scalar(
                     "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1"
@@ -367,6 +391,23 @@ impl AccessContext {
             }
 
             if let Some(ref client_id) = p.client_id {
+                // Org admin cascade: org admin of the client's parent org
+                let org_admin_via_client: Option<i64> = sqlx::query_scalar(
+                    r#"SELECT 1 FROM organization_members om
+                       JOIN clients c ON c.organization_id = om.organization_id
+                       WHERE c.id = ? AND om.user_id = ? AND om.role = 'admin' LIMIT 1"#
+                )
+                .bind(client_id)
+                .bind(&user_id_bytes)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+                if org_admin_via_client.is_some() {
+                    return Ok("full");
+                }
+
+                // Direct client member gets full access to client projects
                 let client_member: Option<i64> = sqlx::query_scalar(
                     "SELECT 1 FROM client_members WHERE client_id = ? AND user_id = ? LIMIT 1"
                 )

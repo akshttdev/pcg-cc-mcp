@@ -227,9 +227,9 @@ export function CrmPage() {
             <Users className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="page-title">CRM & Email</h1>
+            <h1 className="page-title">CRM Administration</h1>
             <p className="page-description">
-              Manage contacts, track leads, and connect email accounts
+              Platform-level contact management and email account configuration
             </p>
           </div>
         </div>
@@ -370,9 +370,19 @@ export function CrmPage() {
                   </div>
                 ) : contacts.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
-                    <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No contacts yet</p>
-                    <p className="text-sm">Add your first contact to get started</p>
+                    <Users className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                    <p className="text-lg font-semibold mb-1">No contacts yet</p>
+                    <p className="text-sm max-w-sm mx-auto">Add your first contact to start building your CRM pipeline, or connect an email account to import contacts automatically.</p>
+                    <div className="flex gap-2 justify-center mt-4">
+                      <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
+                        <UserPlus className="h-4 w-4 mr-1" />
+                        Add Contact
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setActiveTab('email')}>
+                        <Mail className="h-4 w-4 mr-1" />
+                        Connect Email
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -585,7 +595,7 @@ function ContactCard({
 function ContactFormDialog({
   open,
   onOpenChange,
-  projectId,
+  projectId: _projectId,
   contact,
   onSubmit,
   isLoading,
@@ -643,7 +653,6 @@ function ContactFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
-      project_id: projectId,
       ...formData,
       first_name: formData.first_name || undefined,
       last_name: formData.last_name || undefined,

@@ -34,7 +34,6 @@ import {
   FileText,
   LayoutDashboard,
   Receipt,
-  Sparkles,
   LayoutGrid,
   Brain,
   Bot,
@@ -50,6 +49,10 @@ import {
   GitBranch,
   Headphones,
   Workflow,
+  Map,
+  Palette,
+  Rocket,
+  Plug,
   Cpu,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -62,7 +65,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { projectsApi, organizationsApi } from '@/lib/api';
+import { projectsApi, organizationsApi, stagingApi } from '@/lib/api';
 import type {
   SidebarTree,
   SidebarOrg,
@@ -122,24 +125,28 @@ interface NavItem {
 
 // Admin tools — separated visually at top
 const ADMIN_NAV_ITEMS: NavItem[] = [
+  { label: 'Site Directory', icon: Map, to: '/site-directory', id: 'site-directory', adminOnly: true },
   { label: 'Nora Command', icon: Crown, to: '/nora', id: 'nora', adminOnly: true },
   { label: 'Topsi Platform', icon: Network, to: '/topsi', id: 'topsi', adminOnly: true },
+  { label: 'Mission Control', icon: Rocket, to: '/mission-control', id: 'mission-control', adminOnly: true },
   { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse', adminOnly: true },
   { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
-  { label: 'Workflows', icon: Workflow, to: '/workflows', id: 'workflows', adminOnly: true },
 ];
 
-// Primary navigation - workspace destinations
+// Primary navigation - workspace destinations (user-level pages)
 const PRIMARY_NAV_ITEMS: NavItem[] = [
-  { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
+  { label: 'My Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
+  { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
+  { label: 'Social', icon: Megaphone, to: '/social-command', id: 'social-command' },
   { label: 'VIBELAND', icon: Box, to: '/virtual-environment', id: 'virtual-environment' },
+  { label: 'Vibe', icon: Palette, to: '/vibe', id: 'vibe' },
 ];
 
 // Management nav — admin-only, collapsible
 const MANAGEMENT_NAV_ITEMS: NavItem[] = [
-  { label: 'People', icon: Users, to: '/people', id: 'people', adminOnly: true },
-  { label: 'Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
+  { label: 'All People', icon: Users, to: '/people', id: 'people', adminOnly: true },
+  { label: 'All Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
   { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
   { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
   { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
@@ -150,7 +157,7 @@ const MANAGEMENT_NAV_ITEMS: NavItem[] = [
 // Global views - admin only, collapsible
 const GLOBAL_VIEW_ITEMS: NavItem[] = [
   { label: 'All Tasks', icon: ListTodo, to: '/global-tasks', id: 'global-tasks', adminOnly: true },
-  { label: 'All CRM', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
+  { label: 'CRM Admin', icon: Users, to: '/crm', id: 'crm', adminOnly: true },
   { label: 'All Social', icon: Megaphone, to: '/social-command', id: 'social-command', adminOnly: true },
 ];
 
@@ -195,7 +202,7 @@ function HealthDot({ status }: { status?: string }) {
 }
 
 // ============================================================================
-// OrgCrmSection — collapsible CRM with Overview/Contacts/Pipeline/Deliverables/Experiences
+// OrgCrmSection — collapsible CRM with Overview/Contacts/Pipeline/Deliverables/Social
 // ============================================================================
 
 function OrgCrmSection({
@@ -205,14 +212,10 @@ function OrgCrmSection({
   orgId: string;
   location: ReturnType<typeof useLocation>;
 }) {
-  const isOnOrg = location.pathname === `/organizations/${orgId}`;
+  const orgBase = `/organizations/${orgId}`;
   const isCrmActive =
-    isOnOrg &&
-    (location.search.includes('tab=contacts') ||
-      location.search.includes('tab=companies') ||
-      location.search.includes('tab=pipelines') ||
-      location.search.includes('tab=deliverables') ||
-      !location.search);
+    location.pathname === orgBase ||
+    location.pathname.startsWith(`${orgBase}/crm`);
   const [open, setOpen] = useState(isCrmActive);
 
   return (
@@ -232,12 +235,11 @@ function OrgCrmSection({
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',     to: `/organizations/${orgId}`,                 icon: LayoutGrid, color: 'text-muted-foreground',        match: isOnOrg && !location.search },
-            { label: 'Contacts',     to: `/organizations/${orgId}?tab=contacts`,    icon: Users,      color: 'text-primary',                 match: isOnOrg && location.search.includes('tab=contacts') },
-            { label: 'Companies',    to: `/organizations/${orgId}?tab=companies`,   icon: Building2,  color: 'text-purple-500',              match: isOnOrg && location.search.includes('tab=companies') },
-            { label: 'Pipeline',     to: `/organizations/${orgId}?tab=pipelines`,   icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: isOnOrg && location.search.includes('tab=pipelines') },
-            { label: 'Deliverables', to: `/organizations/${orgId}?tab=deliverables`,icon: Package,    color: 'text-[hsl(var(--success))]',   match: isOnOrg && location.search.includes('tab=deliverables') },
-            { label: 'Experiences',  to: `/organizations/${orgId}?tab=social`,      icon: Sparkles,   color: 'text-[hsl(var(--brand))]',     match: isOnOrg && location.search.includes('tab=social') },
+            { label: 'Overview',     to: `${orgBase}/crm`,              icon: LayoutGrid, color: 'text-muted-foreground',        match: location.pathname === `${orgBase}/crm` },
+            { label: 'Contacts',     to: `${orgBase}/crm/contacts`,     icon: Users,      color: 'text-primary',                 match: location.pathname === `${orgBase}/crm/contacts` },
+            { label: 'Companies',    to: `${orgBase}/crm/companies`,    icon: Building2,  color: 'text-purple-500',              match: location.pathname === `${orgBase}/crm/companies` },
+            { label: 'Pipeline',     to: `${orgBase}/crm/pipeline`,     icon: TrendingUp, color: 'text-[hsl(var(--warning))]',   match: location.pathname === `${orgBase}/crm/pipeline` },
+            { label: 'Deliverables', to: `${orgBase}/crm/deliverables`, icon: Package,    color: 'text-[hsl(var(--success))]',   match: location.pathname === `${orgBase}/crm/deliverables` },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
@@ -268,9 +270,8 @@ function OrgIntelligenceSection({
   orgId: string;
   location: ReturnType<typeof useLocation>;
 }) {
-  const isOnOrgIntel =
-    (location.pathname === `/organizations/${orgId}` && location.search.includes('tab=knowledge')) ||
-    location.pathname === `/organizations/${orgId}/data-sources`;
+  const orgBase = `/organizations/${orgId}`;
+  const isOnOrgIntel = location.pathname.startsWith(`${orgBase}/intelligence`);
   const [open, setOpen] = useState(isOnOrgIntel);
 
   return (
@@ -290,12 +291,12 @@ function OrgIntelligenceSection({
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 py-0.5">
           {[
-            { label: 'Overview',      icon: Brain,         color: 'text-[hsl(var(--success))]', to: `/organizations/${orgId}?tab=knowledge`,                   match: isOnOrgIntel && !location.search.includes('view=') },
-            { label: 'Data Sources',  icon: Database,       color: 'text-primary',                to: `/organizations/${orgId}/data-sources`,                     match: location.pathname === `/organizations/${orgId}/data-sources` },
-            { label: 'Artifacts',     icon: FileText,      color: 'text-[hsl(var(--brand))]',    to: `/organizations/${orgId}?tab=knowledge&view=artifacts`,     match: isOnOrgIntel && location.search.includes('view=artifacts') },
-            { label: 'Workflows',     icon: GitBranch,     color: 'text-purple-500',             to: `/organizations/${orgId}?tab=knowledge&view=workflows`,     match: isOnOrgIntel && location.search.includes('view=workflows') },
-            { label: 'Pulse',         icon: Radio,         color: 'text-[hsl(var(--warning))]',  to: `/organizations/${orgId}?tab=knowledge&view=pulse`,         match: isOnOrgIntel && location.search.includes('view=pulse') },
-            { label: 'Topology',      icon: Network,       color: 'text-[hsl(var(--info))]',     to: `/organizations/${orgId}?tab=knowledge&view=topology`,      match: isOnOrgIntel && location.search.includes('view=topology') },
+            { label: 'Overview',      icon: Brain,         color: 'text-[hsl(var(--success))]', to: `${orgBase}/intelligence`,              match: location.pathname === `${orgBase}/intelligence` },
+            { label: 'Data Sources',  icon: Database,       color: 'text-primary',                to: `${orgBase}/intelligence/data-sources`, match: location.pathname === `${orgBase}/intelligence/data-sources` },
+            { label: 'Artifacts',     icon: FileText,      color: 'text-[hsl(var(--brand))]',    to: `${orgBase}/intelligence/artifacts`,    match: location.pathname === `${orgBase}/intelligence/artifacts` },
+            { label: 'Workflows',     icon: GitBranch,     color: 'text-purple-500',             to: `${orgBase}/intelligence/workflows`,    match: location.pathname === `${orgBase}/intelligence/workflows` },
+            { label: 'Pulse',         icon: Radio,         color: 'text-[hsl(var(--warning))]',  to: `${orgBase}/intelligence/pulse`,        match: location.pathname === `${orgBase}/intelligence/pulse` },
+            { label: 'Topology',      icon: Network,       color: 'text-[hsl(var(--info))]',     to: `${orgBase}/intelligence/topology`,     match: location.pathname === `${orgBase}/intelligence/topology` },
           ].map(({ label, to, icon: Icon, color, match }) => (
             <Link
               key={label}
@@ -520,6 +521,30 @@ function ProjectFolder({
           >
             <BookOpen className="h-3 w-3 text-muted-foreground" />
             <span>Knowledge</span>
+          </Link>
+
+          {/* Deliverables */}
+          <Link
+            to={`/projects/${project.id}/deliverables`}
+            className={cn(
+              'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/projects/${project.id}/deliverables` && 'bg-primary/10 text-foreground font-medium'
+            )}
+          >
+            <Package className="h-3 w-3 text-muted-foreground" />
+            <span>Deliverables</span>
+          </Link>
+
+          {/* Pulse */}
+          <Link
+            to={`/projects/${project.id}/pulse`}
+            className={cn(
+              'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/projects/${project.id}/pulse` && 'bg-primary/10 text-foreground font-medium'
+            )}
+          >
+            <Activity className="h-3 w-3 text-muted-foreground" />
+            <span>Pulse</span>
           </Link>
         </div>
       </CollapsibleContent>
@@ -812,6 +837,32 @@ function SortableSidebarProjectFolder({
                   <BookOpen className="h-3 w-3 text-muted-foreground" />
                   <span>Knowledge</span>
                 </Link>
+
+                {/* Deliverables */}
+                <Link
+                  to={`/projects/${project.id}/deliverables`}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                    location.pathname === `/projects/${project.id}/deliverables` &&
+                      'bg-primary/10 text-foreground font-medium'
+                  )}
+                >
+                  <Package className="h-3 w-3 text-muted-foreground" />
+                  <span>Deliverables</span>
+                </Link>
+
+                {/* Pulse */}
+                <Link
+                  to={`/projects/${project.id}/pulse`}
+                  className={cn(
+                    'flex items-center gap-2 pl-2 pr-2 py-1.5 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+                    location.pathname === `/projects/${project.id}/pulse` &&
+                      'bg-primary/10 text-foreground font-medium'
+                  )}
+                >
+                  <Activity className="h-3 w-3 text-muted-foreground" />
+                  <span>Pulse</span>
+                </Link>
               </>
             )}
           </div>
@@ -957,7 +1008,7 @@ function ClientGroup({
           variant="ghost"
           className="flex-1 justify-between px-2 py-1 h-auto font-normal text-xs min-w-0"
           onClick={() => {
-            if (organizationId && client.id) navigate(`/organizations/${organizationId}?tab=projects&client=${client.id}`);
+            if (organizationId && client.id) navigate(`/organizations/${organizationId}/clients/${client.id}`);
           }}
         >
           <div className="flex items-center gap-1.5 min-w-0">
@@ -1070,6 +1121,7 @@ function OrgSection({
   expandedProjects,
   onToggleProject,
   queryClient,
+  isWorkspacePage,
 }: {
   org: SidebarOrg;
   projectId?: string;
@@ -1078,11 +1130,18 @@ function OrgSection({
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
   queryClient: QueryClient;
+  isWorkspacePage?: boolean;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [internalExpanded, setInternalExpanded] = useState(true);
   const [clientsExpanded, setClientsExpanded] = useState(true);
+  const [orgContentExpanded, setOrgContentExpanded] = useState(!isWorkspacePage);
+
+  // Auto-collapse/expand when workspace page state changes
+  useEffect(() => {
+    setOrgContentExpanded(!isWorkspacePage);
+  }, [isWorkspacePage]);
 
   const findInTree = (projects: SidebarProjectType[], id: string): boolean =>
     projects.some((p) => p.id === id || findInTree(p.children || [], id));
@@ -1094,47 +1153,65 @@ function OrgSection({
 
   return (
     <div className="space-y-0.5">
-      {/* Org header */}
-      <div className={cn(
-        "flex items-center rounded-sm transition-colors",
-        isActiveOrg && "bg-primary/10 dark:bg-primary/15 shadow-[inset_3px_0_0_hsl(var(--brand))]"
-      )}>
-        <Button
-          variant="ghost"
-          className={cn(
-            "flex-1 justify-start px-2 py-1.5 h-auto font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground min-w-0",
-            isActiveOrg && "text-foreground font-semibold"
-          )}
-          onClick={() => {
-            if (org.id) navigate(`/organizations/${org.id}`);
-          }}
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <HealthDot status={org.health_status} />
-            <Building2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{org.name}</span>
-          </div>
-        </Button>
-      </div>
+      {/* Org header — clickable to toggle content */}
+      <Collapsible open={orgContentExpanded} onOpenChange={setOrgContentExpanded}>
+        <div className={cn(
+          "flex items-center rounded-sm transition-colors",
+          isActiveOrg && !isWorkspacePage && "bg-primary/10 dark:bg-primary/15 shadow-[inset_3px_0_0_hsl(var(--brand))]"
+        )}>
+          <Button
+            variant="ghost"
+            className={cn(
+              "flex-1 justify-start px-2 py-1.5 h-auto font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground min-w-0",
+              isActiveOrg && !isWorkspacePage && "text-foreground font-semibold"
+            )}
+            onClick={() => {
+              if (org.id) navigate(`/organizations/${org.id}`);
+            }}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <HealthDot status={org.health_status} />
+              <Building2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{org.name}</span>
+            </div>
+          </Button>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 mr-1">
+              {orgContentExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            </Button>
+          </CollapsibleTrigger>
+        </div>
 
-      {/* Org content */}
+        {/* Org content */}
+        <CollapsibleContent>
       <div className="pl-2 space-y-0.5">
         {/* Org-level workspace links: CRM, Social, Intelligence */}
         <div className="px-1 py-1 space-y-0.5">
           <OrgCrmSection orgId={org.id} location={location} />
 
+          <OrgIntelligenceSection orgId={org.id} location={location} />
+
           <Link
-            to={`/social-command`}
+            to={`/organizations/${org.id}/members`}
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
-              location.pathname === '/social-command' && 'bg-primary/10 text-foreground font-medium'
+              location.pathname === `/organizations/${org.id}/members` && 'bg-primary/10 text-foreground font-medium'
             )}
           >
-            <Megaphone className="h-3 w-3 shrink-0 text-[hsl(var(--brand))]" />
-            <span>Social</span>
+            <Users className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span>Members</span>
           </Link>
 
-          <OrgIntelligenceSection orgId={org.id} location={location} />
+          <Link
+            to={`/organizations/${org.id}/integrations`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              location.pathname === `/organizations/${org.id}/integrations` && 'bg-primary/10 text-foreground font-medium'
+            )}
+          >
+            <Plug className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span>Integrations</span>
+          </Link>
         </div>
 
         {/* Internal projects — collapsible */}
@@ -1234,6 +1311,8 @@ function OrgSection({
         </Collapsible>
 
       </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
@@ -1251,6 +1330,7 @@ function SidebarOrgGroups({
   expandedProjects,
   onToggleProject,
   queryClient,
+  isWorkspacePage,
 }: {
   sidebarTree: SidebarTree;
   projectId?: string;
@@ -1260,6 +1340,7 @@ function SidebarOrgGroups({
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
   queryClient: QueryClient;
+  isWorkspacePage?: boolean;
 }) {
   const [showOtherOrgs, setShowOtherOrgs] = useState(false);
 
@@ -1297,6 +1378,7 @@ function SidebarOrgGroups({
           expandedProjects={expandedProjects}
           onToggleProject={onToggleProject}
           queryClient={queryClient}
+          isWorkspacePage={isWorkspacePage}
         />
       )}
 
@@ -1407,6 +1489,25 @@ export function Sidebar({ className }: SidebarProps) {
   const [globalViewsExpanded, setGlobalViewsExpanded] = useState(false);
   const [adminPlatformsExpanded, setAdminPlatformsExpanded] = useState(false);
   const [managementExpanded, setManagementExpanded] = useState(false);
+  const [myWorkspaceExpanded, setMyWorkspaceExpanded] = useState(true);
+
+  // Staging pending count for sidebar badge
+  const homeOrgId = user?.home_organization_id || user?.organizations?.[0]?.id;
+  const { data: stagingPendingCount = 0 } = useQuery({
+    queryKey: ['stagingPendingCount', homeOrgId],
+    queryFn: async () => {
+      if (!homeOrgId) return 0;
+      const records = await stagingApi.listPending(homeOrgId);
+      return records.filter((r: any) => r.status === 'pending_review').length;
+    },
+    enabled: !!homeOrgId,
+    staleTime: 30000,
+    refetchInterval: 60000,
+  });
+
+  // Detect if user is on a "My Workspace" page (user-level, not org-level)
+  const WORKSPACE_PATHS = PRIMARY_NAV_ITEMS.map(item => item.to);
+  const isWorkspacePage = WORKSPACE_PATHS.some(path => location.pathname === path || location.pathname.startsWith(path + '/'));
 
   // Keyboard shortcut: Cmd+B / Ctrl+B to toggle sidebar
   useKeyToggleSidebar(() => toggleSidebar(), { scope: Scope.GLOBAL });
@@ -1418,7 +1519,6 @@ export function Sidebar({ className }: SidebarProps) {
   });
   const filteredPrimaryNav = PRIMARY_NAV_ITEMS.filter((item) => {
     if (item.adminOnly && !isAdmin) return false;
-    if (item.memberOnly && isAdmin) return false;
     return true;
   });
 
@@ -1522,14 +1622,61 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
       )}
 
-      {/* Primary Navigation */}
-      <div className={cn("border-b border-border/40", sidebarCollapsed ? "p-1.5" : "p-2 px-3")}>
-        <div className="space-y-0.5">
-          {filteredPrimaryNav.map((item) => renderNavItem(item, isNavActive(item)))}
+      {/* My Workspace — user-level pages */}
+      {sidebarCollapsed ? (
+        <div className="border-b border-border/40 p-1.5">
+          <div className="space-y-0.5">
+            {filteredPrimaryNav.map((item) => renderNavItem(item, isNavActive(item)))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="border-b border-border/40">
+          <Collapsible open={myWorkspaceExpanded} onOpenChange={setMyWorkspaceExpanded}>
+            <CollapsibleTrigger asChild>
+              <div className="sidebar-nav-item mx-3 my-1.5 justify-between cursor-pointer">
+                <div className="flex items-center gap-2.5">
+                  <UserCircle className="h-4 w-4" />
+                  <span>My Workspace</span>
+                </div>
+                {myWorkspaceExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-3 pb-1">
+              <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
+                {filteredPrimaryNav.map((item) => {
+                  const Icon = item.icon;
+                  const active = isNavActive(item);
+                  const badgeCount = item.id === 'workflows' ? stagingPendingCount : 0;
+                  return (
+                    <Link key={item.id} to={item.to}>
+                      <div className={cn(
+                        "sidebar-nav-item text-xs py-1 justify-between",
+                        active && "sidebar-nav-item-active"
+                      )}>
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-3.5 w-3.5" />
+                          {item.label}
+                        </div>
+                        {badgeCount > 0 && (
+                          <span className="text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-full px-1.5 py-0.5 leading-none font-medium">
+                            {badgeCount}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
 
-      {/* Management + Global Views - Admin Only (collapsed into sections) */}
+      {/* Management, Global Views - Admin Only (collapsed into sections) */}
       {isAdmin && !sidebarCollapsed && (
         <div className="border-b border-border/40">
           {/* Management section */}
@@ -1674,9 +1821,26 @@ export function Sidebar({ className }: SidebarProps) {
         <ScrollArea className="flex-1 px-3 min-h-0">
           <div className="space-y-1">
             {isTreeLoading ? (
-              <div className="py-4 text-xs text-muted-foreground flex items-center gap-2">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Loading projects...
+              <div className="py-2 space-y-3">
+                {/* Org skeleton */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-muted animate-pulse" />
+                    <div className="h-4 w-32 rounded bg-muted animate-pulse" />
+                  </div>
+                  <div className="pl-4 space-y-1.5">
+                    <div className="h-3.5 w-20 rounded bg-muted animate-pulse" />
+                    <div className="h-3.5 w-24 rounded bg-muted animate-pulse" />
+                    <div className="h-3.5 w-28 rounded bg-muted animate-pulse" />
+                  </div>
+                  <div className="pl-4 space-y-1.5 pt-1">
+                    <div className="h-3 w-16 rounded bg-muted/60 animate-pulse" />
+                    <div className="flex items-center gap-1.5 pl-2">
+                      <div className="h-2 w-2 rounded-full bg-muted animate-pulse" />
+                      <div className="h-3.5 w-36 rounded bg-muted animate-pulse" />
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : hasTree ? (
               <SidebarOrgGroups
@@ -1688,13 +1852,18 @@ export function Sidebar({ className }: SidebarProps) {
                 expandedProjects={expandedProjects}
                 onToggleProject={toggleProject}
                 queryClient={queryClient}
+                isWorkspacePage={isWorkspacePage}
               />
             ) : useFlatFallback ? (
               // Fallback: flat project list
               isProjectsLoading ? (
-                <div className="py-4 text-xs text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Loading projects...
+                <div className="py-2 space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-muted animate-pulse" />
+                      <div className="h-4 rounded bg-muted animate-pulse" style={{ width: `${60 + i * 20}px` }} />
+                    </div>
+                  ))}
                 </div>
               ) : projectsError ? (
                 <div className="py-4 text-xs text-destructive">

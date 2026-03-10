@@ -1630,6 +1630,7 @@ impl TopsiAgent {
             image_ids: None,
             priority: None,
             assignee_id: None,
+            assignee_type: None,
             assigned_agent: agent_name.map(|s| s.to_string()),
             agent_id: None,
             assigned_mcps: None,

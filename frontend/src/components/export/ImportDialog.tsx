@@ -127,6 +127,8 @@ export function ImportDialog({
             image_ids: null,
             created_by: 'importer',
             requires_approval: false,
+            assignee_type: null,
+            screenshot: null,
             tags: null,
             due_date: null,
             custom_properties: null,

@@ -468,6 +468,7 @@ async fn get_metadata_template(
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
+        .route("/organizations/{org_id}/data-sources", get(list_by_organization))
         .route("/projects/{project_id}/data-sources", get(list_by_project))
         .route("/data-sources", post(create_data_source))
         .route(

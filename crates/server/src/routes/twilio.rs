@@ -9,9 +9,8 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
-use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 
 use axum::{
     Form, Router,
@@ -21,7 +20,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use sqlx::{Row, SqlitePool};
+
 use db::models::agent_conversation::{
     AgentConversation, AgentConversationMessage, ConversationStatus,
 };
@@ -58,20 +57,6 @@ static CALL_DB_CONTEXTS: Lazy<Arc<Mutex<HashMap<String, CallDbContext>>>> =
 static ACTIVE_CALL_PHONES: Lazy<Arc<Mutex<HashMap<String, String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
-/// SMS thread buffer: accumulates messages from the same number before processing as one batch
-static SMS_THREAD_BUFFER: Lazy<Arc<Mutex<HashMap<String, SmsThread>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
-
-/// How long to wait (seconds) for more messages before processing the thread
-const SMS_THREAD_WINDOW_SECS: u64 = 10;
-
-#[derive(Debug, Clone)]
-struct SmsThread {
-    messages: Vec<String>,
-    last_received: SystemTime,
-    /// Resolved person context (name, id, org) based on the sender's phone
-    person_context: Option<serde_json::Value>,
-}
 
 /// An SMS received while a call is active, optionally with ingested content.
 #[derive(Debug, Clone)]
@@ -565,6 +550,20 @@ pub async fn handle_incoming_call(
 
         let team_context = build_pcg_team_context(pool, user_id).await;
 
+        // Look up organization_id from the project
+        let organization_id = {
+            let row: Option<(Vec<u8>,)> = sqlx::query_as(
+                "SELECT organization_id FROM projects WHERE id = ?"
+            )
+            .bind(project_id.as_bytes().as_slice())
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+            row.and_then(|(b,)| Uuid::from_slice(&b).ok()).unwrap_or_else(Uuid::new_v4)
+        };
+
+
         // Ensure CRM contact exists for PCG team member (for call_log FK)
         let crm_contact_id = {
             match CrmContact::find_by_phone_global(pool, &request.from).await {
@@ -574,7 +573,9 @@ pub async fn handle_incoming_call(
                     let first = full_name.split_whitespace().next().unwrap_or(&full_name).to_string();
                     let last = full_name.split_whitespace().nth(1).map(|s| s.to_string());
                     match CrmContact::create(pool, CreateCrmContact {
-                        project_id,
+                        organization_id,
+                        client_id: None,
+
                         first_name: Some(first),
                         last_name: last,
                         email: None,
@@ -637,8 +638,23 @@ pub async fn handle_incoming_call(
                     (Uuid::new_v4(), Uuid::new_v4())
                 });
 
+            // Look up organization_id from the project
+            let organization_id = {
+                let row: Option<(Vec<u8>,)> = sqlx::query_as(
+                    "SELECT organization_id FROM projects WHERE id = ?"
+                )
+                .bind(project_id.as_bytes().as_slice())
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
+                row.and_then(|(b,)| Uuid::from_slice(&b).ok()).unwrap_or_else(Uuid::new_v4)
+            };
+
             let contact = match CrmContact::create(pool, CreateCrmContact {
-                project_id,
+                organization_id,
+                client_id: None,
+
                 first_name: Some(twilio_caller_name.split_whitespace().next().unwrap_or(&twilio_caller_name).to_string()),
                 last_name: twilio_caller_name.split_whitespace().nth(1).map(|s| s.to_string()),
                 email: None,
@@ -1591,6 +1607,8 @@ pub async fn handle_incoming_sms(
         };
 
         if let Some(queue) = sms_queue {
+            // Spawn content ingestion so we don't block Twilio's webhook timeout
+
             let body = request.body.clone();
             let from = request.from.clone();
             tokio::spawn(async move {
@@ -1603,111 +1621,60 @@ pub async fn handle_incoming_sms(
                     ingested_content: ingested,
                 });
             });
+
+            // Acknowledge immediately — Nora will weave it into the next voice turn
             let twiml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>\
-                <Message>Thanks, noted — I'll use that now.</Message>\
+                <Message>Got it — I'll bring that into our conversation now.</Message>\
+
                 </Response>";
             return (StatusCode::OK, [("Content-Type", "application/xml")], twiml.to_string());
         }
     }
 
-    // ── No active call — SMS thread buffering + Nora orchestration ───────────
-    // Resolve sender identity (persons > crm_contacts > pcg_team)
-    let person_context = lookup_sms_sender_context(pool, &request.from).await;
-    let caller_name = person_context
-        .as_ref()
-        .and_then(|c| c.get("name").and_then(|v| v.as_str()))
-        .unwrap_or("there")
-        .to_string();
-
-    // Add to thread buffer
-    let (is_first_in_thread, msg_count) = {
-        let mut buffer = SMS_THREAD_BUFFER.lock().await;
-        let entry = buffer.entry(request.from.clone()).or_insert_with(|| SmsThread {
-            messages: Vec::new(),
-            last_received: SystemTime::now(),
-            person_context: person_context.clone(),
-        });
-        entry.messages.push(request.body.clone());
-        entry.last_received = SystemTime::now();
-        // Update person context if we just resolved it
-        if entry.person_context.is_none() && person_context.is_some() {
-            entry.person_context = person_context.clone();
-        }
-        let count = entry.messages.len();
-        (count == 1, count)
-    };
-
-    info!("SMS thread from {}: {} message(s) buffered", request.from, msg_count);
-
-    // Spawn debounced processor — each message spawns one; only the "last" one processes
-    let from_clone = request.from.clone();
-    let pool_clone = pool.clone();
-    tokio::spawn(async move {
-        let pool = pool_clone;
-        tokio::time::sleep(Duration::from_secs(SMS_THREAD_WINDOW_SECS)).await;
-
-        // Drain buffer only if we're still the most recent processor
-        let thread = {
-            let mut buffer = SMS_THREAD_BUFFER.lock().await;
-            let should_process = buffer.get(&from_clone).map(|t| {
-                t.last_received
-                    .elapsed()
-                    .unwrap_or_default()
-                    .as_secs()
-                    >= SMS_THREAD_WINDOW_SECS - 5
-            }).unwrap_or(false);
-            if should_process { buffer.remove(&from_clone) } else { None }
+    // ── No active call — normal standalone SMS processing ────────────────────
+    let (caller_name, caller_type) =
+        match CrmContact::find_by_phone_global(pool, &request.from).await {
+            Ok(Some(contact)) => {
+                let name = contact
+                    .full_name
+                    .unwrap_or_else(|| contact.email.unwrap_or_else(|| "Unknown".into()));
+                (name, "returning_client")
+            }
+            _ => {
+                if let Some((_, full_name, _)) =
+                    lookup_pcg_team_member(pool, &request.from).await
+                {
+                    (full_name, "pcg_team")
+                } else {
+                    ("Unknown".to_string(), "new_contact")
+                }
+            }
         };
 
-        if let Some(thread) = thread {
-            let combined = thread.messages.iter()
-                .enumerate()
-                .map(|(i, m)| format!("[{}] {}", i + 1, m))
-                .collect::<Vec<_>>()
-                .join("\n\n");
-
-            let sender_label = thread.person_context
-                .as_ref()
-                .and_then(|c| c.get("name").and_then(|v| v.as_str()))
-                .map(|n| format!("{} ({})", n, from_clone))
-                .unwrap_or_else(|| from_clone.clone());
-
-            let nora_content = format!(
-                "[SMS from {} — {} message(s)]\n\n{}\n\n\
-                [Channel: SMS. You are Nora, PCG's Executive AI Assistant. \
-                Be conversational, insightful, and action-oriented. \
-                Draw on your full knowledge of the PCG ecosystem — projects, tasks, agents, \
-                workflows, CRM, finances, and team activity. \
-                If the sender gives a directive, execute it using your tools (create tasks, \
-                run workflows, query data, etc.). \
-                If they ask a question, give a direct intelligent answer. \
-                If they share something, engage with it meaningfully. \
-                IMPORTANT: Do NOT call send_sms or any messaging tool — your text response \
-                will be sent to the user automatically. Just reply naturally. \
-                Reply in plain text only, no markdown. Keep it concise — under 300 characters \
-                unless the question genuinely requires more depth.]",
-                sender_label,
-                thread.messages.len(),
-                combined
-            );
-
-            let raw_user_text = combined.clone();
-            let reply = match process_sms_with_nora(&nora_content, &from_clone, thread.person_context, &pool, &raw_user_text).await {
-                Ok(text) => truncate_for_sms(&text, 320),
-                Err(e) => {
-                    error!("SMS Nora processing failed for {}: {}", from_clone, e);
-                    "I hit a snag processing your request — please try again shortly.".to_string()
-                }
-            };
-
-            if let Err(e) = send_outbound_sms(&from_clone, &reply).await {
-                error!("Failed to send outbound SMS to {}: {}", from_clone, e);
-            }
+    let sms_context = json!({
+        "channel": "sms",
+        "caller_type": caller_type,
+        "caller": {
+            "caller_name": caller_name,
+            "caller_role": caller_type,
+            "phone": request.from,
         }
     });
 
-    // Return empty response immediately — Nora replies via outbound SMS after processing
-    let twiml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>".to_string();
+    let nora_text = match process_sms_with_nora(&request.body, &request.from, Some(sms_context)).await {
+        Ok(text) => text,
+        Err(e) => {
+            error!("Nora SMS processing failed: {}", e);
+            "I'm sorry, I'm having a moment. Please try again shortly.".to_string()
+        }
+    };
+
+    let twiml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>{}</Message></Response>",
+        xml_escape(&nora_text)
+    );
+
+
     (StatusCode::OK, [("Content-Type", "application/xml")], twiml)
 }
 
@@ -1803,106 +1770,14 @@ fn extract_text_from_html(html: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Process an SMS thread through Nora.
-/// Primary path: full NoraAgent with all tools (task creation, CRM, Editron orchestration).
-/// Fallback: direct Haiku call for simple acknowledgements.
+/// Process an SMS through Nora's LLM (text channel — no voice constraints).
+
 async fn process_sms_with_nora(
     message: &str,
     from_number: &str,
     context: Option<serde_json::Value>,
-    pool: &SqlitePool,
-    raw_user_text: &str,
 ) -> Result<String, String> {
-    let session_id = format!("sms-{}", from_number.trim_start_matches('+'));
 
-    // ── Get Nora agent ID for conversation persistence ────────────────────────
-    let nora_agent_id: Option<Uuid> = sqlx::query(
-        "SELECT id FROM agents WHERE short_name = 'Nora' LIMIT 1"
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .and_then(|row| {
-        use sqlx::Row;
-        let bytes: Vec<u8> = row.try_get("id").ok()?;
-        Uuid::from_slice(&bytes).ok()
-    });
-
-    // ── Load recent conversation history for context ──────────────────────────
-    let past_context = if let Some(agent_id) = nora_agent_id {
-        match AgentConversation::find_by_agent_session(pool, agent_id, &session_id).await {
-            Ok(Some(conv)) => {
-                match AgentConversationMessage::find_recent(pool, conv.id, 20).await {
-                    Ok(msgs) if !msgs.is_empty() => {
-                        let history = msgs.iter()
-                            .map(|m| format!("[{}]: {}", m.role.to_uppercase(), &m.content[..m.content.len().min(300)]))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        Some(format!("\n\n[CONVERSATION HISTORY — last {} messages]:\n{}\n[END HISTORY]", msgs.len(), history))
-                    }
-                    _ => None,
-                }
-            }
-            _ => None,
-        }
-    } else {
-        None
-    };
-
-    // Inject history into the message content if available
-    let enriched_message = if let Some(ref history) = past_context {
-        format!("{}{}", message, history)
-    } else {
-        message.to_string()
-    };
-
-    // ── Primary: full NoraAgent with tool access ──────────────────────────────
-    if let Ok(nora_arc) = get_nora_instance().await {
-        let guard = nora_arc.read().await;
-        if let Some(nora) = guard.as_ref() {
-            let request = NoraRequest {
-                request_id: Uuid::new_v4().to_string(),
-                session_id: session_id.clone(),
-                request_type: NoraRequestType::TextInteraction,
-                content: enriched_message.clone(),
-                context: context.clone(),
-                voice_enabled: false,
-                priority: RequestPriority::Normal,
-                timestamp: Utc::now(),
-            };
-            match timeout(Duration::from_secs(90), nora.process_request(request)).await {
-                Ok(Ok(response)) => {
-                    info!("NoraAgent SMS response: {} chars", response.content.len());
-                    // ── Persist conversation to DB ────────────────────────────
-                    if let Some(agent_id) = nora_agent_id {
-                        let pool_p = pool.clone();
-                        let sid = session_id.clone();
-                        let user_text = raw_user_text.to_string();
-                        let assistant_text = response.content.clone();
-                        tokio::spawn(async move {
-                            match AgentConversation::get_or_create(&pool_p, agent_id, &sid, None).await {
-                                Ok(conv) => {
-                                    if let Err(e) = AgentConversationMessage::add_user_message(&pool_p, conv.id, &user_text).await {
-                                        warn!("Failed to persist SMS user message: {}", e);
-                                    }
-                                    if let Err(e) = AgentConversationMessage::add_assistant_message(&pool_p, conv.id, &assistant_text, None, None, None, None, None).await {
-                                        warn!("Failed to persist SMS assistant message: {}", e);
-                                    }
-                                }
-                                Err(e) => warn!("Failed to get/create SMS conversation: {}", e),
-                            }
-                        });
-                    }
-                    return Ok(response.content);
-                }
-                Ok(Err(e)) => warn!("NoraAgent SMS processing failed: {}", e),
-                Err(_) => warn!("NoraAgent SMS timeout after 90s — falling back"),
-            }
-        }
-    }
-
-    // ── Fallback: direct Haiku call ───────────────────────────────────────────
     let api_key = std::env::var("ANTHROPIC_API_KEY")
         .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
         .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
@@ -1921,9 +1796,11 @@ async fn process_sms_with_nora(
 
     let caller_note = context
         .as_ref()
-        .and_then(|ctx| ctx.get("name"))
+        .and_then(|ctx| ctx.get("caller"))
+        .and_then(|c| c.get("caller_name"))
         .and_then(|v| v.as_str())
-        .filter(|n| !n.is_empty())
+        .filter(|n| !n.is_empty() && *n != "Unknown")
+
         .map(|name| format!("[SMS from {} ({})] ", name, from_number))
         .unwrap_or_else(|| format!("[SMS from {}] ", from_number));
 
@@ -1964,125 +1841,6 @@ async fn process_sms_with_nora(
     Ok(text)
 }
 
-/// Resolve SMS sender identity from persons.phones, crm_contacts, or PCG team config.
-/// Returns a context object with name, person_id, org info for Nora's use.
-async fn lookup_sms_sender_context(
-    pool: &sqlx::SqlitePool,
-    from_number: &str,
-) -> Option<serde_json::Value> {
-    // 1. Check persons.phones JSON array
-    let rows = sqlx::query(
-        "SELECT hex(id) as id_hex, full_name, organization_id FROM persons WHERE phones LIKE ?"
-    )
-    .bind(format!("%{}%", from_number))
-    .fetch_all(pool)
-    .await
-    .ok()?;
-
-    for row in &rows {
-        let id_hex: String = row.try_get("id_hex").ok()?;
-        let name: String = row.try_get("full_name").ok()?;
-        // Resolve org if present
-        let org_id_bytes: Option<Vec<u8>> = row.try_get("organization_id").ok().flatten();
-        let org_name = if let Some(bytes) = org_id_bytes {
-            sqlx::query_scalar::<_, String>("SELECT name FROM organizations WHERE id = ?")
-                .bind(bytes)
-                .fetch_optional(pool)
-                .await
-                .ok()
-                .flatten()
-        } else {
-            None
-        };
-        return Some(json!({
-            "channel": "sms",
-            "caller_type": "returning_client",
-            "person_id": id_hex,
-            "name": name,
-            "phone": from_number,
-            "organization": org_name,
-        }));
-    }
-
-    // 2. Fall back to crm_contacts
-    if let Ok(Some(contact)) = CrmContact::find_by_phone_global(pool, from_number).await {
-        let name = contact.full_name.unwrap_or_else(|| {
-            contact.email.unwrap_or_else(|| "Unknown".into())
-        });
-        return Some(json!({
-            "channel": "sms",
-            "caller_type": "returning_client",
-            "name": name,
-            "phone": from_number,
-        }));
-    }
-
-    // 3. Check PCG team
-    if let Some((_, full_name, _)) = lookup_pcg_team_member(pool, from_number).await {
-        return Some(json!({
-            "channel": "sms",
-            "caller_type": "pcg_team",
-            "name": full_name,
-            "phone": from_number,
-        }));
-    }
-
-    None
-}
-
-/// Truncate a string to fit SMS limits, breaking on a word boundary.
-fn truncate_for_sms(text: &str, max_chars: usize) -> String {
-    // Strip markdown from Nora's response
-    let clean = strip_markdown_for_tts(text);
-    // Take first meaningful paragraph if it's short enough
-    let first_para = clean.lines()
-        .map(|l| l.trim())
-        .find(|l| l.len() > 10)
-        .unwrap_or(clean.trim());
-    if first_para.len() <= max_chars {
-        return first_para.to_string();
-    }
-    // Word-boundary truncate
-    let mut end = max_chars;
-    while end > 0 && !clean.is_char_boundary(end) {
-        end -= 1;
-    }
-    let truncated = &clean[..end];
-    match truncated.rfind(' ') {
-        Some(space) => format!("{}…", &truncated[..space]),
-        None => format!("{}…", truncated),
-    }
-}
-
-/// Send an outbound SMS via Twilio REST API.
-async fn send_outbound_sms(to: &str, body: &str) -> Result<(), String> {
-    let account_sid = std::env::var("TWILIO_ACCOUNT_SID")
-        .map_err(|_| "TWILIO_ACCOUNT_SID not set".to_string())?;
-    let auth_token = std::env::var("TWILIO_AUTH_TOKEN")
-        .map_err(|_| "TWILIO_AUTH_TOKEN not set".to_string())?;
-    let from_number = std::env::var("TWILIO_PHONE_NUMBER")
-        .map_err(|_| "TWILIO_PHONE_NUMBER not set".to_string())?;
-
-    let url = crate::twilio_sms::sms_api_url(&account_sid);
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .basic_auth(&account_sid, Some(&auth_token))
-        .form(&[("To", to), ("From", &from_number), ("Body", body)])
-        .send()
-        .await
-        .map_err(|e| format!("Twilio request failed: {}", e))?;
-
-    if resp.status().is_success() {
-        info!("Outbound SMS sent to {}: {} chars", to, body.len());
-        Ok(())
-    } else {
-        let status = resp.status();
-        let err_body = resp.text().await.unwrap_or_default();
-        Err(format!("Twilio API error {}: {}", status, err_body))
-    }
-}
 
 /// Escape special XML characters for TwiML body
 fn xml_escape(s: &str) -> String {

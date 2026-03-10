@@ -135,7 +135,7 @@ export const keyBindings: KeyBinding[] = [
   // Task panel actions
   {
     action: Action.TOGGLE_FULLSCREEN,
-    keys: 'enter',
+    keys: 'f',
     scopes: [Scope.KANBAN],
     description: 'Toggle fullscreen view',
     group: 'Task Details',

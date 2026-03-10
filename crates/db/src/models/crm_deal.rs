@@ -19,7 +19,9 @@ pub enum CrmDealError {
 #[ts(export)]
 pub struct CrmDeal {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+    pub client_id: Option<Uuid>,
     pub crm_contact_id: Option<Uuid>,
     pub crm_pipeline_id: Option<Uuid>,
     pub crm_stage_id: Option<Uuid>,
@@ -49,7 +51,8 @@ pub struct CrmDeal {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateCrmDeal {
-    pub project_id: Uuid,
+    pub organization_id: Uuid,
+    pub client_id: Option<Uuid>,
     pub crm_contact_id: Option<Uuid>,
     pub crm_pipeline_id: Option<Uuid>,
     pub crm_stage_id: Option<Uuid>,
@@ -129,14 +132,17 @@ impl CrmDeal {
         let custom_fields = data.custom_fields.map(|v| v.to_string());
 
         // Get stage probability if stage is specified
-        let (probability, stage_name) = if let Some(stage_id) = data.crm_stage_id {
+        // Note: legacy `stage` column has CHECK constraint with fixed values,
+        // so we always default to 'qualification' and use crm_stage_id for real stage tracking
+        let probability = if let Some(stage_id) = data.crm_stage_id {
             match CrmPipelineStage::find_by_id(pool, stage_id).await {
-                Ok(stage) => (stage.probability, stage.name.clone()),
-                Err(_) => (0, "qualification".to_string()),
+                Ok(stage) => stage.probability,
+                Err(_) => 0,
             }
         } else {
-            (0, "qualification".to_string())
+            0
         };
+        let stage_name = "qualification".to_string();
 
         // Calculate next position in stage
         let position = if let Some(stage_id) = data.crm_stage_id {
@@ -154,16 +160,19 @@ impl CrmDeal {
         let deal = sqlx::query_as::<_, CrmDeal>(
             r#"
             INSERT INTO crm_deals (
-                id, project_id, crm_contact_id, crm_pipeline_id, crm_stage_id, position,
+                id, organization_id, project_id, client_id,
+                crm_contact_id, crm_pipeline_id, crm_stage_id, position,
                 name, description, amount, currency, stage, probability,
                 expected_close_date, tags, custom_fields
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
             RETURNING *
             "#,
         )
         .bind(id)
-        .bind(data.project_id)
+        .bind(data.organization_id)
+        .bind(None::<Uuid>)
+        .bind(data.client_id)
         .bind(data.crm_contact_id)
         .bind(data.crm_pipeline_id)
         .bind(data.crm_stage_id)
@@ -191,6 +200,21 @@ impl CrmDeal {
             .ok_or(CrmDealError::NotFound)
     }
 
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+    ) -> Result<Vec<Self>, CrmDealError> {
+        let deals = sqlx::query_as::<_, CrmDeal>(
+            r#"SELECT * FROM crm_deals WHERE organization_id = ?1 ORDER BY created_at DESC"#,
+        )
+        .bind(organization_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(deals)
+    }
+
+    /// Find deals by project (legacy/compatibility)
     pub async fn find_by_project(
         pool: &SqlitePool,
         project_id: Uuid,
@@ -411,14 +435,15 @@ impl CrmDeal {
             sqlx::query(
                 r#"
                 INSERT INTO crm_activities (
-                    id, project_id, crm_contact_id, crm_deal_id, activity_type,
+                    id, organization_id, project_id, crm_contact_id, crm_deal_id, activity_type,
                     subject, description, activity_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', 'subsec'))
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now', 'subsec'))
                 "#,
             )
             .bind(Uuid::new_v4())
-            .bind(updated_deal.project_id)
+            .bind(updated_deal.organization_id)
+            .bind(None::<Uuid>)
             .bind(updated_deal.crm_contact_id)
             .bind(updated_deal.id)
             .bind(activity_type)
@@ -429,6 +454,45 @@ impl CrmDeal {
         }
 
         Ok(updated_deal)
+    }
+
+    /// Find a deal by name + organization (fallback deduplication without requiring contact/pipeline match).
+    pub async fn find_by_name_and_org(
+        pool: &SqlitePool,
+        name: &str,
+        organization_id: Uuid,
+    ) -> Result<Option<Self>, CrmDealError> {
+        let deal = sqlx::query_as::<_, CrmDeal>(
+            r#"SELECT * FROM crm_deals
+               WHERE name = ?1 AND organization_id = ?2
+               ORDER BY created_at DESC
+               LIMIT 1"#,
+        )
+        .bind(name)
+        .bind(organization_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(deal)
+    }
+
+    /// Find a deal by name + contact + pipeline combination (for deduplication).
+    pub async fn find_by_name_contact_pipeline(
+        pool: &SqlitePool,
+        name: &str,
+        contact_id: Uuid,
+        pipeline_id: Uuid,
+    ) -> Result<Option<Self>, CrmDealError> {
+        let deal = sqlx::query_as::<_, CrmDeal>(
+            r#"SELECT * FROM crm_deals
+               WHERE name = ?1 AND crm_contact_id = ?2 AND crm_pipeline_id = ?3
+               LIMIT 1"#,
+        )
+        .bind(name)
+        .bind(contact_id)
+        .bind(pipeline_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(deal)
     }
 
     pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<(), CrmDealError> {
@@ -514,7 +578,11 @@ impl CrmDeal {
                 };
 
                 let (project_name, task_total, task_done, deliverable_count) =
-                    Self::fetch_project_stats(pool, deal.project_id).await;
+                    if let Some(pid) = deal.project_id {
+                        Self::fetch_project_stats(pool, pid).await
+                    } else {
+                        (None, 0, 0, 0)
+                    };
 
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
@@ -618,7 +686,11 @@ impl CrmDeal {
                 };
 
                 let (project_name, task_total, task_done, deliverable_count) =
-                    Self::fetch_project_stats(pool, deal.project_id).await;
+                    if let Some(pid) = deal.project_id {
+                        Self::fetch_project_stats(pool, pid).await
+                    } else {
+                        (None, 0, 0, 0)
+                    };
 
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
