@@ -117,11 +117,16 @@ export function useCreateDeal() {
   return useMutation({
     mutationFn: (data: CreateCrmDeal) => crmDealsApi.createDeal(data),
     onSuccess: (deal) => {
-      // Invalidate kanban data for the pipeline
+      // Invalidate kanban data for both project-scoped and org-scoped queries
       if (deal.crm_pipeline_id) {
         queryClient.invalidateQueries({
           queryKey: crmQueryKeys.kanban(deal.crm_pipeline_id),
         });
+        if (deal.organization_id) {
+          queryClient.invalidateQueries({
+            queryKey: orgCrmQueryKeys.kanban(deal.organization_id, deal.crm_pipeline_id),
+          });
+        }
       }
       // Invalidate deals list
       queryClient.invalidateQueries({
@@ -143,11 +148,16 @@ export function useUpdateDeal() {
       queryClient.invalidateQueries({
         queryKey: crmQueryKeys.deal(deal.id),
       });
-      // Invalidate kanban data
+      // Invalidate kanban data for both project-scoped and org-scoped queries
       if (deal.crm_pipeline_id) {
         queryClient.invalidateQueries({
           queryKey: crmQueryKeys.kanban(deal.crm_pipeline_id),
         });
+        if (deal.organization_id) {
+          queryClient.invalidateQueries({
+            queryKey: orgCrmQueryKeys.kanban(deal.organization_id, deal.crm_pipeline_id),
+          });
+        }
       }
     },
   });
@@ -253,8 +263,9 @@ export function useDeleteDeal() {
   return useMutation({
     mutationFn: (id: string) => crmDealsApi.deleteDeal(id),
     onSuccess: () => {
-      // Invalidate all kanban queries
+      // Invalidate all kanban queries (both project-scoped and org-scoped)
       queryClient.invalidateQueries({ queryKey: ['crm', 'kanban'] });
+      queryClient.invalidateQueries({ queryKey: ['crm', 'org-kanban'] });
       queryClient.invalidateQueries({ queryKey: ['crm', 'deals'] });
     },
   });
