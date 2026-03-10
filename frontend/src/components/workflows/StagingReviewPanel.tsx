@@ -25,10 +25,17 @@ import {
   RotateCcw,
   ArrowLeft,
   ChevronRight,
+  Plus,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { stagingApi } from '@/lib/api';
-import type { WorkflowStagingRecord, CommitResult } from '@/lib/api';
+import { stagingApi, schemasApi } from '@/lib/api';
+import type { WorkflowStagingRecord, CommitResult, FieldDef, TargetSchema } from '@/lib/api';
 
 // Inline confidence badge helper
 const ConfidenceBadge = ({ value }: { value: number | null }) => {
@@ -43,6 +50,80 @@ const ConfidenceBadge = ({ value }: { value: number | null }) => {
     </Badge>
   );
 };
+
+// Inline editable field — schema-aware (click-to-edit)
+function InlineField({
+  fieldKey,
+  value,
+  recordId,
+  onSave,
+  fieldDef,
+}: {
+  fieldKey: string;
+  value: string;
+  recordId: string;
+  onSave: (recordId: string, key: string, value: string) => void;
+  fieldDef?: FieldDef;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const inputRef = useCallback((el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null) => {
+    if (el) el.focus();
+  }, []);
+
+  const handleSave = useCallback(() => {
+    setEditing(false);
+    if (editValue !== value) onSave(recordId, fieldKey, editValue);
+  }, [editValue, value, recordId, fieldKey, onSave]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSave(); }
+    if (e.key === 'Escape') { setEditValue(value); setEditing(false); }
+  }, [handleSave, value]);
+
+  if (editing) {
+    const hasEnum = fieldDef?.enum_values && fieldDef.enum_values.length > 0;
+    const isLong = value.length > 80 || fieldDef?.type === 'array';
+    const inputType = fieldDef?.type === 'number' ? 'number'
+      : fieldDef?.format === 'email' ? 'email'
+      : fieldDef?.format === 'url' ? 'url'
+      : (fieldDef?.format === 'date' || fieldDef?.format === 'date-time') ? 'date'
+      : 'text';
+
+    if (hasEnum) {
+      return (
+        <select ref={inputRef as any} value={editValue} onChange={e => { setEditValue(e.target.value); }}
+          onBlur={handleSave} className="w-full text-xs bg-background border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring">
+          <option value="">— select —</option>
+          {fieldDef!.enum_values!.map(v => <option key={v} value={v}>{v.replace(/_/g, ' ')}</option>)}
+        </select>
+      );
+    }
+    if (isLong) {
+      return (
+        <textarea ref={inputRef as any} value={editValue} onChange={e => setEditValue(e.target.value)}
+          onBlur={handleSave} onKeyDown={handleKeyDown}
+          placeholder={fieldDef?.type === 'array' ? 'Comma-separated values' : undefined}
+          className="w-full text-xs bg-background border rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring min-h-[60px] resize-y" />
+      );
+    }
+    return (
+      <input ref={inputRef as any} type={inputType} value={editValue} onChange={e => setEditValue(e.target.value)}
+        onBlur={handleSave} onKeyDown={handleKeyDown}
+        className="w-full text-xs bg-background border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring" />
+    );
+  }
+
+  return (
+    <dd
+      onClick={() => { setEditValue(value); setEditing(true); }}
+      className="text-xs mt-0.5 cursor-text hover:bg-muted/40 rounded px-1 -mx-1 transition-colors truncate"
+      title={`Click to edit${fieldDef ? ` (${fieldDef.type})` : ''}`}
+    >
+      {value || <span className="text-muted-foreground italic">empty</span>}
+    </dd>
+  );
+}
 
 const TARGET_TYPE_CONFIG = {
   crm_contact: { label: 'Contacts', icon: Users, color: 'text-blue-500' },
@@ -133,6 +214,26 @@ export function StagingReviewContent({
     enabled: alwaysEnabled ? !!workflowRunId : !!workflowRunId,
   });
 
+  // Fetch schemas for target types in records
+  const targetTypes = useMemo(() => [...new Set(records.map(r => r.target_type))], [records]);
+
+  const { data: schemasMap = {} } = useQuery({
+    queryKey: ['schemas', targetTypes],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        targetTypes.map(async (tt) => {
+          try {
+            const schema = await schemasApi.get(tt);
+            return [tt, schema] as [string, TargetSchema];
+          } catch { return null; }
+        })
+      );
+      return Object.fromEntries(entries.filter(Boolean) as [string, TargetSchema][]);
+    },
+    enabled: targetTypes.length > 0,
+    staleTime: 60000,
+  });
+
   const hasValidationErrors = useCallback((r: WorkflowStagingRecord): boolean => {
     if (!r.validation_errors) return false;
     try {
@@ -211,6 +312,17 @@ export function StagingReviewContent({
       stagingApi.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staging', workflowRunId] }),
   });
+
+  // Inline field save for expanded view (schema-aware editing)
+  const handleInlineFieldSave = useCallback((recordId: string, fieldKey: string, newValue: string) => {
+    const record = records.find(r => r.id === recordId);
+    if (!record) return;
+    try {
+      const data = JSON.parse(record.record_data);
+      data[fieldKey] = newValue;
+      updateMutation.mutate({ id: recordId, data: { record_data: data } });
+    } catch {}
+  }, [records, updateMutation]);
 
   const commitMutation = useMutation({
     mutationFn: (id: string) => stagingApi.commit(id),
@@ -640,23 +752,68 @@ export function StagingReviewContent({
                     />
                   </div>
 
-                  {/* Expanded detail panel */}
-                  {isExpanded && editingId !== record.id && (
-                    <div className="border-b bg-muted/20 px-4 py-3">
+                  {/* Expanded detail panel — schema-aware inline editing */}
+                  {isExpanded && editingId !== record.id && (() => {
+                    const schema = schemasMap[record.target_type];
+                    const schemaFields = schema?.fields || {};
+                    const existingKeys = new Set(allFields.map(([k]) => k));
+                    const missingFields = Object.entries(schemaFields).filter(([k]) => !existingKeys.has(k));
+                    const canEdit = record.status === 'pending_review';
+
+                    return (
+                    <div className="border-b bg-muted/20 px-4 py-3" onClick={handleStopPropagation}>
                       <div className="grid grid-cols-[1fr_1fr] lg:grid-cols-[1fr_1fr_1fr] gap-x-6 gap-y-2">
                         {allFields.map(([key, value]) => {
                           const dv = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
                           const isLong = dv.length > 80;
+                          const fd = schemaFields[key];
                           return (
                             <div key={key} className={cn(isLong && 'col-span-2 lg:col-span-3')}>
-                              <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{key.replace(/_/g, ' ')}</dt>
-                              <dd className={cn('text-xs mt-0.5', isLong ? 'whitespace-pre-wrap break-words' : 'truncate')}>
-                                {dv || <span className="text-muted-foreground italic">empty</span>}
-                              </dd>
+                              <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                                {key.replace(/_/g, ' ')}
+                                {fd?.required && <span className="text-red-400 ml-0.5">*</span>}
+                              </dt>
+                              {canEdit ? (
+                                <InlineField
+                                  fieldKey={key}
+                                  value={dv}
+                                  recordId={record.id}
+                                  onSave={handleInlineFieldSave}
+                                  fieldDef={fd}
+                                />
+                              ) : (
+                                <dd className={cn('text-xs mt-0.5', isLong ? 'whitespace-pre-wrap break-words' : 'truncate')}>
+                                  {dv || <span className="text-muted-foreground italic">empty</span>}
+                                </dd>
+                              )}
                             </div>
                           );
                         })}
                       </div>
+
+                      {/* Add field dropdown for missing schema fields */}
+                      {canEdit && missingFields.length > 0 && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                              <Plus className="h-3 w-3" /> Add field
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                            {missingFields.map(([fieldName, fieldDef]) => (
+                              <DropdownMenuItem
+                                key={fieldName}
+                                onClick={() => handleInlineFieldSave(record.id, fieldName, '')}
+                                className="text-xs"
+                              >
+                                <span>{fieldName.replace(/_/g, ' ')}</span>
+                                {fieldDef.required && <span className="text-red-400 ml-1">*</span>}
+                                <span className="ml-auto text-[10px] text-muted-foreground pl-4">{fieldDef.type}</span>
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
 
                       {/* Metadata row */}
                       <div className="flex items-center gap-4 mt-3 pt-2 border-t border-muted text-[10px] text-muted-foreground">
@@ -694,7 +851,8 @@ export function StagingReviewContent({
                         </div>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Expandable: edit form */}
                   {editingId === record.id && renderRecordFields(record)}

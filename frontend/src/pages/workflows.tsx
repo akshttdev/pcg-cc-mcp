@@ -77,8 +77,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { agentFlowsApi, wideResearchApi, workflowsApi, dataSourcesApi, stagingApi, resolveApiUrl, DATA_TYPE_OPTIONS } from '@/lib/api';
-import type { AgentFlow, WideResearchSession, WorkflowDefinition, WorkflowStagingRecord } from '@/lib/api';
+import { agentFlowsApi, wideResearchApi, workflowsApi, dataSourcesApi, stagingApi, schemasApi, resolveApiUrl, DATA_TYPE_OPTIONS } from '@/lib/api';
+import type { AgentFlow, WideResearchSession, WorkflowDefinition, WorkflowStagingRecord, FieldDef, TargetSchema } from '@/lib/api';
 import { WorkflowEditor, getNodeTypeDef } from '@/components/workflows/WorkflowEditor';
 import { WorkflowTriggersPanel } from '@/components/workflows/WorkflowTriggersPanel';
 import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
@@ -1356,23 +1356,25 @@ const STAGING_TARGET_CONFIG: Record<string, { label: string; icon: typeof Users;
   task: { label: 'Tasks', icon: ListTodo, color: 'text-orange-500' },
 };
 
-// Inline editable field for expanded row detail panel
+// Inline editable field for expanded row detail panel — schema-aware
 function InlineEditField({
   fieldKey,
   value,
   recordId,
   onSave,
   editable,
+  fieldDef,
 }: {
   fieldKey: string;
   value: string;
   recordId: string;
   onSave: (recordId: string, key: string, value: string) => void;
   editable: boolean;
+  fieldDef?: FieldDef;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
-  const inputRef = useCallback((el: HTMLInputElement | HTMLTextAreaElement | null) => {
+  const inputRef = useCallback((el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null) => {
     if (el) el.focus();
   }, []);
 
@@ -1401,20 +1403,51 @@ function InlineEditField({
   }, [editable, value]);
 
   const isLong = value.length > 80;
+  const hasEnum = fieldDef?.enum_values && fieldDef.enum_values.length > 0;
+  const inputType = fieldDef?.type === 'number' ? 'number'
+    : fieldDef?.format === 'email' ? 'email'
+    : fieldDef?.format === 'url' ? 'url'
+    : (fieldDef?.format === 'date' || fieldDef?.format === 'date-time') ? 'date'
+    : 'text';
 
   if (editing) {
-    return isLong ? (
-      <textarea
-        ref={inputRef as React.Ref<HTMLTextAreaElement>}
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onBlur={handleSave}
-        onKeyDown={handleKeyDown}
-        className="w-full text-xs bg-background border rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring min-h-[60px] resize-y"
-      />
-    ) : (
+    // Enum dropdown
+    if (hasEnum) {
+      return (
+        <select
+          ref={inputRef as React.Ref<HTMLSelectElement>}
+          value={editValue}
+          onChange={(e) => { setEditValue(e.target.value); }}
+          onBlur={handleSave}
+          onKeyDown={handleKeyDown}
+          className="w-full text-xs bg-background border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring h-6"
+        >
+          <option value="">— select —</option>
+          {fieldDef!.enum_values!.map(v => (
+            <option key={v} value={v}>{v.replace(/_/g, ' ')}</option>
+          ))}
+        </select>
+      );
+    }
+    // Long text / array → textarea
+    if (isLong || fieldDef?.type === 'array') {
+      return (
+        <textarea
+          ref={inputRef as React.Ref<HTMLTextAreaElement>}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={handleSave}
+          onKeyDown={handleKeyDown}
+          placeholder={fieldDef?.type === 'array' ? 'Comma-separated values' : undefined}
+          className="w-full text-xs bg-background border rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring min-h-[60px] resize-y"
+        />
+      );
+    }
+    // Typed input
+    return (
       <input
         ref={inputRef as React.Ref<HTMLInputElement>}
+        type={inputType}
         value={editValue}
         onChange={(e) => setEditValue(e.target.value)}
         onBlur={handleSave}
@@ -1424,6 +1457,9 @@ function InlineEditField({
     );
   }
 
+  // Display format hint
+  const formatHint = fieldDef?.required ? ' *' : '';
+
   return (
     <dd
       onClick={editable ? handleStartEdit : undefined}
@@ -1432,7 +1468,7 @@ function InlineEditField({
         isLong ? 'whitespace-pre-wrap break-words' : 'truncate',
         editable && 'cursor-text hover:bg-muted/40 rounded px-1 -mx-1 transition-colors',
       )}
-      title={editable ? 'Click to edit' : undefined}
+      title={editable ? `Click to edit${fieldDef ? ` (${fieldDef.type}${formatHint})` : ''}` : fieldDef?.description}
     >
       {value || <span className="text-muted-foreground italic">empty</span>}
     </dd>
@@ -1494,6 +1530,26 @@ function StagingTab() {
     }
     return m;
   }, [recentRuns]);
+
+  // Fetch schemas for all target types present in staging records
+  const targetTypes = useMemo(() => [...new Set(pendingRecords.map(r => r.target_type))], [pendingRecords]);
+
+  const { data: schemasMap = {} } = useQuery({
+    queryKey: ['schemas', targetTypes],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        targetTypes.map(async (tt) => {
+          try {
+            const schema = await schemasApi.get(tt);
+            return [tt, schema] as [string, TargetSchema];
+          } catch { return null; }
+        })
+      );
+      return Object.fromEntries(entries.filter(Boolean) as [string, TargetSchema][]);
+    },
+    enabled: targetTypes.length > 0,
+    staleTime: 60000,
+  });
 
   const grouped = useMemo(() => {
     const byRun: Record<string, { runId: string; records: WorkflowStagingRecord[]; workflowName?: string }> = {};
@@ -2115,27 +2171,61 @@ function StagingTab() {
                 </div>
 
                 {/* Expanded detail panel with inline editing */}
-                {isExpanded && (
+                {isExpanded && (() => {
+                  const schema = schemasMap[record.target_type];
+                  const schemaFields = schema?.fields || {};
+                  const existingKeys = new Set(allFields.map(([k]) => k));
+                  const missingFields = Object.entries(schemaFields).filter(([k]) => !existingKeys.has(k));
+                  const canEdit = record.status === 'pending_review';
+
+                  return (
                   <div className="border-b bg-muted/20 px-4 py-3" onClick={handleStopPropagation}>
                     <div className="grid grid-cols-[1fr_1fr] lg:grid-cols-[1fr_1fr_1fr] gap-x-6 gap-y-2">
                       {allFields.map(([key, value]) => {
                         const dv = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
                         const isLong = dv.length > 80;
-                        const canEdit = record.status === 'pending_review';
                         return (
                           <div key={key} className={isLong ? 'col-span-2 lg:col-span-3' : ''}>
-                            <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{key.replace(/_/g, ' ')}</dt>
+                            <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                              {key.replace(/_/g, ' ')}
+                              {schemaFields[key]?.required && <span className="text-red-400 ml-0.5">*</span>}
+                            </dt>
                             <InlineEditField
                               fieldKey={key}
                               value={dv}
                               recordId={record.id}
                               onSave={handleInlineFieldSave}
                               editable={canEdit}
+                              fieldDef={schemaFields[key]}
                             />
                           </div>
                         );
                       })}
                     </div>
+
+                    {/* Add field dropdown for missing schema fields */}
+                    {canEdit && missingFields.length > 0 && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                            <Plus className="h-3 w-3" /> Add field
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                          {missingFields.map(([fieldName, fieldDef]) => (
+                            <DropdownMenuItem
+                              key={fieldName}
+                              onClick={() => handleInlineFieldSave(record.id, fieldName, '')}
+                              className="text-xs"
+                            >
+                              <span>{fieldName.replace(/_/g, ' ')}</span>
+                              {fieldDef.required && <span className="text-red-400 ml-1">*</span>}
+                              <span className="ml-auto text-[10px] text-muted-foreground pl-4">{fieldDef.type}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
 
                     <div className="flex items-center gap-4 mt-3 pt-2 border-t border-muted text-[10px] text-muted-foreground">
                       <span>ID: <code className="text-[9px]">{record.id.slice(0, 8)}</code></span>
@@ -2161,7 +2251,8 @@ function StagingTab() {
                       </div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* Compact inline warnings when NOT expanded — skip common warnings shown in banner */}
                 {!isExpanded && rowSpecificErrs.length > 0 && record.status !== 'rejected' && (
