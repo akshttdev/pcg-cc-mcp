@@ -119,14 +119,14 @@ const Dialog = React.forwardRef<
   });
 
   const dialogContent = (
-    <div className="fixed inset-0 z-[9999] flex items-start justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
       <div
         className="fixed inset-0 bg-black/50 z-[9998]"
         onClick={() => (uncloseable ? {} : onOpenChange?.(false))}
       />
       <div
         ref={ref}
-        className={cn('relative z-[10000] w-full flex justify-center my-8', className)}
+        className={cn('relative z-[10000] w-full flex justify-center', className)}
         {...props}
       >
         {enrichedChildren}
