@@ -695,9 +695,12 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
                 // Return empty array rather than a placeholder when nothing found
                 json!({"companies": []}).to_string()
             } else {
-                let companies: Vec<Value> = extracted.iter().enumerate().map(|(i, name)| {
-                    let rel = match i % 3 { 0 => "potential_client", 1 => "partner", _ => "vendor" };
-                    json!({"name": name, "context": "Extracted from source content", "relationship": rel})
+                let companies: Vec<Value> = extracted.iter().map(|name| {
+                    // Use schema-compliant fields: name (required), description, industry
+                    json!({
+                        "name": name,
+                        "description": format!("Extracted from source content"),
+                    })
                 }).collect();
                 json!({ "companies": companies }).to_string()
             }
