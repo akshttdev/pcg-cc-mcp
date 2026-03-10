@@ -131,9 +131,9 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
 ];
 
-// Primary navigation - workspace destinations
+// Primary navigation - workspace destinations (user-level pages)
 const PRIMARY_NAV_ITEMS: NavItem[] = [
-  { label: 'Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
+  { label: 'My Projects', icon: FolderOpen, to: '/projects', id: 'projects' },
   { label: 'My Tasks', icon: ListTodo, to: '/my-tasks', id: 'my-tasks', memberOnly: true },
   { label: 'My Workflows', icon: Workflow, to: '/workflows', id: 'workflows' },
   { label: 'Social', icon: Megaphone, to: '/social-command', id: 'social-command' },
@@ -1012,6 +1012,7 @@ function OrgSection({
   expandedProjects,
   onToggleProject,
   queryClient,
+  isWorkspacePage,
 }: {
   org: SidebarOrg;
   projectId?: string;
@@ -1020,11 +1021,18 @@ function OrgSection({
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
   queryClient: QueryClient;
+  isWorkspacePage?: boolean;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [internalExpanded, setInternalExpanded] = useState(true);
   const [clientsExpanded, setClientsExpanded] = useState(true);
+  const [orgContentExpanded, setOrgContentExpanded] = useState(!isWorkspacePage);
+
+  // Auto-collapse/expand when workspace page state changes
+  useEffect(() => {
+    setOrgContentExpanded(!isWorkspacePage);
+  }, [isWorkspacePage]);
 
   const findInTree = (projects: SidebarProjectType[], id: string): boolean =>
     projects.some((p) => p.id === id || findInTree(p.children || [], id));
@@ -1036,30 +1044,37 @@ function OrgSection({
 
   return (
     <div className="space-y-0.5">
-      {/* Org header */}
-      <div className={cn(
-        "flex items-center rounded-sm transition-colors",
-        isActiveOrg && "bg-primary/10 dark:bg-primary/15 shadow-[inset_3px_0_0_hsl(var(--brand))]"
-      )}>
-        <Button
-          variant="ghost"
-          className={cn(
-            "flex-1 justify-start px-2 py-1.5 h-auto font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground min-w-0",
-            isActiveOrg && "text-foreground font-semibold"
-          )}
-          onClick={() => {
-            if (org.id) navigate(`/organizations/${org.id}`);
-          }}
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <HealthDot status={org.health_status} />
-            <Building2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{org.name}</span>
-          </div>
-        </Button>
-      </div>
+      {/* Org header — clickable to toggle content */}
+      <Collapsible open={orgContentExpanded} onOpenChange={setOrgContentExpanded}>
+        <div className={cn(
+          "flex items-center rounded-sm transition-colors",
+          isActiveOrg && !isWorkspacePage && "bg-primary/10 dark:bg-primary/15 shadow-[inset_3px_0_0_hsl(var(--brand))]"
+        )}>
+          <Button
+            variant="ghost"
+            className={cn(
+              "flex-1 justify-start px-2 py-1.5 h-auto font-medium text-xs uppercase tracking-wider text-muted-foreground hover:text-foreground min-w-0",
+              isActiveOrg && !isWorkspacePage && "text-foreground font-semibold"
+            )}
+            onClick={() => {
+              if (org.id) navigate(`/organizations/${org.id}`);
+            }}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <HealthDot status={org.health_status} />
+              <Building2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{org.name}</span>
+            </div>
+          </Button>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 mr-1">
+              {orgContentExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            </Button>
+          </CollapsibleTrigger>
+        </div>
 
-      {/* Org content */}
+        {/* Org content */}
+        <CollapsibleContent>
       <div className="pl-2 space-y-0.5">
         {/* Org-level workspace links: CRM, Social, Intelligence */}
         <div className="px-1 py-1 space-y-0.5">
@@ -1187,6 +1202,8 @@ function OrgSection({
         </Collapsible>
 
       </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
@@ -1204,6 +1221,7 @@ function SidebarOrgGroups({
   expandedProjects,
   onToggleProject,
   queryClient,
+  isWorkspacePage,
 }: {
   sidebarTree: SidebarTree;
   projectId?: string;
@@ -1213,6 +1231,7 @@ function SidebarOrgGroups({
   expandedProjects: Set<string>;
   onToggleProject: (id: string) => void;
   queryClient: QueryClient;
+  isWorkspacePage?: boolean;
 }) {
   const [showOtherOrgs, setShowOtherOrgs] = useState(false);
 
@@ -1250,6 +1269,7 @@ function SidebarOrgGroups({
           expandedProjects={expandedProjects}
           onToggleProject={onToggleProject}
           queryClient={queryClient}
+          isWorkspacePage={isWorkspacePage}
         />
       )}
 
@@ -1360,6 +1380,11 @@ export function Sidebar({ className }: SidebarProps) {
   const [globalViewsExpanded, setGlobalViewsExpanded] = useState(false);
   const [adminPlatformsExpanded, setAdminPlatformsExpanded] = useState(false);
   const [managementExpanded, setManagementExpanded] = useState(false);
+  const [myWorkspaceExpanded, setMyWorkspaceExpanded] = useState(true);
+
+  // Detect if user is on a "My Workspace" page (user-level, not org-level)
+  const WORKSPACE_PATHS = PRIMARY_NAV_ITEMS.map(item => item.to);
+  const isWorkspacePage = WORKSPACE_PATHS.some(path => location.pathname === path || location.pathname.startsWith(path + '/'));
 
   // Keyboard shortcut: Cmd+B / Ctrl+B to toggle sidebar
   useKeyToggleSidebar(() => toggleSidebar(), { scope: Scope.GLOBAL });
@@ -1474,12 +1499,51 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
       )}
 
-      {/* Primary Navigation */}
-      <div className={cn("border-b border-border/40", sidebarCollapsed ? "p-1.5" : "p-2 px-3")}>
-        <div className="space-y-0.5">
-          {filteredPrimaryNav.map((item) => renderNavItem(item, isNavActive(item)))}
+      {/* My Workspace — user-level pages */}
+      {sidebarCollapsed ? (
+        <div className="border-b border-border/40 p-1.5">
+          <div className="space-y-0.5">
+            {filteredPrimaryNav.map((item) => renderNavItem(item, isNavActive(item)))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="border-b border-border/40">
+          <Collapsible open={myWorkspaceExpanded} onOpenChange={setMyWorkspaceExpanded}>
+            <CollapsibleTrigger asChild>
+              <div className="sidebar-nav-item mx-3 my-1.5 justify-between cursor-pointer">
+                <div className="flex items-center gap-2.5">
+                  <UserCircle className="h-4 w-4" />
+                  <span>My Workspace</span>
+                </div>
+                {myWorkspaceExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-3 pb-1">
+              <div className="space-y-0.5 pl-4 border-l border-border/40 ml-2">
+                {filteredPrimaryNav.map((item) => {
+                  const Icon = item.icon;
+                  const active = isNavActive(item);
+                  return (
+                    <Link key={item.id} to={item.to}>
+                      <div className={cn(
+                        "sidebar-nav-item text-xs py-1",
+                        active && "sidebar-nav-item-active"
+                      )}>
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
 
       {/* Management, Global Views - Admin Only (collapsed into sections) */}
       {isAdmin && !sidebarCollapsed && (
@@ -1657,6 +1721,7 @@ export function Sidebar({ className }: SidebarProps) {
                 expandedProjects={expandedProjects}
                 onToggleProject={toggleProject}
                 queryClient={queryClient}
+                isWorkspacePage={isWorkspacePage}
               />
             ) : useFlatFallback ? (
               // Fallback: flat project list
