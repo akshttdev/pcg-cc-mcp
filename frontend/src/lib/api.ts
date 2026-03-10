@@ -2680,6 +2680,96 @@ export const socialApi = {
     const response = await makeRequest(`/api/social/inbox/stats/${projectId}`);
     return handleApiResponse<SocialInboxStats>(response);
   },
+
+  listPostsFiltered: async (params: {
+    projectId?: string;
+    status?: string;
+    category?: string;
+    platform?: string;
+    limit?: number;
+  }): Promise<SocialPostRecord[]> => {
+    const sp = new URLSearchParams();
+    if (params.projectId) sp.set('project_id', params.projectId);
+    if (params.status) sp.set('status', params.status);
+    if (params.category) sp.set('category', params.category);
+    if (params.platform) sp.set('platform', params.platform);
+    if (params.limit) sp.set('limit', params.limit.toString());
+    const response = await makeRequest(`/api/social/posts?${sp.toString()}`);
+    return handleApiResponse<SocialPostRecord[]>(response);
+  },
+
+  createPost: async (data: {
+    project_id: string;
+    caption: string;
+    platforms: string;
+    content_type?: string;
+    status?: string;
+    scheduled_for?: string;
+    category?: string;
+    hashtags?: string;
+  }): Promise<SocialPostRecord> => {
+    const response = await makeRequest('/api/social/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SocialPostRecord>(response);
+  },
+
+  updatePost: async (id: string, data: Partial<{
+    caption: string;
+    status: string;
+    scheduled_for: string | null;
+    category: string;
+    platforms: string;
+  }>): Promise<SocialPostRecord> => {
+    const response = await makeRequest(`/api/social/posts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SocialPostRecord>(response);
+  },
+
+  deletePost: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/social/posts/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  updateMention: async (id: string, data: Partial<{
+    status: string;
+    priority: string;
+    sentiment: string;
+    reply_content: string;
+    replied_by: string;
+    replied_at: string;
+  }>): Promise<SocialMentionRecord> => {
+    const response = await makeRequest(`/api/social/inbox/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SocialMentionRecord>(response);
+  },
+
+  updateAccount: async (id: string, data: Partial<{
+    status: string;
+    username: string;
+    display_name: string;
+    follower_count: number;
+  }>): Promise<SocialAccountRecord> => {
+    const response = await makeRequest(`/api/social/accounts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SocialAccountRecord>(response);
+  },
+
+  deleteAccount: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/social/accounts/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
 };
 
 // =============================================================================

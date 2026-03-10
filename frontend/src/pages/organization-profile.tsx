@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import type React from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -101,6 +102,9 @@ import {
   Megaphone,
   Lightbulb,
   Crosshair,
+  CalendarDays,
+  CheckCircle,
+  BarChart2,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -3434,12 +3438,16 @@ function TopologyIntelView({ projectEntries }: { projectEntries: { id: string; n
 
 // ── Social Tab ────────────────────────────────────────────────────────────────
 
-const PLATFORM_ICONS: Record<string, typeof Linkedin> = {
+const PLATFORM_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   linkedin: Linkedin,
   instagram: Instagram,
   twitter: Twitter,
   facebook: Facebook,
   youtube: Youtube,
+  tiktok: Globe,
+  threads: Globe,
+  bluesky: Globe,
+  pinterest: Globe,
 };
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -3448,9 +3456,58 @@ const PLATFORM_COLORS: Record<string, string> = {
   twitter: 'text-foreground',
   facebook: 'text-[#1877F2]',
   youtube: 'text-[#FF0000]',
+  tiktok: 'text-foreground',
+  threads: 'text-foreground',
+  bluesky: 'text-sky-500',
+  pinterest: 'text-[#E60023]',
 };
 
-function SocialTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
+const PLATFORM_BG: Record<string, string> = {
+  linkedin: 'bg-[#0A66C2]/10',
+  instagram: 'bg-[#E4405F]/10',
+  twitter: 'bg-foreground/10',
+  facebook: 'bg-[#1877F2]/10',
+  youtube: 'bg-[#FF0000]/10',
+  tiktok: 'bg-muted',
+  bluesky: 'bg-sky-500/10',
+  pinterest: 'bg-[#E60023]/10',
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  draft: 'text-muted-foreground border-border',
+  pending_review: 'text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/20',
+  approved: 'text-blue-600 border-blue-300 bg-blue-50 dark:bg-blue-950/20',
+  scheduled: 'text-purple-600 border-purple-300 bg-purple-50 dark:bg-purple-950/20',
+  published: 'text-green-600 border-green-300 bg-green-50 dark:bg-green-950/20',
+  failed: 'text-destructive border-destructive/30 bg-destructive/10',
+  cancelled: 'text-muted-foreground border-border',
+};
+
+const SENTIMENT_COLORS: Record<string, string> = {
+  positive: 'text-green-600',
+  negative: 'text-destructive',
+  neutral: 'text-muted-foreground',
+  unknown: 'text-muted-foreground',
+};
+
+const PRIORITY_COLORS: Record<string, string> = {
+  urgent: 'text-destructive',
+  high: 'text-amber-600',
+  normal: 'text-muted-foreground',
+  low: 'text-muted-foreground/60',
+};
+
+// ── Social: Overview ──────────────────────────────────────────────────────────
+
+function SocialOverviewView({
+  projectEntries,
+  orgId,
+  onSwitchView,
+}: {
+  projectEntries: { id: string; name: string }[];
+  orgId: string;
+  onSwitchView: (v: string) => void;
+}) {
   const { data: brandProfile } = useQuery({
     queryKey: ['brandProfile', orgId],
     queryFn: () => organizationsApi.getBrandProfile(orgId),
@@ -3459,202 +3516,150 @@ function SocialTab({ projectEntries, orgId }: { projectEntries: { id: string; na
   });
 
   const accountQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['social-accounts', entry.id],
-      queryFn: () => socialApi.listAccounts(entry.id),
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-accounts', e.id],
+      queryFn: () => socialApi.listAccounts(e.id),
       staleTime: 60_000,
-      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const postQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-posts', e.id],
+      queryFn: () => socialApi.listPostsFiltered({ projectId: e.id, limit: 20 }),
+      staleTime: 60_000,
     })),
   });
 
   const mentionQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['social-mentions', entry.id],
-      queryFn: () => socialApi.listMentions(entry.id, { limit: 20 }),
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-mentions-ov', e.id],
+      queryFn: () => socialApi.listMentions(e.id, { limit: 10 }),
       staleTime: 60_000,
-      enabled: projectEntries.length > 0,
     })),
   });
 
-  const isLoading = accountQueries.some(q => q.isLoading);
-
-  const aggregated = useMemo(() => {
-    const allAccounts: (SocialAccountRecord & { _projectName: string; _projectId: string })[] = [];
-    const allMentions: (SocialMentionRecord & { _projectName: string })[] = [];
+  const agg = useMemo(() => {
+    const allAccounts: (SocialAccountRecord & { _project: string })[] = [];
+    const allPosts: (SocialPostRecord & { _project: string })[] = [];
+    const allMentions: (SocialMentionRecord & { _project: string })[] = [];
 
     accountQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      q.data.forEach(a => allAccounts.push({ ...a, _projectName: entry.name, _projectId: entry.id }));
+      q.data?.forEach(a => allAccounts.push({ ...a, _project: projectEntries[i].name }));
     });
-
+    postQueries.forEach((q, i) => {
+      q.data?.forEach(p => allPosts.push({ ...p, _project: projectEntries[i].name }));
+    });
     mentionQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      q.data.forEach(m => allMentions.push({ ...m, _projectName: entry.name }));
+      q.data?.forEach(m => allMentions.push({ ...m, _project: projectEntries[i].name }));
     });
 
-    // Dedupe accounts by platform + username
-    const uniqueAccounts = new Map<string, typeof allAccounts[0]>();
-    for (const a of allAccounts) {
-      const key = `${a.platform}:${a.username || a.display_name || a.id}`;
-      if (!uniqueAccounts.has(key)) uniqueAccounts.set(key, a);
+    const totalFollowers = allAccounts.reduce((s, a) => s + (a.follower_count || 0), 0);
+    const scheduled = allPosts.filter(p => p.status === 'scheduled').length;
+    const published = allPosts.filter(p => p.status === 'published').length;
+    const unread = allMentions.filter(m => m.status === 'unread').length;
+    const urgent = allMentions.filter(m => m.priority === 'urgent' || m.priority === 'high').length;
+
+    const recentPosts = [...allPosts]
+      .filter(p => p.status === 'published' || p.status === 'scheduled')
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 6);
+
+    const recentMentions = [...allMentions]
+      .sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime())
+      .slice(0, 5);
+
+    // Platform breakdown
+    const byPlatform: Record<string, { accounts: number; followers: number }> = {};
+    allAccounts.forEach(a => {
+      if (!byPlatform[a.platform]) byPlatform[a.platform] = { accounts: 0, followers: 0 };
+      byPlatform[a.platform].accounts++;
+      byPlatform[a.platform].followers += a.follower_count || 0;
+    });
+
+    // Brand profile platforms (if no connected accounts)
+    const brandHandles: { platform: string; handle: string }[] = [];
+    if (allAccounts.length === 0 && brandProfile) {
+      if (brandProfile.socialInstagram) brandHandles.push({ platform: 'instagram', handle: brandProfile.socialInstagram });
+      if (brandProfile.socialLinkedin) brandHandles.push({ platform: 'linkedin', handle: brandProfile.socialLinkedin });
+      if (brandProfile.socialTwitter) brandHandles.push({ platform: 'twitter', handle: brandProfile.socialTwitter });
+      if (brandProfile.socialTiktok) brandHandles.push({ platform: 'tiktok', handle: brandProfile.socialTiktok });
+      if (brandProfile.socialYoutube) brandHandles.push({ platform: 'youtube', handle: brandProfile.socialYoutube });
     }
 
-    // Sort mentions by date
-    allMentions.sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
+    return { totalFollowers, scheduled, published, unread, urgent, recentPosts, recentMentions, byPlatform, brandHandles, totalAccounts: allAccounts.length };
+  }, [accountQueries, postQueries, mentionQueries, projectEntries, brandProfile]);
 
-    const unreadCount = allMentions.filter(m => m.status === 'unread').length;
-    const totalFollowers = [...uniqueAccounts.values()].reduce((sum, a) => sum + (a.follower_count || 0), 0);
-
-    return {
-      accounts: [...uniqueAccounts.values()],
-      mentions: allMentions.slice(0, 30),
-      unreadCount,
-      totalFollowers,
-    };
-  }, [accountQueries, mentionQueries, projectEntries]);
+  const fmtFollowers = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
 
   return (
     <div className="space-y-6">
-      {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Connected Accounts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-bold">{aggregated.accounts.length}</span>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Followers</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-bold">
-              {aggregated.totalFollowers >= 1000
-                ? `${(aggregated.totalFollowers / 1000).toFixed(1)}k`
-                : aggregated.totalFollowers}
-            </span>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Unread Mentions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className={`text-2xl font-bold ${aggregated.unreadCount > 0 ? 'text-blue-600' : ''}`}>
-              {aggregated.unreadCount}
-            </span>
-          </CardContent>
-        </Card>
+      {/* KPI row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Followers', value: fmtFollowers(agg.totalFollowers), icon: Users, color: 'text-blue-500', action: () => onSwitchView('accounts') },
+          { label: 'Scheduled Posts', value: agg.scheduled, icon: CalendarDays, color: 'text-purple-500', action: () => onSwitchView('content') },
+          { label: 'Unread Mentions', value: agg.unread, icon: Inbox, color: agg.unread > 0 ? 'text-amber-500' : 'text-muted-foreground', action: () => onSwitchView('inbox') },
+          { label: 'Published', value: agg.published, icon: CheckCircle, color: 'text-green-500', action: () => onSwitchView('content') },
+        ].map(({ label, value, icon: Icon, color, action }) => (
+          <Card key={label} className="bg-card/80 backdrop-blur-sm border-border/50 cursor-pointer hover:border-border transition-colors" onClick={action}>
+            <CardContent className="pt-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                  <p className="text-2xl font-bold">{value}</p>
+                </div>
+                <Icon className={`h-5 w-5 ${color} mt-0.5`} />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {isLoading && (
-        <p className="text-xs text-muted-foreground">Loading social data...</p>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Accounts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Platform breakdown */}
         <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Share2 className="h-4 w-4" />
-              Connected Accounts
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Share2 className="h-4 w-4 text-pink-500" />
+              Platforms
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {aggregated.accounts.length === 0 && !brandProfile?.socialInstagram && !brandProfile?.socialLinkedin && !brandProfile?.socialTwitter && !brandProfile?.socialTiktok && !brandProfile?.socialYoutube ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Share2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>No social accounts connected</p>
+            {Object.keys(agg.byPlatform).length === 0 && agg.brandHandles.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <Share2 className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                <p className="text-xs">No accounts connected</p>
+                <button onClick={() => onSwitchView('accounts')} className="mt-2 text-xs text-primary hover:underline">Connect accounts →</button>
               </div>
-            ) : aggregated.accounts.length === 0 && brandProfile ? (
-              <div className="space-y-3">
-                <p className="text-xs text-muted-foreground mb-2">From brand profile (not yet connected as monitored accounts)</p>
-                {brandProfile.socialInstagram && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
-                    <Instagram className="h-5 w-5 shrink-0 text-pink-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{brandProfile.socialInstagram}</p>
-                      <p className="text-xs text-muted-foreground">Instagram</p>
+            ) : agg.brandHandles.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-[10px] text-muted-foreground mb-2">From brand profile</p>
+                {agg.brandHandles.map(({ platform, handle }) => {
+                  const Icon = PLATFORM_ICONS[platform] || Globe;
+                  return (
+                    <div key={platform} className="flex items-center gap-2.5 p-2 rounded-lg bg-muted/40">
+                      <Icon className={`h-4 w-4 shrink-0 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate">{handle}</p>
+                        <p className="text-[10px] text-muted-foreground capitalize">{platform}</p>
+                      </div>
                     </div>
-                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
-                  </div>
-                )}
-                {brandProfile.socialLinkedin && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
-                    <Linkedin className="h-5 w-5 shrink-0 text-blue-600" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{brandProfile.socialLinkedin}</p>
-                      <p className="text-xs text-muted-foreground">LinkedIn</p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
-                  </div>
-                )}
-                {brandProfile.socialTwitter && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
-                    <Twitter className="h-5 w-5 shrink-0 text-sky-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{brandProfile.socialTwitter}</p>
-                      <p className="text-xs text-muted-foreground">X / Twitter</p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
-                  </div>
-                )}
-                {brandProfile.socialTiktok && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
-                    <Globe className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{brandProfile.socialTiktok}</p>
-                      <p className="text-xs text-muted-foreground">TikTok</p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
-                  </div>
-                )}
-                {brandProfile.socialYoutube && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
-                    <Youtube className="h-5 w-5 shrink-0 text-red-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{brandProfile.socialYoutube}</p>
-                      <p className="text-xs text-muted-foreground">YouTube</p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">brand profile</Badge>
-                  </div>
-                )}
+                  );
+                })}
               </div>
             ) : (
-              <div className="space-y-3">
-                {aggregated.accounts.map((account) => {
-                  const PlatformIcon = PLATFORM_ICONS[account.platform] || Globe;
-                  const platformColor = PLATFORM_COLORS[account.platform] || 'text-muted-foreground';
+              <div className="space-y-2">
+                {Object.entries(agg.byPlatform).map(([platform, data]) => {
+                  const Icon = PLATFORM_ICONS[platform] || Globe;
                   return (
-                    <div key={account.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
-                      <PlatformIcon className={`h-5 w-5 shrink-0 ${platformColor}`} />
+                    <div key={platform} className={`flex items-center gap-2.5 p-2 rounded-lg ${PLATFORM_BG[platform] || 'bg-muted/40'}`}>
+                      <Icon className={`h-4 w-4 shrink-0 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">
-                          {account.display_name || account.username || account.platform}
-                        </p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="capitalize">{account.platform}</span>
-                          {account.follower_count != null && (
-                            <>
-                              <span>-</span>
-                              <span>{account.follower_count.toLocaleString()} followers</span>
-                            </>
-                          )}
-                        </div>
+                        <p className="text-xs font-medium capitalize">{platform}</p>
+                        <p className="text-[10px] text-muted-foreground">{fmtFollowers(data.followers)} followers</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px]">{account._projectName}</Badge>
-                        <Badge
-                          variant={account.status === 'active' ? 'default' : 'secondary'}
-                          className="text-[10px]"
-                        >
-                          {account.status}
-                        </Badge>
-                      </div>
+                      <span className="text-[10px] text-muted-foreground">{data.accounts} acct{data.accounts !== 1 ? 's' : ''}</span>
                     </div>
                   );
                 })}
@@ -3663,64 +3668,855 @@ function SocialTab({ projectEntries, orgId }: { projectEntries: { id: string; na
           </CardContent>
         </Card>
 
-        {/* Recent Mentions */}
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Inbox className="h-4 w-4" />
-              Recent Mentions
-              {aggregated.unreadCount > 0 && (
-                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unreadCount} new</Badge>
-              )}
-            </CardTitle>
+        {/* Recent posts */}
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50 lg:col-span-2">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <FileText className="h-4 w-4 text-purple-500" />
+                Recent Content
+              </CardTitle>
+              <button onClick={() => onSwitchView('content')} className="text-xs text-primary hover:underline">View all →</button>
+            </div>
           </CardHeader>
           <CardContent>
-            {aggregated.mentions.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Inbox className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>No mentions yet</p>
+            {agg.recentPosts.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <FileText className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                <p className="text-xs">No posts yet</p>
+                <button onClick={() => onSwitchView('content')} className="mt-2 text-xs text-primary hover:underline">Create first post →</button>
               </div>
             ) : (
-              <ScrollArea className="h-[400px]">
-                <div className="space-y-2 pr-3">
-                  {aggregated.mentions.map((mention) => {
-                    const PlatformIcon = PLATFORM_ICONS[mention.platform] || Globe;
-                    const isUnread = mention.status === 'unread';
-                    return (
-                      <div
-                        key={mention.id}
-                        className={`p-3 rounded-lg border border-border/50 ${isUnread ? 'bg-accent/20' : ''}`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <PlatformIcon className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium">
-                                {mention.author_display_name || mention.author_username || 'Unknown'}
-                              </span>
-                              <Badge variant="outline" className="text-[9px]">{mention.mention_type}</Badge>
-                              {isUnread && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />}
-                            </div>
-                            {mention.content && (
-                              <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{mention.content}</p>
-                            )}
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] text-muted-foreground">
-                                {formatDate(mention.received_at)}
-                              </span>
-                              <Badge variant="outline" className="text-[9px]">{mention._projectName}</Badge>
-                            </div>
-                          </div>
+              <div className="space-y-2">
+                {agg.recentPosts.map(post => {
+                  const platforms: string[] = (() => { try { return JSON.parse(post.platforms); } catch { return [post.platforms]; } })();
+                  return (
+                    <div key={post.id} className="flex items-start gap-3 p-2.5 rounded-lg border border-border/40 hover:bg-muted/30 transition-colors">
+                      <div className="flex gap-1 mt-0.5">
+                        {platforms.slice(0, 3).map(p => {
+                          const Icon = PLATFORM_ICONS[p] || Globe;
+                          return <Icon key={p} className={`h-3.5 w-3.5 ${PLATFORM_COLORS[p] || 'text-muted-foreground'}`} />;
+                        })}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs line-clamp-1 font-medium">{post.caption || '(no caption)'}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status}</span>
+                          {post.scheduled_for && <span className="text-[10px] text-muted-foreground">{formatDate(post.scheduled_for)}</span>}
+                          <span className="text-[10px] text-muted-foreground">{post._project}</span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
+                      {(post.likes > 0 || post.impressions > 0) && (
+                        <div className="text-right shrink-0">
+                          {post.impressions > 0 && <p className="text-[10px] text-muted-foreground">{fmtFollowers(post.impressions)} views</p>}
+                          {post.likes > 0 && <p className="text-[10px] text-muted-foreground">{post.likes} ♥</p>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Recent inbox */}
+      {agg.recentMentions.length > 0 && (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Inbox className="h-4 w-4 text-amber-500" />
+                Recent Inbox
+                {agg.unread > 0 && <Badge variant="default" className="text-[10px]">{agg.unread} unread</Badge>}
+                {agg.urgent > 0 && <Badge variant="destructive" className="text-[10px]">{agg.urgent} urgent</Badge>}
+              </CardTitle>
+              <button onClick={() => onSwitchView('inbox')} className="text-xs text-primary hover:underline">View all →</button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {agg.recentMentions.map(m => {
+                const Icon = PLATFORM_ICONS[m.platform] || Globe;
+                return (
+                  <div key={m.id} className={`p-2.5 rounded-lg border border-border/40 ${m.status === 'unread' ? 'bg-accent/20' : ''}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon className={`h-3.5 w-3.5 shrink-0 ${PLATFORM_COLORS[m.platform] || 'text-muted-foreground'}`} />
+                      <span className="text-xs font-medium truncate flex-1">{m.author_display_name || m.author_username || 'Unknown'}</span>
+                      {m.status === 'unread' && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />}
+                    </div>
+                    {m.content && <p className="text-[11px] text-muted-foreground line-clamp-2">{m.content}</p>}
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Badge variant="outline" className="text-[9px]">{m.mention_type}</Badge>
+                      {m.sentiment && m.sentiment !== 'unknown' && (
+                        <span className={`text-[9px] ${SENTIMENT_COLORS[m.sentiment]}`}>{m.sentiment}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Social: Accounts ──────────────────────────────────────────────────────────
+
+function SocialAccountsView({
+  projectEntries,
+  orgId,
+}: {
+  projectEntries: { id: string; name: string }[];
+  orgId: string;
+}) {
+  const { data: brandProfile } = useQuery({
+    queryKey: ['brandProfile', orgId],
+    queryFn: () => organizationsApi.getBrandProfile(orgId),
+    staleTime: 300_000,
+    enabled: !!orgId,
+  });
+
+  const accountQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-accounts', e.id],
+      queryFn: () => socialApi.listAccounts(e.id),
+      staleTime: 60_000,
+    })),
+  });
+
+  const allAccounts = useMemo(() => {
+    const list: (SocialAccountRecord & { _project: string; _projectId: string })[] = [];
+    accountQueries.forEach((q, i) => {
+      q.data?.forEach(a => list.push({ ...a, _project: projectEntries[i].name, _projectId: projectEntries[i].id }));
+    });
+    return list.sort((a, b) => a.platform.localeCompare(b.platform));
+  }, [accountQueries, projectEntries]);
+
+  const queryClient = useQueryClient();
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => socialApi.deleteAccount(id),
+    onSuccess: () => {
+      accountQueries.forEach((_, i) => {
+        queryClient.invalidateQueries({ queryKey: ['social-accounts', projectEntries[i].id] });
+      });
+    },
+  });
+
+  const fmtFollowers = (n?: number | null) => !n ? '—' : n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
+
+  const brandHandles: { platform: string; handle: string }[] = [];
+  if (brandProfile) {
+    if (brandProfile.socialInstagram) brandHandles.push({ platform: 'instagram', handle: brandProfile.socialInstagram });
+    if (brandProfile.socialLinkedin) brandHandles.push({ platform: 'linkedin', handle: brandProfile.socialLinkedin });
+    if (brandProfile.socialTwitter) brandHandles.push({ platform: 'twitter', handle: brandProfile.socialTwitter });
+    if (brandProfile.socialTiktok) brandHandles.push({ platform: 'tiktok', handle: brandProfile.socialTiktok });
+    if (brandProfile.socialYoutube) brandHandles.push({ platform: 'youtube', handle: brandProfile.socialYoutube });
+    if (brandProfile.socialFacebook) brandHandles.push({ platform: 'facebook', handle: brandProfile.socialFacebook });
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Brand profile handles */}
+      {brandHandles.length > 0 && (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Share2 className="h-4 w-4 text-pink-500" />
+              Brand Profile Handles
+              <Badge variant="outline" className="text-[10px] ml-1">From brand research</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {brandHandles.map(({ platform, handle }) => {
+                const Icon = PLATFORM_ICONS[platform] || Globe;
+                const isConnected = allAccounts.some(a => a.platform === platform);
+                return (
+                  <div key={platform} className={`flex items-center gap-3 p-3 rounded-lg border ${isConnected ? 'border-green-300 bg-green-50 dark:bg-green-950/20' : 'border-border/50 bg-muted/30'}`}>
+                    <div className={`h-9 w-9 rounded-full flex items-center justify-center ${PLATFORM_BG[platform] || 'bg-muted'}`}>
+                      <Icon className={`h-4.5 w-4.5 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{handle}</p>
+                      <p className="text-[10px] text-muted-foreground capitalize">{platform}</p>
+                    </div>
+                    {isConnected
+                      ? <Badge variant="outline" className="text-[9px] text-green-600 border-green-300">connected</Badge>
+                      : <Badge variant="outline" className="text-[9px]">not connected</Badge>
+                    }
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Connected accounts */}
+      <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Connected Accounts
+              <Badge variant="secondary" className="text-[10px]">{allAccounts.length}</Badge>
+            </CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {allAccounts.length === 0 ? (
+            <div className="text-center py-10 text-muted-foreground">
+              <Share2 className="h-8 w-8 mx-auto mb-3 opacity-40" />
+              <p className="text-sm font-medium mb-1">No accounts connected yet</p>
+              <p className="text-xs">Connect social accounts to your projects to start tracking and publishing</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {allAccounts.map(account => {
+                const Icon = PLATFORM_ICONS[account.platform] || Globe;
+                return (
+                  <div key={account.id} className="flex items-center gap-4 p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
+                    <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${PLATFORM_BG[account.platform] || 'bg-muted'}`}>
+                      {account.avatar_url
+                        ? <img src={account.avatar_url} className="h-10 w-10 rounded-full object-cover" alt="" />
+                        : <Icon className={`h-5 w-5 ${PLATFORM_COLORS[account.platform] || 'text-muted-foreground'}`} />
+                      }
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{account.display_name || account.username || account.platform}</p>
+                        <Badge variant={account.status === 'active' ? 'default' : account.status === 'error' ? 'destructive' : 'secondary'} className="text-[10px]">
+                          {account.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                        <span className="capitalize">{account.platform}</span>
+                        <span>·</span>
+                        <span>{fmtFollowers(account.follower_count)} followers</span>
+                        {account.post_count != null && <><span>·</span><span>{account.post_count} posts</span></>}
+                        <span>·</span>
+                        <span>{account._project}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {account.profile_url && (
+                        <a href={account.profile_url} target="_blank" rel="noopener noreferrer"
+                          className="p-1.5 rounded hover:bg-muted transition-colors" title="View profile">
+                          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                        </a>
+                      )}
+                      <button
+                        onClick={() => { if (confirm('Disconnect this account?')) deleteMut.mutate(account.id); }}
+                        className="p-1.5 rounded hover:bg-destructive/10 transition-colors" title="Disconnect">
+                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Social: Content ───────────────────────────────────────────────────────────
+
+function SocialContentView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [showCreate, setShowCreate] = useState(false);
+  const [newCaption, setNewCaption] = useState('');
+  const [newPlatforms, setNewPlatforms] = useState<string[]>([]);
+  const [newStatus, setNewStatus] = useState('draft');
+  const [newProjectId, setNewProjectId] = useState(projectEntries[0]?.id || '');
+  const [newScheduled, setNewScheduled] = useState('');
+
+  const postQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-posts', e.id],
+      queryFn: () => socialApi.listPostsFiltered({ projectId: e.id, limit: 100 }),
+      staleTime: 60_000,
+    })),
+  });
+
+  const allPosts = useMemo(() => {
+    const list: (SocialPostRecord & { _project: string; _projectId: string })[] = [];
+    postQueries.forEach((q, i) => {
+      q.data?.forEach(p => list.push({ ...p, _project: projectEntries[i].name, _projectId: projectEntries[i].id }));
+    });
+    return list.sort((a, b) => {
+      if (a.scheduled_for && b.scheduled_for) return new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime();
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
+  }, [postQueries, projectEntries]);
+
+  const filtered = useMemo(() => {
+    return allPosts.filter(p => {
+      if (statusFilter !== 'all' && p.status !== statusFilter) return false;
+      if (projectFilter !== 'all' && p._projectId !== projectFilter) return false;
+      return true;
+    });
+  }, [allPosts, statusFilter, projectFilter]);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: allPosts.length };
+    allPosts.forEach(p => { c[p.status] = (c[p.status] || 0) + 1; });
+    return c;
+  }, [allPosts]);
+
+  const queryClient = useQueryClient();
+  const createMut = useMutation({
+    mutationFn: () => socialApi.createPost({
+      project_id: newProjectId,
+      caption: newCaption,
+      platforms: JSON.stringify(newPlatforms),
+      status: newStatus,
+      scheduled_for: newScheduled || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['social-posts'] });
+      setShowCreate(false);
+      setNewCaption('');
+      setNewPlatforms([]);
+      setNewScheduled('');
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => socialApi.deletePost(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['social-posts'] }),
+  });
+
+  const fmtFollowers = (n: number) => n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
+
+  const STATUS_TABS = ['all', 'draft', 'pending_review', 'scheduled', 'published', 'failed'];
+
+  return (
+    <div className="space-y-5">
+      {/* Status filter tabs */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex gap-1 p-1 bg-muted/50 rounded-lg flex-wrap">
+          {STATUS_TABS.map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all capitalize ${statusFilter === s ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              {s === 'all' ? 'All' : s.replace('_', ' ')}
+              {counts[s] != null && counts[s] > 0 && (
+                <span className="ml-1.5 text-[10px] text-muted-foreground">{counts[s]}</span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          {projectEntries.length > 1 && (
+            <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}
+              className="text-xs border border-border rounded-md px-2 py-1.5 bg-background">
+              <option value="all">All projects</option>
+              {projectEntries.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          )}
+          <Button size="sm" className="gap-1.5 text-xs h-8" onClick={() => setShowCreate(true)}>
+            <Plus className="h-3.5 w-3.5" /> New Post
+          </Button>
+        </div>
+      </div>
+
+      {/* Create form */}
+      {showCreate && (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Create Post
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <label className="text-xs font-medium mb-1 block">Caption</label>
+              <textarea value={newCaption} onChange={e => setNewCaption(e.target.value)}
+                placeholder="Write your caption..." rows={3}
+                className="w-full text-sm border border-border rounded-md p-2 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium mb-1 block">Platforms</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {['instagram','linkedin','twitter','facebook','youtube','tiktok'].map(p => {
+                    const Icon = PLATFORM_ICONS[p] || Globe;
+                    const selected = newPlatforms.includes(p);
+                    return (
+                      <button key={p} onClick={() => setNewPlatforms(prev => selected ? prev.filter(x => x !== p) : [...prev, p])}
+                        className={`flex items-center gap-1 px-2 py-1 rounded border text-xs transition-colors ${selected ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-border/80'}`}>
+                        <Icon className={`h-3 w-3 ${selected ? '' : PLATFORM_COLORS[p]}`} />
+                        <span className="capitalize">{p}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <label className="text-xs font-medium mb-1 block">Status</label>
+                  <select value={newStatus} onChange={e => setNewStatus(e.target.value)}
+                    className="w-full text-xs border border-border rounded-md px-2 py-1.5 bg-background">
+                    <option value="draft">Draft</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="pending_review">Pending Review</option>
+                  </select>
+                </div>
+                {projectEntries.length > 1 && (
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">Project</label>
+                    <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)}
+                      className="w-full text-xs border border-border rounded-md px-2 py-1.5 bg-background">
+                      {projectEntries.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+            {newStatus === 'scheduled' && (
+              <div>
+                <label className="text-xs font-medium mb-1 block">Schedule for</label>
+                <input type="datetime-local" value={newScheduled} onChange={e => setNewScheduled(e.target.value)}
+                  className="text-xs border border-border rounded-md px-2 py-1.5 bg-background" />
+              </div>
+            )}
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" onClick={() => createMut.mutate()} disabled={createMut.isPending || !newCaption || newPlatforms.length === 0}
+                className="text-xs gap-1 h-8">
+                {createMut.isPending ? 'Creating…' : 'Create Post'}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowCreate(false)} className="text-xs h-8">Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Post list */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>{statusFilter === 'all' ? 'No posts yet' : `No ${statusFilter.replace('_',' ')} posts`}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(post => {
+            const platforms: string[] = (() => { try { return JSON.parse(post.platforms); } catch { return [post.platforms].filter(Boolean); } })();
+            const hashtags: string[] = (() => { try { return post.hashtags ? JSON.parse(post.hashtags) : []; } catch { return []; } })();
+            return (
+              <Card key={post.id} className="bg-card/80 backdrop-blur-sm border-border/50 hover:border-border transition-colors">
+                <CardContent className="pt-4 pb-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex gap-1 mt-0.5 shrink-0">
+                      {platforms.map(p => {
+                        const Icon = PLATFORM_ICONS[p] || Globe;
+                        return <div key={p} className={`h-7 w-7 rounded-full flex items-center justify-center ${PLATFORM_BG[p] || 'bg-muted'}`}>
+                          <Icon className={`h-3.5 w-3.5 ${PLATFORM_COLORS[p] || 'text-muted-foreground'}`} />
+                        </div>;
+                      })}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm line-clamp-2">{post.caption || <span className="text-muted-foreground italic">No caption</span>}</p>
+                      {hashtags.length > 0 && (
+                        <p className="text-xs text-blue-500 mt-1 line-clamp-1">{hashtags.map(h => `#${h}`).join(' ')}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status.replace('_',' ')}</span>
+                        {post.scheduled_for && (
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            <CalendarDays className="h-3 w-3" />{formatDate(post.scheduled_for)}
+                          </span>
+                        )}
+                        {post.published_at && <span className="text-[10px] text-muted-foreground">Published {formatDate(post.published_at)}</span>}
+                        <span className="text-[10px] text-muted-foreground">{post._project}</span>
+                      </div>
+                      {post.status === 'published' && (post.impressions > 0 || post.likes > 0) && (
+                        <div className="flex gap-3 mt-2 text-[11px] text-muted-foreground">
+                          {post.impressions > 0 && <span>👁 {fmtFollowers(post.impressions)}</span>}
+                          {post.reach > 0 && <span>📡 {fmtFollowers(post.reach)}</span>}
+                          {post.likes > 0 && <span>♥ {post.likes}</span>}
+                          {post.comments > 0 && <span>💬 {post.comments}</span>}
+                          {post.shares > 0 && <span>↗ {post.shares}</span>}
+                          {post.engagement_rate > 0 && <span>{(post.engagement_rate * 100).toFixed(1)}% eng</span>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {post.platform_url && (
+                        <a href={post.platform_url} target="_blank" rel="noopener noreferrer"
+                          className="p-1.5 rounded hover:bg-muted" title="View post">
+                          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                        </a>
+                      )}
+                      <button onClick={() => { if (confirm('Delete this post?')) deleteMut.mutate(post.id); }}
+                        className="p-1.5 rounded hover:bg-destructive/10" title="Delete">
+                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                      </button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Social: Inbox ─────────────────────────────────────────────────────────────
+
+function SocialInboxView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [platformFilter, setPlatformFilter] = useState<string>('all');
+
+  const mentionQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-mentions', e.id],
+      queryFn: () => socialApi.listMentions(e.id, { limit: 50 }),
+      staleTime: 30_000,
+    })),
+  });
+
+  const allMentions = useMemo(() => {
+    const list: (SocialMentionRecord & { _project: string })[] = [];
+    mentionQueries.forEach((q, i) => {
+      q.data?.forEach(m => list.push({ ...m, _project: projectEntries[i].name }));
+    });
+    return list.sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
+  }, [mentionQueries, projectEntries]);
+
+  const platforms = useMemo(() => [...new Set(allMentions.map(m => m.platform))], [allMentions]);
+
+  const filtered = useMemo(() => {
+    return allMentions.filter(m => {
+      if (statusFilter === 'unread' && m.status !== 'unread') return false;
+      if (statusFilter === 'urgent' && m.priority !== 'urgent' && m.priority !== 'high') return false;
+      if (statusFilter === 'replied' && m.status !== 'replied') return false;
+      if (statusFilter === 'archived' && m.status !== 'archived') return false;
+      if (platformFilter !== 'all' && m.platform !== platformFilter) return false;
+      return true;
+    });
+  }, [allMentions, statusFilter, platformFilter]);
+
+  const counts = useMemo(() => ({
+    all: allMentions.length,
+    unread: allMentions.filter(m => m.status === 'unread').length,
+    urgent: allMentions.filter(m => m.priority === 'urgent' || m.priority === 'high').length,
+    replied: allMentions.filter(m => m.status === 'replied').length,
+    archived: allMentions.filter(m => m.status === 'archived').length,
+  }), [allMentions]);
+
+  const queryClient = useQueryClient();
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof socialApi.updateMention>[1] }) =>
+      socialApi.updateMention(id, data),
+    onSuccess: () => {
+      projectEntries.forEach(e => queryClient.invalidateQueries({ queryKey: ['social-mentions', e.id] }));
+    },
+  });
+
+  const INBOX_TABS = [
+    { key: 'all', label: 'All' },
+    { key: 'unread', label: 'Unread' },
+    { key: 'urgent', label: 'Urgent' },
+    { key: 'replied', label: 'Replied' },
+    { key: 'archived', label: 'Archived' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex gap-1 p-1 bg-muted/50 rounded-lg">
+          {INBOX_TABS.map(({ key, label }) => (
+            <button key={key} onClick={() => setStatusFilter(key)}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${statusFilter === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              {label}
+              {(counts as any)[key] > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">{(counts as any)[key]}</span>}
+            </button>
+          ))}
+        </div>
+        {platforms.length > 1 && (
+          <select value={platformFilter} onChange={e => setPlatformFilter(e.target.value)}
+            className="text-xs border border-border rounded-md px-2 py-1.5 bg-background">
+            <option value="all">All platforms</option>
+            {platforms.map(p => <option key={p} value={p} className="capitalize">{p}</option>)}
+          </select>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Inbox className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>{statusFilter === 'all' ? 'No mentions yet' : `No ${statusFilter} mentions`}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(mention => {
+            const Icon = PLATFORM_ICONS[mention.platform] || Globe;
+            const isUnread = mention.status === 'unread';
+            return (
+              <Card key={mention.id} className={`backdrop-blur-sm border-border/50 transition-colors ${isUnread ? 'bg-accent/10 border-accent/30' : 'bg-card/80'}`}>
+                <CardContent className="pt-3 pb-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${PLATFORM_BG[mention.platform] || 'bg-muted'}`}>
+                      <Icon className={`h-4 w-4 ${PLATFORM_COLORS[mention.platform] || 'text-muted-foreground'}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">{mention.author_display_name || mention.author_username || 'Unknown'}</span>
+                        {mention.author_is_verified && <span className="text-[10px] text-blue-500">✓ verified</span>}
+                        <Badge variant="outline" className="text-[9px]">{mention.mention_type}</Badge>
+                        <span className={`text-[10px] font-medium ${PRIORITY_COLORS[mention.priority]}`}>{mention.priority !== 'normal' ? mention.priority : ''}</span>
+                        {isUnread && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                      </div>
+                      {mention.content && <p className="text-sm text-muted-foreground mt-1 line-clamp-3">{mention.content}</p>}
+                      {mention.reply_content && (
+                        <div className="mt-2 pl-3 border-l-2 border-primary/30">
+                          <p className="text-xs text-muted-foreground">Reply: {mention.reply_content}</p>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {mention.sentiment && mention.sentiment !== 'unknown' && (
+                          <span className={`text-[10px] ${SENTIMENT_COLORS[mention.sentiment]}`}>● {mention.sentiment}</span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground">{formatDate(mention.received_at)}</span>
+                        <Badge variant="outline" className="text-[9px]">{mention._project}</Badge>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[mention.status] || 'border-border text-muted-foreground'}`}>{mention.status}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1 shrink-0">
+                      {isUnread && (
+                        <button onClick={() => updateMut.mutate({ id: mention.id, data: { status: 'read' } })}
+                          className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted transition-colors" title="Mark read">
+                          Mark read
+                        </button>
+                      )}
+                      {mention.status !== 'archived' && (
+                        <button onClick={() => updateMut.mutate({ id: mention.id, data: { status: 'archived' } })}
+                          className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted transition-colors">
+                          Archive
+                        </button>
+                      )}
+                      {mention.status !== 'replied' && (
+                        <button onClick={() => updateMut.mutate({ id: mention.id, data: { status: 'flagged', priority: 'high' } })}
+                          className="text-[10px] px-2 py-1 rounded border border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/20 text-amber-600 transition-colors">
+                          Flag
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Social: Analytics ─────────────────────────────────────────────────────────
+
+function SocialAnalyticsView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const postQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-posts', e.id],
+      queryFn: () => socialApi.listPostsFiltered({ projectId: e.id, status: 'published', limit: 100 }),
+      staleTime: 120_000,
+    })),
+  });
+
+  const agg = useMemo(() => {
+    const posts: (SocialPostRecord & { _project: string })[] = [];
+    postQueries.forEach((q, i) => {
+      q.data?.forEach(p => posts.push({ ...p, _project: projectEntries[i].name }));
+    });
+
+    const totalImpressionsN = posts.reduce((s, p) => s + (p.impressions || 0), 0);
+    const totalReachN = posts.reduce((s, p) => s + (p.reach || 0), 0);
+    const totalLikes = posts.reduce((s, p) => s + (p.likes || 0), 0);
+    const totalComments = posts.reduce((s, p) => s + (p.comments || 0), 0);
+    const totalShares = posts.reduce((s, p) => s + (p.shares || 0), 0);
+    const totalSaves = posts.reduce((s, p) => s + (p.saves || 0), 0);
+    const avgEngagement = posts.length > 0 ? posts.reduce((s, p) => s + (p.engagement_rate || 0), 0) / posts.length : 0;
+
+    const topPosts = [...posts]
+      .sort((a, b) => (b.impressions || 0) - (a.impressions || 0))
+      .slice(0, 10);
+
+    const byPlatform: Record<string, { posts: number; impressions: number; likes: number; engagement: number }> = {};
+    posts.forEach(p => {
+      const platforms: string[] = (() => { try { return JSON.parse(p.platforms); } catch { return [p.platforms].filter(Boolean); } })();
+      platforms.forEach(pl => {
+        if (!byPlatform[pl]) byPlatform[pl] = { posts: 0, impressions: 0, likes: 0, engagement: 0 };
+        byPlatform[pl].posts++;
+        byPlatform[pl].impressions += p.impressions || 0;
+        byPlatform[pl].likes += p.likes || 0;
+        byPlatform[pl].engagement += p.engagement_rate || 0;
+      });
+    });
+    Object.keys(byPlatform).forEach(pl => {
+      if (byPlatform[pl].posts > 0) byPlatform[pl].engagement /= byPlatform[pl].posts;
+    });
+
+    return { totalImpressionsN, totalReachN, totalLikes, totalComments, totalShares, totalSaves, avgEngagement, topPosts, byPlatform, totalPosts: posts.length };
+  }, [postQueries, projectEntries]);
+
+  const fmt = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
+
+  if (agg.totalPosts === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <BarChart2 className="h-10 w-10 mx-auto mb-3 opacity-40" />
+        <p className="font-medium mb-1">No analytics data yet</p>
+        <p className="text-xs">Publish posts to start tracking engagement metrics</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Impressions', value: fmt(agg.totalImpressionsN), sub: `${agg.totalPosts} posts` },
+          { label: 'Total Reach', value: fmt(agg.totalReachN), sub: 'unique accounts' },
+          { label: 'Total Likes', value: fmt(agg.totalLikes), sub: `+ ${fmt(agg.totalComments)} comments` },
+          { label: 'Avg Engagement', value: `${(agg.avgEngagement * 100).toFixed(2)}%`, sub: `${fmt(agg.totalShares)} shares` },
+        ].map(({ label, value, sub }) => (
+          <Card key={label} className="bg-card/80 backdrop-blur-sm border-border/50">
+            <CardContent className="pt-5">
+              <p className="text-xs text-muted-foreground mb-1">{label}</p>
+              <p className="text-2xl font-bold">{value}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Platform breakdown */}
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <BarChart2 className="h-4 w-4 text-blue-500" />
+              Platform Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {Object.entries(agg.byPlatform).sort((a, b) => b[1].impressions - a[1].impressions).map(([platform, data]) => {
+                const Icon = PLATFORM_ICONS[platform] || Globe;
+                const maxImpressions = Math.max(...Object.values(agg.byPlatform).map(d => d.impressions));
+                const pct = maxImpressions > 0 ? (data.impressions / maxImpressions) * 100 : 0;
+                return (
+                  <div key={platform}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon className={`h-3.5 w-3.5 shrink-0 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
+                      <span className="text-xs capitalize flex-1">{platform}</span>
+                      <span className="text-xs text-muted-foreground">{data.posts} posts</span>
+                      <span className="text-xs font-medium">{fmt(data.impressions)} imp</span>
+                      <span className="text-xs text-muted-foreground">{(data.engagement * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div className={`h-full rounded-full ${PLATFORM_COLORS[platform]?.replace('text-', 'bg-') || 'bg-primary'}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Top performing posts */}
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-green-500" />
+              Top Posts
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[280px]">
+              <div className="space-y-2 pr-2">
+                {agg.topPosts.map((post, i) => {
+                  const platforms: string[] = (() => { try { return JSON.parse(post.platforms); } catch { return [post.platforms].filter(Boolean); } })();
+                  return (
+                    <div key={post.id} className="flex items-start gap-2 p-2 rounded-lg hover:bg-muted/30 transition-colors">
+                      <span className="text-xs text-muted-foreground font-mono w-4 shrink-0 mt-0.5">{i + 1}</span>
+                      <div className="flex gap-0.5 shrink-0 mt-0.5">
+                        {platforms.slice(0, 2).map(p => {
+                          const Icon = PLATFORM_ICONS[p] || Globe;
+                          return <Icon key={p} className={`h-3 w-3 ${PLATFORM_COLORS[p] || 'text-muted-foreground'}`} />;
+                        })}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs line-clamp-2">{post.caption || '(no caption)'}</p>
+                        <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                          <span>👁 {fmt(post.impressions)}</span>
+                          {post.likes > 0 && <span>♥ {post.likes}</span>}
+                          {post.engagement_rate > 0 && <span>{(post.engagement_rate * 100).toFixed(1)}%</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Social Tab (Router) ───────────────────────────────────────────────────────
+
+function SocialTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const socialView = searchParams.get('sv') || 'overview';
+
+  const views = [
+    { key: 'overview',  label: 'Overview',  icon: LayoutGrid },
+    { key: 'accounts',  label: 'Accounts',  icon: Share2 },
+    { key: 'content',   label: 'Content',   icon: FileText },
+    { key: 'inbox',     label: 'Inbox',     icon: Inbox },
+    { key: 'analytics', label: 'Analytics', icon: BarChart2 },
+  ];
+
+  const setSocialView = (v: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (v === 'overview') params.delete('sv'); else params.set('sv', v);
+    setSearchParams(params, { replace: true });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit flex-wrap">
+        {views.map(({ key, label, icon: Icon }) => (
+          <button key={key} onClick={() => setSocialView(key)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+              socialView === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}>
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {socialView === 'overview'  && <SocialOverviewView projectEntries={projectEntries} orgId={orgId} onSwitchView={setSocialView} />}
+      {socialView === 'accounts'  && <SocialAccountsView projectEntries={projectEntries} orgId={orgId} />}
+      {socialView === 'content'   && <SocialContentView projectEntries={projectEntries} />}
+      {socialView === 'inbox'     && <SocialInboxView projectEntries={projectEntries} />}
+      {socialView === 'analytics' && <SocialAnalyticsView projectEntries={projectEntries} />}
     </div>
   );
 }
