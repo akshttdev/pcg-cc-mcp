@@ -76,6 +76,7 @@ pub mod topsi;
 pub mod orcha;
 pub mod mesh;
 pub mod peer_rewards;
+pub mod marketplace;
 pub mod pulse;
 pub mod pythia;
 pub mod wallet;
@@ -178,6 +179,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(deliverables::router(&deployment))
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
+        .merge(marketplace::router(&deployment))
         .merge(media_library::router(&deployment))
         .merge(pcg_router::router(&deployment))
         .merge(oss_listener::router(&deployment))
@@ -200,6 +202,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(execution_summaries::routes())
         .merge(auth::router(&deployment))
         .merge(invitations::public_router(&deployment))
+        .merge(organizations::public_router(&deployment))
         .merge(filesystem::router())
         .merge(events::router(&deployment))
         .nest("/images", images::routes())
@@ -237,6 +240,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(orcha::orcha_routes())
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
+        .merge(marketplace::public_router(&deployment))
         .merge(pythia::router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))
         .merge(protected_routes)

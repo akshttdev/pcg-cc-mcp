@@ -310,6 +310,12 @@ impl IntoResponse for ApiError {
     }
 }
 
+impl From<anyhow::Error> for ApiError {
+    fn from(err: anyhow::Error) -> Self {
+        ApiError::InternalError(err.to_string())
+    }
+}
+
 impl From<db::models::company::CompanyError> for ApiError {
     fn from(err: db::models::company::CompanyError) -> Self {
         use db::models::company::CompanyError;
