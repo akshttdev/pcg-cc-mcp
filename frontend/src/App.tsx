@@ -650,7 +650,6 @@ function App() {
             element={<Navigate to="/settings/mcp" replace />}
           />
         </Route>
-      </SentryRoutes>
       </Routes>
     </BrowserRouter>
   );

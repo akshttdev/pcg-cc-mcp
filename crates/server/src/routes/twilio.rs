@@ -63,7 +63,7 @@ static SMS_THREAD_BUFFER: Lazy<Arc<Mutex<HashMap<String, SmsThread>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// How long to wait (seconds) for more messages before processing the thread
-const SMS_THREAD_WINDOW_SECS: u64 = 45;
+const SMS_THREAD_WINDOW_SECS: u64 = 10;
 
 #[derive(Debug, Clone)]
 struct SmsThread {
@@ -1604,7 +1604,7 @@ pub async fn handle_incoming_sms(
                 });
             });
             let twiml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>\
-                <Message>Got it — I'll bring that into our conversation now.</Message>\
+                <Message>Thanks, noted — I'll use that now.</Message>\
                 </Response>";
             return (StatusCode::OK, [("Content-Type", "application/xml")], twiml.to_string());
         }
@@ -1641,7 +1641,9 @@ pub async fn handle_incoming_sms(
 
     // Spawn debounced processor — each message spawns one; only the "last" one processes
     let from_clone = request.from.clone();
+    let pool_clone = pool.clone();
     tokio::spawn(async move {
+        let pool = pool_clone;
         tokio::time::sleep(Duration::from_secs(SMS_THREAD_WINDOW_SECS)).await;
 
         // Drain buffer only if we're still the most recent processor
@@ -1671,19 +1673,26 @@ pub async fn handle_incoming_sms(
                 .unwrap_or_else(|| from_clone.clone());
 
             let nora_content = format!(
-                "[SMS THREAD from {} — {} message(s)]\n\n{}\n\n\
-                [Channel: SMS/WhatsApp. Instructions: \
-                (1) Create exactly ONE task for this request — do not create duplicates. \
-                (2) Assign it to the Editron agent (short_name: editron-post). \
-                (3) Place it in the most relevant project for Sirak Studios — prefer 'Mopar Car Show' if the content matches. \
-                (4) Include the Dropbox link and all requirements in the task description. \
-                (5) Reply in plain text only, no markdown, MAXIMUM 280 characters. Be concise.]",
+                "[SMS from {} — {} message(s)]\n\n{}\n\n\
+                [Channel: SMS. You are Nora, PCG's Executive AI Assistant. \
+                Be conversational, insightful, and action-oriented. \
+                Draw on your full knowledge of the PCG ecosystem — projects, tasks, agents, \
+                workflows, CRM, finances, and team activity. \
+                If the sender gives a directive, execute it using your tools (create tasks, \
+                run workflows, query data, etc.). \
+                If they ask a question, give a direct intelligent answer. \
+                If they share something, engage with it meaningfully. \
+                IMPORTANT: Do NOT call send_sms or any messaging tool — your text response \
+                will be sent to the user automatically. Just reply naturally. \
+                Reply in plain text only, no markdown. Keep it concise — under 300 characters \
+                unless the question genuinely requires more depth.]",
                 sender_label,
                 thread.messages.len(),
                 combined
             );
 
-            let reply = match process_sms_with_nora(&nora_content, &from_clone, thread.person_context).await {
+            let raw_user_text = combined.clone();
+            let reply = match process_sms_with_nora(&nora_content, &from_clone, thread.person_context, &pool, &raw_user_text).await {
                 Ok(text) => truncate_for_sms(&text, 320),
                 Err(e) => {
                     error!("SMS Nora processing failed for {}: {}", from_clone, e);
@@ -1697,25 +1706,8 @@ pub async fn handle_incoming_sms(
         }
     });
 
-    // Acknowledge immediately so Twilio doesn't time out
-    let ack = if is_first_in_thread {
-        format!(
-            "Hi {}! Got your message — send everything and I'll take care of it right away.",
-            caller_name
-        )
-    } else {
-        String::new() // Silence subsequent messages — we'll reply via outbound SMS
-    };
-
-    let twiml = if ack.is_empty() {
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>".to_string()
-    } else {
-        format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>{}</Message></Response>",
-            xml_escape(&ack)
-        )
-    };
-
+    // Return empty response immediately — Nora replies via outbound SMS after processing
+    let twiml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>".to_string();
     (StatusCode::OK, [("Content-Type", "application/xml")], twiml)
 }
 
