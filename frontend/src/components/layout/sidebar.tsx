@@ -1189,6 +1189,17 @@ function OrgSection({
         <div className="px-1 py-1 space-y-0.5">
           <OrgCrmSection orgId={org.id} location={location} />
 
+          <Link
+            to={`/organizations/${org.id}?tab=social`}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors',
+              new URLSearchParams(location.search).get('tab') === 'social' && location.pathname === `/organizations/${org.id}` && 'bg-primary/10 text-foreground font-medium'
+            )}
+          >
+            <Share2 className="h-3 w-3 shrink-0 text-pink-500" />
+            <span>Social</span>
+          </Link>
+
           <OrgIntelligenceSection orgId={org.id} location={location} />
 
           <Link
