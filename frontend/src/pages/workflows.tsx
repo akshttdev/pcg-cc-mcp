@@ -55,7 +55,6 @@ import {
   ArrowRight,
   CheckCheck,
   XCircle,
-  Send,
   LayoutGrid,
   TableProperties,
   ChevronRight,
@@ -67,6 +66,9 @@ import {
   Check,
   RotateCcw,
   X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -1404,7 +1406,12 @@ function StagingTab() {
 
   // Global batch mutations — must be declared before early returns
   const batchApproveMutation = useMutation({
-    mutationFn: () => stagingApi.batchAction(pendingNonDuplicate.map(r => r.id), 'approve'),
+    mutationFn: async () => {
+      await stagingApi.batchAction(pendingNonDuplicate.map(r => r.id), 'approve');
+      // Auto-commit after approving: commit all runs that have approved records
+      const runIds = [...new Set(pendingNonDuplicate.map(r => r.workflow_run_id))];
+      return Promise.all(runIds.map(rid => stagingApi.batchCommit(rid)));
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stagingPending'] }),
   });
 
@@ -1412,15 +1419,6 @@ function StagingTab() {
     mutationFn: () => {
       const dupIds = pendingRecords.filter(r => r.status === 'pending_review' && r.duplicate_of_id != null).map(r => r.id);
       return stagingApi.batchAction(dupIds, 'reject');
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stagingPending'] }),
-  });
-
-  const batchCommitAllMutation = useMutation({
-    mutationFn: async () => {
-      const runIds = [...new Set(pendingRecords.filter(r => r.status === 'approved').map(r => r.workflow_run_id))];
-      const results = await Promise.all(runIds.map(rid => stagingApi.batchCommit(rid)));
-      return results;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stagingPending'] }),
   });
@@ -1446,16 +1444,17 @@ function StagingTab() {
   });
 
   const handleApproveRecord = useCallback((id: string) => {
-    updateMutation.mutate({ id, data: { status: 'approved' } });
-  }, [updateMutation]);
+    // Auto-commit: approve then immediately commit to CRM
+    updateMutation.mutate({ id, data: { status: 'approved' } }, {
+      onSuccess: () => {
+        commitMutation.mutate(id);
+      },
+    });
+  }, [updateMutation, commitMutation]);
 
   const handleRejectRecord = useCallback((id: string) => {
     updateMutation.mutate({ id, data: { status: 'rejected' } });
   }, [updateMutation]);
-
-  const handleCommitRecord = useCallback((id: string) => {
-    commitMutation.mutate(id);
-  }, [commitMutation]);
 
   const handleRetryRecord = useCallback((id: string) => {
     retryMutation.mutate(id);
@@ -1477,10 +1476,6 @@ function StagingTab() {
     batchApproveMutation.mutate();
   }, [batchApproveMutation]);
 
-  const handleCommitAll = useCallback(() => {
-    batchCommitAllMutation.mutate();
-  }, [batchCommitAllMutation]);
-
   const selectRun = useCallback((runId: string) => {
     setSearchParams({ tab: 'staging', run: runId }, { replace: true });
   }, [setSearchParams]);
@@ -1491,6 +1486,15 @@ function StagingTab() {
 
   const setCardsView = useCallback(() => setViewMode('cards'), []);
   const setTableView = useCallback(() => setViewMode('table'), []);
+
+  // Sorting state for global table
+  const [sortField, setSortField] = useState<'name' | 'type' | 'workflow' | 'status' | 'confidence'>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = useCallback((field: typeof sortField) => {
+    setSortDir(prev => sortField === field ? (prev === 'asc' ? 'desc' : 'asc') : 'asc');
+    setSortField(field);
+  }, [sortField]);
 
   // Derived filter counts
   const totalRejected = pendingRecords.filter(r => r.status === 'rejected').length;
@@ -1513,6 +1517,27 @@ function StagingTab() {
     }
     return Object.entries(wfs);
   }, [pendingRecords, runNameMap]);
+
+  // Detect common warnings that appear on many records — collapse into batch banner
+  const commonWarnings = useMemo(() => {
+    const warnCounts: Record<string, number> = {};
+    for (const r of pendingRecords) {
+      if (!r.validation_errors) continue;
+      try {
+        const errs = JSON.parse(r.validation_errors);
+        if (Array.isArray(errs)) {
+          for (const e of errs) warnCounts[e] = (warnCounts[e] || 0) + 1;
+        }
+      } catch {}
+    }
+    // Warnings appearing on more than half of records are "common"
+    const threshold = Math.max(2, Math.floor(pendingRecords.length * 0.5));
+    return Object.entries(warnCounts)
+      .filter(([, count]) => count >= threshold)
+      .map(([msg, count]) => ({ msg, count }));
+  }, [pendingRecords]);
+
+  const commonWarningSet = useMemo(() => new Set(commonWarnings.map(w => w.msg)), [commonWarnings]);
 
   // Filtered records for global table view
   const filteredRecords = useMemo(() => {
@@ -1556,17 +1581,32 @@ function StagingTab() {
     return result;
   }, [pendingRecords, globalFilter, typeFilter, workflowFilter]);
 
-  // Parsed data for table rows
+  // Parsed data for table rows with sorting
   const tableRows = useMemo(() => {
-    return filteredRecords.map(record => {
+    const rows = filteredRecords.map(record => {
       let data: Record<string, any> = {};
       try { data = JSON.parse(record.record_data); } catch {}
       const displayName = data.first_name
         ? `${data.first_name} ${data.last_name || ''}`
         : data.name || data.title || 'Untitled';
-      return { record, displayName, data, workflowName: runNameMap[record.workflow_run_id] };
+      return { record, displayName, data, workflowName: runNameMap[record.workflow_run_id] || '' };
     });
-  }, [filteredRecords, runNameMap]);
+
+    // Apply sorting
+    rows.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'name': cmp = a.displayName.localeCompare(b.displayName); break;
+        case 'type': cmp = a.record.target_type.localeCompare(b.record.target_type); break;
+        case 'workflow': cmp = a.workflowName.localeCompare(b.workflowName); break;
+        case 'status': cmp = a.record.status.localeCompare(b.record.status); break;
+        case 'confidence': cmp = (a.record.confidence ?? 0) - (b.record.confidence ?? 0); break;
+      }
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+
+    return rows;
+  }, [filteredRecords, runNameMap, sortField, sortDir]);
 
   // If a run is selected, show full-page inline review
   if (activeRunId) {
@@ -1656,18 +1696,7 @@ function StagingTab() {
               disabled={batchApproveMutation.isPending}
             >
               <CheckCheck className="h-3 w-3" />
-              {batchApproveMutation.isPending ? 'Approving...' : `Approve all ${pendingNonDuplicate.length} valid`}
-            </Button>
-          )}
-          {totalApproved > 0 && (
-            <Button
-              size="sm"
-              className="h-7 text-xs gap-1"
-              onClick={handleCommitAll}
-              disabled={batchCommitAllMutation.isPending}
-            >
-              <Send className="h-3 w-3" />
-              {batchCommitAllMutation.isPending ? 'Committing...' : `Commit ${totalApproved} to CRM`}
+              {batchApproveMutation.isPending ? 'Approving & committing...' : `Approve & commit ${pendingNonDuplicate.length} valid`}
             </Button>
           )}
         </div>
@@ -1811,15 +1840,37 @@ function StagingTab() {
             <span className="text-[10px] text-muted-foreground">{filteredRecords.length} record{filteredRecords.length !== 1 ? 's' : ''}</span>
           </div>
 
-          {/* Table header */}
+          {/* Common warnings banner — collapse identical warnings */}
+          {viewMode === 'table' && commonWarnings.length > 0 && (
+            <div className="px-4 py-2 border-b bg-amber-50/60 dark:bg-amber-950/15 flex items-start gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="text-[11px] text-amber-700 dark:text-amber-400">
+                {commonWarnings.map(w => (
+                  <div key={w.msg}>{w.msg} <span className="text-amber-500">({w.count} records)</span></div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Sortable table header */}
           <div className="grid grid-cols-[20px_28px_minmax(120px,1fr)_minmax(100px,0.7fr)_80px_60px_60px_minmax(160px,1.5fr)_100px] gap-2 px-4 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider border-b bg-muted/10">
             <div />
             <div />
-            <div>Name</div>
-            <div>Workflow</div>
-            <div>Type</div>
-            <div>Status</div>
-            <div>Conf.</div>
+            <button onClick={() => handleSort('name')} className="flex items-center gap-1 hover:text-foreground text-left">
+              Name {sortField === 'name' ? (sortDir === 'asc' ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />) : <ArrowUpDown className="h-2.5 w-2.5 opacity-30" />}
+            </button>
+            <button onClick={() => handleSort('workflow')} className="flex items-center gap-1 hover:text-foreground text-left">
+              Workflow {sortField === 'workflow' ? (sortDir === 'asc' ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />) : <ArrowUpDown className="h-2.5 w-2.5 opacity-30" />}
+            </button>
+            <button onClick={() => handleSort('type')} className="flex items-center gap-1 hover:text-foreground text-left">
+              Type {sortField === 'type' ? (sortDir === 'asc' ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />) : <ArrowUpDown className="h-2.5 w-2.5 opacity-30" />}
+            </button>
+            <button onClick={() => handleSort('status')} className="flex items-center gap-1 hover:text-foreground text-left">
+              Status {sortField === 'status' ? (sortDir === 'asc' ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />) : <ArrowUpDown className="h-2.5 w-2.5 opacity-30" />}
+            </button>
+            <button onClick={() => handleSort('confidence')} className="flex items-center gap-1 hover:text-foreground text-left">
+              Conf. {sortField === 'confidence' ? (sortDir === 'asc' ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />) : <ArrowUpDown className="h-2.5 w-2.5 opacity-30" />}
+            </button>
             <div>Details</div>
             <div className="text-right">Actions</div>
           </div>
@@ -1849,8 +1900,16 @@ function StagingTab() {
             return (
               <div key={record.id}>
                 <div
+                  role="row"
+                  tabIndex={0}
                   onClick={() => handleToggleExpand(record.id)}
-                  className={`grid grid-cols-[20px_28px_minmax(120px,1fr)_minmax(100px,0.7fr)_80px_60px_60px_minmax(160px,1.5fr)_100px] gap-2 px-4 py-1.5 items-center border-b text-xs hover:bg-muted/30 transition-colors cursor-pointer select-none ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleToggleExpand(record.id);
+                    }
+                  }}
+                  className={`grid grid-cols-[20px_28px_minmax(120px,1fr)_minmax(100px,0.7fr)_80px_60px_60px_minmax(160px,1.5fr)_100px] gap-2 px-4 py-1.5 items-center border-b text-xs hover:bg-muted/30 transition-colors cursor-pointer select-none focus:outline-none focus:ring-1 focus:ring-ring focus:ring-inset ${
                     record.status === 'approved' ? 'bg-green-50/30 dark:bg-green-950/10' : ''
                   } ${record.status === 'rejected' ? 'bg-red-50/30 dark:bg-red-950/10 opacity-50' : ''
                   } ${record.duplicate_of_id ? 'bg-amber-50/20 dark:bg-amber-950/5' : ''
@@ -1908,18 +1967,13 @@ function StagingTab() {
                   <div className="flex items-center gap-0.5 justify-end" onClick={handleStopPropagation}>
                     {record.status === 'pending_review' && (
                       <>
-                        <button onClick={() => handleApproveRecord(record.id)} className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900" title="Approve">
+                        <button onClick={() => handleApproveRecord(record.id)} className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900" title="Approve & Commit">
                           <Check className="h-3 w-3 text-green-600" />
                         </button>
                         <button onClick={() => handleRejectRecord(record.id)} className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900" title="Reject">
                           <X className="h-3 w-3 text-red-500" />
                         </button>
                       </>
-                    )}
-                    {record.status === 'approved' && (
-                      <button onClick={() => handleCommitRecord(record.id)} className="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900" title="Commit" disabled={commitMutation.isPending}>
-                        <Send className="h-3 w-3 text-blue-500" />
-                      </button>
                     )}
                     {record.status === 'error' && (
                       <button onClick={() => handleRetryRecord(record.id)} className="p-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900" title="Retry" disabled={retryMutation.isPending}>
@@ -1973,11 +2027,11 @@ function StagingTab() {
                   </div>
                 )}
 
-                {/* Compact inline warnings when NOT expanded */}
-                {!isExpanded && validationErrs.length > 0 && record.status !== 'rejected' && (
+                {/* Compact inline warnings when NOT expanded — skip common warnings shown in banner */}
+                {!isExpanded && validationErrs.filter(e => !commonWarningSet.has(e)).length > 0 && record.status !== 'rejected' && (
                   <div className="px-4 py-1 bg-amber-50/50 dark:bg-amber-950/10 border-b flex items-center gap-1.5">
                     <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
-                    <span className="text-[10px] text-amber-600">{validationErrs.join(' · ')}</span>
+                    <span className="text-[10px] text-amber-600">{validationErrs.filter(e => !commonWarningSet.has(e)).join(' · ')}</span>
                   </div>
                 )}
               </div>

@@ -21,7 +21,6 @@ import {
   XCircle,
   Loader2,
   AlertTriangle,
-  Send,
   Edit3,
   RotateCcw,
   ArrowLeft,
@@ -59,9 +58,7 @@ function RecordActions({
   onEdit,
   onApprove,
   onReject,
-  onCommit,
   onRetry,
-  commitPending,
   retryPending,
   onStopPropagation,
 }: {
@@ -69,16 +66,13 @@ function RecordActions({
   onEdit: (record: WorkflowStagingRecord) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
-  onCommit: (id: string) => void;
   onRetry: (id: string) => void;
-  commitPending: boolean;
   retryPending: boolean;
   onStopPropagation: (e: React.MouseEvent) => void;
 }) {
   const handleEdit = useCallback(() => onEdit(record), [onEdit, record]);
   const handleApprove = useCallback(() => onApprove(record.id), [onApprove, record.id]);
   const handleReject = useCallback(() => onReject(record.id), [onReject, record.id]);
-  const handleCommit = useCallback(() => onCommit(record.id), [onCommit, record.id]);
   const handleRetry = useCallback(() => onRetry(record.id), [onRetry, record.id]);
 
   return (
@@ -88,18 +82,13 @@ function RecordActions({
           <button onClick={handleEdit} className="p-1 rounded hover:bg-muted" title="Edit">
             <Edit3 className="h-3 w-3 text-muted-foreground" />
           </button>
-          <button onClick={handleApprove} className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900" title="Approve">
+          <button onClick={handleApprove} className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900" title="Approve & Commit">
             <Check className="h-3 w-3 text-green-600" />
           </button>
           <button onClick={handleReject} className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900" title="Reject">
             <X className="h-3 w-3 text-red-500" />
           </button>
         </>
-      )}
-      {record.status === 'approved' && (
-        <button onClick={handleCommit} className="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900" title="Commit" disabled={commitPending}>
-          <Send className="h-3 w-3 text-blue-500" />
-        </button>
       )}
       {record.status === 'error' && (
         <>
@@ -329,10 +318,6 @@ export function StagingReviewContent({
     setEditData(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  const handleCommit = useCallback((id: string) => {
-    commitMutation.mutate(id);
-  }, [commitMutation]);
-
   const handleRetry = useCallback((id: string) => {
     retryMutation.mutate(id);
   }, [retryMutation]);
@@ -344,10 +329,6 @@ export function StagingReviewContent({
   const handleAutoApprove = useCallback(() => {
     autoApproveMutation.mutate();
   }, [autoApproveMutation]);
-
-  const handleBatchCommit = useCallback(() => {
-    batchCommitMutation.mutate();
-  }, [batchCommitMutation]);
 
   const handleClearFilter = useCallback(() => {
     setFilter('all');
@@ -513,19 +494,7 @@ export function StagingReviewContent({
               disabled={autoApproveMutation.isPending}
             >
               <CheckCheck className="h-3 w-3" />
-              {autoApproveMutation.isPending ? 'Approving...' : `Auto-approve ${validPendingCount}`}
-            </Button>
-          )}
-
-          {approvedCount > 0 && (
-            <Button
-              size="sm"
-              className="h-6 text-[10px] gap-1"
-              onClick={handleBatchCommit}
-              disabled={batchCommitMutation.isPending}
-            >
-              <Send className="h-3 w-3" />
-              {batchCommitMutation.isPending ? 'Committing...' : `Commit ${approvedCount} to CRM`}
+              {autoApproveMutation.isPending ? 'Approving & committing...' : `Approve & commit ${validPendingCount}`}
             </Button>
           )}
         </div>
@@ -591,9 +560,17 @@ export function StagingReviewContent({
               return (
                 <div key={record.id}>
                   <div
+                    role="row"
+                    tabIndex={0}
                     onClick={() => toggleExpand(record.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggleExpand(record.id);
+                      }
+                    }}
                     className={cn(
-                      'grid grid-cols-[20px_28px_minmax(120px,1fr)_80px_60px_60px_minmax(160px,2fr)_100px] gap-2 px-4 py-1.5 items-center border-b text-xs hover:bg-muted/30 transition-colors cursor-pointer select-none',
+                      'grid grid-cols-[20px_28px_minmax(120px,1fr)_80px_60px_60px_minmax(160px,2fr)_100px] gap-2 px-4 py-1.5 items-center border-b text-xs hover:bg-muted/30 transition-colors cursor-pointer select-none focus:outline-none focus:ring-1 focus:ring-ring focus:ring-inset',
                       record.status === 'approved' && 'bg-green-50/30 dark:bg-green-950/10',
                       record.status === 'rejected' && 'bg-red-50/30 dark:bg-red-950/10 opacity-50',
                       record.status === 'committed' && 'bg-blue-50/30 dark:bg-blue-950/10',
@@ -657,9 +634,7 @@ export function StagingReviewContent({
                       onEdit={handleStartEdit}
                       onApprove={handleApprove}
                       onReject={handleReject}
-                      onCommit={handleCommit}
                       onRetry={handleRetry}
-                      commitPending={commitMutation.isPending}
                       retryPending={retryMutation.isPending}
                       onStopPropagation={handleStopPropagation}
                     />
