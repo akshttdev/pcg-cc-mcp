@@ -6103,3 +6103,84 @@ export const reviewApi = {
     return handleApiResponse<ReviewComment>(r);
   },
 };
+
+// Token Usage API Types
+export interface TokenUsageSummary {
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_cents: number | null;
+  request_count: number;
+}
+
+export interface DailyTokenUsage {
+  usage_date: string;
+  project_id: string;
+  model: string;
+  provider: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_cents: number | null;
+  request_count: number;
+}
+
+export interface TokenUsageByProject {
+  project_id: string;
+  project_name: string | null;
+  total_tokens: number;
+  request_count: number;
+}
+
+export interface TokenUsageByAgent {
+  agent_id: string;
+  agent_name: string | null;
+  total_tokens: number;
+  request_count: number;
+}
+
+export interface TokenUsageByProvider {
+  provider: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_cents: number | null;
+  request_count: number;
+}
+
+export interface TokenUsageByModel {
+  model: string;
+  provider: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_cents: number | null;
+  request_count: number;
+}
+
+export const tokenUsageApi = {
+  getToday: async (): Promise<TokenUsageSummary> => {
+    const r = await makeRequest('/api/token-usage/today');
+    return handleApiResponse<TokenUsageSummary>(r);
+  },
+  getDaily: async (days: number = 7): Promise<DailyTokenUsage[]> => {
+    const r = await makeRequest(`/api/token-usage/daily?days=${days}`);
+    return handleApiResponse<DailyTokenUsage[]>(r);
+  },
+  getByProject: async (days: number = 7): Promise<TokenUsageByProject[]> => {
+    const r = await makeRequest(`/api/token-usage/by-project?days=${days}`);
+    return handleApiResponse<TokenUsageByProject[]>(r);
+  },
+  getByAgent: async (days: number = 7): Promise<TokenUsageByAgent[]> => {
+    const r = await makeRequest(`/api/token-usage/by-agent?days=${days}`);
+    return handleApiResponse<TokenUsageByAgent[]>(r);
+  },
+  getByProvider: async (days: number = 7): Promise<TokenUsageByProvider[]> => {
+    const r = await makeRequest(`/api/token-usage/by-provider?days=${days}`);
+    return handleApiResponse<TokenUsageByProvider[]>(r);
+  },
+  getByModel: async (days: number = 7): Promise<TokenUsageByModel[]> => {
+    const r = await makeRequest(`/api/token-usage/by-model?days=${days}`);
+    return handleApiResponse<TokenUsageByModel[]>(r);
+  },
+};

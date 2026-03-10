@@ -57,6 +57,7 @@ const EmbedVirtualEnvironmentPage  = lazy(() => import('@/pages/embed/virtual-en
 // MeshPage merged into Settings > Network & Mesh
 const VibePage              = lazy(() => import('@/pages/vibe'));
 const PulsePage             = lazy(() => import('@/pages/pulse'));
+const AIUsagePage           = lazy(() => import('@/pages/ai-usage').then(m => ({ default: m.AIUsagePage })));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
 const CrmSalesPage          = lazy(() => import('@/pages/crm-sales').then(m => ({ default: m.CrmSalesPage })));
 const CrmDeliveryPage       = lazy(() => import('@/pages/crm-delivery').then(m => ({ default: m.CrmDeliveryPage })));
@@ -623,6 +624,7 @@ function App() {
             path="/projects/:projectId/pulse"
             element={<ProtectedRoute><PulsePage /></ProtectedRoute>}
           />
+          <Route path="/ai-usage" element={<AdminRoute><AIUsagePage /></AdminRoute>} />
           <Route path="/vibe" element={<ProtectedRoute><VibePage /></ProtectedRoute>} />
           <Route
             path="/oauth/:provider/callback"

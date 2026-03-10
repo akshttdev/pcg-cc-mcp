@@ -50,6 +50,7 @@ import {
   GitBranch,
   Headphones,
   Workflow,
+  Cpu,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -143,6 +144,7 @@ const MANAGEMENT_NAV_ITEMS: NavItem[] = [
   { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
   { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
   { label: 'Discord Voice', icon: Headphones, to: '/discord', id: 'discord', adminOnly: true },
+  { label: 'AI Usage', icon: Cpu, to: '/ai-usage', id: 'ai-usage', adminOnly: true },
 ];
 
 // Global views - admin only, collapsible
