@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useParams, useSearchParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -137,7 +137,7 @@ import type { WorkflowDefinition } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
 import { useOrgContacts, type OrgContact } from '@/hooks/useOrgContacts';
-import { LIFECYCLE_STAGE_INFO, type LifecycleStage } from '@/types/crm';
+import { LIFECYCLE_STAGE_INFO, CONTACT_SOURCE_INFO, type LifecycleStage } from '@/types/crm';
 import type { PipelineType } from '@/types/crm';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -451,25 +451,71 @@ function CreateContactDialog({
   orgId: string;
 }) {
   const queryClient = useQueryClient();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [companyName, setCompanyName] = useState('');
+  const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    mobile: '',
+    company_name: '',
+    job_title: '',
+    department: '',
+    linkedin_url: '',
+    twitter_handle: '',
+    website: '',
+    lifecycle_stage: 'lead',
+    source: '',
+    tags: '',
+  });
+
+  const resetForm = useCallback(() => {
+    setFormData({
+      first_name: '', last_name: '', email: '', phone: '', mobile: '',
+      company_name: '', job_title: '', department: '',
+      linkedin_url: '', twitter_handle: '', website: '',
+      lifecycle_stage: 'lead', source: '', tags: '',
+    });
+  }, []);
+
+  const handleFieldChange = useCallback(
+    (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+    },
+    [],
+  );
+
+  const handleSelectChange = useCallback(
+    (field: string) => (value: string) => {
+      setFormData((prev) => ({ ...prev, [field]: value === '__none__' ? '' : value }));
+    },
+    [],
+  );
 
   const create = useMutation({
     mutationFn: async () => {
+      const parsedTags = formData.tags
+        ? formData.tags.split(',').map((t) => t.trim()).filter(Boolean)
+        : undefined;
       const res = await fetch(resolveApiUrl('/api/crm/contacts'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           organization_id: orgId,
-          first_name: firstName || undefined,
-          last_name: lastName || undefined,
-          email: email || undefined,
-          phone: phone || undefined,
-          company_name: companyName || undefined,
+          first_name: formData.first_name || undefined,
+          last_name: formData.last_name || undefined,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
+          mobile: formData.mobile || undefined,
+          company_name: formData.company_name || undefined,
+          job_title: formData.job_title || undefined,
+          department: formData.department || undefined,
+          linkedin_url: formData.linkedin_url || undefined,
+          twitter_handle: formData.twitter_handle || undefined,
+          website: formData.website || undefined,
+          lifecycle_stage: formData.lifecycle_stage || undefined,
+          source: formData.source || undefined,
+          tags: parsedTags,
         }),
       });
       if (!res.ok) throw new Error('Failed to create contact');
@@ -478,47 +524,109 @@ function CreateContactDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-contacts', orgId] });
       toast.success('Contact created');
-      setFirstName(''); setLastName(''); setEmail(''); setPhone(''); setCompanyName('');
+      resetForm();
       onClose();
     },
     onError: () => toast.error('Failed to create contact'),
   });
 
+  const handleOpenChange = useCallback((v: boolean) => { if (!v) onClose(); }, [onClose]);
+  const handleCreate = useCallback(() => { create.mutate(); }, [create]);
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New Contact</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-3 py-2">
+        <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="ct-fn">First Name</Label>
-              <Input id="ct-fn" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Jane" />
+              <Input id="ct-fn" value={formData.first_name} onChange={handleFieldChange('first_name')} placeholder="Jane" />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="ct-ln">Last Name</Label>
-              <Input id="ct-ln" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Doe" />
+              <Input id="ct-ln" value={formData.last_name} onChange={handleFieldChange('last_name')} placeholder="Doe" />
             </div>
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="ct-em">Email</Label>
-            <Input id="ct-em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
+            <Input id="ct-em" type="email" value={formData.email} onChange={handleFieldChange('email')} placeholder="jane@example.com" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-ph">Phone</Label>
+              <Input id="ct-ph" value={formData.phone} onChange={handleFieldChange('phone')} placeholder="+1 555-0100" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-mob">Mobile</Label>
+              <Input id="ct-mob" value={formData.mobile} onChange={handleFieldChange('mobile')} placeholder="+1 555-0101" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-co">Company</Label>
+              <Input id="ct-co" value={formData.company_name} onChange={handleFieldChange('company_name')} placeholder="Acme Corp" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-jt">Job Title</Label>
+              <Input id="ct-jt" value={formData.job_title} onChange={handleFieldChange('job_title')} placeholder="VP of Sales" />
+            </div>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="ct-ph">Phone</Label>
-            <Input id="ct-ph" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555-0123" />
+            <Label htmlFor="ct-dept">Department</Label>
+            <Input id="ct-dept" value={formData.department} onChange={handleFieldChange('department')} placeholder="Engineering, Sales, Marketing..." />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-stage">Lifecycle Stage</Label>
+              <Select value={formData.lifecycle_stage} onValueChange={handleSelectChange('lifecycle_stage')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(LIFECYCLE_STAGE_INFO).map(([key, info]) => (
+                    <SelectItem key={key} value={key}>{info.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-src">Source</Label>
+              <Select value={formData.source || '__none__'} onValueChange={handleSelectChange('source')}>
+                <SelectTrigger><SelectValue placeholder="Select source" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Not specified</SelectItem>
+                  {Object.entries(CONTACT_SOURCE_INFO).map(([key, info]) => (
+                    <SelectItem key={key} value={key}>{info.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="ct-co">Company</Label>
-            <Input id="ct-co" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme Corp" />
+            <Label htmlFor="ct-li">LinkedIn URL</Label>
+            <Input id="ct-li" value={formData.linkedin_url} onChange={handleFieldChange('linkedin_url')} placeholder="https://linkedin.com/in/..." />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-tw">Twitter Handle</Label>
+              <Input id="ct-tw" value={formData.twitter_handle} onChange={handleFieldChange('twitter_handle')} placeholder="@handle" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="ct-web">Website</Label>
+              <Input id="ct-web" value={formData.website} onChange={handleFieldChange('website')} placeholder="https://..." />
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="ct-tags">Tags</Label>
+            <Input id="ct-tags" value={formData.tags} onChange={handleFieldChange('tags')} placeholder="Comma-separated tags, e.g. vip, conference-2026" />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
-            disabled={(!firstName.trim() && !lastName.trim() && !email.trim()) || create.isPending}
-            onClick={() => create.mutate()}
+            disabled={(!formData.first_name.trim() && !formData.last_name.trim() && !formData.email.trim()) || create.isPending}
+            onClick={handleCreate}
           >
             Create
           </Button>
@@ -996,69 +1104,191 @@ function CreateCompanyInlineDialog({
   orgId: string;
   onCreated: () => void;
 }) {
-  const [name, setName] = useState('');
-  const [website, setWebsite] = useState('');
-  const [industry, setIndustry] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    website: '',
+    industry: '',
+    description: '',
+    headquarters: '',
+    phone: '',
+    email: '',
+    linkedin_url: '',
+    twitter_handle: '',
+    instagram_handle: '',
+  });
+
+  const resetForm = useCallback(() => {
+    setFormData({
+      name: '',
+      website: '',
+      industry: '',
+      description: '',
+      headquarters: '',
+      phone: '',
+      email: '',
+      linkedin_url: '',
+      twitter_handle: '',
+      instagram_handle: '',
+    });
+  }, []);
 
   const create = useMutation({
     mutationFn: () =>
       companiesApi.create({
-        name,
-        website: website || undefined,
-        industry: industry || undefined,
+        name: formData.name,
+        website: formData.website || undefined,
+        industry: formData.industry || undefined,
+        description: formData.description || undefined,
+        headquarters: formData.headquarters || undefined,
         created_by_org_id: orgId,
       }),
-    onSuccess: () => {
+    onSuccess: (company) => {
+      const extraFields: Record<string, string> = {};
+      if (formData.phone) extraFields.phone = formData.phone;
+      if (formData.email) extraFields.email = formData.email;
+      if (formData.linkedin_url) extraFields.linkedin_url = formData.linkedin_url;
+      if (formData.twitter_handle) extraFields.twitter_handle = formData.twitter_handle;
+      if (formData.instagram_handle) extraFields.instagram_handle = formData.instagram_handle;
+
+      if (Object.keys(extraFields).length > 0) {
+        companiesApi.update(company.id, extraFields).catch(() => {});
+      }
+
       onCreated();
       toast.success('Company created');
-      setName('');
-      setWebsite('');
-      setIndustry('');
+      resetForm();
       onClose();
     },
     onError: () => toast.error('Failed to create company'),
   });
 
+  const handleFieldChange = useCallback(
+    (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+    },
+    [],
+  );
+
+  const handleOpenChange = useCallback(
+    (v: boolean) => { if (!v) onClose(); },
+    [onClose],
+  );
+
+  const handleSubmit = useCallback(() => {
+    create.mutate();
+  }, [create]);
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[550px]">
         <DialogHeader>
           <DialogTitle>New Company</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-3 py-2">
+        <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
           <div className="grid gap-1.5">
             <Label htmlFor="co-name">Name *</Label>
             <Input
               id="co-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={formData.name}
+              onChange={handleFieldChange('name')}
               placeholder="Acme Corp"
             />
           </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-web">Website</Label>
+              <Input
+                id="co-web"
+                value={formData.website}
+                onChange={handleFieldChange('website')}
+                placeholder="https://example.com"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-ind">Industry</Label>
+              <Input
+                id="co-ind"
+                value={formData.industry}
+                onChange={handleFieldChange('industry')}
+                placeholder="Technology"
+              />
+            </div>
+          </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="co-web">Website</Label>
-            <Input
-              id="co-web"
-              value={website}
-              onChange={(e) => setWebsite(e.target.value)}
-              placeholder="https://example.com"
+            <Label htmlFor="co-desc">Description</Label>
+            <Textarea
+              id="co-desc"
+              value={formData.description}
+              onChange={handleFieldChange('description')}
+              placeholder="Brief description of the company..."
+              rows={2}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="co-ind">Industry</Label>
+            <Label htmlFor="co-hq">Headquarters</Label>
             <Input
-              id="co-ind"
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-              placeholder="Technology"
+              id="co-hq"
+              value={formData.headquarters}
+              onChange={handleFieldChange('headquarters')}
+              placeholder="Miami, FL"
             />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-phone">Phone</Label>
+              <Input
+                id="co-phone"
+                value={formData.phone}
+                onChange={handleFieldChange('phone')}
+                placeholder="+1 555-0100"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-email">Email</Label>
+              <Input
+                id="co-email"
+                type="email"
+                value={formData.email}
+                onChange={handleFieldChange('email')}
+                placeholder="info@company.com"
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-li">LinkedIn</Label>
+              <Input
+                id="co-li"
+                value={formData.linkedin_url}
+                onChange={handleFieldChange('linkedin_url')}
+                placeholder="linkedin.com/company/..."
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-tw">Twitter</Label>
+              <Input
+                id="co-tw"
+                value={formData.twitter_handle}
+                onChange={handleFieldChange('twitter_handle')}
+                placeholder="@handle"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-ig">Instagram</Label>
+              <Input
+                id="co-ig"
+                value={formData.instagram_handle}
+                onChange={handleFieldChange('instagram_handle')}
+                placeholder="@handle"
+              />
+            </div>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
-            disabled={!name.trim() || create.isPending}
-            onClick={() => create.mutate()}
+            disabled={!formData.name.trim() || create.isPending}
+            onClick={handleSubmit}
           >
             Create
           </Button>
@@ -1943,8 +2173,8 @@ function ArtifactsView({ orgId }: { orgId: string }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const { data: artifacts = [], isLoading } = useQuery({
-    queryKey: ['recentArtifacts'],
-    queryFn: () => workflowsApi.listRecentArtifacts(),
+    queryKey: ['recentArtifacts', orgId],
+    queryFn: () => workflowsApi.listRecentArtifacts(orgId),
   });
 
   const toggleExpand = (id: string) => {

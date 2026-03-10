@@ -407,7 +407,7 @@ export function CrmPipelineBoard({
         <CrmDealForm
           open={formOpen}
           onOpenChange={setFormOpen}
-          projectId={projectId || pipeline.project_id || ''}
+          organizationId={orgId || pipeline.organization_id || ''}
           pipelineId={pipeline.id}
           stages={stages}
           deal={editingDeal}
