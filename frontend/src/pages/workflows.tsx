@@ -82,6 +82,8 @@ import { WorkflowEditor, getNodeTypeDef } from '@/components/workflows/WorkflowE
 import { WorkflowTriggersPanel } from '@/components/workflows/WorkflowTriggersPanel';
 import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
 import { StagingReviewContent } from '@/components/workflows/StagingReviewPanel';
+import { useAuth } from '@/contexts/AuthContext';
+import { cn } from '@/lib/utils';
 
 interface AutomationDefinition {
   id: string;
@@ -939,10 +941,12 @@ function WorkflowDetailPanel({
     refetchInterval: 15000,
   });
 
-  const orgId = '01010101-0101-0101-0101-010101010101';
+  const { user } = useAuth();
+  const orgId = user?.home_organization_id ?? user?.organizations?.[0]?.id;
   const { data: pendingRecords = [] } = useQuery({
     queryKey: ['stagingPendingByWf', workflow.id],
-    queryFn: () => stagingApi.listPending(orgId),
+    queryFn: () => stagingApi.listPending(orgId!),
+    enabled: !!orgId,
   });
 
   // Filter pending records to this workflow's runs
@@ -1157,15 +1161,16 @@ function WorkflowDetailPanel({
 
 function RunWorkflowDialog({ workflow, onClose }: { workflow: WorkflowDefinition | null; onClose: () => void }) {
   const navigate = useNavigate();
-  const orgId = '01010101-0101-0101-0101-010101010101';
+  const { user } = useAuth();
+  const orgId = user?.home_organization_id ?? user?.organizations?.[0]?.id;
   const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [searchFilter, setSearchFilter] = useState('');
   const [dataTypeFilter, setDataTypeFilter] = useState<string>('__all__');
   const { data: dataSources = [] } = useQuery({
     queryKey: ['orgDataSources', orgId],
-    queryFn: () => dataSourcesApi.listByOrganization(orgId),
-    enabled: !!workflow,
+    queryFn: () => dataSourcesApi.listByOrganization(orgId!),
+    enabled: !!workflow && !!orgId,
   });
 
   const { data: availableModels } = useQuery({
@@ -1350,21 +1355,127 @@ const STAGING_TARGET_CONFIG: Record<string, { label: string; icon: typeof Users;
   task: { label: 'Tasks', icon: ListTodo, color: 'text-orange-500' },
 };
 
+// Inline editable field for expanded row detail panel
+function InlineEditField({
+  fieldKey,
+  value,
+  recordId,
+  onSave,
+  editable,
+}: {
+  fieldKey: string;
+  value: string;
+  recordId: string;
+  onSave: (recordId: string, key: string, value: string) => void;
+  editable: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const inputRef = useCallback((el: HTMLInputElement | HTMLTextAreaElement | null) => {
+    if (el) el.focus();
+  }, []);
+
+  const handleSave = useCallback(() => {
+    if (editValue !== value) {
+      onSave(recordId, fieldKey, editValue);
+    }
+    setEditing(false);
+  }, [editValue, value, onSave, recordId, fieldKey]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSave();
+    }
+    if (e.key === 'Escape') {
+      setEditValue(value);
+      setEditing(false);
+    }
+  }, [handleSave, value]);
+
+  const handleStartEdit = useCallback(() => {
+    if (!editable) return;
+    setEditValue(value);
+    setEditing(true);
+  }, [editable, value]);
+
+  const isLong = value.length > 80;
+
+  if (editing) {
+    return isLong ? (
+      <textarea
+        ref={inputRef as React.Ref<HTMLTextAreaElement>}
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className="w-full text-xs bg-background border rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring min-h-[60px] resize-y"
+      />
+    ) : (
+      <input
+        ref={inputRef as React.Ref<HTMLInputElement>}
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className="w-full text-xs bg-background border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring h-6"
+      />
+    );
+  }
+
+  return (
+    <dd
+      onClick={editable ? handleStartEdit : undefined}
+      className={cn(
+        'text-xs mt-0.5',
+        isLong ? 'whitespace-pre-wrap break-words' : 'truncate',
+        editable && 'cursor-text hover:bg-muted/40 rounded px-1 -mx-1 transition-colors',
+      )}
+      title={editable ? 'Click to edit' : undefined}
+    >
+      {value || <span className="text-muted-foreground italic">empty</span>}
+    </dd>
+  );
+}
+
+type GlobalFilterType = 'all' | 'valid' | 'duplicates' | 'approved' | 'rejected' | 'issues' | 'error';
+const VALID_GLOBAL_FILTERS: GlobalFilterType[] = ['all', 'valid', 'duplicates', 'approved', 'rejected', 'issues', 'error'];
+
 function StagingTab() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const orgId = '01010101-0101-0101-0101-010101010101';
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const { user } = useAuth();
+  const orgId = user?.home_organization_id ?? user?.organizations?.[0]?.id;
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [globalFilter, setGlobalFilter] = useState<'all' | 'valid' | 'duplicates' | 'approved' | 'rejected' | 'issues' | 'error'>('all');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [workflowFilter, setWorkflowFilter] = useState<string>('all');
 
-  // runId from URL param auto-filters to a specific run
+  // Persist view/filter state in URL params
   const activeRunId = searchParams.get('run');
+  const viewMode = (searchParams.get('view') === 'table' ? 'table' : 'cards') as 'cards' | 'table';
+  const globalFilter = (VALID_GLOBAL_FILTERS.includes(searchParams.get('filter') as GlobalFilterType)
+    ? searchParams.get('filter') as GlobalFilterType : 'all');
+  const typeFilter = searchParams.get('type') || 'all';
+  const workflowFilter = searchParams.get('wf') || 'all';
+
+  // Helper to update search params preserving existing ones
+  const updateParams = useCallback((updates: Record<string, string | null>) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null || value === 'all' || value === 'cards') {
+          next.delete(key);
+        } else {
+          next.set(key, value);
+        }
+      }
+      // Always keep tab=staging
+      next.set('tab', 'staging');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const { data: pendingRecords = [], isLoading } = useQuery({
     queryKey: ['stagingPending', orgId],
-    queryFn: () => stagingApi.listPending(orgId),
+    queryFn: () => stagingApi.listPending(orgId!),
+    enabled: !!orgId,
     refetchInterval: 15000,
   });
 
@@ -1425,7 +1536,7 @@ function StagingTab() {
 
   // Per-record mutations for table view actions
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { status?: string } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { status?: string; record_data?: any } }) =>
       stagingApi.update(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['stagingPending'] }),
   });
@@ -1468,6 +1579,17 @@ function StagingTab() {
     e.stopPropagation();
   }, []);
 
+  // Inline field edit: update a single field in record_data
+  const handleInlineFieldSave = useCallback((recordId: string, fieldKey: string, newValue: string) => {
+    const record = pendingRecords.find(r => r.id === recordId);
+    if (!record) return;
+    try {
+      const data = JSON.parse(record.record_data);
+      data[fieldKey] = newValue;
+      updateMutation.mutate({ id: recordId, data: { record_data: data } });
+    } catch {}
+  }, [pendingRecords, updateMutation]);
+
   const handleRejectDups = useCallback(() => {
     batchRejectDupsMutation.mutate();
   }, [batchRejectDupsMutation]);
@@ -1477,15 +1599,15 @@ function StagingTab() {
   }, [batchApproveMutation]);
 
   const selectRun = useCallback((runId: string) => {
-    setSearchParams({ tab: 'staging', run: runId }, { replace: true });
-  }, [setSearchParams]);
+    updateParams({ run: runId });
+  }, [updateParams]);
 
   const clearRun = useCallback(() => {
-    setSearchParams({ tab: 'staging' }, { replace: true });
-  }, [setSearchParams]);
+    updateParams({ run: null });
+  }, [updateParams]);
 
-  const setCardsView = useCallback(() => setViewMode('cards'), []);
-  const setTableView = useCallback(() => setViewMode('table'), []);
+  const setCardsView = useCallback(() => updateParams({ view: null }), [updateParams]);
+  const setTableView = useCallback(() => updateParams({ view: 'table' }), [updateParams]);
 
   // Sorting state for global table
   const [sortField, setSortField] = useState<'name' | 'type' | 'workflow' | 'status' | 'confidence'>('name');
@@ -1791,7 +1913,7 @@ function StagingTab() {
                 return (
                   <button
                     key={key}
-                    onClick={() => setGlobalFilter(key)}
+                    onClick={() => updateParams({ filter: key })}
                     className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
                       globalFilter === key
                         ? 'bg-primary text-primary-foreground'
@@ -1810,7 +1932,7 @@ function StagingTab() {
             {uniqueTypes.length > 1 && (
               <select
                 value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
+                onChange={(e) => updateParams({ type: e.target.value })}
                 className="h-6 text-[11px] rounded border bg-background px-1.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 <option value="all">All types</option>
@@ -1826,7 +1948,7 @@ function StagingTab() {
             {uniqueWorkflows.length > 1 && (
               <select
                 value={workflowFilter}
-                onChange={(e) => setWorkflowFilter(e.target.value)}
+                onChange={(e) => updateParams({ wf: e.target.value })}
                 className="h-6 text-[11px] rounded border bg-background px-1.5 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring max-w-[200px]"
               >
                 <option value="all">All workflows</option>
@@ -1983,19 +2105,24 @@ function StagingTab() {
                   </div>
                 </div>
 
-                {/* Expanded detail panel */}
+                {/* Expanded detail panel with inline editing */}
                 {isExpanded && (
-                  <div className="border-b bg-muted/20 px-4 py-3">
+                  <div className="border-b bg-muted/20 px-4 py-3" onClick={handleStopPropagation}>
                     <div className="grid grid-cols-[1fr_1fr] lg:grid-cols-[1fr_1fr_1fr] gap-x-6 gap-y-2">
                       {allFields.map(([key, value]) => {
                         const dv = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
                         const isLong = dv.length > 80;
+                        const canEdit = record.status === 'pending_review';
                         return (
                           <div key={key} className={isLong ? 'col-span-2 lg:col-span-3' : ''}>
                             <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{key.replace(/_/g, ' ')}</dt>
-                            <dd className={`text-xs mt-0.5 ${isLong ? 'whitespace-pre-wrap break-words' : 'truncate'}`}>
-                              {dv || <span className="text-muted-foreground italic">empty</span>}
-                            </dd>
+                            <InlineEditField
+                              fieldKey={key}
+                              value={dv}
+                              recordId={record.id}
+                              onSave={handleInlineFieldSave}
+                              editable={canEdit}
+                            />
                           </div>
                         );
                       })}

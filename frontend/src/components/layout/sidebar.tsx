@@ -63,7 +63,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { projectsApi, organizationsApi } from '@/lib/api';
+import { projectsApi, organizationsApi, stagingApi } from '@/lib/api';
 import type {
   SidebarTree,
   SidebarOrg,
@@ -1382,6 +1382,20 @@ export function Sidebar({ className }: SidebarProps) {
   const [managementExpanded, setManagementExpanded] = useState(false);
   const [myWorkspaceExpanded, setMyWorkspaceExpanded] = useState(true);
 
+  // Staging pending count for sidebar badge
+  const homeOrgId = user?.home_organization_id || user?.organizations?.[0]?.id;
+  const { data: stagingPendingCount = 0 } = useQuery({
+    queryKey: ['stagingPendingCount', homeOrgId],
+    queryFn: async () => {
+      if (!homeOrgId) return 0;
+      const records = await stagingApi.listPending(homeOrgId);
+      return records.filter((r: any) => r.status === 'pending_review').length;
+    },
+    enabled: !!homeOrgId,
+    staleTime: 30000,
+    refetchInterval: 60000,
+  });
+
   // Detect if user is on a "My Workspace" page (user-level, not org-level)
   const WORKSPACE_PATHS = PRIMARY_NAV_ITEMS.map(item => item.to);
   const isWorkspacePage = WORKSPACE_PATHS.some(path => location.pathname === path || location.pathname.startsWith(path + '/'));
@@ -1527,14 +1541,22 @@ export function Sidebar({ className }: SidebarProps) {
                 {filteredPrimaryNav.map((item) => {
                   const Icon = item.icon;
                   const active = isNavActive(item);
+                  const badgeCount = item.id === 'workflows' ? stagingPendingCount : 0;
                   return (
                     <Link key={item.id} to={item.to}>
                       <div className={cn(
-                        "sidebar-nav-item text-xs py-1",
+                        "sidebar-nav-item text-xs py-1 justify-between",
                         active && "sidebar-nav-item-active"
                       )}>
-                        <Icon className="h-3.5 w-3.5" />
-                        {item.label}
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-3.5 w-3.5" />
+                          {item.label}
+                        </div>
+                        {badgeCount > 0 && (
+                          <span className="text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-full px-1.5 py-0.5 leading-none font-medium">
+                            {badgeCount}
+                          </span>
+                        )}
                       </div>
                     </Link>
                   );
