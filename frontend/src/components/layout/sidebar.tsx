@@ -1990,6 +1990,34 @@ export function Sidebar({ className }: SidebarProps) {
         </ScrollArea>
       </div>}
 
+      {/* Collapsed org indicator */}
+      {sidebarCollapsed && (() => {
+        const allOrgs = sidebarTree ? [...sidebarTree.owned_orgs, ...sidebarTree.member_orgs] : [];
+        const activeOrgId = orgIdFromPath || homeOrgId;
+        const activeOrg = activeOrgId ? allOrgs.find((o) => o.id === activeOrgId) : allOrgs[0];
+        if (!activeOrg) return null;
+        const initial = activeOrg.name?.charAt(0)?.toUpperCase() || '?';
+        return (
+          <div className="border-b border-border/40 p-1.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link to={`/organizations/${activeOrg.id}`}>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-center p-2 h-auto"
+                  >
+                    <div className="h-6 w-6 rounded bg-primary/15 text-primary flex items-center justify-center text-xs font-bold">
+                      {initial}
+                    </div>
+                  </Button>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">{activeOrg.name}</TooltipContent>
+            </Tooltip>
+          </div>
+        );
+      })()}
+
       {/* Spacer when collapsed */}
       {sidebarCollapsed && <div className="flex-1" />}
 

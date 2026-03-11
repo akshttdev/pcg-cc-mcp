@@ -767,6 +767,7 @@ function OverviewTab({
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No recent activity</p>
+              <p className="text-xs mt-1">Activity from tasks, deals, and contacts will appear here.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -3023,6 +3024,7 @@ function KnowledgeTab({
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>No knowledge sources indexed yet</p>
+          <p className="text-xs mt-1">Connect a data source in one of your projects to start building intelligence.</p>
         </div>
       ) : aggregated.sourcesByProject.length > 0 ? (
         <div className="space-y-4">
@@ -5440,7 +5442,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     params.set('tab', tab);
     if (tab !== 'pipelines') params.delete('pipeline');
     if (tab !== 'projects') params.delete('client');
-    if (tab !== 'knowledge') params.delete('view');
+    if (tab !== 'intelligence') params.delete('view');
     setSearchParams(params, { replace: true });
   };
 
@@ -5799,7 +5801,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <Share2 className="h-4 w-4 mr-2" />
                 Social
               </TabsTrigger>
-              <TabsTrigger value="knowledge">
+              <TabsTrigger value="intelligence">
                 <Brain className="h-4 w-4 mr-2" />
                 Intelligence
               </TabsTrigger>
@@ -5856,7 +5858,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} orgId={orgId} />
             </TabsContent>
 
-            <TabsContent value="knowledge">
+            <TabsContent value="intelligence">
               <IntelligenceTab
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                 orgId={orgId}
