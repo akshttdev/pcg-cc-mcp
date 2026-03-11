@@ -317,8 +317,7 @@ function DirectoryLinkList({ links }: { links: DirectoryLink[] }) {
 }
 
 export function SiteDirectoryPage() {
-  const { orgId, organizations } = useOrganization();
-  const effectiveOrgId = orgId || organizations?.[0]?.id;
+  const { effectiveOrgId, organizations } = useOrganization();
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
 
   const { data: allProjects = [] } = useQuery({
