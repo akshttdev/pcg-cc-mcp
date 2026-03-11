@@ -906,6 +906,10 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/organizations/{id}/members/{uid}",
             delete(remove_member),
         )
+        .route("/organizations/{id}/generate-invite", post(generate_invite))
+        .route("/organizations/{id}/persons", get(get_org_persons))
+        .route("/organizations/{id}/data-sources", get(list_org_data_sources))
+        .route("/data-sources", get(list_data_sources))
         .route(
             "/organizations/{id}/members/{uid}/assign",
             post(assign_member),
@@ -926,10 +930,6 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/organizations/{id}/members/{uid}/assignments/client/{cid}",
             delete(unassign_client),
         )
-        .route("/organizations/{id}/generate-invite", post(generate_invite))
-        .route("/organizations/{id}/persons", get(get_org_persons))
-        // data-sources routes handled by data_sources::router
-        .route("/data-sources", get(list_data_sources))
         .route(
             "/organizations/{id}/person-contacts",
             get(list_org_person_contacts).post(add_org_person_contact),

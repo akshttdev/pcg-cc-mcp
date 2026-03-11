@@ -17,6 +17,7 @@ const TWITTER_AUTH_URL: &str = "https://twitter.com/i/oauth2/authorize";
 const TWITTER_TOKEN_URL: &str = "https://api.twitter.com/2/oauth2/token";
 const TWITTER_API_BASE: &str = "https://api.twitter.com/2";
 
+#[allow(dead_code)]
 pub struct TwitterConnector {
     client: Client,
     client_id: String,

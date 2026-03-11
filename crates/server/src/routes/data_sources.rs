@@ -4,7 +4,7 @@ use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{HeaderMap, HeaderValue, header},
     response::Response,
-    routing::{delete, get, post, put},
+    routing::{get, post},
 };
 use db::models::data_source::{CreateDataSource, DataSource, UpdateDataSource, metadata_template};
 use deployment::Deployment;
@@ -56,6 +56,7 @@ pub struct CreateDataSourceRequest {
     /// Raw text content (for source_type = "text")
     pub content: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    pub folder: Option<String>,
 }
 
 /// POST /api/data-sources
@@ -106,6 +107,7 @@ async fn create_data_source(
             file_size_bytes: None,
             file_hash: None,
             metadata: Some(metadata_str),
+            folder: body.folder,
         },
     )
     .await
@@ -119,7 +121,7 @@ async fn create_data_source(
             UpdateDataSource {
                 title: None, description: None, data_type: None,
                 source_type: None, content: None, metadata: None,
-                status: Some("ready".to_string()), processing_error: None,
+                status: Some("ready".to_string()), processing_error: None, folder: None,
             },
         ).await.map_err(|e| ApiError::InternalError(format!("{e}")))?
         .unwrap_or(source)
@@ -151,6 +153,7 @@ async fn upload_data_source(
     let mut organization_id: Option<Uuid> = None;
     let mut project_id: Option<Uuid> = None;
     let mut metadata_str: Option<String> = None;
+    let mut folder_field: Option<String> = None;
     let mut file_data: Option<(String, Vec<u8>)> = None; // (filename, bytes)
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
@@ -190,6 +193,9 @@ async fn upload_data_source(
             }
             "metadata" => {
                 metadata_str = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);
+            }
+            "folder" => {
+                folder_field = Some(field.text().await.map_err(|e| ApiError::BadRequest(format!("{e}")))?);
             }
             _ => {}
         }
@@ -242,6 +248,7 @@ async fn upload_data_source(
             file_size_bytes: file_data.as_ref().map(|(_, b)| b.len() as i64),
             file_hash: None,
             metadata: metadata_str,
+            folder: folder_field,
         },
     )
     .await
@@ -296,7 +303,7 @@ async fn upload_data_source(
                 content: file_content,
                 metadata: Some(serde_json::to_string(&meta).unwrap_or_else(|_| "{}".to_string())),
                 status: Some("ready".to_string()),
-                processing_error: None,
+                processing_error: None, folder: None,
             },
         ).await.map_err(|e| ApiError::InternalError(format!("{e}")))?;
 
@@ -328,7 +335,7 @@ async fn upload_data_source(
         UpdateDataSource {
             title: None, description: None, data_type: None,
             source_type: None, content: None, metadata: None,
-            status: Some("ready".to_string()), processing_error: None,
+            status: Some("ready".to_string()), processing_error: None, folder: None,
         },
     )
     .await
@@ -468,7 +475,6 @@ async fn get_metadata_template(
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
-        .route("/organizations/{org_id}/data-sources", get(list_by_organization))
         .route("/projects/{project_id}/data-sources", get(list_by_project))
         .route("/data-sources", post(create_data_source))
         .route(

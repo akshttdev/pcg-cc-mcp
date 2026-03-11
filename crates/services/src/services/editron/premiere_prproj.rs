@@ -119,7 +119,7 @@ impl PrprojRecutEngine {
     /// Parse the XML structure to build internal maps
     fn parse_structure(&mut self) -> EditronResult<()> {
         // Build SubClip name → MasterClip UUID map
-        let subclip_re = Regex::new(r"<SubClip[^>]*>.*?</SubClip>")
+        let _subclip_re = Regex::new(r"<SubClip[^>]*>.*?</SubClip>")
             .map_err(|e| EditronError::InvalidFormat(e.to_string()))?;
         let uuid_re = Regex::new(r#"<MasterClip ObjectURef="([^"]+)""#)
             .map_err(|e| EditronError::InvalidFormat(e.to_string()))?;

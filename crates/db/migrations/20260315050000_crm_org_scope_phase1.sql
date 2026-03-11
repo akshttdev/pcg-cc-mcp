@@ -65,7 +65,8 @@ CREATE TABLE crm_contacts_new (
 
 -- Backfill organization_id from project for any rows missing it, then copy
 -- We use a temp table approach: first update org_id in old table, then copy
-UPDATE crm_contacts SET organization_id = (
+-- Use OR IGNORE to skip rows where backfilling org_id would cause a UNIQUE(org_id, email) conflict
+UPDATE OR IGNORE crm_contacts SET organization_id = (
     SELECT p.organization_id FROM projects p WHERE p.id = crm_contacts.project_id
 ) WHERE organization_id IS NULL AND project_id IS NOT NULL;
 
@@ -73,9 +74,9 @@ UPDATE crm_contacts SET organization_id = (
 -- This shouldn't happen in practice since all contacts had project_id NOT NULL before
 -- If it does, we skip those rows
 
-INSERT INTO crm_contacts_new
+INSERT OR IGNORE INTO crm_contacts_new
 SELECT
-    id, project_id, organization_id, client_id,
+    id, project_id, organization_id, NULL,  -- client_id: new column, no existing data
     first_name, last_name, full_name, email, phone, mobile, avatar_url,
     company_name, job_title, department, linkedin_url, twitter_handle, website,
     source, lifecycle_stage, lead_score,
@@ -145,13 +146,13 @@ CREATE TABLE crm_deals_new (
     updated_at TEXT NOT NULL DEFAULT (datetime('now', 'subsec'))
 );
 
-UPDATE crm_deals SET organization_id = (
+UPDATE OR IGNORE crm_deals SET organization_id = (
     SELECT p.organization_id FROM projects p WHERE p.id = crm_deals.project_id
 ) WHERE organization_id IS NULL AND project_id IS NOT NULL;
 
-INSERT INTO crm_deals_new
+INSERT OR IGNORE INTO crm_deals_new
 SELECT
-    id, project_id, organization_id, client_id,
+    id, project_id, organization_id, NULL,  -- client_id: new column, no existing data
     crm_contact_id, crm_pipeline_id, crm_stage_id, position,
     name, description, amount, currency,
     pipeline, stage, probability,
@@ -211,13 +212,13 @@ CREATE TABLE crm_activities_new (
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'subsec'))
 );
 
-UPDATE crm_activities SET organization_id = (
+UPDATE OR IGNORE crm_activities SET organization_id = (
     SELECT p.organization_id FROM projects p WHERE p.id = crm_activities.project_id
 ) WHERE organization_id IS NULL AND project_id IS NOT NULL;
 
-INSERT INTO crm_activities_new
+INSERT OR IGNORE INTO crm_activities_new
 SELECT
-    id, project_id, organization_id, client_id,
+    id, project_id, organization_id, NULL,  -- client_id: new column, no existing data
     crm_contact_id, crm_deal_id, activity_type,
     subject, description, outcome,
     email_message_id, social_mention_id, task_id,
@@ -262,13 +263,13 @@ CREATE TABLE crm_pipelines_new (
     UNIQUE(organization_id, name)  -- scoped to org now instead of project
 );
 
-UPDATE crm_pipelines SET organization_id = (
+UPDATE OR IGNORE crm_pipelines SET organization_id = (
     SELECT p.organization_id FROM projects p WHERE p.id = crm_pipelines.project_id
 ) WHERE organization_id IS NULL AND project_id IS NOT NULL;
 
-INSERT INTO crm_pipelines_new
+INSERT OR IGNORE INTO crm_pipelines_new
 SELECT
-    id, project_id, organization_id, NULL,  -- client_id is new column
+    id, project_id, organization_id, NULL,  -- client_id: new column, no existing data
     name, description, pipeline_type,
     is_active, is_default, icon, color,
     created_at, updated_at

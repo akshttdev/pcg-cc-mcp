@@ -418,6 +418,45 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        // Web access tools
+        json!({
+            "type": "function",
+            "function": {
+                "name": "search_web",
+                "description": "Search the internet in real-time. Use when asked to find, look up, or research anything online.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query"
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Number of results to return (default: 5)"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "fetch_web_page",
+                "description": "Fetch and read the content of any URL. Use when asked to open, read, or access a specific web page.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "The URL to fetch"
+                        }
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
         // Chat/response tool for conversational replies
         json!({
             "type": "function",

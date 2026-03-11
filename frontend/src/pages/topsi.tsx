@@ -74,6 +74,7 @@ interface ProjectAccess {
 }
 
 export function TopsiPage() {
+
   const [activeTab, setActiveTab] = useState('chat');
   const [status, setStatus] = useState<TopsiStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);

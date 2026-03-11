@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    routing::{delete, get, post, put},
+    routing::{get, post},
 };
 use db::models::data_source::DataSource;
 use db::models::workflow_trigger::{CreateWorkflowTrigger, UpdateWorkflowTrigger, WorkflowTrigger};

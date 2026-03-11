@@ -16,7 +16,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 
-use crate::economics::{display_to_vibe, VibeAmount, RewardRates};
+use crate::economics::{VibeAmount, RewardRates};
 use crate::relay::PeerAnnouncement;
 use crate::wire::NodeResources;
 
@@ -40,6 +40,7 @@ impl Default for RewardTrackerConfig {
 
 /// Peer state for reward calculation
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PeerState {
     node_id: String,
     wallet_address: String,

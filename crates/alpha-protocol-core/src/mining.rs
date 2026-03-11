@@ -4,7 +4,6 @@
 //! and receive Vibe tokens proportional to their contribution.
 
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 /// Mining pool configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -3,7 +3,7 @@
 //! Architecture:
 //!   1. POST /api/persons/:id/research  → Nora receives the orchestration request
 //!   2. Nora delegates to Scout (Social Intelligence) or Astra (Strategy Research)
-//!   3. Agent performs web research via its tool suite (incl. Exa neural search)
+//!   3. Agent performs web research via its tool suite
 //!   4. Results are stored in persons.intelligence_* fields
 //!   5. Social profiles, company contact methods, proposals, tasks, and
 //!      business analysis files are all created/updated from the research output.
@@ -39,6 +39,7 @@ use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 
 #[derive(Debug, Deserialize)]
 pub struct ResearchRequest {
+    /// Optional project scope — if provided, results also go into that project's knowledge graph
     pub project_id: Option<Uuid>,
 
     pub agent_preference: Option<String>,
@@ -87,6 +88,7 @@ pub async fn trigger_research(
     .execute(pool)
     .await?;
 
+    // Build the research prompt — Nora will delegate to the right agent
     let agent_pref = body.agent_preference.as_deref().unwrap_or("Scout");
     let project_context = body.project_id
         .map(|pid| format!(" Project context: {}.", pid))
@@ -129,9 +131,12 @@ pub async fn trigger_research(
         project_context
     );
 
+    // Fire async task — Nora orchestrates, Scout/Astra executes
     let pool_clone = pool.clone();
     let project_id = body.project_id;
+    let full_name = person.full_name.clone();
     let person_clone = person.clone();
+    let _use_direct = body.agent_preference.as_deref() == Some("direct");
 
     tokio::spawn(async move {
         let result = run_research_via_nora(
@@ -210,7 +215,6 @@ async fn run_research_via_nora(
     let person_id = person.id;
     let full_name = person.full_name.clone();
 
-
     sqlx::query(
         "UPDATE persons SET intelligence_status = 'running', updated_at = datetime('now','subsec') WHERE id = ?",
     )
@@ -218,19 +222,21 @@ async fn run_research_via_nora(
     .execute(pool)
     .await?;
 
+    // Get Nora instance — Nora orchestrates the delegation
     let nora_instance = match get_nora_instance().await {
         Ok(n) => n,
         Err(_) => {
+            // Nora not initialized — run a direct research fallback
             return run_research_direct(pool, &person, project_id).await;
         }
     };
 
-    let response_text = {
+    // Use Nora agent directly from the locked instance
+    let response = {
         let nora_guard = nora_instance.read().await;
         let Some(nora) = nora_guard.as_ref() else {
             drop(nora_guard);
             return run_research_direct(pool, &person, project_id).await;
-
         };
 
         let nora_request = NoraRequest {
@@ -244,35 +250,39 @@ async fn run_research_via_nora(
             timestamp: chrono::Utc::now(),
         };
 
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(90),
+        tokio::time::timeout(
+            std::time::Duration::from_secs(60),
             nora.process_request(nora_request),
         )
         .await
-        {
-            Ok(Ok(r)) => r.content,
-            Ok(Err(e)) => {
-                tracing::warn!("Nora error during person research ({}), using direct fallback: {}", person_id, e);
-                drop(nora_guard);
-                return run_research_direct(pool, &person, project_id).await;
-            }
-            Err(_) => {
-                tracing::warn!("Nora timed out during person research ({}), using direct fallback", person_id);
-                drop(nora_guard);
-                return run_research_direct(pool, &person, project_id).await;
-            }
-        }
+        .map_err(|_| "Research timed out after 60s")?
+        .map_err(|e| format!("Nora error: {}", e))?
     };
 
-    let parsed = parse_research_json(&response_text);
-    let summary = parsed.get("summary").and_then(|s| s.as_str()).unwrap_or(&response_text[..response_text.len().min(500)]).to_string();
-    let confidence = parsed.get("confidence").and_then(|c| c.as_f64()).unwrap_or(0.6).clamp(0.0, 1.0);
+    // Detect Nora failure responses (quota exceeded, API errors) and fall back to direct
+    let content_lower = response.content.to_lowercase();
+    let is_failure_response = content_lower.contains("api quota")
+        || content_lower.contains("quota limit")
+        || content_lower.contains("quota exceeded")
+        || content_lower.contains("quota limitation")
+        || content_lower.contains("openai api quota")
+        || (content_lower.contains("api quota") && content_lower.contains("exceeded"));
 
-    write_intelligence_results(pool, &person, &parsed, &summary, confidence, &response_text, project_id).await?;
+    if is_failure_response {
+        tracing::warn!("Nora research hit quota error for person {}, falling back to direct Anthropic research", person_id);
+        return run_research_direct(pool, &person, project_id).await;
+    }
+
+    // Parse Nora's response and write to person record
+    let summary = extract_summary_from_response(&response.content);
+    let confidence = extract_confidence_from_response(&response.content);
+
+    write_intelligence_results(pool, person_id, &summary, confidence, &response.content, project_id, &full_name).await?;
     Ok(())
 }
 
-/// Fallback: direct Anthropic API call with web search when Nora is unavailable or times out.
+/// Fallback: direct Anthropic web search when Nora is not initialized.
+/// Uses Scout's persona — social intelligence specialization.
 async fn run_research_direct(
     pool: &sqlx::SqlitePool,
     person: &Person,
@@ -286,9 +296,10 @@ async fn run_research_direct(
         .map_err(|_| "ANTHROPIC_API_KEY not set")?;
 
     let system = "You are Scout, Social Intelligence Analyst for Power Club Global. \
-        Research contacts by searching for their professional background, social profiles, \
-        and their company's public presence (website, Google My Business, social media, contact info). \
-        Return ONLY a valid JSON object with no markdown or preamble.";
+        Your specialty is finding and structuring online presence data about individuals. \
+        When asked to research a person, use web search to gather their: \
+        current role, company, LinkedIn/social profiles, recent activity, and public bio. \
+        Always return valid JSON with keys: summary, social_profiles, company_description, confidence.";
 
     let prompt = format!(
         "Research this contact for PCG: Name={}, Company={}, Email={}, Title={}. \
@@ -342,37 +353,28 @@ async fn run_research_direct(
         .await
         .map_err(|e| format!("HTTP error: {}", e))?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Anthropic API error {}: {}", status, text).into());
-    }
+    let response: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("JSON parse error: {}", e))?;
 
-    let response: serde_json::Value = resp.json().await.map_err(|e| format!("JSON parse: {}", e))?;
     let response_text = extract_text_from_anthropic_response(&response);
+    let summary = extract_summary_from_response(&response_text);
+    let confidence = extract_confidence_from_response(&response_text);
 
-    let parsed = parse_research_json(&response_text);
-    let summary = parsed.get("summary").and_then(|s| s.as_str()).unwrap_or(&response_text[..response_text.len().min(500)]).to_string();
-    let confidence = parsed.get("confidence").and_then(|c| c.as_f64()).unwrap_or(0.6).clamp(0.0, 1.0);
-
-    write_intelligence_results(pool, person, &parsed, &summary, confidence, &response_text, project_id).await?;
+    write_intelligence_results(pool, person.id, &summary, confidence, &response_text, project_id, &person.full_name).await?;
     Ok(())
 }
 
-// ── Post-research pipeline ────────────────────────────────────────────────────
-
-async fn write_intelligence_results(
+pub async fn write_intelligence_results(
     pool: &sqlx::SqlitePool,
-    person: &Person,
-    parsed: &serde_json::Value,
-
+    person_id: Uuid,
     summary: &str,
     confidence: f64,
     raw: &str,
     project_id: Option<Uuid>,
+    full_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let person_id = person.id;
-
     // 1. Update person intelligence fields
 
     sqlx::query(
@@ -393,64 +395,7 @@ async fn write_intelligence_results(
     .execute(pool)
     .await?;
 
-    // 2. Upsert social profiles found in research
-    if let Some(profiles) = parsed.get("social_profiles").and_then(|p| p.as_array()) {
-        for profile in profiles {
-            let platform = profile.get("platform").and_then(|p| p.as_str()).unwrap_or_default();
-            let handle = profile.get("handle").and_then(|h| h.as_str());
-            let url = profile.get("url").and_then(|u| u.as_str());
-            let followers = profile.get("followers").and_then(|f| f.as_i64());
-
-            if !platform.is_empty() && (handle.is_some() || url.is_some()) {
-                let _ = sqlx::query(
-                    "INSERT INTO person_social_profiles \
-                     (id, person_id, platform, handle, profile_url, follower_count, last_synced_at) \
-                     VALUES (randomblob(16), ?, ?, ?, ?, ?, datetime('now','subsec')) \
-                     ON CONFLICT(person_id, platform) DO UPDATE SET \
-                       handle = excluded.handle, \
-                       profile_url = excluded.profile_url, \
-                       follower_count = excluded.follower_count, \
-                       last_synced_at = excluded.last_synced_at, \
-                       updated_at = datetime('now','subsec')",
-                )
-                .bind(person_id)
-                .bind(platform)
-                .bind(handle)
-                .bind(url)
-                .bind(followers)
-                .execute(pool)
-                .await;
-            }
-        }
-    }
-
-    // 3. Find or create the company, then update with research data
-    let company_id = find_or_create_company_from_research(pool, person, parsed).await;
-
-    // 4. Add person → company junction entry if company found
-    if let Some(cid) = company_id {
-        let _ = sqlx::query(
-            "INSERT OR IGNORE INTO person_company_roles \
-             (id, person_id, company_id, role, title, is_primary) \
-             VALUES (randomblob(16), ?, ?, 'contact', ?, 1)",
-        )
-        .bind(person_id)
-        .bind(cid)
-        .bind(person.job_title.as_deref())
-        .execute(pool)
-        .await;
-
-        // Add company contact methods found in research
-        update_company_contact_methods(pool, cid, parsed).await;
-    }
-
-    // 5. Create CRM contact + deal in acquisition pipeline Lead stage
-    ensure_crm_deal_in_pipeline(pool, person, company_id, parsed, project_id).await;
-
-    // 5b. Also ensure proposal exists (separate proposals board)
-    ensure_proposal_in_pipeline(pool, person, company_id, parsed, project_id).await;
-
-    // 6. Register in knowledge graph
+    // Register in knowledge graph if project_id provided
     if let Some(pid) = project_id {
         let source_id = person_id.to_string();
         let source_summary = Some(format!("Scout intelligence: {}", summary));
@@ -460,526 +405,40 @@ async fn write_intelligence_results(
             pid,
             &KnowledgeSourceType::Entity,
             &source_id,
-            &format!("Person: {}", person.full_name),
-
+            &format!("Person: {}", full_name),
             source_summary.as_deref(),
             confidence,
         )
         .await;
-
-        // 7. Create tracking task on project board
-        create_research_task(pool, person, pid, summary, parsed).await;
-
-        // 8. Generate business analysis file
-        let _ = generate_business_analysis(pool, person, company_id, parsed, summary, pid).await;
     }
 
-    tracing::info!(
-        "Research complete for {} (confidence: {:.0}%){} proposal+task+artifacts created",
-        person.full_name,
-        confidence * 100.0,
-        if project_id.is_some() { "," } else { " — no project_id, skipping" }
-    );
-
+    tracing::info!("Intelligence research complete for person {} (confidence: {:.0}%)", person_id, confidence * 100.0);
     Ok(())
 }
 
-/// Find company by matching name, or create it if a company_website/description was found
-async fn find_or_create_company_from_research(
-    pool: &sqlx::SqlitePool,
-    person: &Person,
-    parsed: &serde_json::Value,
-) -> Option<Uuid> {
-    let company_name = person.company_name.as_deref().unwrap_or_default();
-    if company_name.is_empty() {
-        return None;
-    }
+// ── Text extraction helpers ───────────────────────────────────────────────────
 
-    // 1. Try matching by name
-    #[derive(sqlx::FromRow)]
-    struct Row { id: Uuid }
-    let existing: Option<Row> = sqlx::query_as(
-        "SELECT id FROM companies WHERE lower(name) = lower(?)"
-    )
-    .bind(company_name)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-
-    if let Some(row) = existing {
-        // Update with any new data from research
-        let website = parsed.get("company_website").and_then(|v| v.as_str()).unwrap_or_default();
-        let description = parsed.get("company_description").and_then(|v| v.as_str()).unwrap_or_default();
-        if !website.is_empty() || !description.is_empty() {
-            let _ = sqlx::query(
-                "UPDATE companies SET \
-                 website = COALESCE(NULLIF(?, ''), website), \
-                 description = COALESCE(NULLIF(?, ''), description), \
-                 updated_at = datetime('now','subsec') \
-                 WHERE id = ?",
-            )
-            .bind(website)
-            .bind(description)
-            .bind(row.id)
-            .execute(pool)
-            .await;
-        }
-        return Some(row.id);
-    }
-
-    // 2. Create company if we have meaningful data
-    let website = parsed.get("company_website").and_then(|v| v.as_str()).unwrap_or_default();
-    let description = parsed.get("company_description").and_then(|v| v.as_str()).unwrap_or_default();
-
-    if description.len() > 20 || !website.is_empty() {
-        let new_id = Uuid::new_v4();
-        let slug = company_name.to_lowercase()
-            .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
-            .collect::<String>();
-        let slug = slug.trim_matches('-').to_string();
-
-        let result = sqlx::query(
-            "INSERT OR IGNORE INTO companies (id, name, slug, website, description) \
-             VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(new_id)
-        .bind(company_name)
-        .bind(&slug)
-        .bind(if website.is_empty() { None } else { Some(website) })
-        .bind(if description.is_empty() { None } else { Some(description) })
-        .execute(pool)
-        .await;
-
-        if result.is_ok() {
-            tracing::info!("Created company '{}' from research", company_name);
-            return Some(new_id);
-        }
-    }
-
-    None
-}
-
-/// Upsert contact methods found in research to company_contact_methods
-async fn update_company_contact_methods(
-    pool: &sqlx::SqlitePool,
-    company_id: Uuid,
-    parsed: &serde_json::Value,
-) {
-    let methods: &[(&str, &str, &str)] = &[
-        ("phone",    "company_phone",     "General"),
-        ("email",    "company_email",     "General"),
-        ("website",  "company_website",   "Website"),
-        ("instagram","company_instagram", "Instagram"),
-        ("linkedin", "company_linkedin",  "LinkedIn"),
-        ("twitter",  "company_twitter",   "Twitter"),
-        ("facebook", "company_facebook",  "Facebook"),
-    ];
-
-    for (method_type, json_key, label) in methods {
-        if let Some(value) = parsed.get(*json_key).and_then(|v| v.as_str()) {
-            let value = value.trim();
-            if value.is_empty() || value == "null" || value == "unknown" {
-                continue;
-            }
-            let _ = sqlx::query(
-                "INSERT INTO company_contact_methods (id, company_id, method_type, label, value) \
-                 VALUES (randomblob(16), ?, ?, ?, ?) \
-                 ON CONFLICT DO NOTHING",
-            )
-            .bind(company_id)
-            .bind(method_type)
-            .bind(label)
-            .bind(value)
-            .execute(pool)
-            .await;
-        }
-    }
-}
-
-/// Create CRM contact + deal in the org's Acquisition pipeline "Lead" stage
-async fn ensure_crm_deal_in_pipeline(
-    pool: &sqlx::SqlitePool,
-    person: &Person,
-    company_id: Option<Uuid>,
-    parsed: &serde_json::Value,
-    project_id: Option<Uuid>,
-) {
-    let org_id = match person.organization_id {
-        Some(id) => id,
-        None => return,
-    };
-
-    // 1. Find or create crm_contact for this person
-    #[derive(sqlx::FromRow)]
-    struct IdRow { id: Uuid }
-
-    let contact_id = {
-        // First try to find by person_id
-        let existing: Option<IdRow> = sqlx::query_as(
-            "SELECT id FROM crm_contacts WHERE person_id = ? LIMIT 1"
-        )
-        .bind(person.id)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten();
-
-        if let Some(row) = existing {
-            row.id
-        } else {
-            // Create a new crm_contact
-            let new_id = Uuid::new_v4();
-            let company_name = person.company_name.as_deref()
-                .or_else(|| company_id.map(|_| "")).unwrap_or_default();
-            let _ = sqlx::query(
-                "INSERT OR IGNORE INTO crm_contacts \
-                 (id, organization_id, full_name, email, company_name, job_title, person_id) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(new_id)
-            .bind(org_id)
-            .bind(&person.full_name)
-            .bind(person.email.as_deref())
-            .bind(company_name)
-            .bind(person.job_title.as_deref())
-            .bind(person.id)
-            .execute(pool)
-            .await;
-            new_id
-        }
-    };
-
-    // 2. Find the org's Acquisition pipeline
-    let pipeline: Option<IdRow> = sqlx::query_as(
-        "SELECT id FROM crm_pipelines \
-         WHERE organization_id = ? AND pipeline_type = 'acquisition' \
-         ORDER BY created_at ASC LIMIT 1"
-    )
-    .bind(org_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-
-    let Some(pipeline_row) = pipeline else { return };
-
-    // 3. Get the first stage (Lead / position 0)
-    let stage: Option<IdRow> = sqlx::query_as(
-        "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? ORDER BY position ASC LIMIT 1"
-    )
-    .bind(pipeline_row.id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-
-    let Some(stage_row) = stage else { return };
-
-    // 4. Check if deal already exists for this contact in this pipeline
-    let existing_deal: Option<IdRow> = sqlx::query_as(
-        "SELECT id FROM crm_deals WHERE crm_contact_id = ? AND crm_pipeline_id = ? LIMIT 1"
-    )
-    .bind(contact_id)
-    .bind(pipeline_row.id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-
-    if existing_deal.is_some() {
-        return;
-    }
-
-    // 5. Calculate position in Lead stage
-    let position: i32 = sqlx::query_as::<_, (i32,)>(
-        "SELECT COALESCE(MAX(position), -1) + 1 FROM crm_deals WHERE crm_stage_id = ?"
-    )
-    .bind(stage_row.id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten()
-    .map(|(p,)| p)
-    .unwrap_or(0);
-
-    let deal_potential = parsed.get("deal_potential").and_then(|v| v.as_str()).unwrap_or("medium");
-    let company_name = person.company_name.as_deref().unwrap_or("Unknown");
-    let deal_name = format!("{} @ {}", person.full_name, company_name);
-    let description = format!(
-        "Research-identified lead. Deal potential: {}.",
-        deal_potential
-    );
-
-    // 6. Insert the crm_deal
-    let _ = sqlx::query(
-        "INSERT INTO crm_deals \
-         (id, organization_id, project_id, crm_contact_id, crm_pipeline_id, crm_stage_id, \
-          position, name, description, stage, amount) \
-         VALUES (randomblob(16), ?, ?, ?, ?, ?, ?, ?, ?, 'Lead', ?)",
-    )
-    .bind(org_id)
-    .bind(project_id)
-    .bind(contact_id)
-    .bind(pipeline_row.id)
-    .bind(stage_row.id)
-    .bind(position)
-    .bind(&deal_name)
-    .bind(&description)
-    .bind(company_id.map(|_| {
-        parsed.get("estimated_value_usd").and_then(|v| v.as_f64()).unwrap_or(0.0)
-    }))
-    .execute(pool)
-    .await;
-
-    tracing::info!("Created CRM deal '{}' in Lead stage for {}", deal_name, person.full_name);
-}
-
-/// Create or find a proposal in the pipeline for this lead
-async fn ensure_proposal_in_pipeline(
-    pool: &sqlx::SqlitePool,
-    person: &Person,
-    company_id: Option<Uuid>,
-    parsed: &serde_json::Value,
-    project_id: Option<Uuid>,
-) {
-    // Check if a proposal already exists for this person
-    let existing: Option<(Vec<u8>,)> = sqlx::query_as(
-        "SELECT id FROM proposals WHERE lead_id = ? LIMIT 1"
-    )
-    .bind(person.id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-
-    if existing.is_some() {
-        return; // Already in pipeline
-    }
-
-    let deal_potential = parsed.get("deal_potential").and_then(|v| v.as_str()).unwrap_or("medium");
-    let approach = parsed.get("recommended_approach").and_then(|v| v.as_str()).unwrap_or("");
-    let company_name = person.company_name.as_deref().unwrap_or("Unknown Company");
-
-    let title = format!("Business Opportunity — {} / {}", person.full_name, company_name);
-    let description = format!(
-        "Research-identified opportunity. Deal potential: {}. {}\n\nContact: {}{}",
-        deal_potential,
-        approach,
-        person.full_name,
-        person.email.as_ref().map(|e| format!(" <{}>", e)).unwrap_or_default(),
-    );
-
-    let proposal_id = Uuid::new_v4();
-    let contact_ids = serde_json::json!([person.id.to_string()]);
-    let _ = sqlx::query(
-        "INSERT INTO proposals \
-         (id, lead_id, company_id, project_id, organization_id, title, description, \
-          deal_type, quote_amount_vibe, contact_ids) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'one-off', 0, ?)",
-    )
-    .bind(proposal_id)
-    .bind(person.id)
-    .bind(company_id)
-    .bind(project_id)
-    .bind(person.organization_id)
-    .bind(&title)
-    .bind(&description)
-    .bind(contact_ids.to_string())
-    .execute(pool)
-    .await;
-
-    tracing::info!("Created pipeline proposal for {}", person.full_name);
-}
-
-/// Create a tracking task on the project board
-async fn create_research_task(
-    pool: &sqlx::SqlitePool,
-    person: &Person,
-    project_id: Uuid,
-    summary: &str,
-    parsed: &serde_json::Value,
-) {
-    let deal_potential = parsed.get("deal_potential").and_then(|v| v.as_str()).unwrap_or("medium");
-    let approach = parsed.get("recommended_approach").and_then(|v| v.as_str()).unwrap_or("");
-    let company_name = person.company_name.as_deref().unwrap_or("Unknown Company");
-
-    let title = format!("Follow up: {} @ {}", person.full_name, company_name);
-    let description = format!(
-        "Scout research complete.\n\nSummary: {}\n\nDeal potential: {}\nRecommended approach: {}\n\nContact: {}{}",
-        summary,
-        deal_potential,
-        approach,
-        person.full_name,
-        person.email.as_ref().map(|e| format!(" <{}>", e)).unwrap_or_default(),
-    );
-
-    let _ = sqlx::query(
-        "INSERT INTO tasks \
-         (id, project_id, title, description, status, priority, created_by) \
-         VALUES (randomblob(16), ?, ?, ?, 'todo', 'high', 'scout')",
-    )
-    .bind(project_id)
-    .bind(&title)
-    .bind(&description)
-    .execute(pool)
-    .await;
-
-    tracing::info!("Created research task for {} on project {}", person.full_name, project_id);
-}
-
-/// Generate business analysis markdown and save as ProjectAsset
-async fn generate_business_analysis(
-    pool: &sqlx::SqlitePool,
-    person: &Person,
-    company_id: Option<Uuid>,
-    parsed: &serde_json::Value,
-    summary: &str,
-    project_id: Uuid,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let company_name = person.company_name.as_deref().unwrap_or("Unknown Company");
-    let deal_potential = parsed.get("deal_potential").and_then(|v| v.as_str()).unwrap_or("unknown");
-    let approach = parsed.get("recommended_approach").and_then(|v| v.as_str()).unwrap_or("—");
-    let company_desc = parsed.get("company_description").and_then(|v| v.as_str()).unwrap_or("—");
-    let company_website = parsed.get("company_website").and_then(|v| v.as_str()).unwrap_or("—");
-    let company_phone = parsed.get("company_phone").and_then(|v| v.as_str()).unwrap_or("—");
-    let company_email = parsed.get("company_email").and_then(|v| v.as_str()).unwrap_or("—");
-    let gmb_rating = parsed.get("gmb_rating").and_then(|v| v.as_f64()).map(|r| format!("{:.1} ⭐", r)).unwrap_or_else(|| "—".into());
-    let gmb_reviews = parsed.get("gmb_review_count").and_then(|v| v.as_i64()).map(|r| r.to_string()).unwrap_or_else(|| "—".into());
-
-    let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
-
-    let mut socials_md = String::new();
-    if let Some(profiles) = parsed.get("social_profiles").and_then(|p| p.as_array()) {
-        for p in profiles {
-            let platform = p.get("platform").and_then(|x| x.as_str()).unwrap_or("unknown");
-            let handle = p.get("handle").and_then(|x| x.as_str()).unwrap_or("—");
-            let url = p.get("url").and_then(|x| x.as_str()).unwrap_or("");
-            let followers = p.get("followers").and_then(|x| x.as_i64()).map(|f| format!(" ({} followers)", f)).unwrap_or_default();
-            if !url.is_empty() {
-                socials_md.push_str(&format!("- **{}**: [@{}]({}){}  \n", platform, handle, url, followers));
-            } else {
-                socials_md.push_str(&format!("- **{}**: @{}{}  \n", platform, handle, followers));
-            }
-        }
-    }
-    if socials_md.is_empty() {
-        socials_md = "— No social profiles found  \n".into();
-    }
-
-    let company_id_str = company_id.map(|id| id.to_string()).unwrap_or_else(|| "—".into());
-
-    let content = format!(
-        "# Business Analysis — {name} / {company}\n\
-        *Generated by Scout on {date} for PCG*\n\n\
-        ---\n\n\
-        ## Contact Profile\n\n\
-        | Field | Value |\n\
-        |-------|-------|\n\
-        | **Name** | {name} |\n\
-        | **Title** | {title} |\n\
-        | **Company** | {company} |\n\
-        | **Email** | {email} |\n\
-        | **Phone** | {phone} |\n\
-        | **Type** | {ptype} |\n\
-        | **Lead Score** | {score} |\n\n\
-        ## Intelligence Summary\n\n\
-        {summary}\n\n\
-        ## Social Profiles\n\n\
-        {socials}\n\
-        ## Company Intelligence\n\n\
-        | Field | Value |\n\
-        |-------|-------|\n\
-        | **Company** | {company} |\n\
-        | **ID** | {cid} |\n\
-        | **Website** | {website} |\n\
-        | **Phone** | {cphone} |\n\
-        | **Email** | {cemail} |\n\
-        | **Google Rating** | {gmb_rating} |\n\
-        | **Google Reviews** | {gmb_reviews} |\n\n\
-        ### Company Description\n\n\
-        {company_desc}\n\n\
-        ## Pipeline\n\n\
-        | Field | Value |\n\
-        |-------|-------|\n\
-        | **Deal Potential** | {deal_potential} |\n\
-        | **Recommended Approach** | {approach} |\n\
-        | **Status** | Drafted — awaiting review |\n\n\
-        ---\n\
-        *This analysis was generated automatically by Scout. Verify before outreach.*\n",
-        name = person.full_name,
-        company = company_name,
-        date = now,
-        title = person.job_title.as_deref().unwrap_or("—"),
-        email = person.email.as_deref().unwrap_or("—"),
-        phone = person.phone.as_deref().unwrap_or("—"),
-        ptype = person.person_type,
-        score = person.lead_score,
-        summary = summary,
-        socials = socials_md,
-        cid = company_id_str,
-        website = company_website,
-        cphone = company_phone,
-        cemail = company_email,
-        gmb_rating = gmb_rating,
-        gmb_reviews = gmb_reviews,
-        company_desc = company_desc,
-        deal_potential = deal_potential,
-        approach = approach,
-    );
-
-    // Write to dev_assets/artifacts/
-    let filename = format!("analysis_{}.md", person.id);
-    let artifacts_dir = utils::assets::asset_dir().join("artifacts");
-    let _ = std::fs::create_dir_all(&artifacts_dir);
-    let file_path = artifacts_dir.join(&filename);
-    std::fs::write(&file_path, &content)?;
-
-    // Register as ProjectAsset
-    let storage_path = format!("artifacts/{}", filename);
-    let byte_size = content.len() as i64;
-
-    let _ = sqlx::query(
-        "INSERT OR REPLACE INTO project_assets \
-         (id, project_id, category, scope, name, storage_path, mime_type, byte_size, uploaded_by) \
-         VALUES (randomblob(16), ?, 'intelligence', 'crm', ?, ?, 'text/markdown', ?, 'scout')",
-    )
-    .bind(project_id)
-    .bind(format!("Business Analysis — {} / {}", person.full_name, company_name))
-    .bind(&storage_path)
-    .bind(byte_size)
-    .execute(pool)
-    .await;
-
-    tracing::info!("Business analysis written to {}", storage_path);
-    Ok(())
-}
-
-// ── Text / JSON extraction helpers ───────────────────────────────────────────
-
-fn parse_research_json(text: &str) -> serde_json::Value {
-    // Try direct parse
+fn extract_summary_from_response(text: &str) -> String {
+    // Try direct JSON
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
-        if v.is_object() {
-            return v;
+        if let Some(s) = v.get("summary").and_then(|s| s.as_str()) {
+            return s.to_string();
         }
     }
-    // Find JSON block (handles markdown code fences or embedded JSON)
+    // Try JSON block — look for "summary" anywhere in the JSON
     if let Some(start) = text.find('{') {
         if let Some(end) = text.rfind('}') {
             if end > start {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text[start..=end]) {
-                    if v.is_object() {
-                        return v;
-
+                    if let Some(s) = v.get("summary").and_then(|s| s.as_str()) {
+                        return s.to_string();
                     }
                 }
             }
         }
     }
-    serde_json::Value::Object(Default::default())
-
+    // Fall back to first 300 chars of text
+    text.chars().take(300).collect()
 }
 
 fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String {
@@ -999,9 +458,73 @@ fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String 
     // Check for error
     if let Some(err) = response.get("error") {
         return format!("API error: {}", err);
-
     }
     response.to_string()
+}
+
+fn extract_confidence_from_response(text: &str) -> f64 {
+    // Try to parse JSON and extract confidence field
+    let json_str = if let (Some(start), Some(end)) = (text.find('{'), text.rfind('}')) {
+        &text[start..=end]
+    } else {
+        text
+    };
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+        if let Some(c) = v.get("confidence").and_then(|c| c.as_f64()) {
+            return c.clamp(0.0, 1.0);
+        }
+    }
+    // Heuristic: longer responses tend to be more confident
+    if text.len() > 500 { 0.7 } else if text.len() > 200 { 0.5 } else { 0.3 }
+}
+
+fn parse_research_json(text: &str) -> serde_json::Value {
+    // Try direct parse
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+        return v;
+    }
+    // Try extracting JSON block
+    if let Some(start) = text.find('{') {
+        if let Some(end) = text.rfind('}') {
+            if end > start {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text[start..=end]) {
+                    return v;
+                }
+            }
+        }
+    }
+    serde_json::Value::Object(Default::default())
+}
+
+async fn update_company_contact_methods(
+    pool: &sqlx::SqlitePool,
+    company_id: Uuid,
+    parsed: &serde_json::Value,
+) {
+    let contact_keys: &[(&str, &str, &str)] = &[
+        ("company_phone", "phone", "Phone"),
+        ("company_email", "email", "Email"),
+        ("company_website", "website", "Website"),
+        ("phone", "phone", "Phone"),
+        ("email", "email", "Email"),
+        ("website", "website", "Website"),
+    ];
+    for (json_key, method_type, label) in contact_keys {
+        if let Some(val) = parsed.get(*json_key).and_then(|v| v.as_str()) {
+            if !val.trim().is_empty() {
+                let _ = sqlx::query(
+                    "INSERT INTO company_contact_methods (id, company_id, method_type, label, value) \
+                     VALUES (randomblob(16), ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                )
+                .bind(company_id)
+                .bind(*method_type)
+                .bind(*label)
+                .bind(val.trim())
+                .execute(pool)
+                .await;
+            }
+        }
+    }
 }
 
 // ── Company Intelligence ───────────────────────────────────────────────────────
@@ -1290,8 +813,344 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/persons/{id}/research", post(trigger_research))
         .route("/persons/{id}/intelligence-status", get(get_intelligence_status))
-        .route("/companies/{id}/research", post(trigger_company_research))
         .route("/companies/{id}/intelligence-status", get(get_company_intelligence_status))
 
         .with_state(deployment.clone())
 }
+
+// ── Iterative research pass endpoints ────────────────────────────────────────
+
+use db::models::person_research_pass::PersonResearchPass;
+use db::models::business_report::BusinessReport;
+
+#[derive(Debug, Deserialize)]
+pub struct NextPassRequest {
+    /// Override the auto-selected focus: 'identity' | 'market_position' | 'competitors' | 'target_clients' | 'deep_strategy' | 'custom'
+    pub focus: Option<String>,
+    pub custom_prompt: Option<String>,
+    pub project_id: Option<Uuid>,
+}
+
+/// GET /api/persons/:id/research-passes — list all research passes in order
+pub async fn list_research_passes(
+    State(d): State<DeploymentImpl>,
+    Path(person_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<PersonResearchPass>>>, ApiError> {
+    let passes = PersonResearchPass::list_for_person(&d.db().pool, person_id).await?;
+    Ok(Json(ApiResponse::success(passes)))
+}
+
+/// POST /api/persons/:id/research-passes/next
+/// Triggers the next logical research pass, building on all prior passes.
+pub async fn trigger_next_research_pass(
+    State(d): State<DeploymentImpl>,
+    Path(person_id): Path<Uuid>,
+    Json(body): Json<NextPassRequest>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &d.db().pool;
+
+    let person = Person::find_by_id(pool, person_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Person not found".into()))?;
+
+    // Determine next pass number and auto-select focus
+    let pass_number = PersonResearchPass::next_pass_number(pool, person_id).await;
+    let focus = body.focus.clone().unwrap_or_else(|| auto_focus(pass_number));
+
+    // Collect prior pass summaries for context
+    let prior_passes = PersonResearchPass::list_for_person(pool, person_id).await?;
+    let prior_context: String = prior_passes.iter()
+        .filter(|p| p.status == "done")
+        .map(|p| format!(
+            "Pass {} ({}): {}",
+            p.pass_number,
+            p.research_focus,
+            p.summary.as_deref().unwrap_or("(no summary)")
+        ))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let pass = PersonResearchPass::create(pool, person_id, pass_number, &focus, body.custom_prompt.as_deref()).await?;
+    let pass_id = pass.id;
+
+    // Build research prompt incorporating all prior context
+    let intel = person.intelligence_summary.as_deref().unwrap_or("").to_string();
+    let name = person.full_name.clone();
+    let company = person.company_name.clone().unwrap_or_else(|| "Unknown company".into());
+    let project_id = body.project_id;
+    let pool_clone = pool.clone();
+    let pool_for_err = pool.clone();
+    let focus_for_resp = focus.clone();
+
+    tokio::spawn(async move {
+        if let Err(e) = run_research_pass(
+            pool_clone, pass_id, person_id, pass_number,
+            &focus, &name, &company, &intel, &prior_context, project_id,
+        ).await {
+            tracing::error!("Research pass failed for {}: {}", pass_id, e);
+            let _ = sqlx::query(
+                "UPDATE person_research_passes SET status = 'failed', error = ?, completed_at = datetime('now','subsec') WHERE id = ?",
+            )
+            .bind(e.to_string())
+            .bind(pass_id)
+            .execute(&pool_for_err)
+            .await;
+        }
+    });
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "pass_id": pass_id,
+        "pass_number": pass_number,
+        "focus": focus_for_resp,
+        "status": "queued"
+    }))))
+}
+
+/// GET /api/persons/:id/reports
+pub async fn list_person_reports(
+    State(d): State<DeploymentImpl>,
+    Path(person_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<BusinessReport>>>, ApiError> {
+    let reports = BusinessReport::list_by_person(&d.db().pool, person_id).await?;
+    Ok(Json(ApiResponse::success(reports)))
+}
+
+fn auto_focus(pass_number: i64) -> String {
+    match pass_number {
+        1 => "identity",
+        2 => "market_position",
+        3 => "competitors",
+        4 => "target_clients",
+        _ => "deep_strategy",
+    }
+    .to_string()
+}
+
+async fn run_research_pass(
+    pool: sqlx::SqlitePool,
+    pass_id: Uuid,
+    person_id: Uuid,
+    pass_number: i64,
+    focus: &str,
+    name: &str,
+    company: &str,
+    existing_intel: &str,
+    prior_context: &str,
+    project_id: Option<Uuid>,
+) -> anyhow::Result<()> {
+    use reqwest::Client;
+    use serde_json::Value;
+
+    // Mark running
+    sqlx::query(
+        "UPDATE person_research_passes SET status = 'running' WHERE id = ?",
+    )
+    .bind(pass_id)
+    .execute(&pool)
+    .await?;
+
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
+
+    let focus_instructions = match focus {
+        "identity" => format!(
+            "Research who {} at {} is: professional background, career history, social presence, \
+             personal brand, public statements, media appearances.",
+            name, company
+        ),
+        "market_position" => format!(
+            "Research {}'s market position and business model: revenue, growth stage, \
+             funding, industry standing, key partnerships, recent news.",
+            company
+        ),
+        "competitors" => format!(
+            "Identify {}'s top 5-8 direct competitors. For each: name, positioning, \
+             strengths/weaknesses, how {} differentiates from them.",
+            company, company
+        ),
+        "target_clients" => format!(
+            "Research who {}'s ideal and current clients/customers are: industries, \
+             company sizes, demographics, key use cases, testimonials or case studies.",
+            company
+        ),
+        "deep_strategy" => format!(
+            "Deep strategic analysis of {}: growth strategy, product roadmap signals, \
+             hiring patterns, content strategy, event participation, PCG engagement opportunity.",
+            company
+        ),
+        _ => format!("Research: {}", focus),
+    };
+
+    let prior_section = if prior_context.is_empty() {
+        String::new()
+    } else {
+        format!("\n\nPRIOR RESEARCH (build on this, don't repeat):\n{}", prior_context)
+    };
+
+    let existing_section = if existing_intel.is_empty() {
+        String::new()
+    } else {
+        format!("\n\nEXISTING INTELLIGENCE:\n{}", &existing_intel[..existing_intel.len().min(2000)])
+    };
+
+    let system = "You are an expert business intelligence researcher. Conduct thorough web research \
+        and return structured findings. Always respond with valid JSON only.";
+
+    let prompt = format!(
+        "RESEARCH TASK — Pass #{pass_number} | Focus: {focus}\n\n\
+        Subject: {name} ({company})\n\
+        {existing_section}{prior_section}\n\n\
+        FOCUS FOR THIS PASS:\n{focus_instructions}\n\n\
+        Return JSON:\n\
+        {{\n\
+          \"summary\": \"3-5 sentence summary of findings for this pass\",\n\
+          \"key_findings\": [\n\
+            {{\"finding\": \"string\", \"confidence\": \"high|medium|low\", \"source\": \"where found or inferred\"}}\n\
+          ],\n\
+          \"search_queries\": [\"queries you would use to verify this\"],\n\
+          \"updated_intelligence\": \"comprehensive updated intelligence summary incorporating all passes\",\n\
+          \"confidence_score\": 0.0-1.0\n\
+        }}"
+    );
+
+    let client = Client::new();
+    let res = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("anthropic-beta", "web-search-2025-03-05")
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 4096,
+            "system": system,
+            "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+            "messages": [{"role": "user", "content": prompt}]
+        }))
+        .send()
+        .await?;
+
+    let body: Value = res.json().await?;
+
+    // Extract text from response (may be in content array)
+    let text = body["content"]
+        .as_array()
+        .and_then(|arr| arr.iter().find(|b| b["type"] == "text"))
+        .and_then(|b| b["text"].as_str())
+        .ok_or_else(|| anyhow::anyhow!("No text in response: {:?}", body))?;
+
+    let json_str = text
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let parsed: Value = serde_json::from_str(json_str)
+        .map_err(|e| anyhow::anyhow!("JSON parse error: {e}\nRaw: {}", &json_str[..json_str.len().min(300)]))?;
+
+    let summary = parsed["summary"].as_str().unwrap_or("").to_string();
+    let updated_intel = parsed["updated_intelligence"].as_str().unwrap_or("").to_string();
+    let confidence_score = parsed["confidence_score"].as_f64().unwrap_or(0.5);
+    let key_findings = serde_json::to_string(&parsed["key_findings"]).unwrap_or_else(|_| "[]".into());
+    let search_queries = serde_json::to_string(&parsed["search_queries"]).unwrap_or_else(|_| "[]".into());
+
+    // Save pass results
+    sqlx::query(
+        "UPDATE person_research_passes SET
+            status = 'done',
+            summary = ?,
+            raw_results = ?,
+            key_findings = ?,
+            search_queries = ?,
+            confidence_delta = ?,
+            agent_used = 'claude',
+            completed_at = datetime('now','subsec')
+         WHERE id = ?",
+    )
+    .bind(&summary)
+    .bind(json_str)
+    .bind(&key_findings)
+    .bind(&search_queries)
+    .bind(confidence_score)
+    .bind(pass_id)
+    .execute(&pool)
+    .await?;
+
+    // Update persons table with accumulated intelligence
+    if !updated_intel.is_empty() {
+        let new_confidence = (confidence_score as f64).min(1.0);
+        let depth = match pass_number {
+            1 => "shallow",
+            2 | 3 => "moderate",
+            _ => "deep",
+        };
+        sqlx::query(
+            "UPDATE persons SET
+                intelligence_summary = ?,
+                intelligence_status = 'done',
+                intelligence_last_run_at = datetime('now','subsec'),
+                intelligence_confidence = ?,
+                intelligence_agent = 'claude',
+                research_pass_count = ?,
+                research_depth = ?,
+                updated_at = datetime('now','subsec')
+             WHERE id = ?",
+        )
+        .bind(&updated_intel)
+        .bind(new_confidence)
+        .bind(pass_number)
+        .bind(depth)
+        .bind(person_id)
+        .execute(&pool)
+        .await?;
+    }
+
+    // Register each key finding in the project knowledge graph
+    if let Some(pid) = project_id {
+        let title = format!("Research Pass #{}: {} — {}", pass_number, focus, &name[..name.len().min(40)]);
+        let _ = ProjectKnowledgeSource::upsert_source(
+            &pool,
+            pid,
+            &KnowledgeSourceType::Entity,
+            &pass_id.to_string(),
+            &title,
+            Some(&summary),
+            confidence_score,
+        )
+        .await;
+    }
+
+    // Also register in the org-level knowledge graph (owner_type='organization')
+    // Find org from person's associations
+    #[derive(sqlx::FromRow)]
+    struct OrgRow { org_id: Option<Uuid> }
+    if let Ok(Some(row)) = sqlx::query_as::<_, OrgRow>(
+        "SELECT poc.organization_id AS org_id FROM person_org_contacts poc WHERE poc.person_id = ? LIMIT 1",
+    )
+    .bind(person_id)
+    .fetch_optional(&pool)
+    .await {
+        if let Some(org_id) = row.org_id {
+            let title = format!("[Org KG] Research Pass #{}: {} — {}", pass_number, focus, &name[..name.len().min(40)]);
+            let _ = sqlx::query(
+                "INSERT OR IGNORE INTO project_knowledge_sources
+                 (id, owner_type, owner_id, source_type, source_id, source_title, source_summary,
+                  coverage_score, auto_registered, is_active, created_at, updated_at)
+                 VALUES (?, 'organization', ?, 'entity', ?, ?, ?, ?, 1, 1, datetime('now','subsec'), datetime('now','subsec'))",
+            )
+            .bind(Uuid::new_v4())
+            .bind(org_id.to_string())
+            .bind(pass_id.to_string())
+            .bind(&title)
+            .bind(&summary)
+            .bind(confidence_score)
+            .execute(&pool)
+            .await;
+        }
+    }
+
+    tracing::info!("Research pass #{} complete for person {} ({})", pass_number, person_id, focus);
+    Ok(())
+}
+

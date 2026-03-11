@@ -597,7 +597,7 @@ export function BrandGuidePage() {
 
   if (!org || !profile) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-black text-gray-400 gap-6">
+      <div className="min-h-screen flex flex-col items-center bg-black text-gray-400 gap-6 pt-[20vh]">
         <div className="text-center space-y-3">
           <Palette className="h-12 w-12 mx-auto text-gray-600" />
           <h2 className="text-xl font-semibold text-gray-300">

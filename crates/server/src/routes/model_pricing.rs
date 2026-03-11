@@ -3,12 +3,12 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{get, put},
     Json,
 };
-use db::models::model_pricing::{ModelPricing, CostEstimate, infer_provider};
+use db::models::model_pricing::{ModelPricing, infer_provider};
 use deployment::Deployment;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use ts_rs::TS;
 use uuid::Uuid;
 

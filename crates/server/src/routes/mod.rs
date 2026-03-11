@@ -76,6 +76,7 @@ pub mod topsi;
 pub mod orcha;
 pub mod mesh;
 pub mod peer_rewards;
+pub mod marketplace;
 pub mod pulse;
 pub mod pythia;
 pub mod wallet;
@@ -101,20 +102,21 @@ pub mod command_center;
 pub mod automations;
 pub mod feedback;
 pub mod intelligence;
-pub mod graph;
-pub mod invite_dispatch;
-pub mod companies;
+pub mod intake;
 pub mod media_library;
 pub mod review;
+pub mod pcg_router;
+pub mod oss_listener;
+pub mod oss_listener_bg;
+pub mod companies;
 pub mod data_sources;
 pub mod data_source_workflows;
 pub mod workflow_staging;
 pub mod workflow_triggers;
 pub mod output_schemas;
-pub mod pcg_router;
 pub mod discord;
-pub mod oss_listener;
-pub mod oss_listener_bg;
+pub mod graph;
+pub mod invite_dispatch;
 pub mod meet;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
@@ -183,12 +185,12 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(repos::router(&deployment))
         .merge(notifications::router())
         .merge(workflow_templates::router(&deployment))
+        .merge(companies::router(&deployment))
         .merge(persons::router(&deployment))
         .merge(proposals::router(&deployment))
         .merge(deliverables::router(&deployment))
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
-        .merge(companies::router(&deployment))
         .merge(data_sources::router(&deployment))
         .merge(data_source_workflows::router(&deployment))
         .merge(workflow_staging::router(&deployment))
@@ -199,6 +201,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(discord::router(&deployment))
         .merge(media_library::router(&deployment))
         .merge(oss_listener::router(&deployment))
+        .merge(intake::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
         .layer(middleware::from_fn_with_state(
@@ -239,6 +242,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(artifact_reviews::router(&deployment))
         .merge(task_artifacts::router(&deployment))
         .merge(artifacts::router(&deployment))
+        .merge(review::protected_router(&deployment))
         .merge(editron_export::router(&deployment))
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))
@@ -256,6 +260,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(orcha::orcha_routes())
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
+        .merge(marketplace::public_router(&deployment))
         .merge(pythia::router(&deployment))
         .merge(pcg_router::router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))

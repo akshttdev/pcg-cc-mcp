@@ -222,7 +222,44 @@ async fn move_deal_stage(
         }
     }
 
+    // If the target stage name contains "Analysis Done", create a review task
+    let stage_name_lower = target_stage
+        .as_ref()
+        .map(|s| s.name.to_lowercase())
+        .unwrap_or_default();
+    if stage_name_lower.contains("analysis done") || stage_name_lower.contains("analysis complete") {
+        // Only create if no existing active task for this deal
+        let existing_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL"
+        )
+        .bind(deal.id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+        let existing = if existing_count > 0 { Some(()) } else { None };
+
+        if existing.is_none() {
+            let task_id = Uuid::new_v4();
+            let task_title = format!("Review intelligence: {}", deal.name);
+            let task_desc = "Review the Who Is? research and business report for this lead before advancing to proposal.";
+            let _ = sqlx::query(
+                r#"
+                INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at)
+                VALUES (?, ?, ?, 'todo', ?, ?, datetime('now','subsec'), datetime('now','subsec'))
+                "#,
+            )
+            .bind(task_id)
+            .bind(&task_title)
+            .bind(task_desc)
+            .bind(deal.id)
+            .bind(deal.project_id)
+            .execute(pool)
+            .await;
+        }
+    }
+
     Ok(Json(ApiResponse::success(deal)))
+
 }
 
 /// GET /organizations/:org_id/crm/deals - List deals for an organization

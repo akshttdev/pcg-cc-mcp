@@ -9,7 +9,7 @@ use axum::{
     Extension, Router,
     extract::{Path, State},
     response::Json as ResponseJson,
-    routing::{delete, get, post},
+    routing::{get, post},
 };
 use deployment::Deployment;
 use serde::{Deserialize, Serialize};

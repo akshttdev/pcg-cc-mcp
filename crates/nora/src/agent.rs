@@ -1265,6 +1265,7 @@ impl NoraAgent {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn describe_roadmap(&self) -> String {
         let ctx = self.context.read().await;
         if ctx.active_projects.is_empty() {
@@ -1508,6 +1509,10 @@ CAPABILITIES:
 - Suggest improvements based on actual data
 - Track changes and objectives across all projects
 - Execute multi-stage agent workflows for complex operations
+- Search the web in real-time using the search_web tool (powered by Exa)
+- Fetch and read any URL using fetch_web_page (static pages, APIs, docs)
+- Render JavaScript-heavy pages with a real browser using render_page (SPAs, dashboards, dynamic sites)
+- You HAVE full internet access. When asked to search, look something up, check a website, or browse a link — USE THE TOOLS. Never say you lack internet access.
 
 WORKFLOW EXECUTION:
 You can orchestrate complex multi-stage workflows through specialized agents:

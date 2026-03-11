@@ -283,7 +283,7 @@ async fn handle_multiplayer_socket(socket: WebSocket) {
 
     // Spawn task to forward broadcasts and direct messages to this client
     let player_id_for_broadcast = player_id.clone();
-    let mut send_task = tokio::spawn(async move {
+    let send_task = tokio::spawn(async move {
         loop {
             tokio::select! {
                 // Handle broadcast messages

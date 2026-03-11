@@ -193,7 +193,9 @@ export default function MissionControlPage() {
               ) : dashboard?.active_executions.length === 0 ? (
                 <Card className="border-dashed">
                   <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                    No active executions
+                    <Bot className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                    <p>No active executions</p>
+                    <p className="text-xs mt-1">Agent runs will appear here in real time.</p>
                   </CardContent>
                 </Card>
               ) : (
@@ -495,8 +497,10 @@ export default function MissionControlPage() {
               <>
                 {/* Empty state when no execution selected */}
                 <Card className="flex-1">
-                  <CardContent className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                    Select an execution to view details
+                  <CardContent className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm gap-2">
+                    <Activity className="h-6 w-6 opacity-40" />
+                    <p>Select an execution to view details</p>
+                    <p className="text-xs">Artifacts, checkpoints, and live coordination will appear here.</p>
                   </CardContent>
                 </Card>
 

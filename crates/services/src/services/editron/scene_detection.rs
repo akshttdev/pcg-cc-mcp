@@ -400,7 +400,7 @@ impl SceneDetectionEngine {
     ) -> EditronResult<Vec<String>> {
         let mid_time = scene.start_time + (scene.duration / 2.0);
 
-        let output = Command::new(&self.ffmpeg_path)
+        let _output = Command::new(&self.ffmpeg_path)
             .args([
                 "-ss", &mid_time.to_string(),
                 "-i", &input.as_ref().to_string_lossy(),

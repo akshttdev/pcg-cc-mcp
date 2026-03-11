@@ -136,6 +136,7 @@ impl OutputHandler {
     }
 
     /// Print code block with optional syntax highlighting
+    #[allow(dead_code)]
     pub fn print_code(&self, language: &str, code: &str) {
         println!();
         println!(
@@ -152,6 +153,7 @@ impl OutputHandler {
     }
 
     /// Print a file operation (read, write, edit)
+    #[allow(dead_code)]
     pub fn print_file_operation(&self, operation: &str, path: &str) {
         let op_colored = match operation {
             "Reading" => "Reading:".bright_blue(),
@@ -165,6 +167,7 @@ impl OutputHandler {
     }
 
     /// Print diff output
+    #[allow(dead_code)]
     pub fn print_diff(&self, additions: &[String], deletions: &[String]) {
         for line in deletions {
             println!("{}", format!("- {}", line).red());
@@ -461,6 +464,7 @@ impl OutputHandler {
 
     // ============ Helper Methods ============
 
+    #[allow(dead_code)]
     fn highlight_line(&self, _language: &str, line: &str) -> String {
         // Basic syntax highlighting (can be expanded)
         let line = line.to_string();

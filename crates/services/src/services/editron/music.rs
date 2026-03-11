@@ -506,6 +506,7 @@ pub enum SectionType {
 }
 
 /// Music library manager
+#[allow(dead_code)]
 pub struct MusicLibrary {
     library_path: PathBuf,
     tracks: HashMap<String, MusicTrack>,
@@ -696,7 +697,7 @@ impl MusicLibrary {
     /// Detect BPM using FFmpeg filter
     async fn detect_bpm(&self, path: &Path) -> EditronResult<f64> {
         // Use astats filter for onset detection
-        let output = Command::new(&self.ffmpeg_path)
+        let _output = Command::new(&self.ffmpeg_path)
             .args([
                 "-i", &path.to_string_lossy(),
                 "-af", "aresample=44100,lowpass=f=150,highpass=f=20",

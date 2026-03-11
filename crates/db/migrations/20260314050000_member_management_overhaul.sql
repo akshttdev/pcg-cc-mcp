@@ -4,10 +4,12 @@
 -- ═══════════════════════════════════════════════════════════════════
 -- 1. Polymorphic task assignee: add assignee_type column
 -- ═══════════════════════════════════════════════════════════════════
-ALTER TABLE tasks ADD COLUMN assignee_type TEXT
-    CHECK (assignee_type IN ('user', 'agent', 'team'));
+-- NOTE: assignee_type column already added in a prior migration on this DB;
+-- the ALTER is skipped to avoid "duplicate column" error.
+-- ALTER TABLE tasks ADD COLUMN assignee_type TEXT
+--     CHECK (assignee_type IN ('user', 'agent', 'team'));
 
--- Backfill existing records
+-- Backfill existing records (safe to run even if already backfilled)
 UPDATE tasks SET assignee_type = 'user'
     WHERE assignee_id IS NOT NULL AND assignee_type IS NULL;
 UPDATE tasks SET assignee_type = 'agent'

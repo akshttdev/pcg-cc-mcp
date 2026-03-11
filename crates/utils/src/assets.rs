@@ -3,7 +3,7 @@ use std::{env, path::PathBuf};
 use directories::ProjectDirs;
 use rust_embed::RustEmbed;
 
-const PROJECT_ROOT: &str = env!("CARGO_MANIFEST_DIR");
+const _PROJECT_ROOT: &str = env!("CARGO_MANIFEST_DIR");
 const ASSET_DIR_ENV: &str = "PCG_ASSET_DIR";
 const TOPOS_DIR_ENV: &str = "TOPOS_DIR";
 

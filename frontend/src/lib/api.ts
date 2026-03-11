@@ -3988,6 +3988,7 @@ export interface OrganizationData {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  address?: string;
 }
 
 export interface ClientData {
@@ -4793,6 +4794,8 @@ export interface PersonRecord {
   intelligence_confidence: number;
   intelligence_status?: 'idle' | 'queued' | 'running' | 'done' | 'failed';
   intelligence_agent?: string;
+  research_pass_count?: number;
+  research_depth?: 'shallow' | 'moderate' | 'deep';
   notes?: string;
   tags: string;
   custom_fields: string;
@@ -5114,6 +5117,7 @@ export const proposalsApi = {
     lead_id?: string;
     project_id?: string;
     owner_id?: string;
+    organization_id?: string;
     limit?: number;
   }): Promise<ProposalRecord[]> => {
     const qs = params ? '?' + new URLSearchParams(
@@ -5418,10 +5422,11 @@ export interface CompanyRecord {
 }
 
 export const companiesApi = {
-  list: async (params?: { limit?: number; has_platform_org?: boolean }): Promise<CompanyRecord[]> => {
+  list: async (params?: { limit?: number; has_platform_org?: boolean; created_by_org_id?: string }): Promise<CompanyRecord[]> => {
     const qs = new URLSearchParams();
     if (params?.limit != null) qs.set('limit', String(params.limit));
     if (params?.has_platform_org != null) qs.set('has_platform_org', String(params.has_platform_org));
+    if (params?.created_by_org_id != null) qs.set('created_by_org_id', params.created_by_org_id);
     const response = await makeRequest(`/api/companies?${qs.toString()}`);
     return handleApiResponse<CompanyRecord[]>(response);
   },
@@ -5641,7 +5646,119 @@ export const intelligenceApi = {
     const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
     return handleApiResponse<IntelligenceStatus>(response);
   },
+
+  listResearchPasses: async (personId: string): Promise<ResearchPass[]> => {
+    const response = await makeRequest(`/api/persons/${personId}/research-passes`);
+    return handleApiResponse<ResearchPass[]>(response);
+  },
+
+  triggerNextPass: async (personId: string, opts?: { focus?: string; project_id?: string }): Promise<{ pass_id: string; pass_number: number; focus: string; status: string }> => {
+    const response = await makeRequest(`/api/persons/${personId}/research-passes/next`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts ?? {}),
+    });
+    return handleApiResponse(response);
+  },
+
+  listPersonReports: async (personId: string): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest(`/api/persons/${personId}/reports`);
+    return handleApiResponse<BusinessReportRecord[]>(response);
+  },
 };
+
+export const reportsApi = {
+  list: async (): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest('/api/business-reports');
+    return handleApiResponse<BusinessReportRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}`);
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+
+  patch: async (id: string, data: Partial<BusinessReportRecord>): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+
+  generate: async (personId: string, reportType?: string): Promise<{ status: string; person_id: string }> => {
+    const response = await makeRequest('/api/business-reports/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person_id: personId, report_type: reportType }),
+    });
+    return handleApiResponse(response);
+  },
+
+  approve: async (id: string): Promise<{ report: BusinessReportRecord; deal: unknown; proposal: unknown }> => {
+    const response = await makeRequest(`/api/business-reports/${id}/approve`, {
+      method: 'POST',
+    });
+    return handleApiResponse(response);
+  },
+
+  requestRevision: async (id: string, notes: string): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}/request-revision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes }),
+    });
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+};
+
+export interface ResearchPass {
+  id: string;
+  person_id: string;
+  pass_number: number;
+  research_focus: string;
+  status: string;
+  summary?: string;
+  key_findings: string; // JSON
+  confidence_delta: number;
+  agent_used?: string;
+  created_at: string;
+  completed_at?: string;
+  error?: string;
+}
+
+export interface BusinessReportRecord {
+  id: string;
+  person_id?: string;
+  company_id?: string;
+  report_type: string;
+  title: string;
+  status: string;
+  executive_summary?: string;
+  company_overview?: string;
+  pain_points: string; // JSON [{point, severity}]
+  opportunities: string; // JSON [{title, description, priority, estimated_value}]
+  recommended_services: string; // JSON [{name, rationale, timeline}]
+  next_steps: string; // JSON [{action, owner, deadline}]
+  // Enhanced analytics sections
+  individual_profiles: string; // JSON [{name, role, company, linkedin, summary, key_insights}]
+  market_analysis?: string;
+  competitor_analysis: string; // JSON [{name, website, strengths, weaknesses, threat_level}]
+  target_clients?: string;
+  brand_positioning?: string;
+  digital_presence?: string;
+  sources: string; // JSON [{title, url, excerpt}]
+  full_report_md?: string;
+  // CRM deal linkage + human review checkpoint
+  crm_deal_id?: string;
+  review_status: string; // 'pending_review' | 'approved' | 'rejected'
+  reviewed_by?: string;
+  reviewed_at?: string;
+  review_notes?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 // ============================================================================
 // Data Sources API
@@ -5667,6 +5784,8 @@ export interface DataSourceRecord {
   metadata: string; // JSON string
   status: string;
   processing_error?: string;
+  /** Slash-delimited folder path, e.g. "Meetings/Google Meet" */
+  folder: string;
   created_at: string;
   updated_at: string;
   archived_at?: string;
@@ -5684,6 +5803,7 @@ export interface CreateDataSourceRequest {
   /** Raw text content (for source_type = "text") */
   content?: string;
   metadata?: Record<string, unknown>;
+  folder?: string;
 }
 
 export interface UpdateDataSourceRequest {
@@ -5695,6 +5815,7 @@ export interface UpdateDataSourceRequest {
   metadata?: string;
   status?: string;
   processing_error?: string;
+  folder?: string;
 }
 
 export const SOURCE_TYPE_OPTIONS = [
@@ -6374,7 +6495,8 @@ export const mediaApi = {
 export interface ReviewComment { id: string; author_name?: string; content: string; timecode_seconds?: number; is_resolved: boolean; resolved_at?: string; created_at: string; }
 export interface ReviewDeliverable { id: string; title: string; status: string; description?: string; working_file_url?: string; final_link?: string; }
 export interface ReviewToken { id: string; view_count: number; expires_at?: string; }
-export interface ReviewData { token: ReviewToken; deliverable: ReviewDeliverable; comments: ReviewComment[]; }
+export interface ReviewSourceFile { name: string; url: string; size_bytes: number; }
+export interface ReviewData { token: ReviewToken; deliverable: ReviewDeliverable; comments: ReviewComment[]; source_files: ReviewSourceFile[]; }
 
 export const reviewApi = {
   getData: async (token: string): Promise<ReviewData> => {
@@ -6469,5 +6591,129 @@ export const tokenUsageApi = {
   getByModel: async (days: number = 7): Promise<TokenUsageByModel[]> => {
     const r = await makeRequest(`/api/token-usage/by-model?days=${days}`);
     return handleApiResponse<TokenUsageByModel[]>(r);
+  },
+};
+
+// Axios-compatible client for pages that use apiClient.get/post/patch/delete
+export const apiClient = {
+  get: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`); const data = await r.json() as T; return { data }; },
+  post: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  patch: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  delete: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`, { method: 'DELETE' }); const data = await r.json() as T; return { data }; },
+};
+
+export const authApi = {
+  getInviteInfo: async (token: string): Promise<{ org_name: string; pending_owner_email?: string }> => {
+    const response = await makeRequest(`/api/auth/invite-info?token=${encodeURIComponent(token)}`);
+    return handleApiResponse(response);
+  },
+  register: async (data: { username: string; password: string; full_name: string; email?: string; invite_token: string }): Promise<void> => {
+    const response = await makeRequest('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
+  },
+};
+
+export const mediaApi = {
+  list: async (projectId: string) => {
+    const r = await makeRequest(`/api/projects/${projectId}/media`);
+    return handleApiResponse<unknown[]>(r);
+  },
+  search: async (projectId: string, q: string) => {
+    const r = await makeRequest(`/api/projects/${projectId}/media/search?q=${encodeURIComponent(q)}`);
+    return handleApiResponse<unknown[]>(r);
+  },
+  upload: async (projectId: string, fd: FormData) => {
+    const r = await makeRequest(`/api/projects/${projectId}/media`, {
+      method: 'POST',
+      headers: {},
+      body: fd,
+    } as RequestInit);
+    return handleApiResponse<unknown>(r);
+  },
+  delete: async (id: string) => {
+    const r = await makeRequest(`/api/media/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(r);
+  },
+};
+
+export interface OrgBrandProfile {
+  id: string;
+  organizationId: string;
+  // Visual
+  tagline?: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor?: string | null;
+  typographyHeading?: string | null;
+  typographyBody?: string | null;
+  logoUrl?: string | null;
+  // Positioning
+  industry?: string | null;
+  marketPosition?: string | null;
+  uniqueValueProposition?: string | null;
+  missionStatement?: string | null;
+  visionStatement?: string | null;
+  brandValues?: string | null;      // JSON array
+  brandVoice?: string | null;
+  brandArchetype?: string | null;
+  // Audience
+  targetAudience?: string | null;
+  icpDescription?: string | null;
+  icpCompanySize?: string | null;
+  icpIndustries?: string | null;    // JSON array
+  // Competitive
+  competitorBrands?: string | null; // JSON array
+  differentiators?: string | null;  // JSON array
+  // Content & Social
+  contentPillars?: string | null;   // JSON array
+  contentTone?: string | null;
+  websiteUrl?: string | null;
+  socialInstagram?: string | null;
+  socialTwitter?: string | null;
+  socialLinkedin?: string | null;
+  socialFacebook?: string | null;
+  socialYoutube?: string | null;
+  socialTiktok?: string | null;
+  // Research
+  researchStatus: string;
+  researchRanAt?: string | null;
+  researchSummary?: string | null;
+  moodBoardUrls?: string;      // JSON array of DALL-E image URLs
+  clearbitLogoUrl?: string;    // Auto-discovered logo from Clearbit CDN
+  brandPhotographyNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const intakeApi = {
+  getContext: async (token: string): Promise<{ orgName: string; orgId: string; existing: Record<string, string | null> }> => {
+    const r = await makeRequest(`/api/intake/${token}`);
+    return handleApiResponse(r);
+  },
+  submit: async (token: string, data: Record<string, string>): Promise<{ message: string }> => {
+    const r = await makeRequest(`/api/intake/${token}`, { method: 'POST', body: JSON.stringify(data) });
+    return handleApiResponse(r);
+  },
+};
+
+export interface ReviewComment { id: string; author_name?: string; content: string; timecode_seconds?: number; resolved_at?: string; created_at: string; }
+export interface ReviewData { token: string; deliverable: unknown; comments: ReviewComment[]; }
+
+export const reviewApi = {
+  getData: async (token: string): Promise<ReviewData> => {
+    const r = await makeRequest(`/api/review/${token}/data`);
+    return handleApiResponse<ReviewData>(r);
+  },
+  addComment: async (token: string, data: { author_name?: string; author_email?: string; content: string; timecode_seconds?: number }): Promise<ReviewComment> => {
+    const r = await makeRequest(`/api/review/${token}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    return handleApiResponse<ReviewComment>(r);
+  },
+  resolve: async (token: string, commentId: string): Promise<ReviewComment> => {
+    const r = await makeRequest(`/api/review/${token}/comments/${commentId}/resolve`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    return handleApiResponse<ReviewComment>(r);
   },
 };

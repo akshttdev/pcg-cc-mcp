@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type React from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -122,6 +122,7 @@ import {
   airtableApi,
   githubAuthApi,
   discordApi,
+  pulseApi,
   type DiscordSessionSummary,
   type OrganizationData,
   type ClientData,
@@ -141,6 +142,8 @@ import {
   DATA_TYPE_OPTIONS,
   type EmailAccountRecord,
   type OrgBrandProfile,
+  companiesApi,
+  type CompanyRecord,
 } from '@/lib/api';
 import { useUserSystem } from '@/components/config-provider';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
@@ -647,7 +650,6 @@ function OverviewTab({
   totalDealValue,
   totalDeals,
   contactCount,
-  onSwitchTab,
 }: {
   orgId: string;
   orgName: string;
@@ -658,7 +660,6 @@ function OverviewTab({
   totalDealValue: number;
   totalDeals: number;
   contactCount: number;
-  onSwitchTab: (tab: string) => void;
 }) {
   // Aggregate tasks across all projects
   const taskQueries = useQueries({
@@ -747,29 +748,6 @@ function OverviewTab({
         </Card>
       </div>
 
-      {/* Quick links */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        {[
-          { label: 'Pipelines', icon: Target, tab: 'pipelines', color: 'text-amber-500' },
-          { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
-          { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
-          { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
-          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
-          { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
-          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
-        ].map(({ label, icon: Icon, tab, color }) => (
-          <button
-            key={tab}
-            onClick={() => onSwitchTab(tab)}
-            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group"
-          >
-            <Icon className={`h-5 w-5 ${color} group-hover:scale-110 transition-transform`} />
-            <span className="text-sm font-medium">{label}</span>
-            <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
-        ))}
-      </div>
-
       {/* Recent activity - aggregated across all projects
          TODO: Unify activity data sources. Currently this uses crmActivitiesApi.listActivities()
          which only returns CRM-specific activity (deal/contact/pipeline events). The notification
@@ -792,6 +770,7 @@ function OverviewTab({
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No recent activity</p>
+              <p className="text-xs mt-1">Activity from tasks, deals, and contacts will appear here.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -828,6 +807,8 @@ function OverviewTab({
     </div>
   );
 }
+
+// ── Leads Pipeline Panel ──────────────────────────────────────────────────────
 
 // ── Pipelines Tab ─────────────────────────────────────────────────────────────
 
@@ -871,9 +852,10 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
   );
 }
 
-// ── Contacts Tab ──────────────────────────────────────────────────────────────
+// ── Contacts Tab (with Companies sub-section) ─────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
+  const [crmView, setCrmView] = useState<'contacts' | 'companies'>('contacts');
   const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
@@ -885,13 +867,19 @@ function ContactsTab({ orgId }: { orgId: string }) {
     staleTime: 60_000,
   });
 
-  // Build a lookup map: person_id → context
+  const { data: companies = [], isLoading: companiesLoading } = useQuery<CompanyRecord[]>({
+    queryKey: ['org-companies', orgId],
+    queryFn: () => companiesApi.list({ created_by_org_id: orgId, limit: 500 }),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
   const contextMap = useMemo(
     () => Object.fromEntries(personContacts.map(pc => [pc.person_id, pc.context])),
     [personContacts]
   );
 
-  const filtered = useMemo(() => {
+  const filteredContacts = useMemo(() => {
     let result = contacts;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -908,46 +896,142 @@ function ContactsTab({ orgId }: { orgId: string }) {
     return result;
   }, [contacts, searchQuery, stageFilter]);
 
+  const filteredCompanies = useMemo(() => {
+    if (!searchQuery) return companies;
+    const q = searchQuery.toLowerCase();
+    return companies.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.industry && c.industry.toLowerCase().includes(q)) ||
+      (c.headquarters && c.headquarters.toLowerCase().includes(q))
+    );
+  }, [companies, searchQuery]);
+
   const stageInfo = LIFECYCLE_STAGE_INFO;
 
   return (
     <div className="space-y-4">
+      {/* Sub-tab toggle */}
+      <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+        <button
+          onClick={() => setCrmView('contacts')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+            crmView === 'contacts' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Contact2 className="h-3.5 w-3.5" />
+          Contacts
+          <span className="text-xs text-muted-foreground">({contacts.length})</span>
+        </button>
+        <button
+          onClick={() => setCrmView('companies')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+            crmView === 'companies' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Building2 className="h-3.5 w-3.5" />
+          Companies
+          <span className="text-xs text-muted-foreground">({companies.length})</span>
+        </button>
+      </div>
+
+      {/* Search + filter bar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search contacts..."
+            placeholder={crmView === 'contacts' ? 'Search contacts...' : 'Search companies...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </div>
-        <select
-          value={stageFilter}
-          onChange={(e) => setStageFilter(e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-        >
-          <option value="all">All Stages</option>
-          {Object.entries(stageInfo).map(([key, info]) => (
-            <option key={key} value={key}>{info.label}</option>
-          ))}
-        </select>
-        {isLoading && (
-          <span className="text-xs text-muted-foreground">Loading contacts…</span>
+        {crmView === 'contacts' && (
+          <select
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="all">All Stages</option>
+            {Object.entries(stageInfo).map(([key, info]) => (
+              <option key={key} value={key}>{info.label}</option>
+            ))}
+          </select>
+        )}
+        {(isLoading || companiesLoading) && (
+          <span className="text-xs text-muted-foreground">Loading…</span>
         )}
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
-          ))}
-        </div>
+      {/* Contacts view */}
+      {crmView === 'contacts' && (
+        filteredContacts.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredContacts.map((contact) => (
+              <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Companies view */}
+      {crmView === 'companies' && (
+        filteredCompanies.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>{companiesLoading ? 'Loading companies...' : 'No companies found'}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredCompanies.map(company => (
+              <Link
+                key={company.id}
+                to={`/companies/${company.id}`}
+                className="block p-4 rounded-lg border bg-card hover:border-primary/40 hover:shadow-sm transition-all group"
+              >
+                <div className="flex items-start gap-3">
+                  {company.logo_url ? (
+                    <img src={company.logo_url} alt="" className="w-9 h-9 rounded object-cover shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded bg-muted flex items-center justify-center shrink-0">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">{company.name}</p>
+                    {company.industry && (
+                      <p className="text-xs text-muted-foreground truncate">{company.industry}</p>
+                    )}
+                    {company.headquarters && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <MapPin className="h-3 w-3 shrink-0" />{company.headquarters}
+                      </p>
+                    )}
+                  </div>
+                  {company.intelligence_status && company.intelligence_status !== 'idle' && (
+                    <span className={`w-2 h-2 rounded-full shrink-0 mt-1 ${
+                      company.intelligence_status === 'done' ? 'bg-green-500' :
+                      company.intelligence_status === 'running' ? 'bg-blue-500 animate-pulse' :
+                      'bg-yellow-500'
+                    }`} />
+                  )}
+                </div>
+                {company.intelligence_summary && (
+                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{company.intelligence_summary}</p>
+                )}
+                {company.website && (
+                  <p className="text-xs text-primary/70 mt-1 truncate flex items-center gap-1">
+                    <Globe className="h-3 w-3 shrink-0" />{company.website.replace(/^https?:\/\//, '')}
+                  </p>
+                )}
+              </Link>
+            ))}
+          </div>
+        )
       )}
     </div>
   );
@@ -961,19 +1045,40 @@ const CONTEXT_COLORS: Record<string, string> = {
   contact: 'bg-gray-100 text-gray-600',
 };
 
+const RESEARCH_DEPTH_COLOR: Record<string, string> = {
+  shallow:  'bg-gray-100 text-gray-600',
+  moderate: 'bg-yellow-100 text-yellow-700',
+  deep:     'bg-green-100 text-green-700',
+};
+
+const INTEL_STATUS_DOT: Record<string, string> = {
+  queued:  'bg-yellow-400',
+  running: 'bg-blue-400 animate-pulse',
+  done:    'bg-green-400',
+  failed:  'bg-red-400',
+};
+
 function ContactCard({ contact, context }: { contact: OrgContact; context?: string }) {
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
+  const statusDot = contact.intelligence_status && contact.intelligence_status !== 'idle'
+    ? INTEL_STATUS_DOT[contact.intelligence_status]
+    : null;
 
   return (
     <Link
-      to={`/people/${contact.id}`}
+      to={`/persons/${contact.id}`}
       className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate group-hover:text-foreground">
-            {contact.full_name || 'Unnamed'}
-          </p>
+          <div className="flex items-center gap-1.5">
+            {statusDot && (
+              <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${statusDot}`} />
+            )}
+            <p className="text-sm font-medium truncate group-hover:text-foreground">
+              {contact.full_name || 'Unnamed'}
+            </p>
+          </div>
           {contact.job_title && (
             <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.job_title}</p>
           )}
@@ -990,7 +1095,7 @@ function ContactCard({ contact, context }: { contact: OrgContact; context?: stri
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2 mt-3">
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
         {stageInfo && (
           <Badge
             variant="secondary"
@@ -1002,6 +1107,16 @@ function ContactCard({ contact, context }: { contact: OrgContact; context?: stri
         )}
         {contact.person_type && (
           <Badge variant="outline" className="text-[10px] capitalize">{contact.person_type}</Badge>
+        )}
+        {contact.research_depth && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium capitalize ${RESEARCH_DEPTH_COLOR[contact.research_depth] ?? ''}`}>
+            {contact.research_depth}
+          </span>
+        )}
+        {(contact.research_pass_count ?? 0) > 0 && (
+          <span className="text-[10px] text-muted-foreground">
+            {contact.research_pass_count} pass{contact.research_pass_count === 1 ? '' : 'es'}
+          </span>
         )}
         {context && context !== 'contact' && (
           <span className={`text-[10px] px-1.5 py-0.5 rounded capitalize font-medium ${CONTEXT_COLORS[context] ?? CONTEXT_COLORS.contact}`}>
@@ -3048,6 +3163,7 @@ function KnowledgeTab({
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>No knowledge sources indexed yet</p>
+          <p className="text-xs mt-1">Connect a data source in one of your projects to start building intelligence.</p>
         </div>
       ) : aggregated.sourcesByProject.length > 0 ? (
         <div className="space-y-4">
@@ -3269,7 +3385,18 @@ function PulseSection({ projectEntries }: { projectEntries: { id: string; name: 
 
 function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const viewFromUrl = searchParams.get('view') || 'overview';
+  const location = useLocation();
+
+  // Derive view from pathname (sidebar links) or query param (tab clicks)
+  const pathSegment = location.pathname.match(/\/intelligence\/([^/]+)/)?.[1];
+  const PATH_TO_VIEW: Record<string, string> = {
+    'data-sources': 'datasources',
+    'artifacts': 'artifacts',
+    'workflows': 'workflows',
+    'pulse': 'pulse',
+    'topology': 'topology',
+  };
+  const viewFromUrl = searchParams.get('view') || (pathSegment ? PATH_TO_VIEW[pathSegment] : null) || 'overview';
 
   const views = [
     { key: 'overview',    label: 'Overview',      icon: Brain },
@@ -5465,7 +5592,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     params.set('tab', tab);
     if (tab !== 'pipelines') params.delete('pipeline');
     if (tab !== 'projects') params.delete('client');
-    if (tab !== 'knowledge') params.delete('view');
+    if (tab !== 'intelligence') params.delete('view');
     setSearchParams(params, { replace: true });
   };
 
@@ -5824,7 +5951,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <Share2 className="h-4 w-4 mr-2" />
                 Social
               </TabsTrigger>
-              <TabsTrigger value="knowledge">
+              <TabsTrigger value="intelligence">
                 <Brain className="h-4 w-4 mr-2" />
                 Intelligence
               </TabsTrigger>
@@ -5857,7 +5984,6 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
                 contactCount={contacts.length}
-                onSwitchTab={setTab}
               />
             </TabsContent>
 
@@ -5882,7 +6008,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} orgId={orgId} />
             </TabsContent>
 
-            <TabsContent value="knowledge">
+            <TabsContent value="intelligence">
               <IntelligenceTab
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                 orgId={orgId}

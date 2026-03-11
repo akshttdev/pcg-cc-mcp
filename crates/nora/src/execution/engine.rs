@@ -728,7 +728,7 @@ impl ExecutionEngine {
                         } else {
                             s.to_string()
                         }
-                    } else if let Some(obj) = output_for_event.as_object() {
+                    } else if let Some(_obj) = output_for_event.as_object() {
                         // Try to get a summary field first, but also include full structured data
                         let full_json = serde_json::to_string_pretty(&output_for_event).unwrap_or_default();
                         if full_json.len() > MAX_OUTPUT_LEN {
@@ -1058,7 +1058,7 @@ impl ExecutionEngine {
     async fn execute_cinematics_stage(
         &self,
         execution_id: Uuid,
-        stage_index: usize,
+        _stage_index: usize,
         stage: &WorkflowStage,
         inputs: &HashMap<String, serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
@@ -1082,7 +1082,7 @@ impl ExecutionEngine {
             db_lock.clone()
         };
 
-        let Some(pool) = db else {
+        let Some(_pool) = db else {
             return Err("Database not configured for cinematics".to_string());
         };
 
@@ -1482,7 +1482,7 @@ impl ExecutionEngine {
         result: Result<(), String>,
     ) -> Result<ExecutionResult, String> {
         // Gather data for coordination event before taking lock
-        let (project_id, tasks_count, artifact_count, current_stage, duration_ms, status, error, exec_result, agent_flow_id) = {
+        let (project_id, tasks_count, artifact_count, current_stage, duration_ms, status, _error, exec_result, agent_flow_id) = {
             let mut executions = self.executions.write().await;
             let instance = executions.get_mut(&execution_id)
                 .ok_or("Execution not found")?;
