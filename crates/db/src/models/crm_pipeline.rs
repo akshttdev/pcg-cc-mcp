@@ -197,7 +197,7 @@ impl CrmPipeline {
         Ok(pipelines)
     }
 
-    /// List all active pipelines across all projects in an organization
+    /// List all active pipelines for an organization — both project-level and org-level.
     pub async fn find_by_organization(
         pool: &SqlitePool,
         organization_id: Uuid,
@@ -207,8 +207,13 @@ impl CrmPipeline {
             let pt_str = pt.to_string();
             sqlx::query_as::<_, CrmPipeline>(
                 r#"SELECT cp.* FROM crm_pipelines cp
-                   JOIN projects p ON cp.project_id = p.id
-                   WHERE p.organization_id = ?1 AND cp.is_active = 1 AND cp.pipeline_type = ?2
+                   WHERE cp.is_active = 1 AND cp.pipeline_type = ?2
+                   AND (
+                       cp.organization_id = ?1
+                       OR (cp.project_id IS NOT NULL AND cp.project_id IN (
+                           SELECT id FROM projects WHERE organization_id = ?1
+                       ))
+                   )
                    ORDER BY cp.name"#,
             )
             .bind(organization_id)
@@ -218,8 +223,13 @@ impl CrmPipeline {
         } else {
             sqlx::query_as::<_, CrmPipeline>(
                 r#"SELECT cp.* FROM crm_pipelines cp
-                   JOIN projects p ON cp.project_id = p.id
-                   WHERE p.organization_id = ?1 AND cp.is_active = 1
+                   WHERE cp.is_active = 1
+                   AND (
+                       cp.organization_id = ?1
+                       OR (cp.project_id IS NOT NULL AND cp.project_id IN (
+                           SELECT id FROM projects WHERE organization_id = ?1
+                       ))
+                   )
                    ORDER BY cp.name"#,
             )
             .bind(organization_id)

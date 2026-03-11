@@ -479,5 +479,345 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/persons/{id}/research", post(trigger_research))
         .route("/persons/{id}/intelligence-status", get(get_intelligence_status))
+        .route("/persons/{id}/research-passes", get(list_research_passes))
+        .route("/persons/{id}/research-passes/next", post(trigger_next_research_pass))
+        .route("/persons/{id}/reports", get(list_person_reports))
         .with_state(deployment.clone())
 }
+
+// ── Iterative research pass endpoints ────────────────────────────────────────
+
+use db::models::person_research_pass::PersonResearchPass;
+use db::models::business_report::BusinessReport;
+
+#[derive(Debug, Deserialize)]
+pub struct NextPassRequest {
+    /// Override the auto-selected focus: 'identity' | 'market_position' | 'competitors' | 'target_clients' | 'deep_strategy' | 'custom'
+    pub focus: Option<String>,
+    pub custom_prompt: Option<String>,
+    pub project_id: Option<Uuid>,
+}
+
+/// GET /api/persons/:id/research-passes — list all research passes in order
+pub async fn list_research_passes(
+    State(d): State<DeploymentImpl>,
+    Path(person_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<PersonResearchPass>>>, ApiError> {
+    let passes = PersonResearchPass::list_for_person(&d.db().pool, person_id).await?;
+    Ok(Json(ApiResponse::success(passes)))
+}
+
+/// POST /api/persons/:id/research-passes/next
+/// Triggers the next logical research pass, building on all prior passes.
+pub async fn trigger_next_research_pass(
+    State(d): State<DeploymentImpl>,
+    Path(person_id): Path<Uuid>,
+    Json(body): Json<NextPassRequest>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &d.db().pool;
+
+    let person = Person::find_by_id(pool, person_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Person not found".into()))?;
+
+    // Determine next pass number and auto-select focus
+    let pass_number = PersonResearchPass::next_pass_number(pool, person_id).await;
+    let focus = body.focus.clone().unwrap_or_else(|| auto_focus(pass_number));
+
+    // Collect prior pass summaries for context
+    let prior_passes = PersonResearchPass::list_for_person(pool, person_id).await?;
+    let prior_context: String = prior_passes.iter()
+        .filter(|p| p.status == "done")
+        .map(|p| format!(
+            "Pass {} ({}): {}",
+            p.pass_number,
+            p.research_focus,
+            p.summary.as_deref().unwrap_or("(no summary)")
+        ))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let pass = PersonResearchPass::create(pool, person_id, pass_number, &focus, body.custom_prompt.as_deref()).await?;
+    let pass_id = pass.id;
+
+    // Build research prompt incorporating all prior context
+    let intel = person.intelligence_summary.as_deref().unwrap_or("").to_string();
+    let name = person.full_name.clone();
+    let company = person.company_name.clone().unwrap_or_else(|| "Unknown company".into());
+    let project_id = body.project_id;
+    let pool_clone = pool.clone();
+    let pool_for_err = pool.clone();
+    let focus_for_resp = focus.clone();
+
+    tokio::spawn(async move {
+        if let Err(e) = run_research_pass(
+            pool_clone, pass_id, person_id, pass_number,
+            &focus, &name, &company, &intel, &prior_context, project_id,
+        ).await {
+            tracing::error!("Research pass failed for {}: {}", pass_id, e);
+            let _ = sqlx::query(
+                "UPDATE person_research_passes SET status = 'failed', error = ?, completed_at = datetime('now','subsec') WHERE id = ?",
+            )
+            .bind(e.to_string())
+            .bind(pass_id)
+            .execute(&pool_for_err)
+            .await;
+        }
+    });
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "pass_id": pass_id,
+        "pass_number": pass_number,
+        "focus": focus_for_resp,
+        "status": "queued"
+    }))))
+}
+
+/// GET /api/persons/:id/reports
+pub async fn list_person_reports(
+    State(d): State<DeploymentImpl>,
+    Path(person_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<Vec<BusinessReport>>>, ApiError> {
+    let reports = BusinessReport::list_by_person(&d.db().pool, person_id).await?;
+    Ok(Json(ApiResponse::success(reports)))
+}
+
+fn auto_focus(pass_number: i64) -> String {
+    match pass_number {
+        1 => "identity",
+        2 => "market_position",
+        3 => "competitors",
+        4 => "target_clients",
+        _ => "deep_strategy",
+    }
+    .to_string()
+}
+
+async fn run_research_pass(
+    pool: sqlx::SqlitePool,
+    pass_id: Uuid,
+    person_id: Uuid,
+    pass_number: i64,
+    focus: &str,
+    name: &str,
+    company: &str,
+    existing_intel: &str,
+    prior_context: &str,
+    project_id: Option<Uuid>,
+) -> anyhow::Result<()> {
+    use reqwest::Client;
+    use serde_json::Value;
+
+    // Mark running
+    sqlx::query(
+        "UPDATE person_research_passes SET status = 'running' WHERE id = ?",
+    )
+    .bind(pass_id)
+    .execute(&pool)
+    .await?;
+
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY not set"))?;
+
+    let focus_instructions = match focus {
+        "identity" => format!(
+            "Research who {} at {} is: professional background, career history, social presence, \
+             personal brand, public statements, media appearances.",
+            name, company
+        ),
+        "market_position" => format!(
+            "Research {}'s market position and business model: revenue, growth stage, \
+             funding, industry standing, key partnerships, recent news.",
+            company
+        ),
+        "competitors" => format!(
+            "Identify {}'s top 5-8 direct competitors. For each: name, positioning, \
+             strengths/weaknesses, how {} differentiates from them.",
+            company, company
+        ),
+        "target_clients" => format!(
+            "Research who {}'s ideal and current clients/customers are: industries, \
+             company sizes, demographics, key use cases, testimonials or case studies.",
+            company
+        ),
+        "deep_strategy" => format!(
+            "Deep strategic analysis of {}: growth strategy, product roadmap signals, \
+             hiring patterns, content strategy, event participation, PCG engagement opportunity.",
+            company
+        ),
+        _ => format!("Research: {}", focus),
+    };
+
+    let prior_section = if prior_context.is_empty() {
+        String::new()
+    } else {
+        format!("\n\nPRIOR RESEARCH (build on this, don't repeat):\n{}", prior_context)
+    };
+
+    let existing_section = if existing_intel.is_empty() {
+        String::new()
+    } else {
+        format!("\n\nEXISTING INTELLIGENCE:\n{}", &existing_intel[..existing_intel.len().min(2000)])
+    };
+
+    let system = "You are an expert business intelligence researcher. Conduct thorough web research \
+        and return structured findings. Always respond with valid JSON only.";
+
+    let prompt = format!(
+        "RESEARCH TASK — Pass #{pass_number} | Focus: {focus}\n\n\
+        Subject: {name} ({company})\n\
+        {existing_section}{prior_section}\n\n\
+        FOCUS FOR THIS PASS:\n{focus_instructions}\n\n\
+        Return JSON:\n\
+        {{\n\
+          \"summary\": \"3-5 sentence summary of findings for this pass\",\n\
+          \"key_findings\": [\n\
+            {{\"finding\": \"string\", \"confidence\": \"high|medium|low\", \"source\": \"where found or inferred\"}}\n\
+          ],\n\
+          \"search_queries\": [\"queries you would use to verify this\"],\n\
+          \"updated_intelligence\": \"comprehensive updated intelligence summary incorporating all passes\",\n\
+          \"confidence_score\": 0.0-1.0\n\
+        }}"
+    );
+
+    let client = Client::new();
+    let res = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("anthropic-beta", "web-search-2025-03-05")
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 4096,
+            "system": system,
+            "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}],
+            "messages": [{"role": "user", "content": prompt}]
+        }))
+        .send()
+        .await?;
+
+    let body: Value = res.json().await?;
+
+    // Extract text from response (may be in content array)
+    let text = body["content"]
+        .as_array()
+        .and_then(|arr| arr.iter().find(|b| b["type"] == "text"))
+        .and_then(|b| b["text"].as_str())
+        .ok_or_else(|| anyhow::anyhow!("No text in response: {:?}", body))?;
+
+    let json_str = text
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let parsed: Value = serde_json::from_str(json_str)
+        .map_err(|e| anyhow::anyhow!("JSON parse error: {e}\nRaw: {}", &json_str[..json_str.len().min(300)]))?;
+
+    let summary = parsed["summary"].as_str().unwrap_or("").to_string();
+    let updated_intel = parsed["updated_intelligence"].as_str().unwrap_or("").to_string();
+    let confidence_score = parsed["confidence_score"].as_f64().unwrap_or(0.5);
+    let key_findings = serde_json::to_string(&parsed["key_findings"]).unwrap_or_else(|_| "[]".into());
+    let search_queries = serde_json::to_string(&parsed["search_queries"]).unwrap_or_else(|_| "[]".into());
+
+    // Save pass results
+    sqlx::query(
+        "UPDATE person_research_passes SET
+            status = 'done',
+            summary = ?,
+            raw_results = ?,
+            key_findings = ?,
+            search_queries = ?,
+            confidence_delta = ?,
+            agent_used = 'claude',
+            completed_at = datetime('now','subsec')
+         WHERE id = ?",
+    )
+    .bind(&summary)
+    .bind(json_str)
+    .bind(&key_findings)
+    .bind(&search_queries)
+    .bind(confidence_score)
+    .bind(pass_id)
+    .execute(&pool)
+    .await?;
+
+    // Update persons table with accumulated intelligence
+    if !updated_intel.is_empty() {
+        let new_confidence = (confidence_score as f64).min(1.0);
+        let depth = match pass_number {
+            1 => "shallow",
+            2 | 3 => "moderate",
+            _ => "deep",
+        };
+        sqlx::query(
+            "UPDATE persons SET
+                intelligence_summary = ?,
+                intelligence_status = 'done',
+                intelligence_last_run_at = datetime('now','subsec'),
+                intelligence_confidence = ?,
+                intelligence_agent = 'claude',
+                research_pass_count = ?,
+                research_depth = ?,
+                updated_at = datetime('now','subsec')
+             WHERE id = ?",
+        )
+        .bind(&updated_intel)
+        .bind(new_confidence)
+        .bind(pass_number)
+        .bind(depth)
+        .bind(person_id)
+        .execute(&pool)
+        .await?;
+    }
+
+    // Register each key finding in the project knowledge graph
+    if let Some(pid) = project_id {
+        let title = format!("Research Pass #{}: {} — {}", pass_number, focus, &name[..name.len().min(40)]);
+        let _ = ProjectKnowledgeSource::upsert_source(
+            &pool,
+            pid,
+            &KnowledgeSourceType::Entity,
+            &pass_id.to_string(),
+            &title,
+            Some(&summary),
+            confidence_score,
+        )
+        .await;
+    }
+
+    // Also register in the org-level knowledge graph (owner_type='organization')
+    // Find org from person's associations
+    #[derive(sqlx::FromRow)]
+    struct OrgRow { org_id: Option<Uuid> }
+    if let Ok(Some(row)) = sqlx::query_as::<_, OrgRow>(
+        "SELECT poc.organization_id AS org_id FROM person_org_contacts poc WHERE poc.person_id = ? LIMIT 1",
+    )
+    .bind(person_id)
+    .fetch_optional(&pool)
+    .await {
+        if let Some(org_id) = row.org_id {
+            let title = format!("[Org KG] Research Pass #{}: {} — {}", pass_number, focus, &name[..name.len().min(40)]);
+            let _ = sqlx::query(
+                "INSERT OR IGNORE INTO project_knowledge_sources
+                 (id, owner_type, owner_id, source_type, source_id, source_title, source_summary,
+                  coverage_score, auto_registered, is_active, created_at, updated_at)
+                 VALUES (?, 'organization', ?, 'entity', ?, ?, ?, ?, 1, 1, datetime('now','subsec'), datetime('now','subsec'))",
+            )
+            .bind(Uuid::new_v4())
+            .bind(org_id.to_string())
+            .bind(pass_id.to_string())
+            .bind(&title)
+            .bind(&summary)
+            .bind(confidence_score)
+            .execute(&pool)
+            .await;
+        }
+    }
+
+    tracing::info!("Research pass #{} complete for person {} ({})", pass_number, person_id, focus);
+    Ok(())
+}
+

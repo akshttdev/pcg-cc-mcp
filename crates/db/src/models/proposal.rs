@@ -113,6 +113,7 @@ impl Proposal {
         lead_id: Option<Uuid>,
         project_id: Option<Uuid>,
         owner_id: Option<Uuid>,
+        organization_id: Option<Uuid>,
         limit: Option<i64>,
     ) -> Result<Vec<Self>, sqlx::Error> {
         let mut qb = sqlx::QueryBuilder::new("SELECT * FROM proposals WHERE 1=1");
@@ -127,6 +128,9 @@ impl Proposal {
         }
         if let Some(oid) = owner_id {
             qb.push(" AND owner_id = ").push_bind(oid);
+        }
+        if let Some(org) = organization_id {
+            qb.push(" AND organization_id = ").push_bind(org);
         }
         qb.push(" ORDER BY created_at DESC LIMIT ").push_bind(limit.unwrap_or(200));
         qb.build_query_as::<Self>().fetch_all(pool).await

@@ -141,9 +141,12 @@ function TaskDetailsToolbar({
   }, [latestAttempt, branches, selectedBranch, parentBaseBranch]);
 
   const fetchProjectBranches = useCallback(async () => {
-    const result = await projectsApi.getBranches(projectId);
-
-    setBranches(result);
+    try {
+      const result = await projectsApi.getBranches(projectId);
+      setBranches(result);
+    } catch {
+      // Project may not have a valid git repo (e.g. container projects)
+    }
   }, [projectId]);
 
   useEffect(() => {

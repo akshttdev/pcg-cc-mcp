@@ -547,15 +547,25 @@ export function TaskDetailsPanel({
                                 activeTab={activeTab}
                                 setActiveTab={setActiveTab}
                                 selectedAttempt={selectedAttempt}
+                                artifactCount={artifacts.length}
+                                workflowEventCount={workflowEvents.length}
                               />
 
-                              <div className="flex-1 flex flex-col min-h-0">
+                              <div className="flex-1 flex flex-col min-h-0 overflow-auto">
                                 {activeTab === 'diffs' ? (
                                   <DiffTab selectedAttempt={selectedAttempt} />
                                 ) : activeTab === 'processes' ? (
                                   <ProcessesTab
                                     attemptId={selectedAttempt?.id}
                                   />
+                                ) : activeTab === 'workflows' ? (
+                                  <div className="p-4">{renderWorkflowBody()}</div>
+                                ) : activeTab === 'activity' ? (
+                                  <div className="p-4">
+                                    <ActivityTimeline taskId={task.id} />
+                                  </div>
+                                ) : activeTab === 'artifacts' ? (
+                                  <div className="p-4">{renderArtifactsBody()}</div>
                                 ) : (
                                   <LogsTab selectedAttempt={selectedAttempt} />
                                 )}
@@ -607,16 +617,34 @@ export function TaskDetailsPanel({
                               selectedAttempt={selectedAttempt}
                               task={task}
                               projectId={projectId}
-                              // onCreateNewAttempt={() => {
-                              //   // TODO: Implement create new attempt
-                              //   console.log('Create new attempt');
-                              // }}
                               onJumpToDiffFullScreen={jumpToDiffFullScreen}
                             />
 
-                            {selectedAttempt && (
-                              <LogsTab selectedAttempt={selectedAttempt} />
-                            )}
+                            <TabNavigation
+                              activeTab={activeTab}
+                              setActiveTab={setActiveTab}
+                              selectedAttempt={selectedAttempt}
+                              artifactCount={artifacts.length}
+                              workflowEventCount={workflowEvents.length}
+                            />
+
+                            <div className="overflow-auto">
+                              {activeTab === 'diffs' ? (
+                                <DiffTab selectedAttempt={selectedAttempt} />
+                              ) : activeTab === 'processes' ? (
+                                <ProcessesTab attemptId={selectedAttempt?.id} />
+                              ) : activeTab === 'workflows' ? (
+                                <div className="p-4">{renderWorkflowBody()}</div>
+                              ) : activeTab === 'activity' ? (
+                                <div className="p-4">
+                                  <ActivityTimeline taskId={task.id} />
+                                </div>
+                              ) : activeTab === 'artifacts' ? (
+                                <div className="p-4">{renderArtifactsBody()}</div>
+                              ) : selectedAttempt ? (
+                                <LogsTab selectedAttempt={selectedAttempt} />
+                              ) : null}
+                            </div>
 
                             <TaskFollowUpSection
                               task={task}

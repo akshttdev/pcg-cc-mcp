@@ -20,6 +20,7 @@ pub struct ListProposalsParams {
     pub lead_id: Option<Uuid>,
     pub project_id: Option<Uuid>,
     pub owner_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
     pub limit: Option<i64>,
 }
 
@@ -41,6 +42,7 @@ async fn list_proposals(
         p.lead_id,
         p.project_id,
         p.owner_id,
+        p.organization_id,
         p.limit,
     )
     .await?;

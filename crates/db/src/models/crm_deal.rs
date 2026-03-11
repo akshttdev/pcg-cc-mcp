@@ -102,6 +102,10 @@ pub struct CrmDealWithContact {
     pub task_total: i64,
     pub task_done: i64,
     pub deliverable_count: i64,
+    /// person_id from crm_contacts — bridges to persons table for wiki/intel
+    pub person_id: Option<Uuid>,
+    /// report_id — id of the business report (wiki) for this deal's person
+    pub report_id: Option<Uuid>,
 }
 
 /// Kanban board data structure - deals grouped by stage
@@ -483,6 +487,21 @@ impl CrmDeal {
     }
 
     /// Get Kanban board data for a pipeline
+    /// Look up the business_report id for a given person (latest report)
+    async fn report_id_for_person(pool: &SqlitePool, person_id: Uuid) -> Option<Uuid> {
+        #[derive(sqlx::FromRow)]
+        struct Row { id: Uuid }
+        sqlx::query_as::<_, Row>(
+            "SELECT id FROM business_reports WHERE person_id = ? ORDER BY created_at DESC LIMIT 1"
+        )
+        .bind(person_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.id)
+    }
+
     pub async fn get_kanban_data(
         pool: &SqlitePool,
         pipeline_id: Uuid,
@@ -513,6 +532,18 @@ impl CrmDeal {
                     None
                 };
 
+                // Fetch person_id from the contact (bridge to persons table)
+                let person_id: Option<Uuid> = if let Some(contact_id) = deal.crm_contact_id {
+                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<Uuid> }
+                    sqlx::query_as::<_, Row>("SELECT person_id FROM crm_contacts WHERE id = ?")
+                        .bind(contact_id)
+                        .fetch_optional(pool).await.ok().flatten().and_then(|r| r.person_id)
+                } else { None };
+
+                let report_id = if let Some(pid) = person_id {
+                    Self::report_id_for_person(pool, pid).await
+                } else { None };
+
                 let (project_name, task_total, task_done, deliverable_count) =
                     Self::fetch_project_stats(pool, deal.project_id).await;
 
@@ -525,6 +556,8 @@ impl CrmDeal {
                     task_total,
                     task_done,
                     deliverable_count,
+                    person_id,
+                    report_id,
                     deal,
                 });
             }
@@ -568,22 +601,28 @@ impl CrmDeal {
             .parse()
             .unwrap_or(super::crm_pipeline::PipelineType::Custom);
 
-        // Find all pipelines of the same type across the org
-        let org_pipelines =
-            CrmPipeline::find_by_organization(pool, organization_id, Some(ref_type))
-                .await
-                .map_err(|_| CrmDealError::NotFound)?;
-
         // Use the reference pipeline's stages as the canonical stage list
         let stages = CrmPipelineStage::find_by_pipeline(pool, pipeline_id)
             .await
             .map_err(|_| CrmDealError::NotFound)?;
 
-        // Collect all deals from all matching pipelines
+        // Collect deals: if this is an org-level pipeline (no project_id), use it directly.
+        // If it's a project pipeline, aggregate across all same-type pipelines in the org.
         let mut all_deals: Vec<CrmDeal> = Vec::new();
-        for p in &org_pipelines {
-            let deals = Self::find_by_pipeline(pool, p.id).await?;
+        if ref_pipeline.project_id.is_none() {
+            // Org-level pipeline — only its own deals
+            let deals = Self::find_by_pipeline(pool, pipeline_id).await?;
             all_deals.extend(deals);
+        } else {
+            // Project pipeline — aggregate across org
+            let org_pipelines =
+                CrmPipeline::find_by_organization(pool, organization_id, Some(ref_type))
+                    .await
+                    .map_err(|_| CrmDealError::NotFound)?;
+            for p in &org_pipelines {
+                let deals = Self::find_by_pipeline(pool, p.id).await?;
+                all_deals.extend(deals);
+            }
         }
 
         let mut kanban_stages = Vec::new();
@@ -617,6 +656,17 @@ impl CrmDeal {
                     None
                 };
 
+                let person_id: Option<Uuid> = if let Some(contact_id) = deal.crm_contact_id {
+                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<Uuid> }
+                    sqlx::query_as::<_, Row>("SELECT person_id FROM crm_contacts WHERE id = ?")
+                        .bind(contact_id)
+                        .fetch_optional(pool).await.ok().flatten().and_then(|r| r.person_id)
+                } else { None };
+
+                let report_id = if let Some(pid) = person_id {
+                    Self::report_id_for_person(pool, pid).await
+                } else { None };
+
                 let (project_name, task_total, task_done, deliverable_count) =
                     Self::fetch_project_stats(pool, deal.project_id).await;
 
@@ -629,6 +679,8 @@ impl CrmDeal {
                     task_total,
                     task_done,
                     deliverable_count,
+                    person_id,
+                    report_id,
                     deal,
                 });
             }

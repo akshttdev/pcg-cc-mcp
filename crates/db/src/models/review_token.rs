@@ -3,12 +3,15 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use uuid::Uuid;
 
-/// Shareable review link token for a deliverable.
+/// Shareable review link token — for either a deliverable or a task artifact.
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct ReviewToken {
     pub id: Uuid,
     pub token: String,
-    pub deliverable_id: Uuid,
+    pub deliverable_id: Option<Uuid>,
+    pub artifact_id: Option<Uuid>,
+    pub artifact_video_url: Option<String>,
+    pub artifact_title: Option<String>,
     pub created_by: Option<Uuid>,
     pub expires_at: Option<String>,
     pub view_count: i64,
@@ -25,7 +28,6 @@ impl ReviewToken {
         expires_at: Option<String>,
     ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
-        // 32-char base64url-safe token from two UUIDs
         let raw = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
         let token = raw[..32].to_string();
 
@@ -46,6 +48,37 @@ impl ReviewToken {
             .ok_or(sqlx::Error::RowNotFound)
     }
 
+    /// Generate a review token for a task artifact (no deliverable).
+    pub async fn generate_for_artifact(
+        pool: &SqlitePool,
+        artifact_id: Uuid,
+        video_url: &str,
+        title: &str,
+        created_by: Option<Uuid>,
+    ) -> Result<Self, sqlx::Error> {
+        let id = Uuid::new_v4();
+        let raw = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+        let token = raw[..32].to_string();
+
+        sqlx::query(
+            "INSERT INTO review_tokens \
+             (id, token, artifact_id, artifact_video_url, artifact_title, created_by) \
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(&token)
+        .bind(artifact_id)
+        .bind(video_url)
+        .bind(title)
+        .bind(created_by)
+        .execute(pool)
+        .await?;
+
+        Self::find_by_id(pool, id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)
+    }
+
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as("SELECT * FROM review_tokens WHERE id = ?")
             .bind(id)
@@ -53,11 +86,11 @@ impl ReviewToken {
             .await
     }
 
-    /// Validate a token string, increment view_count, and return (token, deliverable_id).
+    /// Validate a token string, increment view_count, and return (token, optional deliverable_id).
     pub async fn validate_and_increment(
         pool: &SqlitePool,
         token: &str,
-    ) -> Result<Option<(Self, Uuid)>, sqlx::Error> {
+    ) -> Result<Option<Self>, sqlx::Error> {
         let row: Option<Self> = sqlx::query_as(
             "SELECT * FROM review_tokens WHERE token = ? AND is_active = 1 \
              AND (expires_at IS NULL OR expires_at > datetime('now'))",
@@ -73,8 +106,7 @@ impl ReviewToken {
             .bind(rt.id)
             .execute(pool)
             .await?;
-            let deliverable_id = rt.deliverable_id;
-            Ok(Some((rt, deliverable_id)))
+            Ok(Some(rt))
         } else {
             Ok(None)
         }
@@ -90,6 +122,29 @@ impl ReviewToken {
         .bind(deliverable_id)
         .fetch_all(pool)
         .await
+    }
+
+    /// Find active token for an artifact, or create one.
+    pub async fn get_or_create_for_artifact(
+        pool: &SqlitePool,
+        artifact_id: Uuid,
+        video_url: &str,
+        title: &str,
+        created_by: Option<Uuid>,
+    ) -> Result<Self, sqlx::Error> {
+        let existing: Option<Self> = sqlx::query_as(
+            "SELECT * FROM review_tokens WHERE artifact_id = ? AND is_active = 1 \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(artifact_id)
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some(t) = existing {
+            Ok(t)
+        } else {
+            Self::generate_for_artifact(pool, artifact_id, video_url, title, created_by).await
+        }
     }
 
     /// Return the most recent active token for a deliverable, generating one if none exists.
