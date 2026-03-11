@@ -1,15 +1,16 @@
 import { useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { reportsApi, personsApi, companiesApi, type BusinessReportRecord, type PersonRecord, type CompanyRecord } from '@/lib/api';
+import { reportsApi, intelligenceApi, personsApi, companiesApi, type BusinessReportRecord, type PersonRecord, type CompanyRecord } from '@/lib/api';
 import { InlineEdit } from '@/components/ui/inline-edit';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 import {
   ClipboardList, ArrowLeft, User, Building2, Globe, ExternalLink,
   TrendingUp, Users, Target, Zap, MapPin, AlertCircle, CheckCircle,
-  Star, ChevronRight, Printer, BookOpen, RefreshCw, Loader2,
-  Brain, Fingerprint, ShieldAlert,
+  Star, ChevronRight, Printer, Layers, BookOpen, RefreshCw, Loader2,
+  Brain, Fingerprint, ShieldAlert, RotateCcw, ThumbsUp,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -70,6 +71,29 @@ function IntelCard({ children, className = '' }: { children: React.ReactNode; cl
   );
 }
 
+function ProseSection({
+  label, value, field, onSave, placeholder,
+}: {
+  label: string;
+  value: string | undefined | null;
+  field: string;
+  onSave: (field: string, val: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-widest text-slate-500 mb-2">{label}</p>
+      <InlineEdit
+        value={value ?? ''}
+        onSave={(v) => onSave(field, v)}
+        multiline
+        placeholder={placeholder ?? `Click to add ${label.toLowerCase()}...`}
+        className="text-slate-300 text-sm leading-relaxed w-full"
+        inputClassName="min-h-[120px]"
+      />
+    </div>
+  );
+}
 
 // ── Intel Source Panels ───────────────────────────────────────────────────────
 
@@ -212,6 +236,115 @@ function IntelSourcePanels({ personId, companyId }: { personId?: string; company
   );
 }
 
+// ── Review Banner ──────────────────────────────────────────────────────────────
+
+function ReviewBanner({
+  report,
+  onApprove,
+  onRequestRevision,
+  isLoading,
+}: {
+  report: BusinessReportRecord;
+  onApprove: () => void;
+  onRequestRevision: (notes: string) => void;
+  isLoading: boolean;
+}) {
+  const [showRevisionDialog, setShowRevisionDialog] = useState(false);
+  const [revisionNotes, setRevisionNotes] = useState('');
+
+  if (report.review_status === 'approved') {
+    return (
+      <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-emerald-800 bg-emerald-950/30 text-emerald-400 text-sm">
+        <CheckCircle className="w-4 h-4 shrink-0" />
+        <span className="font-medium">Approved — Proposal Generated</span>
+        {report.reviewed_at && (
+          <span className="text-xs text-emerald-600 ml-auto">
+            {new Date(report.reviewed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (report.review_status === 'rejected') {
+    return (
+      <div className="px-4 py-3 rounded-xl border border-amber-800 bg-amber-950/30 space-y-1">
+        <div className="flex items-center gap-2 text-amber-400 text-sm">
+          <RotateCcw className="w-4 h-4 shrink-0" />
+          <span className="font-medium">Revision Requested</span>
+        </div>
+        {report.review_notes && (
+          <p className="text-xs text-amber-300/70 ml-6">{report.review_notes}</p>
+        )}
+      </div>
+    );
+  }
+
+  // pending_review
+  return (
+    <div className="rounded-xl border border-amber-700 bg-amber-950/20 p-4 space-y-3">
+      <div className="flex items-center gap-2 text-amber-400">
+        <AlertCircle className="w-4 h-4 shrink-0" />
+        <p className="text-sm font-medium">This analysis requires human review before generating a proposal</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          className="gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white border-0"
+          disabled={isLoading}
+          onClick={onApprove}
+        >
+          <ThumbsUp className="w-3.5 h-3.5" />
+          Approve & Generate Proposal
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5 border-amber-700 text-amber-400 hover:bg-amber-950/40"
+          disabled={isLoading}
+          onClick={() => setShowRevisionDialog(true)}
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          Request Revision
+        </Button>
+      </div>
+
+      {showRevisionDialog && (
+        <div className="mt-3 space-y-2">
+          <textarea
+            value={revisionNotes}
+            onChange={(e) => setRevisionNotes(e.target.value)}
+            placeholder="Describe what needs to be revised or researched further..."
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:border-amber-600"
+            rows={3}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              className="bg-amber-700 hover:bg-amber-600 text-white border-0"
+              disabled={isLoading || !revisionNotes.trim()}
+              onClick={() => {
+                onRequestRevision(revisionNotes.trim());
+                setShowRevisionDialog(false);
+              }}
+            >
+              Send Revision Request
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-slate-400"
+              onClick={() => { setShowRevisionDialog(false); setRevisionNotes(''); }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Report Detail (intel page) ─────────────────────────────────────────────────
 
 export function ReportDetail() {
@@ -235,10 +368,33 @@ export function ReportDetail() {
     },
   });
 
+  const approveMut = useMutation({
+    mutationFn: () => reportsApi.approve(id!),
+    onSuccess: (result) => {
+      queryClient.setQueryData(['report', id], result.report);
+      queryClient.invalidateQueries({ queryKey: ['business-reports'] });
+      toast.success('Report approved and proposal generated');
+    },
+    onError: () => toast.error('Failed to approve report'),
+  });
+
+  const revisionMut = useMutation({
+    mutationFn: (notes: string) => reportsApi.requestRevision(id!, notes),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['report', id], updated);
+      queryClient.invalidateQueries({ queryKey: ['business-reports'] });
+      toast.success('Revision requested');
+    },
+    onError: () => toast.error('Failed to request revision'),
+  });
+
   const save = useCallback((field: string, value: string) => {
     patchMut.mutate({ [field]: value } as Partial<BusinessReportRecord>);
   }, [patchMut]);
 
+  const saveJson = useCallback((field: string, value: unknown) => {
+    patchMut.mutate({ [field]: JSON.stringify(value) } as Partial<BusinessReportRecord>);
+  }, [patchMut]);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -282,6 +438,16 @@ export function ReportDetail() {
           </Button>
         </div>
       </div>
+
+      {/* Review Banner */}
+      {report.review_status && (
+        <ReviewBanner
+          report={report}
+          onApprove={() => approveMut.mutate()}
+          onRequestRevision={(notes) => revisionMut.mutate(notes)}
+          isLoading={approveMut.isPending || revisionMut.isPending}
+        />
+      )}
 
       {/* Title */}
       <div className="print:mt-8">
@@ -589,13 +755,14 @@ export default function BusinessReportsPage() {
     refetchInterval: 30000,
   });
 
+  const [generating, setGenerating] = useState<string | null>(null);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
             <ClipboardList className="w-5 h-5 text-indigo-400" />
           </div>
           <div>
@@ -617,14 +784,8 @@ export default function BusinessReportsPage() {
         </div>
       ) : reports.length === 0 ? (
         <div className="text-center py-20 text-slate-500">
-          <div className="rounded-full bg-slate-800 p-4 mb-4 inline-flex">
-            <ClipboardList className="w-8 h-8 text-slate-500" />
-          </div>
-          <h3 className="text-base font-medium text-slate-300 mb-1">No analytics reports yet</h3>
-          <p className="text-sm">Process call transcripts via Call Intake to generate reports.</p>
-          <Link to="/call-intake">
-            <Button variant="outline" size="sm" className="mt-4">Go to Call Intake</Button>
-          </Link>
+          <ClipboardList className="w-10 h-10 mx-auto mb-3 opacity-30" />
+          <p>No analytics reports yet. Process call transcripts via Call Intake to generate reports.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -644,6 +805,20 @@ export default function BusinessReportsPage() {
                       }`}>
                         {r.status}
                       </Badge>
+                      {r.review_status && r.review_status !== 'pending_review' && (
+                        <Badge variant="outline" className={`shrink-0 text-[10px] ${
+                          r.review_status === 'approved' ? 'border-emerald-700 text-emerald-400' :
+                          r.review_status === 'rejected' ? 'border-amber-700 text-amber-400' :
+                          'border-slate-700 text-slate-500'
+                        }`}>
+                          {r.review_status === 'approved' ? 'approved' : 'revision needed'}
+                        </Badge>
+                      )}
+                      {r.review_status === 'pending_review' && (
+                        <Badge variant="outline" className="shrink-0 text-[10px] border-yellow-700 text-yellow-400">
+                          awaiting review
+                        </Badge>
+                      )}
                     </div>
                     {r.executive_summary && (
                       <p className="text-sm text-slate-500 leading-relaxed line-clamp-2">

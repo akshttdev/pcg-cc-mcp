@@ -5695,6 +5695,22 @@ export const reportsApi = {
     });
     return handleApiResponse(response);
   },
+
+  approve: async (id: string): Promise<{ report: BusinessReportRecord; deal: unknown; proposal: unknown }> => {
+    const response = await makeRequest(`/api/business-reports/${id}/approve`, {
+      method: 'POST',
+    });
+    return handleApiResponse(response);
+  },
+
+  requestRevision: async (id: string, notes: string): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}/request-revision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes }),
+    });
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
 };
 
 export interface ResearchPass {
@@ -5734,6 +5750,12 @@ export interface BusinessReportRecord {
   digital_presence?: string;
   sources: string; // JSON [{title, url, excerpt}]
   full_report_md?: string;
+  // CRM deal linkage + human review checkpoint
+  crm_deal_id?: string;
+  review_status: string; // 'pending_review' | 'approved' | 'rejected'
+  reviewed_by?: string;
+  reviewed_at?: string;
+  review_notes?: string;
   created_at: string;
   updated_at: string;
 }
