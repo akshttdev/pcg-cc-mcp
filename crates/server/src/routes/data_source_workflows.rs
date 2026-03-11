@@ -685,15 +685,114 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
         _ => {
             // For custom workflows, use output_schema to pick the right mock
             let schema_lower = output_schema.to_lowercase();
-            if schema_lower.contains("compan") { "extract_companies".to_string() }
-            else if schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people") { "extract_contacts".to_string() }
-            else if schema_lower.contains("deal") { "identify_deals".to_string() }
+            let has_companies = schema_lower.contains("compan");
+            let has_contacts = schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people");
+            let has_deals = schema_lower.contains("deal") || schema_lower.contains("opportunit");
+            let multi_type_count = [has_companies, has_contacts, has_deals].iter().filter(|&&b| b).count();
 
-            else if schema_lower.contains("opportunit") || node_type == "llm_analyze" { "identify_opportunities".to_string() }
+            if multi_type_count >= 2 {
+                // Multi-schema: generate combined output for all requested types
+                "multi_extract".to_string()
+            } else if has_companies { "extract_companies".to_string() }
+            else if has_contacts { "extract_contacts".to_string() }
+            else if has_deals { "identify_deals".to_string() }
+            else if node_type == "llm_analyze" { "identify_opportunities".to_string() }
             else { step_id.to_string() }
         }
     };
     match key.as_str() {
+        "multi_extract" => {
+            // Combined extraction: produce contacts, companies, and deals in one JSON object
+            let schema_lower = output_schema.to_lowercase();
+            let mut result = serde_json::Map::new();
+
+            if schema_lower.contains("compan") {
+                let extracted = extract_company_names_from_text(content);
+                let companies: Vec<Value> = extracted.iter().enumerate().map(|(i, name)| {
+                    let rel = match i % 3 { 0 => "potential_client", 1 => "partner", _ => "vendor" };
+                    json!({
+                        "name": name,
+                        "description": "Extracted from source content",
+                        "relationship": rel,
+                        "context": format!("Company '{}' mentioned in document", name),
+                    })
+                }).collect();
+                result.insert("companies".to_string(), json!(companies));
+            }
+
+            if schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people") {
+                let extracted = extract_contacts_from_text(content);
+                let contacts: Vec<Value> = extracted.iter().map(|c| {
+                    let (first_name, last_name) = {
+                        let parts: Vec<&str> = c.name.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            (parts[0].to_string(), parts[1..].join(" "))
+                        } else {
+                            (c.name.clone(), String::new())
+                        }
+                    };
+                    json!({
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "name": c.name,
+                        "job_title": c.role,
+                        "email": c.email,
+                        "phone": c.phone,
+                        "company_name": c.company,
+                    })
+                }).collect();
+                result.insert("contacts".to_string(), json!(contacts));
+            }
+
+            if schema_lower.contains("deal") || schema_lower.contains("opportunit") {
+                let amounts = extract_dollar_amounts_from_text(content);
+                let company_names = extract_company_names_from_text(content);
+                let primary_company = company_names.first().cloned().unwrap_or_default();
+                let contacts_extracted = extract_contacts_from_text(content);
+                let primary_contact = contacts_extracted.first();
+
+                let deals: Vec<Value> = if amounts.is_empty() && !primary_company.is_empty() {
+                    vec![json!({
+                        "name": format!("Opportunity with {}", primary_company),
+                        "description": format!("Potential opportunity identified with {}", primary_company),
+                        "amount": null,
+                        "currency": "USD",
+                        "deal_type": "project",
+                    })]
+                } else {
+                    amounts.iter().enumerate().map(|(i, (amount, context_line))| {
+                        let amount_num: Option<f64> = {
+                            let cleaned: String = amount.chars()
+                                .filter(|c| c.is_ascii_digit() || *c == '.')
+                                .collect();
+                            let multiplier = if amount.contains('K') || amount.contains('k') { 1_000.0 }
+                                else if amount.contains('M') || amount.contains('m') { 1_000_000.0 }
+                                else { 1.0 };
+                            cleaned.parse::<f64>().ok().map(|v| v * multiplier)
+                        };
+                        let deal_name = if !primary_company.is_empty() {
+                            format!("Deal #{} with {}", i + 1, primary_company)
+                        } else {
+                            format!("Deal #{}", i + 1)
+                        };
+                        let contact_name = primary_contact.map(|c| c.name.clone());
+                        let contact_email = primary_contact.and_then(|c| c.email.clone());
+                        json!({
+                            "name": deal_name,
+                            "description": context_line,
+                            "amount": amount_num,
+                            "currency": "USD",
+                            "contact_name": contact_name,
+                            "contact_email": contact_email,
+                            "deal_type": "project",
+                        })
+                    }).collect()
+                };
+                result.insert("deals".to_string(), json!(deals));
+            }
+
+            Value::Object(result).to_string()
+        }
         "extract_companies" => {
             let extracted = extract_company_names_from_text(content);
             if extracted.is_empty() {
