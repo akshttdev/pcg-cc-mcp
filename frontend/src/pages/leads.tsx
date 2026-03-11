@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Users, Search, Building2, Mail, Phone, TrendingUp, Layers,
-  FileText, RefreshCw, Loader2, ChevronRight, Radio, CheckCircle, Clock,
+  Users, Search, Building2, Mail, TrendingUp, Layers,
+  RefreshCw, Loader2, ChevronRight, Radio, Clock,
 } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+
 
 // Sirak Studios org ID (fixed seed)
 const SIRAK_ORG = '02020202-0202-0202-0202-020202020202';
@@ -114,7 +114,6 @@ function LeadCard({ person }: { person: PersonRecord }) {
 }
 
 export function LeadsPage() {
-  const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [orgFilter, setOrgFilter] = useState<string | undefined>(undefined);
   const [typeFilter, setTypeFilter] = useState<string | undefined>('lead');
@@ -144,7 +143,7 @@ export function LeadsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
             <TrendingUp className="w-5 h-5 text-amber-400" />
           </div>
           <div>
@@ -217,8 +216,11 @@ export function LeadsPage() {
         </div>
       ) : persons.length === 0 ? (
         <div className="text-center py-20 text-slate-500">
-          <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>No leads found. Process call transcripts via Call Intake to create leads.</p>
+          <div className="rounded-full bg-slate-800 p-4 mb-4 inline-flex">
+            <Users className="w-8 h-8 text-slate-500" />
+          </div>
+          <h3 className="text-base font-medium text-slate-300 mb-1">No leads found</h3>
+          <p className="text-sm">Process call transcripts via Call Intake to create leads.</p>
           <Link to="/call-intake">
             <Button variant="outline" size="sm" className="mt-4">Go to Call Intake</Button>
           </Link>

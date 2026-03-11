@@ -1,14 +1,14 @@
 import { useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { reportsApi, intelligenceApi, personsApi, companiesApi, type BusinessReportRecord, type PersonRecord, type CompanyRecord } from '@/lib/api';
+import { reportsApi, personsApi, companiesApi, type BusinessReportRecord, type PersonRecord, type CompanyRecord } from '@/lib/api';
 import { InlineEdit } from '@/components/ui/inline-edit';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   ClipboardList, ArrowLeft, User, Building2, Globe, ExternalLink,
   TrendingUp, Users, Target, Zap, MapPin, AlertCircle, CheckCircle,
-  Star, ChevronRight, Printer, Layers, BookOpen, RefreshCw, Loader2,
+  Star, ChevronRight, Printer, BookOpen, RefreshCw, Loader2,
   Brain, Fingerprint, ShieldAlert,
 } from 'lucide-react';
 
@@ -70,29 +70,6 @@ function IntelCard({ children, className = '' }: { children: React.ReactNode; cl
   );
 }
 
-function ProseSection({
-  label, value, field, onSave, placeholder,
-}: {
-  label: string;
-  value: string | undefined | null;
-  field: string;
-  onSave: (field: string, val: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <div>
-      <p className="text-xs font-medium uppercase tracking-widest text-slate-500 mb-2">{label}</p>
-      <InlineEdit
-        value={value ?? ''}
-        onSave={(v) => onSave(field, v)}
-        multiline
-        placeholder={placeholder ?? `Click to add ${label.toLowerCase()}...`}
-        className="text-slate-300 text-sm leading-relaxed w-full"
-        inputClassName="min-h-[120px]"
-      />
-    </div>
-  );
-}
 
 // ── Intel Source Panels ───────────────────────────────────────────────────────
 
@@ -262,9 +239,6 @@ export function ReportDetail() {
     patchMut.mutate({ [field]: value } as Partial<BusinessReportRecord>);
   }, [patchMut]);
 
-  const saveJson = useCallback((field: string, value: unknown) => {
-    patchMut.mutate({ [field]: JSON.stringify(value) } as Partial<BusinessReportRecord>);
-  }, [patchMut]);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -615,14 +589,13 @@ export default function BusinessReportsPage() {
     refetchInterval: 30000,
   });
 
-  const [generating, setGenerating] = useState<string | null>(null);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
             <ClipboardList className="w-5 h-5 text-indigo-400" />
           </div>
           <div>
@@ -644,8 +617,14 @@ export default function BusinessReportsPage() {
         </div>
       ) : reports.length === 0 ? (
         <div className="text-center py-20 text-slate-500">
-          <ClipboardList className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>No analytics reports yet. Process call transcripts via Call Intake to generate reports.</p>
+          <div className="rounded-full bg-slate-800 p-4 mb-4 inline-flex">
+            <ClipboardList className="w-8 h-8 text-slate-500" />
+          </div>
+          <h3 className="text-base font-medium text-slate-300 mb-1">No analytics reports yet</h3>
+          <p className="text-sm">Process call transcripts via Call Intake to generate reports.</p>
+          <Link to="/call-intake">
+            <Button variant="outline" size="sm" className="mt-4">Go to Call Intake</Button>
+          </Link>
         </div>
       ) : (
         <div className="space-y-3">
