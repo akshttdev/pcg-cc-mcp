@@ -9,7 +9,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Calendar, DollarSign, Mail, MoreVertical, Building2, Trash2, Edit, CheckCircle2, Tag, ListTodo, FileText } from 'lucide-react';
+import { Calendar, DollarSign, Mail, MoreVertical, Building2, Trash2, Edit, CheckCircle2, Tag, ListTodo, FileText, BookOpen } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
 import { formatDistanceToNow } from 'date-fns';
@@ -108,33 +109,45 @@ export function CrmDealCard({ deal, onClick, onEdit, onDelete, isDragging, board
             </div>
           </div>
 
-          {/* Actions Menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                data-deal-menu
+          {/* Intel + Actions */}
+          <div className="flex items-center gap-0.5 shrink-0" data-deal-menu>
+            {deal.report_id && (
+              <Link
+                to={`/business-reports/${deal.report_id}`}
                 onClick={(e) => e.stopPropagation()}
+                title="Open Client Intel"
+                className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-indigo-500 hover:bg-indigo-50 transition-colors"
               >
-                <MoreVertical className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-36">
-              <DropdownMenuItem onClick={() => onEdit?.(deal)}>
-                <Edit className="h-3 w-3 mr-2" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onDelete?.(deal)}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="h-3 w-3 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <BookOpen className="h-3.5 w-3.5" />
+              </Link>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  data-deal-menu
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreVertical className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36">
+                <DropdownMenuItem onClick={() => onEdit?.(deal)}>
+                  <Edit className="h-3 w-3 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onDelete?.(deal)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-3 w-3 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* Deal Amount */}

@@ -4793,6 +4793,8 @@ export interface PersonRecord {
   intelligence_confidence: number;
   intelligence_status?: 'idle' | 'queued' | 'running' | 'done' | 'failed';
   intelligence_agent?: string;
+  research_pass_count?: number;
+  research_depth?: 'shallow' | 'moderate' | 'deep';
   notes?: string;
   tags: string;
   custom_fields: string;
@@ -5114,6 +5116,7 @@ export const proposalsApi = {
     lead_id?: string;
     project_id?: string;
     owner_id?: string;
+    organization_id?: string;
     limit?: number;
   }): Promise<ProposalRecord[]> => {
     const qs = params ? '?' + new URLSearchParams(
@@ -5418,10 +5421,11 @@ export interface CompanyRecord {
 }
 
 export const companiesApi = {
-  list: async (params?: { limit?: number; has_platform_org?: boolean }): Promise<CompanyRecord[]> => {
+  list: async (params?: { limit?: number; has_platform_org?: boolean; created_by_org_id?: string }): Promise<CompanyRecord[]> => {
     const qs = new URLSearchParams();
     if (params?.limit != null) qs.set('limit', String(params.limit));
     if (params?.has_platform_org != null) qs.set('has_platform_org', String(params.has_platform_org));
+    if (params?.created_by_org_id != null) qs.set('created_by_org_id', params.created_by_org_id);
     const response = await makeRequest(`/api/companies?${qs.toString()}`);
     return handleApiResponse<CompanyRecord[]>(response);
   },
@@ -5641,7 +5645,97 @@ export const intelligenceApi = {
     const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
     return handleApiResponse<IntelligenceStatus>(response);
   },
+
+  listResearchPasses: async (personId: string): Promise<ResearchPass[]> => {
+    const response = await makeRequest(`/api/persons/${personId}/research-passes`);
+    return handleApiResponse<ResearchPass[]>(response);
+  },
+
+  triggerNextPass: async (personId: string, opts?: { focus?: string; project_id?: string }): Promise<{ pass_id: string; pass_number: number; focus: string; status: string }> => {
+    const response = await makeRequest(`/api/persons/${personId}/research-passes/next`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts ?? {}),
+    });
+    return handleApiResponse(response);
+  },
+
+  listPersonReports: async (personId: string): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest(`/api/persons/${personId}/reports`);
+    return handleApiResponse<BusinessReportRecord[]>(response);
+  },
 };
+
+export const reportsApi = {
+  list: async (): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest('/api/business-reports');
+    return handleApiResponse<BusinessReportRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}`);
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+
+  patch: async (id: string, data: Partial<BusinessReportRecord>): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+
+  generate: async (personId: string, reportType?: string): Promise<{ status: string; person_id: string }> => {
+    const response = await makeRequest('/api/business-reports/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person_id: personId, report_type: reportType }),
+    });
+    return handleApiResponse(response);
+  },
+};
+
+export interface ResearchPass {
+  id: string;
+  person_id: string;
+  pass_number: number;
+  research_focus: string;
+  status: string;
+  summary?: string;
+  key_findings: string; // JSON
+  confidence_delta: number;
+  agent_used?: string;
+  created_at: string;
+  completed_at?: string;
+  error?: string;
+}
+
+export interface BusinessReportRecord {
+  id: string;
+  person_id?: string;
+  company_id?: string;
+  report_type: string;
+  title: string;
+  status: string;
+  executive_summary?: string;
+  company_overview?: string;
+  pain_points: string; // JSON [{point, severity}]
+  opportunities: string; // JSON [{title, description, priority, estimated_value}]
+  recommended_services: string; // JSON [{name, rationale, timeline}]
+  next_steps: string; // JSON [{action, owner, deadline}]
+  // Enhanced analytics sections
+  individual_profiles: string; // JSON [{name, role, company, linkedin, summary, key_insights}]
+  market_analysis?: string;
+  competitor_analysis: string; // JSON [{name, website, strengths, weaknesses, threat_level}]
+  target_clients?: string;
+  brand_positioning?: string;
+  digital_presence?: string;
+  sources: string; // JSON [{title, url, excerpt}]
+  full_report_md?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 // ============================================================================
 // Data Sources API
@@ -6374,7 +6468,8 @@ export const mediaApi = {
 export interface ReviewComment { id: string; author_name?: string; content: string; timecode_seconds?: number; is_resolved: boolean; resolved_at?: string; created_at: string; }
 export interface ReviewDeliverable { id: string; title: string; status: string; description?: string; working_file_url?: string; final_link?: string; }
 export interface ReviewToken { id: string; view_count: number; expires_at?: string; }
-export interface ReviewData { token: ReviewToken; deliverable: ReviewDeliverable; comments: ReviewComment[]; }
+export interface ReviewSourceFile { name: string; url: string; size_bytes: number; }
+export interface ReviewData { token: ReviewToken; deliverable: ReviewDeliverable; comments: ReviewComment[]; source_files: ReviewSourceFile[]; }
 
 export const reviewApi = {
   getData: async (token: string): Promise<ReviewData> => {

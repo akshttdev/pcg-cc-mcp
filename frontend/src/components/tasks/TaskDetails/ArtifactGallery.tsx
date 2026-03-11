@@ -28,10 +28,14 @@ import {
   File,
   Plus,
   Download,
+  Clapperboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ArtifactPreviewCard } from '../ArtifactPreviewCard';
 import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
+
+
+const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];
 
 type ViewMode = 'grid' | 'list';
 type SortField = 'date' | 'name' | 'type';
@@ -148,6 +152,28 @@ function ArtifactListItem({
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
+        {VIDEO_EDIT_TYPES.includes(artifact.artifact_type) && (
+          <button
+            title="Open Review"
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                const res = await fetch(`/api/artifacts/${artifact.id}/review-link`, {
+                  method: 'POST',
+                  credentials: 'include',
+                });
+                const data = await res.json();
+                if (data?.data?.token) {
+                  window.open(`${window.location.origin}/review/${data.data.token}`, '_blank');
+                }
+              } catch { /* ignore */ }
+            }}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
+          >
+            <Clapperboard className="h-3 w-3" />
+            Review
+          </button>
+        )}
         {onDownload && (artifact.file_path || artifact.content) && (
           <Button
             variant="ghost"

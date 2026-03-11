@@ -239,6 +239,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(artifact_reviews::router(&deployment))
         .merge(task_artifacts::router(&deployment))
         .merge(artifacts::router(&deployment))
+        .merge(review::protected_router(&deployment))
         .merge(editron_export::router(&deployment))
         .merge(token_usage::router(&deployment))
         .merge(system_metrics::router(&deployment))

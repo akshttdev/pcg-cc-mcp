@@ -24,12 +24,14 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useNavigate } from 'react-router-dom';
 import {
   FileText,
   Plus,
   GripVertical,
   Coins,
   Users,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -74,6 +76,7 @@ function ProposalCard({
   proposal: ProposalRecord;
   isDragging?: boolean;
 }) {
+  const navigate = useNavigate();
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: proposal.id,
     data: { type: 'proposal', proposal },
@@ -95,7 +98,7 @@ function ProposalCard({
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-card border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+      className="bg-card border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow group"
     >
       <div className="flex items-start gap-2">
         <div
@@ -106,7 +109,20 @@ function ProposalCard({
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{proposal.title}</p>
+          <div className="flex items-start justify-between gap-1">
+            <p className="text-sm font-medium truncate flex-1">{proposal.title}</p>
+            {/* Link to person profile if lead_id exists */}
+            {proposal.lead_id && (
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); navigate(`/persons/${proposal.lead_id}`); }}
+                className="text-muted-foreground hover:text-foreground transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                title="View profile"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <Badge className={`text-xs px-1.5 py-0 border-0 ${dealColor}`}>
               {proposal.deal_type}
