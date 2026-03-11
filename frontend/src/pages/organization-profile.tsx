@@ -3853,6 +3853,11 @@ function PulseSection({ projectEntries }: { projectEntries: { id: string; name: 
 }
 
 // ── Intelligence Tab (Social + Knowledge + Pulse combined) ────────────────────
+// Org-level intelligence view: system automations, pipeline blueprints, data sources, artifacts.
+// The "Workflows" sub-view here shows org-scoped automations and blueprints, NOT user-created
+// extraction pipelines (those live in /workflows "My Workflows" page).
+// TODO: Surface org-specific staging records here so users can review CRM imports
+// without switching to the global /workflows page.
 
 function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
   const [searchParams] = useSearchParams();

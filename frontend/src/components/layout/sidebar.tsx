@@ -1584,6 +1584,10 @@ export function Sidebar({ className }: SidebarProps) {
 
   // Staging pending count for sidebar badge
   const homeOrgId = user?.home_organization_id || user?.organizations?.[0]?.id;
+  // Badge shows pending staging records needing review (user-level action items).
+  // TODO: As we separate "My Workflows" (user tasks: review staged records, manage personal definitions)
+  // from org-level Intelligence workflows (system automations, pipeline blueprints),
+  // consider splitting this badge or moving org-level staging to Intelligence.
   const { data: stagingPendingCount = 0 } = useQuery({
     queryKey: ['stagingPendingCount', homeOrgId],
     queryFn: async () => {
