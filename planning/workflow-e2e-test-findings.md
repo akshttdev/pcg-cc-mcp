@@ -164,6 +164,7 @@ Based on user review of these findings, the following changes were made:
 - **Data Source node**: Added `data_source` node type to WorkflowEditor with `DataSourceNodeConfig` (data source dropdown in node config panel)
 - **My Workflows vs Intelligence separation**: Added TODO comments in `workflows.tsx`, `organization-profile.tsx`, and `sidebar.tsx` clarifying the intended separation of user-level vs org-level workflow views
 - **Sidebar badge clarification**: Added comment explaining badge counts pending staging records (correct behavior, not a bug)
+- **Data source name in run history**: `WorkflowRunsPanel.tsx`, `workflows.tsx` (RunsTab + WorkflowDetailPanel) — runs with `data_source_id` now show the resolved data source title with a Database icon
 
 ### Backlogged
 - Bulk edit in staging

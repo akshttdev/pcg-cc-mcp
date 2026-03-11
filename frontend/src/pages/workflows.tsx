@@ -956,6 +956,23 @@ function WorkflowDetailPanel({
     refetchInterval: 15000,
   });
 
+  // Resolve data source names for runs that have data_source_id
+  const dsIds = useMemo(
+    () => [...new Set(recentRuns.map((r: any) => r.data_source_id).filter(Boolean))] as string[],
+    [recentRuns],
+  );
+  const { data: dsNames = {} } = useQuery({
+    queryKey: ['ds-names-for-runs', dsIds],
+    queryFn: async () => {
+      const out: Record<string, string> = {};
+      await Promise.all(dsIds.map(async (id) => {
+        try { out[id] = (await dataSourcesApi.get(id)).title; } catch { out[id] = id.slice(0, 8) + '…'; }
+      }));
+      return out;
+    },
+    enabled: dsIds.length > 0,
+  });
+
   const { user } = useAuth();
   const orgId = user?.home_organization_id ?? user?.organizations?.[0]?.id;
   const { data: pendingRecords = [] } = useQuery({
@@ -1127,6 +1144,12 @@ function WorkflowDetailPanel({
                       <span className="text-muted-foreground">{formatDurationShort(run.duration_ms)}</span>
                       {run.records_staged > 0 && (
                         <span>{run.records_staged} records</span>
+                      )}
+                      {run.data_source_id && dsNames[run.data_source_id] && (
+                        <span className="text-muted-foreground flex items-center gap-0.5">
+                          <Database className="h-2.5 w-2.5" />
+                          {dsNames[run.data_source_id]}
+                        </span>
                       )}
                     </div>
                     <span className="text-muted-foreground">
@@ -2294,6 +2317,22 @@ function RunsTab() {
     refetchInterval: 10000,
   });
 
+  const runDsIds = useMemo(
+    () => [...new Set(recentRuns.map((r: any) => r.data_source_id).filter(Boolean))] as string[],
+    [recentRuns],
+  );
+  const { data: dsNames = {} } = useQuery({
+    queryKey: ['ds-names-for-runs-tab', runDsIds],
+    queryFn: async () => {
+      const out: Record<string, string> = {};
+      await Promise.all(runDsIds.map(async (id) => {
+        try { out[id] = (await dataSourcesApi.get(id)).title; } catch { out[id] = id.slice(0, 8) + '…'; }
+      }));
+      return out;
+    },
+    enabled: runDsIds.length > 0,
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-48">
@@ -2338,6 +2377,12 @@ function RunsTab() {
                       {run.status}
                     </Badge>
                     <span className="text-sm font-medium">{run.workflow_name || run.workflow_id}</span>
+                    {run.data_source_id && dsNames[run.data_source_id] && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Database className="h-3 w-3" />
+                        {dsNames[run.data_source_id]}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     {run.duration_ms && <span>{formatDurationShort(run.duration_ms)}</span>}
