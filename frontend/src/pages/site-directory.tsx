@@ -87,7 +87,9 @@ function buildCategories(
       links: [
         { label: 'CRM Admin', to: '/crm' },
         { label: 'People', to: '/people' },
+        { label: 'Person Detail', note: 'Navigate from People list' },
         { label: 'Companies', to: '/companies' },
+        { label: 'Company Profile', note: 'Navigate from Companies list' },
         { label: 'Proposals', to: '/proposals' },
         { label: 'Invoices', to: '/invoices' },
         ...(o
@@ -228,6 +230,7 @@ function ProjectLinksCard({
         { label: 'Project CRM Delivery', to: `${p}/crm/delivery` },
         { label: 'Project CRM Clients', to: `${p}/crm/clients` },
         { label: 'Project CRM Conferences', to: `${p}/crm/conferences` },
+        { label: 'Project CRM Overview', to: `${p}/crm/overview` },
       ]
     : [];
 
