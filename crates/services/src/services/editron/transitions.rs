@@ -487,14 +487,14 @@ impl TransitionEngine {
                     input_a, input_b, duration
                 )
             }
-            Transition::FadeToColor { duration_frames, color, .. } => {
+            Transition::FadeToColor { duration_frames,  .. } => {
                 let duration = *duration_frames as f32 / self.frame_rate;
                 format!(
                     "[{}][{}]xfade=transition=fadeblack:duration={}:offset=0",
                     input_a, input_b, duration
                 )
             }
-            Transition::Wipe { duration_frames, direction, softness } => {
+            Transition::Wipe { duration_frames, direction, softness: _softness } => {
                 let duration = *duration_frames as f32 / self.frame_rate;
                 let xfade_type = match direction {
                     WipeDirection::Left => "wipeleft",

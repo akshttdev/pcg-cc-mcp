@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    routing::{get, post, put, delete},
+    routing::{get, post, put},
 };
 use db::models::data_source::DataSource;
 use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, ExecutionArtifact};

@@ -4505,7 +4505,7 @@ impl ExecutiveTools {
                         &ffmpeg_path,
                         &work_dir,
                     );
-                    let (system_prompt, user_prompt_template) =
+                    let (_system_prompt, _user_prompt_template) =
                         services::services::visual_qc::VisualQcEngine::build_vision_prompt(
                             target_aspect_ratio.as_deref(),
                         );
@@ -4538,7 +4538,7 @@ impl ExecutiveTools {
                                 break;
                             }
 
-                            let base64_data = match services::services::visual_qc::VisualQcEngine::frame_to_base64(frame_path).await {
+                            let _base64_data = match services::services::visual_qc::VisualQcEngine::frame_to_base64(frame_path).await {
                                 Ok(d) => d,
                                 Err(_) => continue,
                             };

@@ -16,14 +16,12 @@ use axum::{
 use futures_util::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, pin::Pin, time::Duration};
-use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::{info, warn};
+use tracing::info;
 
 use db::models::meeting_session::MeetingSession;
 use deployment::Deployment;
 use discord_bot::{active_sessions, session_key, subscribe_transcript};
-use discord_bot::session::TranscriptEvent;
 
 use crate::{DeploymentImpl, error::ApiError};
 

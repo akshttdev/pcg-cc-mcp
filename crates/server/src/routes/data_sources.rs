@@ -4,7 +4,7 @@ use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{HeaderMap, HeaderValue, header},
     response::Response,
-    routing::{delete, get, post, put},
+    routing::{get, post},
 };
 use db::models::data_source::{CreateDataSource, DataSource, UpdateDataSource, metadata_template};
 use deployment::Deployment;

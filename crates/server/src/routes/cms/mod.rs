@@ -1,7 +1,7 @@
 use axum::{
     Router,
     extract::{Path, Request, State},
-    middleware::{self, Next, from_fn_with_state},
+    middleware::{Next, from_fn_with_state},
     response::Response,
 };
 use db::models::cms_site::CmsSite;

@@ -7,7 +7,7 @@ use crate::wire::NodeResources;
 use anyhow::Result;
 use std::process::Command;
 use tokio::task;
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Collect current system resources
 ///
@@ -58,7 +58,7 @@ fn get_system_info() -> (u32, u64, u64) {
 
 /// Get available storage across all disks
 fn get_available_storage() -> u64 {
-    use sysinfo::{Disks, System};
+    use sysinfo::Disks;
 
     let disks = Disks::new_with_refreshed_list();
     let total_available = disks

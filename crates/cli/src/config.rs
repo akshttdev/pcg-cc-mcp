@@ -172,6 +172,7 @@ impl Config {
     }
 
     /// Get a configuration value by key path (e.g., "server.url")
+    #[allow(dead_code)]
     pub fn get(&self, key: &str) -> Option<String> {
         let parts: Vec<&str> = key.split('.').collect();
 

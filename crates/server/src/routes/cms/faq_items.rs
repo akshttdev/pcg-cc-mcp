@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
     middleware::from_fn_with_state,
     response::Json as ResponseJson,
-    routing::{get, post, put},
+    routing::{get, put},
 };
 use db::models::cms_faq_item::{CmsFaqItem, CreateCmsFaqItem, UpdateCmsFaqItem, ReorderFaqItems};
 use db::models::cms_site::CmsSite;

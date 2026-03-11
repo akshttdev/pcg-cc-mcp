@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     response::Json as ResponseJson,
-    routing::{get, post, delete},
+    routing::{get, post},
 };
 use db::models::repo::{CreateRepo, Repo, RepoWithTargetBranch};
 use deployment::Deployment;

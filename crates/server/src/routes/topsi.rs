@@ -10,7 +10,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
 
-    routing::{get, post, put},
+    routing::{get, post},
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -37,8 +37,7 @@ use services::services::vibe_pricing::VibePricingService;
 
 // Import voice types from Nora
 use nora::voice::{
-    VoiceConfig, VoiceEngine, SpeechRequest, SpeechResponse, AudioFormat,
-    tts::VoiceProfile,
+    VoiceConfig, VoiceEngine, SpeechResponse, AudioFormat,
 };
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};

@@ -2,7 +2,6 @@
 
 use axum::{
     extract::State,
-    http::StatusCode,
     response::Json as ResponseJson,
     routing::post,
     Router,

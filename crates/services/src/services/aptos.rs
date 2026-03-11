@@ -18,9 +18,9 @@ const MAX_GAS_AMOUNT: u64 = 10000;
 // VIBE Token Configuration
 // VIBE is a fungible asset on Aptos - deployed at address below
 // 1 VIBE = $0.01 USD, 1 APT ≈ $10 USD (approximate), so 1 APT = 1,000 VIBE
-const VIBE_TOKEN_ADDRESS: &str = "0x24cb561c64c32942eb8600d5135f0185c23bcd06cd8cf33422ce2f9b77d65388";
+const _VIBE_TOKEN_ADDRESS: &str = "0x24cb561c64c32942eb8600d5135f0185c23bcd06cd8cf33422ce2f9b77d65388";
 const APT_TO_VIBE_RATE: u64 = 1_000; // 1 APT = 1,000 VIBE (assuming $10/APT and $0.01/VIBE)
-const VIBE_DECIMALS: u8 = 8; // Same as APT for simplicity
+const _VIBE_DECIMALS: u8 = 8; // Same as APT for simplicity
 
 #[derive(Debug, Clone)]
 pub struct AptosService {
@@ -576,7 +576,7 @@ impl AptosService {
     }
 
     /// Estimate gas for a transfer
-    pub async fn estimate_gas(&self, sender_address: &str) -> Result<EstimateGasResponse> {
+    pub async fn estimate_gas(&self, _sender_address: &str) -> Result<EstimateGasResponse> {
         // For simple transfers, gas is fairly predictable
         let gas_estimate = 500u64; // Typical for coin transfer
         let total_octas = gas_estimate * GAS_UNIT_PRICE;

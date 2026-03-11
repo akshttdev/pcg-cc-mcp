@@ -1265,6 +1265,7 @@ impl NoraAgent {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn describe_roadmap(&self) -> String {
         let ctx = self.context.read().await;
         if ctx.active_projects.is_empty() {

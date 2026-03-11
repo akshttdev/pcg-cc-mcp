@@ -141,9 +141,9 @@ impl PremiereProBridge {
     pub async fn create_sequence(
         &self,
         name: &str,
-        width: u32,
-        height: u32,
-        frame_rate: f32,
+        _width: u32,
+        _height: u32,
+        _frame_rate: f32,
     ) -> EditronResult<()> {
         self.launch().await?;
 

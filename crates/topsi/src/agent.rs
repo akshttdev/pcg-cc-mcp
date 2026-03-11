@@ -15,7 +15,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::config::TopsiConfig;
-use crate::meeting::{MeetingManager, MeetingTranscriptEntry, MeetingNotes, ActionItem, WakeWordResult};
+use crate::meeting::{MeetingManager, MeetingTranscriptEntry, MeetingNotes};
 use crate::topology::graph::TopologyGraph;
 use crate::topology::voice::VoiceTopology;
 use crate::tools::get_tool_schemas;

@@ -11,7 +11,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use ts_rs::TS;
-use uuid::Uuid;
 
 /// In-memory state for an active meeting session
 #[derive(Debug, Clone)]

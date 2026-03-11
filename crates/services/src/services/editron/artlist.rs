@@ -18,7 +18,7 @@ use super::music::{
     LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
     MusicTrack,
 };
-use super::{EditronError, EditronResult};
+use super::EditronError;
 
 /// Artlist API endpoints
 const ARTLIST_TOKEN_URL: &str =
@@ -89,6 +89,7 @@ impl ArtlistConfig {
 
 /// OAuth token response from Artlist
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct TokenResponse {
     access_token: String,
     token_type: String,
@@ -141,6 +142,7 @@ pub struct ArtlistArtist {
 
 /// Search response wrapper
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct SearchResponse {
     tracks: Vec<ArtlistTrack>,
     #[serde(default)]

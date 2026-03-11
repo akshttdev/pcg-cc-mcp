@@ -222,7 +222,7 @@ impl RewardDistributor {
 
     /// Send batch to Aptos blockchain
     async fn send_batch_to_blockchain(&self, batch: &DistributionBatch) -> Result<()> {
-        let rewards_wallet = self
+        let _rewards_wallet = self
             .rewards_wallet
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Rewards wallet not loaded"))?;
