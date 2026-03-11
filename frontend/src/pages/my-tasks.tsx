@@ -92,10 +92,10 @@ export function MyTasksPage() {
       <div className="flex-1 overflow-auto p-6">
         {tasks.length === 0 ? (
           <Card className="border-dashed">
-            <CardContent className="py-12 text-center">
-              <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-500" />
-              <h3 className="text-lg font-medium mb-2">All caught up!</h3>
-              <p className="text-muted-foreground">
+            <CardContent className="py-8 text-center">
+              <CheckCircle2 className="h-8 w-8 mx-auto mb-3 text-green-500" />
+              <h3 className="text-base font-medium mb-1">All caught up!</h3>
+              <p className="text-sm text-muted-foreground">
                 You have no tasks assigned to you right now.
               </p>
             </CardContent>
