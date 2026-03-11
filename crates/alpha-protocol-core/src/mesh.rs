@@ -137,6 +137,7 @@ impl MeshNode {
         .map_err(|msg| anyhow::anyhow!("Gossipsub creation error: {}", msg))?;
 
         // Create mDNS behaviour for local discovery
+        #[allow(deprecated)]
         let mdns = mdns::tokio::Behaviour::new(
             mdns::Config::default(),
             local_peer_id,

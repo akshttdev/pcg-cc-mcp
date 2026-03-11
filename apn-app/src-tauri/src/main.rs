@@ -12,7 +12,7 @@ use alpha_protocol_core::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use sysinfo::System;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::{mpsc, RwLock};
 
 /// Node state managed by Tauri

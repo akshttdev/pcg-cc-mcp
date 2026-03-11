@@ -40,6 +40,7 @@ impl Default for RewardTrackerConfig {
 
 /// Peer state for reward calculation
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PeerState {
     node_id: String,
     wallet_address: String,

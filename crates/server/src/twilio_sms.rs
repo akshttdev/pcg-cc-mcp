@@ -31,6 +31,7 @@ const MAX_SMS_PER_CONTACT_PER_HOUR: u32 = 10;
 
 /// Twilio API response for message creation
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct TwilioMessageResponse {
     sid: String,
     status: Option<String>,
