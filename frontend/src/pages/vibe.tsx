@@ -453,12 +453,21 @@ export default function VibePage() {
   }
 
   return (
-    <div className="container mx-auto py-6 max-w-2xl">
-      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
-        <Coins className="h-6 w-6 text-yellow-500" />
-        Vibe Treasury
-      </h1>
-      {content}
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-3 px-6 py-4 border-b bg-background shrink-0">
+        <div className="rounded-lg bg-yellow-500/15 p-2">
+          <Coins className="h-5 w-5 text-yellow-500" />
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold">VIBE Treasury</h1>
+          <p className="text-sm text-muted-foreground">Token balances, deposits, and transaction history</p>
+        </div>
+      </div>
+      <div className="flex-1 overflow-auto">
+        <div className="container mx-auto py-6 max-w-4xl px-6">
+          {content}
+        </div>
+      </div>
     </div>
   );
 }

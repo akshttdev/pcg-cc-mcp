@@ -13,6 +13,7 @@ import { LoginPage } from '@/components/auth/LoginPage';
 import { SignupPage } from '@/pages/auth/SignupPage';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { AdminRoute } from '@/components/auth/AdminRoute';
+import { RoleRoute } from '@/components/auth/RoleRoute';
 import * as Sentry from '@sentry/react';
 import NiceModal from '@ebay/nice-modal-react';
 import { AuthLayout } from '@/layouts/AuthLayout';
@@ -234,27 +235,27 @@ function App() {
           {/* Organization - Intelligence sub-routes */}
           <Route
             path="/organizations/:orgId/intelligence"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/data-sources"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/artifacts"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/workflows"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/pulse"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/topology"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           {/* Organization - Members, Projects, Integrations */}
           <Route
@@ -296,48 +297,49 @@ function App() {
           <Route path="/nora" element={<AdminRoute><NoraPage /></AdminRoute>} />
           <Route path="/topsi" element={<ProtectedRoute><TopsiPage /></ProtectedRoute>} />
           <Route path="/global-tasks" element={<AdminRoute><GlobalTasksPage /></AdminRoute>} />
-          <Route path="/mission-control" element={<ProtectedRoute><MissionControlPage /></ProtectedRoute>} />
+          <Route path="/mission-control" element={<RoleRoute minRole="operator"><MissionControlPage /></RoleRoute>} />
           <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
           <Route path="/workflows/staging/:runId" element={<ProtectedRoute><StagingRedirect /></ProtectedRoute>} />
           <Route
             path="/social-command"
-            element={<ProtectedRoute><SocialPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="org_member"><SocialPage /></RoleRoute>}
           />
           <Route
             path="/projects/:projectId/social"
             element={<Navigate to="/social-command" replace />}
           />
+          {/* Management routes — require operator+ role */}
           <Route
             path="/crm"
-            element={<ProtectedRoute><CrmPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="operator"><CrmPage /></RoleRoute>}
           />
           <Route
             path="/people"
-            element={<ProtectedRoute><PeoplePage /></ProtectedRoute>}
+            element={<RoleRoute minRole="operator"><PeoplePage /></RoleRoute>}
           />
           <Route
             path="/people/:personId"
-            element={<ProtectedRoute><PersonDetailPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="operator"><PersonDetailPage /></RoleRoute>}
           />
           <Route
             path="/proposals"
-            element={<ProtectedRoute><ProposalsPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="operator"><ProposalsPage /></RoleRoute>}
           />
           <Route
             path="/companies"
-            element={<ProtectedRoute><CompaniesPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="operator"><CompaniesPage /></RoleRoute>}
           />
           <Route
             path="/companies/:companyId"
-            element={<ProtectedRoute><CompanyProfilePage /></ProtectedRoute>}
+            element={<RoleRoute minRole="operator"><CompanyProfilePage /></RoleRoute>}
           />
           <Route
             path="/command-center"
-            element={<ProtectedRoute><CommandCenterPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="operator"><CommandCenterPage /></RoleRoute>}
           />
           <Route
             path="/invoices"
-            element={<ProtectedRoute><InvoicesPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="operator"><InvoicesPage /></RoleRoute>}
           />
           <Route
             path="/projects/:projectId/deliverables"
@@ -358,16 +360,16 @@ function App() {
           />
           <Route
             path="/virtual-environment"
-            element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}
+            element={<RoleRoute minRole="org_member"><VirtualEnvironmentPage /></RoleRoute>}
           />
           <Route path="/mesh" element={<Navigate to="/settings/network" replace />} />
-          <Route path="/pulse" element={<ProtectedRoute><PulsePage /></ProtectedRoute>} />
+          <Route path="/pulse" element={<RoleRoute minRole="operator"><PulsePage /></RoleRoute>} />
           <Route
             path="/projects/:projectId/pulse"
             element={<ProtectedRoute><PulsePage /></ProtectedRoute>}
           />
           <Route path="/ai-usage" element={<AdminRoute><AIUsagePage /></AdminRoute>} />
-          <Route path="/vibe" element={<ProtectedRoute><VibePage /></ProtectedRoute>} />
+          <Route path="/vibe" element={<RoleRoute minRole="org_member"><VibePage /></RoleRoute>} />
           <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
           <Route path="/call-intake" element={<AdminRoute><CallIntakePage /></AdminRoute>} />
           <Route path="/business-reports" element={<AdminRoute><BusinessReportsPage /></AdminRoute>} />

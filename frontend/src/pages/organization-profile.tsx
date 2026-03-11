@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type React from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -649,7 +649,6 @@ function OverviewTab({
   totalDealValue,
   totalDeals,
   contactCount,
-  onSwitchTab,
 }: {
   orgId: string;
   orgName: string;
@@ -660,7 +659,6 @@ function OverviewTab({
   totalDealValue: number;
   totalDeals: number;
   contactCount: number;
-  onSwitchTab: (tab: string) => void;
 }) {
   // Aggregate tasks across all projects
   const taskQueries = useQueries({
@@ -749,29 +747,6 @@ function OverviewTab({
         </Card>
       </div>
 
-      {/* Quick links */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        {[
-          { label: 'Pipelines', icon: Target, tab: 'pipelines', color: 'text-amber-500' },
-          { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
-          { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
-          { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
-          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
-          { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
-          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
-        ].map(({ label, icon: Icon, tab, color }) => (
-          <button
-            key={tab}
-            onClick={() => onSwitchTab(tab)}
-            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group"
-          >
-            <Icon className={`h-5 w-5 ${color} group-hover:scale-110 transition-transform`} />
-            <span className="text-sm font-medium">{label}</span>
-            <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
-        ))}
-      </div>
-
       {/* Recent activity - aggregated across all projects
          TODO: Unify activity data sources. Currently this uses crmActivitiesApi.listActivities()
          which only returns CRM-specific activity (deal/contact/pipeline events). The notification
@@ -794,6 +769,7 @@ function OverviewTab({
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No recent activity</p>
+              <p className="text-xs mt-1">Activity from tasks, deals, and contacts will appear here.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -3186,6 +3162,7 @@ function KnowledgeTab({
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>No knowledge sources indexed yet</p>
+          <p className="text-xs mt-1">Connect a data source in one of your projects to start building intelligence.</p>
         </div>
       ) : aggregated.sourcesByProject.length > 0 ? (
         <div className="space-y-4">
@@ -3407,7 +3384,18 @@ function PulseSection({ projectEntries }: { projectEntries: { id: string; name: 
 
 function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const viewFromUrl = searchParams.get('view') || 'overview';
+  const location = useLocation();
+
+  // Derive view from pathname (sidebar links) or query param (tab clicks)
+  const pathSegment = location.pathname.match(/\/intelligence\/([^/]+)/)?.[1];
+  const PATH_TO_VIEW: Record<string, string> = {
+    'data-sources': 'datasources',
+    'artifacts': 'artifacts',
+    'workflows': 'workflows',
+    'pulse': 'pulse',
+    'topology': 'topology',
+  };
+  const viewFromUrl = searchParams.get('view') || (pathSegment ? PATH_TO_VIEW[pathSegment] : null) || 'overview';
 
   const views = [
     { key: 'overview',    label: 'Overview',      icon: Brain },
@@ -5603,7 +5591,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     params.set('tab', tab);
     if (tab !== 'pipelines') params.delete('pipeline');
     if (tab !== 'projects') params.delete('client');
-    if (tab !== 'knowledge') params.delete('view');
+    if (tab !== 'intelligence') params.delete('view');
     setSearchParams(params, { replace: true });
   };
 
@@ -5962,7 +5950,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <Share2 className="h-4 w-4 mr-2" />
                 Social
               </TabsTrigger>
-              <TabsTrigger value="knowledge">
+              <TabsTrigger value="intelligence">
                 <Brain className="h-4 w-4 mr-2" />
                 Intelligence
               </TabsTrigger>
@@ -5995,7 +5983,6 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
                 contactCount={contacts.length}
-                onSwitchTab={setTab}
               />
             </TabsContent>
 
@@ -6020,7 +6007,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
               <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} orgId={orgId} />
             </TabsContent>
 
-            <TabsContent value="knowledge">
+            <TabsContent value="intelligence">
               <IntelligenceTab
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                 orgId={orgId}

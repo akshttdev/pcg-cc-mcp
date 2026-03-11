@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { personsApi, intelligenceApi, reportsApi, type PersonRecord, type ResearchPass, type BusinessReportRecord } from '@/lib/api';
+import { personsApi, intelligenceApi, reportsApi, type PersonRecord } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  ArrowLeft, User, Building2, Mail, Phone, Globe, Linkedin,
+  ArrowLeft, User, Building2, Mail, Phone, Globe,
   Layers, TrendingUp, FileText, ChevronRight, Loader2,
-  Radio, Clock, CheckCircle, ExternalLink, RefreshCw, Zap,
+  Zap,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

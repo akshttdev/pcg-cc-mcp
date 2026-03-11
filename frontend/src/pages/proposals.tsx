@@ -286,7 +286,7 @@ export function ProposalsPage() {
             {totalSigned > 0 && (
               <span className="text-green-600 font-medium">{fmtVibe(totalSigned)} signed</span>
             )}
-            {totalSigned === 0 && 'Pipeline overview — drag cards to advance stages'}
+            {totalSigned === 0 && (proposals.length > 0 ? 'Drag cards to advance stages' : 'Create proposals to build your pipeline')}
           </p>
         </div>
         <Button size="sm" onClick={() => setShowCreateModal(true)}>
@@ -305,6 +305,20 @@ export function ProposalsPage() {
               <Skeleton className="h-16 w-full rounded-lg" />
             </div>
           ))}
+        </div>
+      ) : proposals.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-16 text-center">
+          <div className="rounded-full bg-muted p-4 mb-4">
+            <FileText className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-base font-medium mb-1">No proposals yet</h3>
+          <p className="text-sm text-muted-foreground mb-4 max-w-xs">
+            Create your first proposal to start tracking your pipeline.
+          </p>
+          <Button size="sm" onClick={() => setShowCreateModal(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            New Proposal
+          </Button>
         </div>
       ) : (
         <ScrollArea className="flex-1">

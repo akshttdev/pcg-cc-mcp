@@ -6,9 +6,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  PhoneIncoming, RefreshCw, Play, Eye, FileText,
+  PhoneIncoming, RefreshCw, Play, FileText,
   CheckCircle, XCircle, Clock, Loader2, Upload,
-  ChevronDown, ChevronRight, Plus, User, Building2,
+  ChevronDown, ChevronRight, Plus, User,
 } from 'lucide-react';
 
 interface CallIntakeItem {
@@ -32,11 +32,7 @@ interface CallIntakeItem {
   error: string | null;
 }
 
-interface Person {
-  id: string;
-  full_name: string;
-  company_name: string | null;
-}
+
 
 const STATUS_COLOR: Record<string, string> = {
   pending: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
@@ -259,9 +255,14 @@ export default function CallIntakePage() {
             </div>
           ) : items.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
-              <PhoneIncoming className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>No intake items yet</p>
-              <p className="text-sm mt-1">Add call transcripts or email summaries above</p>
+              <div className="rounded-full bg-gray-800 p-4 mb-4 inline-flex">
+                <PhoneIncoming className="w-8 h-8 text-gray-500" />
+              </div>
+              <h3 className="text-base font-medium text-gray-300 mb-1">No intake items yet</h3>
+              <p className="text-sm">Add call transcripts or email summaries to start building CRM intelligence.</p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={() => setShowUpload(true)}>
+                <Plus className="w-4 h-4 mr-1" /> Add Intake
+              </Button>
             </div>
           ) : (
             items.map(item => {

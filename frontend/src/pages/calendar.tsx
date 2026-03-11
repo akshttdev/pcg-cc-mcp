@@ -461,16 +461,20 @@ export default function CalendarPage() {
       {/* Main panel */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-4 py-3 border-b shrink-0 gap-3">
+        <div className="flex flex-wrap items-center justify-between px-4 py-2 border-b shrink-0 gap-2">
           <div className="flex items-center gap-2">
+            <div className="rounded-lg bg-primary p-1.5 mr-1 shrink-0">
+              <CalendarDays className="h-4 w-4 text-primary-foreground" />
+            </div>
+            <h1 className="text-sm font-semibold mr-2 hidden sm:block">Calendar</h1>
             <button onClick={prev} className="p-1 rounded hover:bg-muted">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-sm font-semibold min-w-48 text-center">{headerLabel}</span>
+            <span className="text-sm font-semibold min-w-0 sm:min-w-48 text-center truncate">{headerLabel}</span>
             <button onClick={next} className="p-1 rounded hover:bg-muted">
               <ChevronRight className="h-4 w-4" />
             </button>
-            <Button variant="outline" size="sm" className="ml-2 h-7 text-xs" onClick={() => setAnchor(new Date())}>
+            <Button variant="outline" size="sm" className="ml-1 h-7 text-xs shrink-0" onClick={() => setAnchor(new Date())}>
               Today
             </Button>
           </div>

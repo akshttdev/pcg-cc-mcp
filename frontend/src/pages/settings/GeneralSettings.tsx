@@ -1,6 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cloneDeep, merge, isEqual } from 'lodash';
+
+/** Deep equality check (JSON-safe objects only) */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    if (a.length !== (b as unknown[]).length) return false;
+    return a.every((v, i) => deepEqual(v, (b as unknown[])[i]));
+  }
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(aObj), ...Object.keys(bObj)]);
+  for (const key of keys) {
+    if (!deepEqual(aObj[key], bObj[key])) return false;
+  }
+  return true;
+}
+
 import {
   Card,
   CardContent,
@@ -61,7 +81,7 @@ export function GeneralSettings() {
   } = useUserSystem();
 
   // Draft state management
-  const [draft, setDraft] = useState(() => (config ? cloneDeep(config) : null));
+  const [draft, setDraft] = useState(() => (config ? structuredClone(config) : null));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,24 +92,24 @@ export function GeneralSettings() {
   useEffect(() => {
     if (!config) return;
     if (!dirty) {
-      setDraft(cloneDeep(config));
+      setDraft(structuredClone(config));
     }
   }, [config, dirty]);
 
   // Check for unsaved changes
   const hasUnsavedChanges = useMemo(() => {
     if (!draft || !config) return false;
-    return !isEqual(draft, config);
+    return !deepEqual(draft, config);
   }, [draft, config]);
 
-  // Generic draft update helper
+  // Generic draft update helper — uses shallow spread, so each call must pass
+  // complete top-level values (e.g. { executor_profile: { ...fullProfile } }).
   const updateDraft = useCallback(
     (patch: Partial<typeof config>) => {
-      setDraft((prev: typeof config) => {
+      setDraft((prev) => {
         if (!prev) return prev;
-        const next = merge({}, prev, patch);
-        // Mark dirty if changed
-        if (!isEqual(next, config)) {
+        const next = { ...prev, ...patch };
+        if (!deepEqual(next, config)) {
           setDirty(true);
         }
         return next;
@@ -142,7 +162,7 @@ export function GeneralSettings() {
 
   const handleDiscard = () => {
     if (!config) return;
-    setDraft(cloneDeep(config));
+    setDraft(structuredClone(config));
     setDirty(false);
   };
 
