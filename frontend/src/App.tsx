@@ -81,6 +81,11 @@ const KeysSettings      = lazy(() => import('@/pages/settings/KeysSettings').the
 const NetworkSettings   = lazy(() => import('@/pages/settings/NetworkSettings').then(m => ({ default: m.NetworkSettings })));
 const BrandIntakePage   = lazy(() => import('@/pages/brand-intake').then(m => ({ default: m.BrandIntakePage })));
 const BrandGuidePage    = lazy(() => import('@/pages/brand-guide').then(m => ({ default: m.BrandGuidePage })));
+const CallIntakePage      = lazy(() => import('@/pages/call-intake'));
+const BusinessReportsPage = lazy(() => import('@/pages/business-reports'));
+const ReportDetailPage    = lazy(() => import('@/pages/business-reports').then(m => ({ default: m.ReportDetail })));
+const PersonProfilePage   = lazy(() => import('@/pages/person-profile').then(m => ({ default: m.PersonProfilePage })));
+const LeadsPage           = lazy(() => import('@/pages/leads').then(m => ({ default: m.LeadsPage })));
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -364,6 +369,11 @@ function App() {
           <Route path="/ai-usage" element={<AdminRoute><AIUsagePage /></AdminRoute>} />
           <Route path="/vibe" element={<ProtectedRoute><VibePage /></ProtectedRoute>} />
           <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
+          <Route path="/call-intake" element={<AdminRoute><CallIntakePage /></AdminRoute>} />
+          <Route path="/business-reports" element={<AdminRoute><BusinessReportsPage /></AdminRoute>} />
+          <Route path="/business-reports/:id" element={<AdminRoute><ReportDetailPage /></AdminRoute>} />
+          <Route path="/persons/:personId" element={<ProtectedRoute><PersonProfilePage /></ProtectedRoute>} />
+          <Route path="/leads" element={<AdminRoute><LeadsPage /></AdminRoute>} />
           <Route
             path="/oauth/:provider/callback"
             element={<ProtectedRoute><OAuthCallbackPage /></ProtectedRoute>}

@@ -141,6 +141,8 @@ import {
   DATA_TYPE_OPTIONS,
   type EmailAccountRecord,
   type OrgBrandProfile,
+  companiesApi,
+  type CompanyRecord,
 } from '@/lib/api';
 import { useUserSystem } from '@/components/config-provider';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
@@ -829,6 +831,8 @@ function OverviewTab({
   );
 }
 
+// ── Leads Pipeline Panel ──────────────────────────────────────────────────────
+
 // ── Pipelines Tab ─────────────────────────────────────────────────────────────
 
 function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeline?: string }) {
@@ -871,9 +875,10 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
   );
 }
 
-// ── Contacts Tab ──────────────────────────────────────────────────────────────
+// ── Contacts Tab (with Companies sub-section) ─────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
+  const [crmView, setCrmView] = useState<'contacts' | 'companies'>('contacts');
   const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
@@ -885,13 +890,19 @@ function ContactsTab({ orgId }: { orgId: string }) {
     staleTime: 60_000,
   });
 
-  // Build a lookup map: person_id → context
+  const { data: companies = [], isLoading: companiesLoading } = useQuery<CompanyRecord[]>({
+    queryKey: ['org-companies', orgId],
+    queryFn: () => companiesApi.list({ created_by_org_id: orgId, limit: 500 }),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
   const contextMap = useMemo(
     () => Object.fromEntries(personContacts.map(pc => [pc.person_id, pc.context])),
     [personContacts]
   );
 
-  const filtered = useMemo(() => {
+  const filteredContacts = useMemo(() => {
     let result = contacts;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -908,46 +919,142 @@ function ContactsTab({ orgId }: { orgId: string }) {
     return result;
   }, [contacts, searchQuery, stageFilter]);
 
+  const filteredCompanies = useMemo(() => {
+    if (!searchQuery) return companies;
+    const q = searchQuery.toLowerCase();
+    return companies.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.industry && c.industry.toLowerCase().includes(q)) ||
+      (c.headquarters && c.headquarters.toLowerCase().includes(q))
+    );
+  }, [companies, searchQuery]);
+
   const stageInfo = LIFECYCLE_STAGE_INFO;
 
   return (
     <div className="space-y-4">
+      {/* Sub-tab toggle */}
+      <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+        <button
+          onClick={() => setCrmView('contacts')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+            crmView === 'contacts' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Contact2 className="h-3.5 w-3.5" />
+          Contacts
+          <span className="text-xs text-muted-foreground">({contacts.length})</span>
+        </button>
+        <button
+          onClick={() => setCrmView('companies')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+            crmView === 'companies' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Building2 className="h-3.5 w-3.5" />
+          Companies
+          <span className="text-xs text-muted-foreground">({companies.length})</span>
+        </button>
+      </div>
+
+      {/* Search + filter bar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search contacts..."
+            placeholder={crmView === 'contacts' ? 'Search contacts...' : 'Search companies...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </div>
-        <select
-          value={stageFilter}
-          onChange={(e) => setStageFilter(e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-        >
-          <option value="all">All Stages</option>
-          {Object.entries(stageInfo).map(([key, info]) => (
-            <option key={key} value={key}>{info.label}</option>
-          ))}
-        </select>
-        {isLoading && (
-          <span className="text-xs text-muted-foreground">Loading contacts…</span>
+        {crmView === 'contacts' && (
+          <select
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="all">All Stages</option>
+            {Object.entries(stageInfo).map(([key, info]) => (
+              <option key={key} value={key}>{info.label}</option>
+            ))}
+          </select>
+        )}
+        {(isLoading || companiesLoading) && (
+          <span className="text-xs text-muted-foreground">Loading…</span>
         )}
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
-          ))}
-        </div>
+      {/* Contacts view */}
+      {crmView === 'contacts' && (
+        filteredContacts.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredContacts.map((contact) => (
+              <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Companies view */}
+      {crmView === 'companies' && (
+        filteredCompanies.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>{companiesLoading ? 'Loading companies...' : 'No companies found'}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredCompanies.map(company => (
+              <Link
+                key={company.id}
+                to={`/companies/${company.id}`}
+                className="block p-4 rounded-lg border bg-card hover:border-primary/40 hover:shadow-sm transition-all group"
+              >
+                <div className="flex items-start gap-3">
+                  {company.logo_url ? (
+                    <img src={company.logo_url} alt="" className="w-9 h-9 rounded object-cover shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded bg-muted flex items-center justify-center shrink-0">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">{company.name}</p>
+                    {company.industry && (
+                      <p className="text-xs text-muted-foreground truncate">{company.industry}</p>
+                    )}
+                    {company.headquarters && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <MapPin className="h-3 w-3 shrink-0" />{company.headquarters}
+                      </p>
+                    )}
+                  </div>
+                  {company.intelligence_status && company.intelligence_status !== 'idle' && (
+                    <span className={`w-2 h-2 rounded-full shrink-0 mt-1 ${
+                      company.intelligence_status === 'done' ? 'bg-green-500' :
+                      company.intelligence_status === 'running' ? 'bg-blue-500 animate-pulse' :
+                      'bg-yellow-500'
+                    }`} />
+                  )}
+                </div>
+                {company.intelligence_summary && (
+                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{company.intelligence_summary}</p>
+                )}
+                {company.website && (
+                  <p className="text-xs text-primary/70 mt-1 truncate flex items-center gap-1">
+                    <Globe className="h-3 w-3 shrink-0" />{company.website.replace(/^https?:\/\//, '')}
+                  </p>
+                )}
+              </Link>
+            ))}
+          </div>
+        )
       )}
     </div>
   );
@@ -961,19 +1068,40 @@ const CONTEXT_COLORS: Record<string, string> = {
   contact: 'bg-gray-100 text-gray-600',
 };
 
+const RESEARCH_DEPTH_COLOR: Record<string, string> = {
+  shallow:  'bg-gray-100 text-gray-600',
+  moderate: 'bg-yellow-100 text-yellow-700',
+  deep:     'bg-green-100 text-green-700',
+};
+
+const INTEL_STATUS_DOT: Record<string, string> = {
+  queued:  'bg-yellow-400',
+  running: 'bg-blue-400 animate-pulse',
+  done:    'bg-green-400',
+  failed:  'bg-red-400',
+};
+
 function ContactCard({ contact, context }: { contact: OrgContact; context?: string }) {
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
+  const statusDot = contact.intelligence_status && contact.intelligence_status !== 'idle'
+    ? INTEL_STATUS_DOT[contact.intelligence_status]
+    : null;
 
   return (
     <Link
-      to={`/people/${contact.id}`}
+      to={`/persons/${contact.id}`}
       className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate group-hover:text-foreground">
-            {contact.full_name || 'Unnamed'}
-          </p>
+          <div className="flex items-center gap-1.5">
+            {statusDot && (
+              <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${statusDot}`} />
+            )}
+            <p className="text-sm font-medium truncate group-hover:text-foreground">
+              {contact.full_name || 'Unnamed'}
+            </p>
+          </div>
           {contact.job_title && (
             <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.job_title}</p>
           )}
@@ -990,7 +1118,7 @@ function ContactCard({ contact, context }: { contact: OrgContact; context?: stri
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2 mt-3">
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
         {stageInfo && (
           <Badge
             variant="secondary"
@@ -1002,6 +1130,16 @@ function ContactCard({ contact, context }: { contact: OrgContact; context?: stri
         )}
         {contact.person_type && (
           <Badge variant="outline" className="text-[10px] capitalize">{contact.person_type}</Badge>
+        )}
+        {contact.research_depth && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium capitalize ${RESEARCH_DEPTH_COLOR[contact.research_depth] ?? ''}`}>
+            {contact.research_depth}
+          </span>
+        )}
+        {(contact.research_pass_count ?? 0) > 0 && (
+          <span className="text-[10px] text-muted-foreground">
+            {contact.research_pass_count} pass{contact.research_pass_count === 1 ? '' : 'es'}
+          </span>
         )}
         {context && context !== 'contact' && (
           <span className={`text-[10px] px-1.5 py-0.5 rounded capitalize font-medium ${CONTEXT_COLORS[context] ?? CONTEXT_COLORS.contact}`}>

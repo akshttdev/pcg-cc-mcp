@@ -20,9 +20,12 @@ import {
   RotateCw,
   Bot,
   User,
+  Clapperboard,
 } from 'lucide-react';
 import type { ExecutionArtifact, ArtifactType, ArtifactPhase } from 'shared/types';
 import { artifactContentApi } from '@/lib/api';
+
+const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];
 
 interface ArtifactPreviewCardProps {
   artifact: ExecutionArtifact;
@@ -173,17 +176,42 @@ function VideoPreview({
   title,
   open,
   onClose,
+  artifactId,
 }: {
   src: string;
   title: string;
   open: boolean;
   onClose: () => void;
+  artifactId?: string;
 }) {
+  const openReview = async () => {
+    if (!artifactId) return;
+    try {
+      const res = await fetch(`/api/artifacts/${artifactId}/review-link`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data?.data?.token) {
+        window.open(`${window.location.origin}/review/${data.data.token}`, '_blank');
+      }
+    } catch { /* ignore */ }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-4xl max-h-[80vh] p-0 overflow-hidden">
-        <DialogHeader className="p-4 border-b">
-          <DialogTitle>{title}</DialogTitle>
+        <DialogHeader className="p-4 border-b flex flex-row items-center justify-between">
+          <DialogTitle className="truncate flex-1">{title}</DialogTitle>
+          {artifactId && (
+            <button
+              onClick={openReview}
+              className="flex items-center gap-1.5 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-2.5 py-1 text-xs font-medium transition-colors ml-3 shrink-0"
+            >
+              <Clapperboard className="h-3.5 w-3.5" />
+              Review
+            </button>
+          )}
         </DialogHeader>
         <div className="aspect-video bg-black">
           <video
@@ -341,6 +369,30 @@ export function ArtifactPreviewCard({
           </span>
         </div>
 
+        {/* Review button for video edit types */}
+        {VIDEO_EDIT_TYPES.includes(artifact.artifact_type) && (
+          <button
+            title="Open Review"
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                const res = await fetch(`/api/artifacts/${artifact.id}/review-link`, {
+                  method: 'POST',
+                  credentials: 'include',
+                });
+                const data = await res.json();
+                if (data?.data?.token) {
+                  window.open(`${window.location.origin}/review/${data.data.token}`, '_blank');
+                }
+              } catch { /* ignore */ }
+            }}
+            className="absolute top-2 left-2 flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <Clapperboard className="h-2.5 w-2.5" />
+            Review
+          </button>
+        )}
+
         {/* Download button on hover */}
         {onDownload && (artifact.file_path || artifact.content) && (
           <Button
@@ -382,6 +434,7 @@ export function ArtifactPreviewCard({
           title={artifact.title}
           open={lightboxOpen}
           onClose={() => setLightboxOpen(false)}
+          artifactId={VIDEO_EDIT_TYPES.includes(artifact.artifact_type) ? artifact.id : undefined}
         />
       )}
     </>

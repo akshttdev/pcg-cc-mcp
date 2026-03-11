@@ -28,12 +28,16 @@ import {
   Video,
   Code,
   Play,
+  Clapperboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AgentFlowBadges } from './AgentFlowBadges';
 import { ExecutionSummaryInline } from './ExecutionSummaryInline';
 import type { TaskWithAttemptStatus, ExecutionArtifact, ArtifactType, AgentFlowEvent } from 'shared/types';
 import type { AgentFlow, UserListItem } from '@/lib/api';
+
+
+const VIDEO_EDIT_TYPES: ArtifactType[] = ['video_edit_session', 'render_deliverable'];
 
 type Task = TaskWithAttemptStatus;
 
@@ -188,7 +192,8 @@ function ArtifactPreview({
         </div>
       );
 
-    case 'media':
+    case 'media': {
+      const isVideoEdit = VIDEO_EDIT_TYPES.includes(artifact.artifact_type);
       return (
         <div className="relative w-full h-20 bg-gray-900 rounded-md overflow-hidden flex items-center justify-center">
           {artifact.file_path ? (
@@ -209,8 +214,31 @@ function ArtifactPreview({
               </span>
             )}
           </div>
+          {isVideoEdit && (
+            <button
+              title="Open Review"
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  const res = await fetch(`/api/artifacts/${artifact.id}/review-link`, {
+                    method: 'POST',
+                    credentials: 'include',
+                  });
+                  const data = await res.json();
+                  if (data?.data?.token) {
+                    window.open(`${window.location.origin}/review/${data.data.token}`, '_blank');
+                  }
+                } catch { /* ignore */ }
+              }}
+              className="absolute top-1.5 right-1.5 flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-white rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors"
+            >
+              <Clapperboard className="h-2.5 w-2.5" />
+              Review
+            </button>
+          )}
         </div>
       );
+    }
 
     default:
       return null;

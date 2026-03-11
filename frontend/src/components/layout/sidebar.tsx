@@ -56,6 +56,8 @@ import {
   Cpu,
   Inbox,
   BarChart2,
+  PhoneIncoming,
+  ClipboardList,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -151,6 +153,8 @@ const MANAGEMENT_NAV_ITEMS: NavItem[] = [
   { label: 'All Companies', icon: Building2, to: '/companies', id: 'companies', adminOnly: true },
   { label: 'Proposals', icon: FileText, to: '/proposals', id: 'proposals', adminOnly: true },
   { label: 'Invoices', icon: Receipt, to: '/invoices', id: 'invoices', adminOnly: true },
+  { label: 'Call Intake', icon: PhoneIncoming, to: '/call-intake', id: 'call-intake', adminOnly: true },
+  { label: 'Reports', icon: ClipboardList, to: '/business-reports', id: 'business-reports', adminOnly: true },
   { label: 'Command Center', icon: LayoutDashboard, to: '/command-center', id: 'command-center', adminOnly: true },
   { label: 'Discord Voice', icon: Headphones, to: '/discord', id: 'discord', adminOnly: true },
   { label: 'AI Usage', icon: Cpu, to: '/ai-usage', id: 'ai-usage', adminOnly: true },
