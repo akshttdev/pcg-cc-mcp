@@ -116,6 +116,35 @@ shared/types.ts    # Auto-generated TypeScript types from Rust
 - **Frontend tests**: TypeScript compilation and linting only
 - **CI/CD**: GitHub Actions workflow in `.github/workflows/test.yml`
 
+### Flox Development Environment
+
+This project uses [Flox](https://flox.dev) to manage the development environment. The flox manifest (`.flox/env/manifest.toml`) defines all toolchain dependencies, environment variables, and activation hooks.
+
+**Always prefix build/run commands with `flox activate` or run inside a flox shell:**
+```bash
+flox activate                          # Enter the flox environment
+# OR run a one-off command:
+flox activate -- cargo check           # Run cargo check inside flox
+flox activate -- cargo sqlx prepare --workspace  # Regenerate SQLx cache
+```
+
+**What flox provides:**
+- Rust toolchain (nightly, via rustup), Node.js, pnpm, cargo-watch, sqlx-cli, cmake, libopus, pkg-config, sccache, lld
+- Environment variables: `SQLX_OFFLINE=true`, `CMAKE_POLICY_VERSION_MINIMUM=3.5`, `RUSTC_WRAPPER=sccache`
+- Auto-seeds `dev_assets/db.sqlite` from `dev_assets_seed/` on first activation
+- Adds `target/release` and cargo bin to PATH
+
+**When to update `.flox/env/manifest.toml`:**
+- Adding a new system dependency (e.g., a C library)
+- Changing environment variables that should persist across machines
+- Modifying the Rust toolchain version
+
+**After changing Rust DB models/queries:**
+```bash
+DATABASE_URL="sqlite:dev_assets/db.sqlite" cargo sqlx prepare --workspace
+```
+Then commit the updated `.sqlx/` directory.
+
 ### Environment Variables
 
 Build-time (set when building):
