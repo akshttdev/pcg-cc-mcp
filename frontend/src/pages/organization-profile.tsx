@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type React from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -3246,7 +3246,18 @@ function PulseSection({ projectEntries }: { projectEntries: { id: string; name: 
 
 function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const viewFromUrl = searchParams.get('view') || 'overview';
+  const location = useLocation();
+
+  // Derive view from pathname (sidebar links) or query param (tab clicks)
+  const pathSegment = location.pathname.match(/\/intelligence\/([^/]+)/)?.[1];
+  const PATH_TO_VIEW: Record<string, string> = {
+    'data-sources': 'datasources',
+    'artifacts': 'artifacts',
+    'workflows': 'workflows',
+    'pulse': 'pulse',
+    'topology': 'topology',
+  };
+  const viewFromUrl = searchParams.get('view') || (pathSegment ? PATH_TO_VIEW[pathSegment] : null) || 'overview';
 
   const views = [
     { key: 'overview',    label: 'Overview',      icon: Brain },
