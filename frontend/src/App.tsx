@@ -55,6 +55,7 @@ const CompanyProfilePage    = lazy(() => import('@/pages/company-profile').then(
 const CommandCenterPage     = lazy(() => import('@/pages/command-center').then(m => ({ default: m.CommandCenterPage })));
 const InvoicesPage          = lazy(() => import('@/pages/invoices').then(m => ({ default: m.InvoicesPage })));
 const ProjectDeliverablesPage = lazy(() => import('@/pages/project-deliverables').then(m => ({ default: m.ProjectDeliverablesPage })));
+const OrgDeliverablesPage = lazy(() => import('@/pages/org-deliverables').then(m => ({ default: m.OrgDeliverablesPage })));
 const DataSourcesPage      = lazy(() => import('@/pages/data-sources'));
 const DataSourceDetailPage = lazy(() => import('@/pages/data-source-detail').then(m => ({ default: m.DataSourceDetailPage })));
 const DiscordPage             = lazy(() => import('@/pages/discord').then(m => ({ default: m.DiscordPage })));
@@ -210,7 +211,7 @@ function App() {
           />
           <Route
             path="/organizations/:orgId/crm/companies"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="companies" /></ProtectedRoute>}
+            element={<ProtectedRoute><CompaniesPage /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/crm/pipeline"
@@ -218,7 +219,7 @@ function App() {
           />
           <Route
             path="/organizations/:orgId/crm/deliverables"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="deliverables" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrgDeliverablesPage /></ProtectedRoute>}
           />
           {/* Organization - Social */}
           <Route
