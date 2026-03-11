@@ -770,7 +770,15 @@ function OverviewTab({
         ))}
       </div>
 
-      {/* Recent activity - aggregated across all projects */}
+      {/* Recent activity - aggregated across all projects
+         TODO: Unify activity data sources. Currently this uses crmActivitiesApi.listActivities()
+         which only returns CRM-specific activity (deal/contact/pipeline events). The notification
+         center (NotificationCenter.tsx) uses GET /api/notifications which returns task-level
+         ActivityLog entries. To show a complete picture here, we should:
+         1. Create a unified server endpoint that merges both CRM activities and task ActivityLog
+         2. Or query both APIs client-side and merge/sort by timestamp
+         3. Consider adding deal creation/update events to the ActivityLog table on the server
+         Related: NotificationCenter.tsx, crates/server/src/routes/notifications.rs */}
       <Card className="bg-card/80 backdrop-blur-sm border-border/50">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
