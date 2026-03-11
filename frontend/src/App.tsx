@@ -230,27 +230,27 @@ function App() {
           {/* Organization - Intelligence sub-routes */}
           <Route
             path="/organizations/:orgId/intelligence"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/data-sources"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/artifacts"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/workflows"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/pulse"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           <Route
             path="/organizations/:orgId/intelligence/topology"
-            element={<ProtectedRoute><OrganizationProfilePage defaultTab="knowledge" /></ProtectedRoute>}
+            element={<ProtectedRoute><OrganizationProfilePage defaultTab="intelligence" /></ProtectedRoute>}
           />
           {/* Organization - Members, Projects, Integrations */}
           <Route
