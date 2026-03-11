@@ -73,11 +73,13 @@ struct ZohoTokenResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ZohoSendResponse {
     status: ZohoStatus,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ZohoStatus {
     #[serde(rename = "httpStatusCode")]
     http_status_code: u16,

@@ -769,7 +769,7 @@ impl EditAssemblyEngine {
     }
 
     /// Calculate speed adjustment
-    fn calculate_speed(&self, footage: &FootageClip, target_duration: f64, source_duration: f64) -> f32 {
+    fn calculate_speed(&self, _footage: &FootageClip, target_duration: f64, source_duration: f64) -> f32 {
         if source_duration <= 0.0 || target_duration <= 0.0 {
             return 1.0;
         }

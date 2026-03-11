@@ -83,6 +83,7 @@ impl SoundstripeConfig {
 
 /// Top-level JSON:API response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct JsonApiResponse {
     #[serde(default)]
     data: Vec<SongData>,
@@ -102,6 +103,7 @@ struct JsonApiSingleResponse {
 
 /// Song data in JSON:API format
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct SongData {
     id: String,
     #[serde(rename = "type")]
@@ -113,6 +115,7 @@ struct SongData {
 
 /// Song attributes
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct SongAttributes {
     #[serde(default)]
     title: String,
@@ -152,6 +155,7 @@ struct RelationshipData {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ResourceIdentifier {
     id: String,
     #[serde(rename = "type")]
@@ -160,6 +164,7 @@ struct ResourceIdentifier {
 
 /// Included resources (audio_files, tags, etc.)
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct IncludedResource {
     id: String,
     #[serde(rename = "type")]
@@ -170,6 +175,7 @@ struct IncludedResource {
 
 /// Pagination metadata
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct JsonApiMeta {
     #[serde(default)]
     total: Option<u32>,

@@ -146,6 +146,7 @@ struct ApiResponse<T> {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
 struct DataSource {
     id: String,
     title: String,
@@ -341,7 +342,7 @@ async fn push_file(client: &Client, cfg: &SyncConfig, path: &Path, state: &mut S
 
     // Determine org context from path
     let relative = path.strip_prefix(&cfg.sync_folder).unwrap_or(path);
-    let parts: Vec<&str> = relative.components()
+    let _parts: Vec<&str> = relative.components()
         .filter_map(|c| c.as_os_str().to_str())
         .collect();
 

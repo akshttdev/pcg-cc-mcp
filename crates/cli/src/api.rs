@@ -79,6 +79,7 @@ impl ApiClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_project(&self, id: Uuid) -> Result<Option<Project>> {
         let resp = self
             .client
@@ -102,7 +103,7 @@ impl ApiClient {
             .find(|p| p.name.to_lowercase() == name.to_lowercase()))
     }
 
-    pub async fn create_project(&self, name: &str, git_repo_path: &str, description: Option<&str>) -> Result<Project> {
+    pub async fn create_project(&self, name: &str, git_repo_path: &str, _description: Option<&str>) -> Result<Project> {
         let request = serde_json::json!({
             "name": name,
             "gitRepoPath": git_repo_path,
@@ -273,6 +274,7 @@ impl ApiClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_active_session(&self, project_id: Uuid) -> Result<Option<DevSession>> {
         let resp = self
             .client

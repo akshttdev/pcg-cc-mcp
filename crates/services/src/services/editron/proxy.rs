@@ -145,6 +145,7 @@ pub struct ProxyJob {
 }
 
 /// Proxy Workflow Manager
+#[allow(dead_code)]
 pub struct ProxyWorkflowManager {
     proxy_directory: PathBuf,
     ffmpeg_path: PathBuf,

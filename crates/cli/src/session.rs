@@ -148,6 +148,7 @@ impl ConversationLog {
 
 /// Metadata for a saved session (one per file)
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SessionSummary {
     pub session_id: String,
     pub started_at: String,
@@ -158,6 +159,7 @@ pub struct SessionSummary {
 }
 
 /// Development session state
+#[allow(dead_code)]
 pub struct DevSession {
     pub id: Uuid,
     pub project_id: Uuid,

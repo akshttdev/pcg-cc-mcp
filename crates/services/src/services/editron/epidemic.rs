@@ -161,6 +161,7 @@ pub struct EpidemicArtist {
 
 /// Track search response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct TrackSearchResponse {
     #[serde(default)]
     tracks: Vec<EpidemicTrack>,
