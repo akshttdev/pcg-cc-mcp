@@ -647,7 +647,6 @@ function OverviewTab({
   totalDealValue,
   totalDeals,
   contactCount,
-  onSwitchTab,
 }: {
   orgId: string;
   orgName: string;
@@ -658,7 +657,6 @@ function OverviewTab({
   totalDealValue: number;
   totalDeals: number;
   contactCount: number;
-  onSwitchTab: (tab: string) => void;
 }) {
   // Aggregate tasks across all projects
   const taskQueries = useQueries({
@@ -745,29 +743,6 @@ function OverviewTab({
             <p className="text-2xl font-bold mt-1">{projectCount}</p>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Quick links */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        {[
-          { label: 'Pipelines', icon: Target, tab: 'pipelines', color: 'text-amber-500' },
-          { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
-          { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
-          { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
-          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
-          { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
-          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
-        ].map(({ label, icon: Icon, tab, color }) => (
-          <button
-            key={tab}
-            onClick={() => onSwitchTab(tab)}
-            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group"
-          >
-            <Icon className={`h-5 w-5 ${color} group-hover:scale-110 transition-transform`} />
-            <span className="text-sm font-medium">{label}</span>
-            <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
-        ))}
       </div>
 
       {/* Recent activity - aggregated across all projects
@@ -5857,7 +5832,6 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
                 contactCount={contacts.length}
-                onSwitchTab={setTab}
               />
             </TabsContent>
 
