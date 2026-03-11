@@ -135,7 +135,8 @@ pub async fn trigger_research(
     let pool_clone = pool.clone();
     let project_id = body.project_id;
     let full_name = person.full_name.clone();
-    let use_direct = body.agent_preference.as_deref() == Some("direct");
+    let person_clone = person.clone();
+    let _use_direct = body.agent_preference.as_deref() == Some("direct");
 
     tokio::spawn(async move {
         let result = run_research_via_nora(
@@ -207,14 +208,12 @@ pub async fn get_intelligence_status(
 
 async fn run_research_via_nora(
     pool: &sqlx::SqlitePool,
-    person_id: Uuid,
+    person: Person,
     prompt: String,
     project_id: Option<Uuid>,
-    full_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let person_id = person.id;
     let full_name = person.full_name.clone();
-
 
     sqlx::query(
         "UPDATE persons SET intelligence_status = 'running', updated_at = datetime('now','subsec') WHERE id = ?",
@@ -228,7 +227,7 @@ async fn run_research_via_nora(
         Ok(n) => n,
         Err(_) => {
             // Nora not initialized — run a direct research fallback
-            return run_research_direct(pool, person_id, full_name, project_id).await;
+            return run_research_direct(pool, &person, project_id).await;
         }
     };
 
@@ -238,7 +237,6 @@ async fn run_research_via_nora(
         let Some(nora) = nora_guard.as_ref() else {
             drop(nora_guard);
             return run_research_direct(pool, &person, project_id).await;
-
         };
 
         let nora_request = NoraRequest {
@@ -272,14 +270,14 @@ async fn run_research_via_nora(
 
     if is_failure_response {
         tracing::warn!("Nora research hit quota error for person {}, falling back to direct Anthropic research", person_id);
-        return run_research_direct(pool, person_id, full_name, project_id).await;
+        return run_research_direct(pool, &person, project_id).await;
     }
 
     // Parse Nora's response and write to person record
     let summary = extract_summary_from_response(&response.content);
     let confidence = extract_confidence_from_response(&response.content);
 
-    write_intelligence_results(pool, person_id, &summary, confidence, &response.content, project_id, full_name).await?;
+    write_intelligence_results(pool, person_id, &summary, confidence, &response.content, project_id, &full_name).await?;
     Ok(())
 }
 
@@ -364,22 +362,19 @@ async fn run_research_direct(
     let summary = extract_summary_from_response(&response_text);
     let confidence = extract_confidence_from_response(&response_text);
 
-    write_intelligence_results(pool, person_id, &summary, confidence, &response_text, project_id, full_name).await?;
+    write_intelligence_results(pool, person.id, &summary, confidence, &response_text, project_id, &person.full_name).await?;
     Ok(())
 }
 
 pub async fn write_intelligence_results(
     pool: &sqlx::SqlitePool,
-    person: &Person,
-    parsed: &serde_json::Value,
-
+    person_id: Uuid,
     summary: &str,
     confidence: f64,
     raw: &str,
     project_id: Option<Uuid>,
+    full_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let person_id = person.id;
-
     // 1. Update person intelligence fields
 
     sqlx::query(
@@ -410,8 +405,7 @@ pub async fn write_intelligence_results(
             pid,
             &KnowledgeSourceType::Entity,
             &source_id,
-            &format!("Person: {}", person.full_name),
-
+            &format!("Person: {}", full_name),
             source_summary.as_deref(),
             confidence,
         )
@@ -431,29 +425,29 @@ fn extract_summary_from_response(text: &str) -> String {
             return s.to_string();
         }
     }
-    // Try JSON block — look for nested "summary" or "overview" anywhere in the JSON
+    // Try JSON block — look for "summary" anywhere in the JSON
     if let Some(start) = text.find('{') {
         if let Some(end) = text.rfind('}') {
             if end > start {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text[start..=end]) {
-                    if v.is_object() {
-                        return v;
-
+                    if let Some(s) = v.get("summary").and_then(|s| s.as_str()) {
+                        return s.to_string();
                     }
                 }
             }
         }
     }
-    serde_json::Value::Object(Default::default())
-
+    // Fall back to first 300 chars of text
+    text.chars().take(300).collect()
 }
 
 fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String {
     if let Some(content) = response.get("content").and_then(|c| c.as_array()) {
+        let mut parts = Vec::new();
         for block in content {
             if block.get("type").and_then(|t| t.as_str()) == Some("text") {
                 if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                    return text.to_string();
+                    parts.push(text.to_string());
                 }
             }
         }
@@ -464,9 +458,73 @@ fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String 
     // Check for error
     if let Some(err) = response.get("error") {
         return format!("API error: {}", err);
-
     }
     response.to_string()
+}
+
+fn extract_confidence_from_response(text: &str) -> f64 {
+    // Try to parse JSON and extract confidence field
+    let json_str = if let (Some(start), Some(end)) = (text.find('{'), text.rfind('}')) {
+        &text[start..=end]
+    } else {
+        text
+    };
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+        if let Some(c) = v.get("confidence").and_then(|c| c.as_f64()) {
+            return c.clamp(0.0, 1.0);
+        }
+    }
+    // Heuristic: longer responses tend to be more confident
+    if text.len() > 500 { 0.7 } else if text.len() > 200 { 0.5 } else { 0.3 }
+}
+
+fn parse_research_json(text: &str) -> serde_json::Value {
+    // Try direct parse
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+        return v;
+    }
+    // Try extracting JSON block
+    if let Some(start) = text.find('{') {
+        if let Some(end) = text.rfind('}') {
+            if end > start {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text[start..=end]) {
+                    return v;
+                }
+            }
+        }
+    }
+    serde_json::Value::Object(Default::default())
+}
+
+async fn update_company_contact_methods(
+    pool: &sqlx::SqlitePool,
+    company_id: Uuid,
+    parsed: &serde_json::Value,
+) {
+    let contact_keys: &[(&str, &str, &str)] = &[
+        ("company_phone", "phone", "Phone"),
+        ("company_email", "email", "Email"),
+        ("company_website", "website", "Website"),
+        ("phone", "phone", "Phone"),
+        ("email", "email", "Email"),
+        ("website", "website", "Website"),
+    ];
+    for (json_key, method_type, label) in contact_keys {
+        if let Some(val) = parsed.get(*json_key).and_then(|v| v.as_str()) {
+            if !val.trim().is_empty() {
+                let _ = sqlx::query(
+                    "INSERT INTO company_contact_methods (id, company_id, method_type, label, value) \
+                     VALUES (randomblob(16), ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                )
+                .bind(company_id)
+                .bind(*method_type)
+                .bind(*label)
+                .bind(val.trim())
+                .execute(pool)
+                .await;
+            }
+        }
+    }
 }
 
 // ── Company Intelligence ───────────────────────────────────────────────────────
@@ -755,7 +813,6 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/persons/{id}/research", post(trigger_research))
         .route("/persons/{id}/intelligence-status", get(get_intelligence_status))
-        .route("/companies/{id}/research", post(trigger_company_research))
         .route("/companies/{id}/intelligence-status", get(get_company_intelligence_status))
 
         .with_state(deployment.clone())

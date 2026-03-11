@@ -8,7 +8,7 @@
 //!   5. Report  — aggregate all context → generate business_audit report
 
 use axum::{
-    Router,
+    Extension, Router,
     extract::{Path, State},
     routing::{get, patch, post},
     Json,
@@ -17,6 +17,7 @@ use db::models::{
     business_report::{BusinessReport, CreateBusinessReport, PatchBusinessReport},
     call_intake_item::{CallIntakeItem, CreateCallIntakeItem},
     company::Company,
+    crm_deal::{CreateCrmDeal, CrmDeal},
     person::Person,
     project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
     proposal::{CreateProposal, Proposal},
@@ -29,7 +30,7 @@ use tracing::{error, info, warn};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
 // ── Request / Response types ──────────────────────────────────────────────────
 
@@ -164,6 +165,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/business-reports", get(list_reports))
         .route("/business-reports/generate", post(generate_report_handler))
         .route("/business-reports/{id}", get(get_report).patch(patch_report))
+        // Human review endpoints
+        .route("/business-reports/{id}/approve", post(approve_business_report))
+        .route("/business-reports/{id}/request-revision", post(request_revision))
         .with_state(state)
 }
 
@@ -444,6 +448,205 @@ pub async fn patch_report(
     Ok(Json(ApiResponse::success(report)))
 }
 
+/// POST /api/business-reports/:id/approve — authenticated
+/// Marks report approved, advances CRM deal to Proposal stage, auto-creates a Proposal record.
+pub async fn approve_business_report(
+    State(d): State<DeploymentImpl>,
+    Extension(access_context): Extension<AccessContext>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
+    let pool = &d.db().pool;
+    let user_id = access_context.user_id;
+
+    let report = BusinessReport::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
+
+    // Mark approved
+    sqlx::query(
+        "UPDATE business_reports SET review_status = 'approved', reviewed_by = ?,
+         reviewed_at = datetime('now','subsec'), updated_at = datetime('now','subsec')
+         WHERE id = ?",
+    )
+    .bind(user_id)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    // Advance CRM deal to "Proposal" stage if linked
+    let mut deal_json: Option<serde_json::Value> = None;
+    if let Some(deal_id) = report.crm_deal_id {
+        if let Ok(deal) = CrmDeal::find_by_id(pool, deal_id).await {
+            if let Some(pipeline_id) = deal.crm_pipeline_id {
+                // Find the "Proposal" stage in this pipeline
+                let proposal_stage: Option<(Vec<u8>,)> = sqlx::query_as(
+                    "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = 'Proposal' LIMIT 1",
+                )
+                .bind(pipeline_id)
+                .fetch_optional(pool)
+                .await
+                .unwrap_or(None);
+
+                if let Some((stage_bytes,)) = proposal_stage {
+                    if let Ok(stage_id) = Uuid::from_slice(&stage_bytes) {
+                        let _ = CrmDeal::move_to_stage(pool, deal_id, stage_id, 0).await;
+                    }
+                }
+            }
+            deal_json = Some(serde_json::json!({ "id": deal.id, "name": deal.name }));
+        }
+    }
+
+    // Auto-create a proposal from the report
+    let mut proposal_json: Option<serde_json::Value> = None;
+    if let Some(person_id) = report.person_id {
+        // Check if a proposal already exists for this person
+        let exists: bool = sqlx::query_scalar(
+            "SELECT COUNT(*) > 0 FROM proposals WHERE lead_id = ?",
+        )
+        .bind(person_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(false);
+
+        if !exists {
+            // Build description from report sections
+            let summary = report.executive_summary.as_deref().unwrap_or("");
+            let services = report.recommended_services.as_str();
+            let next = report.next_steps.as_str();
+            let description = format!(
+                "## Executive Summary\n{summary}\n\n## Recommended Services\n{services}\n\n## Next Steps\n{next}"
+            );
+
+            // Look up person name for the title
+            #[derive(sqlx::FromRow)]
+            struct NameRow { full_name: String, company_name: Option<String> }
+            let person_info = sqlx::query_as::<_, NameRow>(
+                "SELECT full_name, company_name FROM persons WHERE id = ?",
+            )
+            .bind(person_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+
+            let title = if let Some(ref p) = person_info {
+                if let Some(ref company) = p.company_name {
+                    format!("{} — Proposal", company)
+                } else {
+                    format!("{} — Proposal", p.full_name)
+                }
+            } else {
+                format!("Proposal from Report {}", id)
+            };
+
+            // Find org for this person
+            #[derive(sqlx::FromRow)]
+            struct OrgRow { organization_id: Uuid }
+            let org_id = sqlx::query_as::<_, OrgRow>(
+                "SELECT organization_id FROM person_organization_contacts WHERE person_id = ? LIMIT 1",
+            )
+            .bind(person_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.organization_id);
+
+            let new_proposal = Proposal::create(pool, CreateProposal {
+                title,
+                lead_id: Some(person_id),
+                organization_id: org_id,
+                owner_id: Some(user_id),
+                project_id: None,
+                company_id: report.company_id,
+                description: Some(description),
+                quote_amount_vibe: None,
+                deal_type: None,
+                contact_ids: Some(vec![person_id.to_string()]),
+            }).await;
+
+            match new_proposal {
+                Ok(p) => {
+                    proposal_json = Some(serde_json::json!({ "id": p.id, "title": p.title, "status": p.status }));
+                    info!("Auto-created proposal {} from approved report {}", p.id, id);
+                }
+                Err(e) => warn!("Failed to create proposal from report {}: {}", id, e),
+            }
+        }
+    }
+
+    let updated = BusinessReport::find_by_id(pool, id).await?.unwrap();
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "report": updated,
+        "deal": deal_json,
+        "proposal": proposal_json,
+    }))))
+}
+
+/// POST /api/business-reports/:id/request-revision — authenticated
+/// Body: { notes: String }
+#[derive(Debug, Deserialize)]
+pub struct RevisionRequest {
+    pub notes: String,
+}
+
+pub async fn request_revision(
+    State(d): State<DeploymentImpl>,
+    Extension(access_context): Extension<AccessContext>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<RevisionRequest>,
+) -> Result<Json<ApiResponse<BusinessReport>>, ApiError> {
+    let pool = &d.db().pool;
+    let user_id = access_context.user_id;
+
+    let report = BusinessReport::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Report not found".into()))?;
+
+    // Mark rejected with notes
+    sqlx::query(
+        "UPDATE business_reports SET review_status = 'rejected', reviewed_by = ?,
+         reviewed_at = datetime('now','subsec'), review_notes = ?,
+         updated_at = datetime('now','subsec')
+         WHERE id = ?",
+    )
+    .bind(user_id)
+    .bind(&body.notes)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    // Move CRM deal back to "Research" stage if linked
+    if let Some(deal_id) = report.crm_deal_id {
+        if let Ok(deal) = CrmDeal::find_by_id(pool, deal_id).await {
+            if let Some(pipeline_id) = deal.crm_pipeline_id {
+                let research_stage: Option<(Vec<u8>,)> = sqlx::query_as(
+                    "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = 'Research' LIMIT 1",
+                )
+                .bind(pipeline_id)
+                .fetch_optional(pool)
+                .await
+                .unwrap_or(None);
+
+                if let Some((stage_bytes,)) = research_stage {
+                    if let Ok(stage_id) = Uuid::from_slice(&stage_bytes) {
+                        let _ = CrmDeal::move_to_stage(pool, deal_id, stage_id, 0).await;
+                    }
+                }
+            }
+        }
+    }
+
+    let updated = BusinessReport::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Report not found after update".into()))?;
+
+    Ok(Json(ApiResponse::success(updated)))
+}
+
 /// POST /api/business-reports/generate
 pub async fn generate_report_handler(
     State(d): State<DeploymentImpl>,
@@ -485,7 +688,7 @@ pub async fn generate_report_handler(
         };
 
         if let Err(e) = run_report_generation(
-            pool_clone, person_id, report_type, businesses, individuals, intake_id,
+            pool_clone, person_id, report_type, businesses, individuals, intake_id, None,
         ).await {
             error!("Report generation failed for person {}: {}", person_id, e);
         }
@@ -541,6 +744,16 @@ async fn run_intake_pipeline(
 
     // Stage 2: Associate participants to CRM persons
     let primary_person_id = associate_participants(&pool, &extracted.participants, &item, organization_id, assigned_to).await;
+
+    // Stage 2b: Auto-create CRM deal for the primary prospect in the Acquisition pipeline
+    let crm_deal_id = if let Some(pid) = primary_person_id {
+        ensure_crm_deal_for_person(
+            &pool, pid, item_id, organization_id,
+            &extracted.call_summary, "Lead",
+        ).await
+    } else {
+        None
+    };
 
     // Stage 3: Persist extracted data
     sqlx::query(
@@ -600,6 +813,11 @@ async fn run_intake_pipeline(
         // Queue research for the primary prospect
         if let Some(pid) = primary_person_id {
             trigger_research_if_needed(&pool_clone, pid).await;
+
+            // Advance CRM deal to "Research" stage now that research is queued
+            if let Some(deal_id) = crm_deal_id {
+                advance_deal_stage(&pool_clone, deal_id, "Research").await;
+            }
         }
 
         // Ingest contextual individuals (mentioned people, not prospects) into org KG
@@ -610,7 +828,7 @@ async fn run_intake_pipeline(
         if let Some(pid) = primary_person_id {
             if let Err(e) = run_report_generation(
                 pool_clone.clone(), pid, "business_audit".into(),
-                businesses, individuals, item_id,
+                businesses, individuals, item_id, crm_deal_id,
             ).await {
                 warn!("Auto-report generation failed for person {}: {}", pid, e);
             }
@@ -1220,6 +1438,7 @@ async fn run_report_generation(
     businesses: Vec<ExtractedBusiness>,
     individuals: Vec<ExtractedIndividual>,
     primary_intake_id: Uuid,
+    crm_deal_id: Option<Uuid>,
 ) -> anyhow::Result<()> {
     info!("Generating {} report for person {}", report_type, person_id);
 
@@ -1395,6 +1614,17 @@ async fn run_report_generation(
         },
     ).await?;
 
+    // Link crm_deal_id to the report
+    if let Some(deal_id) = crm_deal_id {
+        let _ = sqlx::query(
+            "UPDATE business_reports SET crm_deal_id = ? WHERE id = ?",
+        )
+        .bind(deal_id)
+        .bind(report.id)
+        .execute(&pool)
+        .await;
+    }
+
     BusinessReport::mark_ready(&pool, report.id).await?;
 
     // Link report back to intake items
@@ -1409,6 +1639,11 @@ async fn run_report_generation(
             .execute(&pool)
             .await;
         }
+    }
+
+    // Advance CRM deal to "Analysis Done" now that report is complete
+    if let Some(deal_id) = crm_deal_id {
+        advance_deal_stage(&pool, deal_id, "Analysis Done").await;
     }
 
     // Ingest report sources into org-scoped knowledge graph
@@ -1709,4 +1944,159 @@ async fn mark_failed(pool: &sqlx::SqlitePool, item_id: Uuid, error: &str) {
     .bind(item_id)
     .execute(pool)
     .await;
+}
+
+// ── CRM Deal automation helpers ───────────────────────────────────────────────
+
+/// Look up the Acquisition pipeline for the given org, find or create a deal for this
+/// person in the given stage. Returns the deal ID if successful.
+async fn ensure_crm_deal_for_person(
+    pool: &sqlx::SqlitePool,
+    person_id: Uuid,
+    intake_item_id: Uuid,
+    organization_id: Option<Uuid>,
+    summary: &str,
+    stage_name: &str,
+) -> Option<Uuid> {
+    let org_id = organization_id?;
+
+    // Find the Acquisition (sales) pipeline for this org
+    #[derive(sqlx::FromRow)]
+    struct PipelineRow { id: Uuid }
+
+    let pipeline = sqlx::query_as::<_, PipelineRow>(
+        "SELECT id FROM crm_pipelines WHERE organization_id = ? AND pipeline_type = 'sales'
+         AND project_id IS NULL LIMIT 1",
+    )
+    .bind(org_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let pipeline_id = pipeline.map(|p| p.id)?;
+
+    // Find the named stage in this pipeline
+    #[derive(sqlx::FromRow)]
+    struct StageRow { id: Vec<u8> }
+
+    let stage = sqlx::query_as::<_, StageRow>(
+        "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = ? LIMIT 1",
+    )
+    .bind(pipeline_id)
+    .bind(stage_name)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let stage_id = stage.and_then(|s| Uuid::from_slice(&s.id).ok())?;
+
+    // Look up person name + contact for dedup check
+    #[derive(sqlx::FromRow)]
+    struct PersonRow { full_name: String }
+
+    let person_name = sqlx::query_as::<_, PersonRow>(
+        "SELECT full_name FROM persons WHERE id = ?",
+    )
+    .bind(person_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .map(|r| r.full_name)
+    .unwrap_or_else(|| "Unknown".to_string());
+
+    let deal_name = format!("{} — Discovery Lead", person_name);
+
+    // Check for existing deal with same name in this org (dedup)
+    if let Ok(Some(existing)) = CrmDeal::find_by_name_and_org(pool, &deal_name, org_id).await {
+        // Link intake item to existing deal
+        let _ = sqlx::query(
+            "UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?",
+        )
+        .bind(existing.id)
+        .bind(intake_item_id)
+        .execute(pool)
+        .await;
+        return Some(existing.id);
+    }
+
+    // Find crm_contact_id for this person if available
+    #[derive(sqlx::FromRow)]
+    struct ContactRow { id: Uuid }
+    let contact_id = sqlx::query_as::<_, ContactRow>(
+        "SELECT id FROM crm_contacts WHERE person_id = ? LIMIT 1",
+    )
+    .bind(person_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .map(|r| r.id);
+
+    // Create the deal
+    let deal_result = CrmDeal::create(pool, CreateCrmDeal {
+        organization_id: org_id,
+        client_id: None,
+        crm_contact_id: contact_id,
+        crm_pipeline_id: Some(pipeline_id),
+        crm_stage_id: Some(stage_id),
+        name: deal_name,
+        description: Some(summary[..summary.len().min(500)].to_string()),
+        amount: None,
+        currency: None,
+        expected_close_date: None,
+        tags: None,
+        custom_fields: None,
+    }).await;
+
+    match deal_result {
+        Ok(deal) => {
+            info!("Auto-created CRM deal {} for person {} in pipeline {}", deal.id, person_id, pipeline_id);
+            // Link intake item to deal
+            let _ = sqlx::query(
+                "UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?",
+            )
+            .bind(deal.id)
+            .bind(intake_item_id)
+            .execute(pool)
+            .await;
+            Some(deal.id)
+        }
+        Err(e) => {
+            warn!("Failed to create CRM deal for person {}: {:?}", person_id, e);
+            None
+        }
+    }
+}
+
+/// Advance a CRM deal to the named stage in its pipeline.
+async fn advance_deal_stage(pool: &sqlx::SqlitePool, deal_id: Uuid, stage_name: &str) {
+    let deal = match CrmDeal::find_by_id(pool, deal_id).await {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+
+    if let Some(pipeline_id) = deal.crm_pipeline_id {
+        #[derive(sqlx::FromRow)]
+        struct StageRow { id: Vec<u8> }
+
+        let stage = sqlx::query_as::<_, StageRow>(
+            "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = ? LIMIT 1",
+        )
+        .bind(pipeline_id)
+        .bind(stage_name)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+
+        if let Some(s) = stage {
+            if let Ok(stage_id) = Uuid::from_slice(&s.id) {
+                let _ = CrmDeal::move_to_stage(pool, deal_id, stage_id, 0).await;
+                info!("Advanced deal {} to stage '{}'", deal_id, stage_name);
+            }
+        }
+    }
 }

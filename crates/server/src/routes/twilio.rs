@@ -59,6 +59,91 @@ static CALL_DB_CONTEXTS: Lazy<Arc<Mutex<HashMap<String, CallDbContext>>>> =
 static ACTIVE_CALL_PHONES: Lazy<Arc<Mutex<HashMap<String, String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
+/// Debounce window for SMS thread buffering (seconds)
+const SMS_THREAD_WINDOW_SECS: u64 = 8;
+
+/// Buffered SMS thread state per sender
+struct SmsThread {
+    messages: Vec<String>,
+    last_received: SystemTime,
+    person_context: Option<serde_json::Value>,
+}
+
+/// Global SMS thread buffer: sender phone → buffered thread
+static SMS_THREAD_BUFFER: Lazy<Arc<Mutex<HashMap<String, SmsThread>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// Look up person context from the persons table by phone number.
+/// Returns a JSON Value with `name`, `email` if found.
+async fn lookup_sms_sender_context(
+    pool: &sqlx::SqlitePool,
+    phone: &str,
+) -> Option<serde_json::Value> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        full_name: String,
+        email: Option<String>,
+    }
+    // phones column is a JSON array of {value, label} objects; search for the phone in it
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT full_name, email FROM persons \
+         WHERE phones LIKE ? OR phones LIKE ? \
+         LIMIT 1",
+    )
+    .bind(format!("%\"{}%", phone))
+    .bind(format!("%{}%", phone))
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    row.map(|r| serde_json::json!({
+        "name": r.full_name,
+        "email": r.email,
+        "phone": phone,
+    }))
+}
+
+/// Truncate a string to `max` characters, appending "…" if truncated.
+fn truncate_for_sms(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let truncated: String = text.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", truncated)
+}
+
+/// Send an outbound SMS via Twilio REST API.
+async fn send_outbound_sms(to: &str, body: &str) -> Result<(), anyhow::Error> {
+    let account_sid = std::env::var("TWILIO_ACCOUNT_SID")
+        .map_err(|_| anyhow::anyhow!("TWILIO_ACCOUNT_SID not set"))?;
+    let auth_token = std::env::var("TWILIO_AUTH_TOKEN")
+        .map_err(|_| anyhow::anyhow!("TWILIO_AUTH_TOKEN not set"))?;
+    let from_number = std::env::var("TWILIO_FROM_NUMBER")
+        .map_err(|_| anyhow::anyhow!("TWILIO_FROM_NUMBER not set"))?;
+
+    let url = format!(
+        "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
+        account_sid
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .basic_auth(&account_sid, Some(&auth_token))
+        .form(&[("To", to), ("From", &from_number), ("Body", body)])
+        .send()
+        .await?;
+
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        Err(anyhow::anyhow!("Twilio SMS error {}: {}", status, &text[..text.len().min(200)]))
+    }
+}
+
 
 /// An SMS received while a call is active, optionally with ingested content.
 #[derive(Debug, Clone)]

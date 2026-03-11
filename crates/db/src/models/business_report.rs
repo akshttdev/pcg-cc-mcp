@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -31,6 +32,12 @@ pub struct BusinessReport {
     pub created_by: Option<Uuid>,
     pub created_at: String,
     pub updated_at: String,
+    // CRM deal linkage + human review checkpoint
+    pub crm_deal_id: Option<Uuid>,
+    pub review_status: String,
+    pub reviewed_by: Option<Uuid>,
+    pub reviewed_at: Option<DateTime<Utc>>,
+    pub review_notes: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +83,7 @@ pub struct PatchBusinessReport {
     pub brand_positioning: Option<String>,
     pub digital_presence: Option<String>,
     pub sources: Option<String>,
+    pub review_notes: Option<String>,
 }
 
 impl BusinessReport {
@@ -191,6 +199,7 @@ impl BusinessReport {
         push_if_some!(data.brand_positioning, "brand_positioning = ?");
         push_if_some!(data.digital_presence, "digital_presence = ?");
         push_if_some!(data.sources, "sources = ?");
+        push_if_some!(data.review_notes, "review_notes = ?");
 
         let sql = format!(
             "UPDATE business_reports SET {} WHERE id = ? RETURNING *",
@@ -218,6 +227,7 @@ impl BusinessReport {
         bind_if_some!(data.brand_positioning);
         bind_if_some!(data.digital_presence);
         bind_if_some!(data.sources);
+        bind_if_some!(data.review_notes);
         q = q.bind(id);
 
         q.fetch_optional(pool).await

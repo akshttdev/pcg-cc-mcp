@@ -28,6 +28,9 @@ pub struct CallIntakeItem {
     pub metadata: String,
     pub created_at: String,
     pub updated_at: String,
+    pub extracted_individuals: Option<String>,
+    pub extracted_businesses: Option<String>,
+    pub crm_deal_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]

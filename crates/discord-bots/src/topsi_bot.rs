@@ -150,7 +150,7 @@ impl EventHandler for TopsiHandler {
         match self.backend.chat_topsi(&clean_message, &session_id).await {
             Ok(response) => {
                 drop(typing);
-                let chunks = split_message(&response.message, 2000);
+                let chunks = split_message(&response.content, 2000);
                 for (i, chunk) in chunks.iter().enumerate() {
                     if i == 0 {
                         let mut embed = format_agent_embed(
@@ -249,7 +249,7 @@ impl TopsiHandler {
             Ok(response) => {
                 let embed = format_agent_embed(
                     "Topsi",
-                    &response.message,
+                    &response.content,
                     0x8B5CF6,
                     response.input_tokens,
                     response.output_tokens,
@@ -356,7 +356,7 @@ impl TopsiHandler {
             Ok(response) => {
                 let embed = CreateEmbed::new()
                     .title("Task Created via Topsi")
-                    .description(&response.message)
+                    .description(&response.content)
                     .color(0x22C55E)
                     .timestamp(serenity::model::Timestamp::now());
 

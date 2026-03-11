@@ -615,6 +615,7 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
             file_size_bytes: None,
             file_hash: None,
             metadata: Some(metadata),
+            folder: None,
         }).await;
 
         // Mark as ready immediately (no processing needed for text)
@@ -781,6 +782,7 @@ async fn detect_and_link_attendees(
             file_size_bytes: None,
             file_hash: None,
             metadata: Some(metadata),
+            folder: None,
         }).await;
 
         let _ = sqlx::query(

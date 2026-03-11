@@ -109,6 +109,18 @@ pub struct CrmDealWithContact {
     pub person_id: Option<Uuid>,
     /// report_id — id of the business report (wiki) for this deal's person
     pub report_id: Option<Uuid>,
+    // Person intelligence fields
+    pub intelligence_status: Option<String>,
+    pub intelligence_summary: Option<String>,
+    pub intelligence_confidence: Option<f64>,
+    pub research_pass_count: Option<i64>,
+    // Business report status
+    pub report_status: Option<String>,
+    pub report_review_status: Option<String>,
+    // Review task
+    pub review_task_id: Option<Uuid>,
+    pub review_task_status: Option<String>,
+    pub review_task_assignee: Option<String>,
 }
 
 /// Kanban board data structure - deals grouped by stage
@@ -566,6 +578,101 @@ impl CrmDeal {
         .map(|r| r.id)
     }
 
+    /// Fetch intelligence + report + task data for a deal.
+    /// Returns (intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
+    ///          report_status, report_review_status, review_task_id, review_task_status, review_task_assignee)
+    #[allow(clippy::type_complexity)]
+    async fn fetch_intel_data(
+        pool: &SqlitePool,
+        deal_id: Uuid,
+        person_id: Option<Uuid>,
+    ) -> (
+        Option<String>, Option<String>, Option<f64>, Option<i64>,
+        Option<String>, Option<String>,
+        Option<Uuid>, Option<String>, Option<String>,
+    ) {
+        // Person intelligence
+        let (intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count) =
+            if let Some(pid) = person_id {
+                #[derive(sqlx::FromRow)]
+                struct PersonIntel {
+                    intelligence_status: Option<String>,
+                    intelligence_summary: Option<String>,
+                    intelligence_confidence: Option<f64>,
+                    research_pass_count: Option<i64>,
+                }
+                if let Ok(Some(intel)) = sqlx::query_as::<_, PersonIntel>(
+                    "SELECT intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count FROM persons WHERE id = ?"
+                )
+                .bind(pid)
+                .fetch_optional(pool)
+                .await
+                {
+                    (intel.intelligence_status, intel.intelligence_summary, intel.intelligence_confidence, intel.research_pass_count)
+                } else {
+                    (None, None, None, None)
+                }
+            } else {
+                (None, None, None, None)
+            };
+
+        // Business report status (via deal id bridge)
+        let (report_status, report_review_status) = {
+            #[derive(sqlx::FromRow)]
+            struct ReportStatus {
+                status: Option<String>,
+                review_status: Option<String>,
+            }
+            if let Ok(Some(rs)) = sqlx::query_as::<_, ReportStatus>(
+                "SELECT status, review_status FROM business_reports WHERE crm_deal_id = ? ORDER BY created_at DESC LIMIT 1"
+            )
+            .bind(deal_id)
+            .fetch_optional(pool)
+            .await
+            {
+                (rs.status, rs.review_status)
+            } else {
+                (None, None)
+            }
+        };
+
+        // Review task (active task linked to this deal)
+        let (review_task_id, review_task_status, review_task_assignee) = {
+            #[derive(sqlx::FromRow)]
+            struct TaskRow {
+                id: Uuid,
+                status: Option<String>,
+                assignee_name: Option<String>,
+            }
+            if let Ok(Some(t)) = sqlx::query_as::<_, TaskRow>(
+                r#"
+                SELECT t.id, t.status, u.full_name as assignee_name
+                FROM tasks t
+                LEFT JOIN users u ON CAST(u.id AS TEXT) = t.assignee_id
+                WHERE t.crm_deal_id = ?
+                  AND t.status NOT IN ('cancelled', 'done')
+                  AND t.deleted_at IS NULL
+                ORDER BY t.created_at ASC
+                LIMIT 1
+                "#
+            )
+            .bind(deal_id)
+            .fetch_optional(pool)
+            .await
+            {
+                (Some(t.id), t.status, t.assignee_name)
+            } else {
+                (None, None, None)
+            }
+        };
+
+        (
+            intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
+            report_status, report_review_status,
+            review_task_id, review_task_status, review_task_assignee,
+        )
+    }
+
     pub async fn get_kanban_data(
         pool: &SqlitePool,
         pipeline_id: Uuid,
@@ -615,6 +722,12 @@ impl CrmDeal {
                         (None, 0, 0, 0)
                     };
 
+                let (
+                    intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
+                    report_status, report_review_status,
+                    review_task_id, review_task_status, review_task_assignee,
+                ) = Self::fetch_intel_data(pool, deal.id, person_id).await;
+
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
@@ -626,6 +739,15 @@ impl CrmDeal {
                     deliverable_count,
                     person_id,
                     report_id,
+                    intelligence_status,
+                    intelligence_summary,
+                    intelligence_confidence,
+                    research_pass_count,
+                    report_status,
+                    report_review_status,
+                    review_task_id,
+                    review_task_status,
+                    review_task_assignee,
                     deal,
                 });
             }
@@ -742,6 +864,12 @@ impl CrmDeal {
                         (None, 0, 0, 0)
                     };
 
+                let (
+                    intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
+                    report_status, report_review_status,
+                    review_task_id, review_task_status, review_task_assignee,
+                ) = Self::fetch_intel_data(pool, deal.id, person_id).await;
+
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
                     contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
@@ -753,6 +881,15 @@ impl CrmDeal {
                     deliverable_count,
                     person_id,
                     report_id,
+                    intelligence_status,
+                    intelligence_summary,
+                    intelligence_confidence,
+                    research_pass_count,
+                    report_status,
+                    report_review_status,
+                    review_task_id,
+                    review_task_status,
+                    review_task_assignee,
                     deal,
                 });
             }

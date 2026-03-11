@@ -1993,8 +1993,8 @@ pub async fn join_meeting(
     .flatten();
 
     tracing::info!(
-        "[MEETING] User {} joined session {} (project: {}) — participants: {}",
-        user_ctx.user_id, session.id, session.project_id, new_count
+        "[MEETING] Session {} (project: {}) joined — participants: {}",
+        session.id, session.project_id, new_count
     );
 
 
@@ -2348,6 +2348,111 @@ pub async fn get_meeting_notes(
     })))
 }
 
+/// POST /topsi/meeting/notes/:session_id — Regenerate meeting notes via AI
+pub async fn regenerate_meeting_notes(
+    State(state): State<DeploymentImpl>,
+    headers: axum::http::HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let pool = state.db().pool.clone();
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+    let user_context = get_user_context_from_req(&state, auth_header, cookie_header).await;
+
+    let session = db::models::meeting_session::MeetingSession::find_by_id(&pool, &session_id)
+        .await
+        .map_err(|_| ApiError::NotFound(format!("Meeting session not found: {}", session_id)))?;
+
+    if !session.has_access(&user_context.user_id, user_context.is_admin) {
+        return Err(ApiError::Forbidden("Access denied to this meeting".to_string()));
+    }
+
+    // Fetch transcript segments to regenerate notes from
+    let segments =
+        db::models::meeting_session::MeetingSegment::find_by_session(&pool, &session_id)
+            .await
+            .unwrap_or_default();
+
+    if segments.is_empty() {
+        return Err(ApiError::BadRequest("No transcript segments available to generate notes from".to_string()));
+    }
+
+    let transcript_text = segments
+        .iter()
+        .map(|s| format!("[{}] {}", s.speaker_label.as_deref().unwrap_or("Speaker"), s.text))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Generate notes via Anthropic
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
+        .unwrap_or_default();
+
+    let notes = if api_key.is_empty() {
+        serde_json::json!({
+            "summary": "Notes regeneration unavailable — no API key configured.",
+            "action_items": [],
+            "key_decisions": []
+        })
+    } else {
+        let client = reqwest::Client::new();
+        let prompt = format!(
+            "You are a meeting notes assistant. Summarize the following meeting transcript into structured notes.\n\nTranscript:\n{}\n\nReturn ONLY a JSON object with keys: summary (string), action_items (array of strings), key_decisions (array of strings), topics_discussed (array of strings).",
+            &transcript_text[..transcript_text.len().min(8000)]
+        );
+        let body = serde_json::json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": prompt}]
+        });
+        match client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let val: serde_json::Value = resp.json().await.unwrap_or_default();
+                let text = val
+                    .get("content")
+                    .and_then(|c| c.as_array())
+                    .and_then(|arr| arr.first())
+                    .and_then(|b| b.get("text"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("{}");
+                // Try to parse as JSON, fall back to wrapping in summary
+                serde_json::from_str(text).unwrap_or_else(|_| serde_json::json!({"summary": text, "action_items": [], "key_decisions": []}))
+            }
+            _ => serde_json::json!({
+                "summary": "Notes generation failed — please try again.",
+                "action_items": [],
+                "key_decisions": []
+            }),
+        }
+    };
+
+    // Persist regenerated notes back to the session
+    let notes_json = serde_json::to_string(&notes).unwrap_or_else(|_| "{}".to_string());
+    let _ = db::models::meeting_session::MeetingSession::update(
+        &pool,
+        &session_id,
+        db::models::meeting_session::UpdateMeetingSession {
+            notes: Some(notes_json),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    Ok(Json(serde_json::json!({
+        "session_id": session_id,
+        "notes": notes,
+        "regenerated": true,
+    })))
+}
 
 /// Get meeting transcript
 pub async fn get_meeting_transcript(

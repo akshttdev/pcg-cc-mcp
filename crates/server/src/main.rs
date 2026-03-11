@@ -127,11 +127,9 @@ async fn main() -> Result<(), VibeKanbanError> {
         tracing::warn!("Topsi can still be initialized later via POST /api/topsi/initialize");
     }
 
-    // Start Discord bot agents (Nora + Topsi) if tokens are configured
-    discord_bots::spawn_discord_bots();
-
-    // Start Discord bot agents (Nora + Topsi) if tokens are configured
-    discord_bots::spawn_discord_bots();
+    // Discord bots are managed by the JS systemd service (pcg-discord-bot.service)
+    // which handles voice + Whisper STT + Chatterbox/ElevenLabs TTS.
+    // The Rust bots use the same tokens and would fight the JS bots — disabled.
 
     // Pre-warm file search cache for most active projects
     let deployment_for_cache = deployment.clone();
