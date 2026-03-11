@@ -353,7 +353,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             // In continuous mode, automatically resume listening
             if (continuousMode && shouldContinueListeningRef.current) {
               setTimeout(() => {
-                void startSpeechRecognition();
+                void startMediaRecorder();
               }, 300); // Small delay to prevent picking up tail end of audio
             }
           };
@@ -363,7 +363,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             setIsSpeaking(false);
             // Resume listening even on error in continuous mode
             if (continuousMode && shouldContinueListeningRef.current) {
-              setTimeout(() => void startSpeechRecognition(), 300);
+              setTimeout(() => void startMediaRecorder(), 300);
             }
           };
           
@@ -374,13 +374,13 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             setIsSpeaking(false);
             // Resume listening even on play error in continuous mode
             if (continuousMode && shouldContinueListeningRef.current) {
-              setTimeout(() => void startSpeechRecognition(), 300);
+              setTimeout(() => void startMediaRecorder(), 300);
             }
           });
         } else {
           // No voice response - resume listening immediately in continuous mode
           if (continuousMode && shouldContinueListeningRef.current) {
-            setTimeout(() => void startSpeechRecognition(), 100);
+            setTimeout(() => void startMediaRecorder(), 500);
           }
         }
       }
@@ -389,7 +389,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       addMessage('nora', 'I apologise, but I encountered an issue processing your request. Please try again.');
       // Resume listening even on error in continuous mode
       if (continuousMode && shouldContinueListeningRef.current) {
-        setTimeout(() => void startSpeechRecognition(), 300);
+        setTimeout(() => void startMediaRecorder(), 300);
       }
     } finally {
       setIsLoading(false);
@@ -535,7 +535,7 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
             if (networkErrorRetryCount.current <= 3) {
               setTimeout(() => {
                 if (shouldContinueListeningRef.current) {
-                  void startSpeechRecognition();
+                  void startMediaRecorder();
                 }
               }, 2000);
               return;
@@ -667,7 +667,8 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
         toast.info('Sending to Nora...');
         setIsLoading(true);
         try {
-          const response = await fetch(resolveApiUrl('/api/nora/voice/transcribe'), {
+          // Single-shot: Whisper STT → Nora → ElevenLabs TTS
+          const response = await fetch(resolveApiUrl('/api/nora/voice/interaction'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -756,7 +757,9 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       audioRef.current.currentTime = 0;
       setIsSpeaking(false);
     }
-    await startSpeechRecognition();
+    // Use MediaRecorder+Whisper — Chrome SpeechRecognition needs Google servers
+    // and shows browser-level "did not respond" errors when unreachable
+    await startMediaRecorder();
   };
 
   const stopVoiceRecording = () => {
@@ -767,6 +770,12 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
+    }
+
+    // Clear auto-stop timer
+    if (autoStopTimerRef.current) {
+      clearTimeout(autoStopTimerRef.current);
+      autoStopTimerRef.current = null;
     }
 
     // Stop speech recognition
@@ -780,8 +789,10 @@ export function NoraAssistant({ className, defaultSessionId }: NoraAssistantProp
       setInterimTranscript('');
     }
 
-    // Stop media stream (used for VAD in continuous mode)
-    if (mediaRecorderRef.current?.stream) {
+    // Stop MediaRecorder if active (triggers onstop → processes audio via Whisper + ElevenLabs)
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop(); // onstop callback releases tracks
+    } else if (mediaRecorderRef.current?.stream) {
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
     }
     

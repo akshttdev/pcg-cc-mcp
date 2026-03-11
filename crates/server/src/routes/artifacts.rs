@@ -6,10 +6,12 @@ use axum::{
     response::Response,
     routing::get,
 };
+use axum::extract::Request;
 use db::models::execution_artifact::ExecutionArtifact;
 use deployment::Deployment;
 use serde_json::json;
 use tokio::fs::File;
+use tokio::io::{AsyncSeekExt, AsyncReadExt};
 use tokio_util::io::ReaderStream;
 use utils::assets::asset_dir;
 use uuid::Uuid;
@@ -33,7 +35,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/artifacts/{artifact_id}/content", get(get_artifact_content))
         .route("/artifacts/{artifact_id}/download", get(download_artifact))
         .route(
-            "/artifacts/{artifact_id}/files/{filename}",
+            "/artifacts/{artifact_id}/files/{*filename}",
             get(get_artifact_file),
         )
         .with_state(deployment.clone())
@@ -73,9 +75,14 @@ async fn download_artifact(
 async fn get_artifact_file(
     State(deployment): State<DeploymentImpl>,
     Path((artifact_id, filename)): Path<(Uuid, String)>,
+    req: Request,
 ) -> Result<Response, ApiError> {
-    // Security: reject path traversal in filename
-    if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
+    // Only allow simple filenames (no path traversal)
+    let basename = std::path::Path::new(&filename)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if basename.is_empty() || basename.contains("..") {
         return Err(ApiError::BadRequest("Invalid filename".into()));
     }
 
@@ -95,39 +102,75 @@ async fn get_artifact_file(
 
     let dir = resolve_artifact_path(file_path);
     let target = if dir.is_dir() {
-        dir.join(&filename)
+        dir.join(&basename)
     } else {
-        // file_path is the file itself — only serve if filename matches
         let base_name = dir
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        if base_name != filename {
+        if base_name != basename {
             return Err(ApiError::NotFound("File not found".into()));
         }
         dir.to_path_buf()
     };
 
     if !target.is_file() {
-        return Err(ApiError::NotFound(format!("File '{}' not found", filename)));
+        return Err(ApiError::NotFound(format!("File '{}' not found", basename)));
     }
-
-    let file = File::open(&target).await?;
-    let metadata = file.metadata().await?;
-    let stream = ReaderStream::new(file);
-    let body = Body::from_stream(stream);
 
     let content_type = mime_guess::from_path(&target)
         .first_or_octet_stream()
         .to_string();
 
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, &content_type)
-        .header(header::CONTENT_LENGTH, metadata.len())
-        .header(header::ACCEPT_RANGES, "bytes")
-        .body(body)
-        .map_err(|e| ApiError::InternalError(e.to_string()))
+    let file_size = tokio::fs::metadata(&target).await?.len();
+
+    // Parse Range header
+    let range_header = req
+        .headers()
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("bytes="))
+        .and_then(|s| {
+            let mut parts = s.splitn(2, '-');
+            let start: u64 = parts.next()?.parse().ok()?;
+            let end: u64 = parts.next()
+                .and_then(|e| if e.is_empty() { None } else { e.parse().ok() })
+                .unwrap_or(file_size.saturating_sub(1));
+            Some((start, end))
+        });
+
+    if let Some((start, end)) = range_header {
+        let end = end.min(file_size.saturating_sub(1));
+        if start > end || start >= file_size {
+            return Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header(header::CONTENT_RANGE, format!("bytes */{}", file_size))
+                .body(Body::empty())
+                .map_err(|e| ApiError::InternalError(e.to_string()));
+        }
+        let length = end - start + 1;
+        let mut file = File::open(&target).await?;
+        file.seek(std::io::SeekFrom::Start(start)).await?;
+        let stream = ReaderStream::new(file.take(length));
+        Response::builder()
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header(header::CONTENT_TYPE, &content_type)
+            .header(header::CONTENT_LENGTH, length)
+            .header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", start, end, file_size))
+            .header(header::ACCEPT_RANGES, "bytes")
+            .body(Body::from_stream(stream))
+            .map_err(|e| ApiError::InternalError(e.to_string()))
+    } else {
+        let file = File::open(&target).await?;
+        let stream = ReaderStream::new(file);
+        Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, &content_type)
+            .header(header::CONTENT_LENGTH, file_size)
+            .header(header::ACCEPT_RANGES, "bytes")
+            .body(Body::from_stream(stream))
+            .map_err(|e| ApiError::InternalError(e.to_string()))
+    }
 }
 
 async fn serve_artifact_content(

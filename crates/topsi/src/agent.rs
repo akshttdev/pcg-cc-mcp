@@ -105,6 +105,11 @@ For complex requests like "build a website", break into phases:
 - `start_task_execution` - Spawn an agent to execute a task
 - `get_task_status` - Check task execution status and logs
 
+### Web access tools
+- `search_web` - Search the internet in real-time (powered by Exa). Use when asked to find or research anything online.
+- `fetch_web_page` - Fetch and read any URL. Use when asked to open or read a specific web page or link.
+You HAVE full internet access. NEVER say you can't browse URLs or search the web — call the tools.
+
 ### Communication
 - `respond_to_user` - IMPORTANT: Use this to deliver your response. Write your complete answer in the message parameter.
 
@@ -827,6 +832,8 @@ impl TopsiAgent {
                 "update_task" => self.tool_update_task(&call.arguments, user_context, scope).await,
                 "list_tasks" => self.tool_list_tasks(&call.arguments, user_context, scope).await,
                 "respond_to_user" => self.tool_respond_to_user(&call.arguments).await,
+                "search_web" => self.tool_search_web(&call.arguments).await,
+                "fetch_web_page" => self.tool_fetch_web_page(&call.arguments).await,
                 _ => Err(TopsiError::ToolError(format!(
                     "Unknown tool: {}",
                     call.name
@@ -2202,6 +2209,64 @@ impl TopsiAgent {
             "response": message,
             "spoken": true
         }))
+    }
+
+    async fn tool_search_web(&self, args: &serde_json::Value) -> Result<serde_json::Value> {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+
+        let api_key = std::env::var("EXA_API_KEY").unwrap_or_default();
+        if api_key.is_empty() {
+            return Ok(serde_json::json!({"success": false, "error": "EXA_API_KEY not configured"}));
+        }
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post("https://api.exa.ai/search")
+            .header("x-api-key", &api_key)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({"query": query, "num_results": max_results, "use_autoprompt": true, "text": true}))
+            .send()
+            .await
+            .map_err(|e| TopsiError::ToolError(format!("Search failed: {}", e)))?;
+
+        let data: serde_json::Value = resp.json().await
+            .map_err(|e| TopsiError::ToolError(format!("Search parse failed: {}", e)))?;
+
+        let results = data.get("results").and_then(|r| r.as_array())
+            .map(|arr| arr.iter().map(|r| serde_json::json!({
+                "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
+                "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+                "snippet": r.get("text").and_then(|t| t.as_str()).unwrap_or(""),
+            })).collect::<Vec<_>>())
+            .unwrap_or_default();
+
+        Ok(serde_json::json!({"success": true, "query": query, "results": results}))
+    }
+
+    async fn tool_fetch_web_page(&self, args: &serde_json::Value) -> Result<serde_json::Value> {
+        let url = args.get("url").and_then(|v| v.as_str()).unwrap_or("");
+
+        let client = reqwest::Client::new();
+        let response = client.get(url).send().await
+            .map_err(|e| TopsiError::ToolError(format!("Fetch failed: {}", e)))?;
+        let content = response.text().await
+            .map_err(|e| TopsiError::ToolError(format!("Read failed: {}", e)))?;
+
+        // Basic tag strip
+        let mut in_tag = false;
+        let mut text = String::with_capacity(content.len());
+        for c in content.chars() {
+            match c {
+                '<' => { in_tag = true; text.push(' '); }
+                '>' => { in_tag = false; }
+                _ if !in_tag => text.push(c),
+                _ => {}
+            }
+        }
+        let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        Ok(serde_json::json!({"success": true, "url": url, "content": text, "content_length": text.len()}))
     }
 
     async fn tool_verify_access(

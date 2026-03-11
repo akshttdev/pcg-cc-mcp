@@ -337,6 +337,10 @@ pub enum NoraExecutiveTool {
         url: String,
         extract_text: bool,
     },
+    RenderPage {
+        url: String,
+        include_html: bool,
+    },
     SummarizeContent {
         content: String,
         max_length: u32,
@@ -1791,6 +1795,27 @@ impl ExecutiveTools {
                     }
                 }
             }),
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "render_page",
+                    "description": "Render a JavaScript-heavy web page using a real browser (Playwright/Chromium). Use this when fetch_web_page returns empty or incomplete content because the page requires JavaScript to render (e.g. SPAs, React/Vue/Angular apps, dashboards, dynamic content).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The URL to render with a headless browser"
+                            },
+                            "include_html": {
+                                "type": "boolean",
+                                "description": "Whether to include the full rendered HTML in the response (default: false — text only)"
+                            }
+                        },
+                        "required": ["url"]
+                    }
+                }
+            }),
         ]
     }
 
@@ -2097,6 +2122,16 @@ impl ExecutiveTools {
                     "success": true,
                     "message": format!("Fetching '{}' - web fetch integration pending", url),
                     "content": ""
+                })
+            }
+            "render_page" => {
+                let url = arguments.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                let include_html = arguments.get("include_html").and_then(|v| v.as_bool()).unwrap_or(false);
+                serde_json::json!({
+                    "success": true,
+                    "message": format!("Rendering '{}' - use execute_tool for full browser rendering", url),
+                    "include_html": include_html,
+                    "text": ""
                 })
             }
             _ => {
@@ -2557,6 +2592,34 @@ impl ExecutiveTools {
                     attendees,
                     location,
                 })
+            }
+            "render_page" => {
+                let url = arguments.get("url")?.as_str()?.to_string();
+                let include_html = arguments
+                    .get("include_html")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                Some(NoraExecutiveTool::RenderPage { url, include_html })
+            }
+            "search_web" => {
+                let query = arguments.get("query")?.as_str()?.to_string();
+                let max_results = arguments
+                    .get("max_results")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(5) as u32;
+                Some(NoraExecutiveTool::SearchWeb {
+                    query,
+                    max_results,
+                    search_type: SearchType::General,
+                })
+            }
+            "fetch_web_page" => {
+                let url = arguments.get("url")?.as_str()?.to_string();
+                let extract_text = arguments
+                    .get("extract_text")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                Some(NoraExecutiveTool::FetchWebPage { url, extract_text })
             }
             _ => None,
         }
@@ -5777,6 +5840,9 @@ impl ExecutiveTools {
             NoraExecutiveTool::FetchWebPage { url, extract_text } => {
                 self.execute_fetch_webpage(&url, extract_text).await
             }
+            NoraExecutiveTool::RenderPage { url, include_html } => {
+                self.execute_render_page(&url, include_html).await
+            }
             NoraExecutiveTool::SummarizeContent {
                 content,
                 max_length,
@@ -6079,21 +6145,60 @@ impl ExecutiveTools {
         max_results: u32,
         _search_type: &SearchType,
     ) -> crate::Result<serde_json::Value> {
-        // Note: This would integrate with actual search APIs (DuckDuckGo, Google, etc.)
-        // For now, return structured placeholder
+        let api_key = match std::env::var("EXA_API_KEY") {
+            Ok(k) if !k.is_empty() => k,
+            _ => {
+                return Ok(serde_json::json!({
+                    "success": false,
+                    "error": "EXA_API_KEY not configured — web search unavailable"
+                }));
+            }
+        };
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post("https://api.exa.ai/search")
+            .header("x-api-key", &api_key)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "query": query,
+                "num_results": max_results,
+                "use_autoprompt": true,
+                "text": true
+            }))
+            .send()
+            .await
+            .map_err(|e| crate::NoraError::ToolExecutionError(format!("Exa search request failed: {}", e)))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Ok(serde_json::json!({
+                "success": false,
+                "error": format!("Exa search returned {}: {}", status, body)
+            }));
+        }
+
+        let data: serde_json::Value = resp.json().await
+            .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to parse Exa response: {}", e)))?;
+
+        let results = data.get("results")
+            .and_then(|r| r.as_array())
+            .map(|arr| {
+                arr.iter().map(|r| serde_json::json!({
+                    "title": r.get("title").and_then(|t| t.as_str()).unwrap_or(""),
+                    "url": r.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+                    "snippet": r.get("text").and_then(|t| t.as_str()).unwrap_or(""),
+                    "score": r.get("score")
+                })).collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
         Ok(serde_json::json!({
             "success": true,
             "query": query,
-            "results": [
-                {
-                    "title": format!("Search result for: {}", query),
-                    "url": "https://example.com/result1",
-                    "snippet": format!("This is a mock search result for '{}'", query)
-                }
-            ],
-            "result_count": 1,
-            "max_results": max_results,
-            "note": "Real search API integration pending"
+            "results": results,
+            "result_count": results.len()
         }))
     }
 
@@ -6127,6 +6232,119 @@ impl ExecutiveTools {
             "content_length": result_content.len(),
             "text_extracted": extract_text
         }))
+    }
+
+    async fn execute_render_page(
+        &self,
+        url: &str,
+        include_html: bool,
+    ) -> crate::Result<serde_json::Value> {
+        use std::process::Command;
+
+        // Find the render-page.js script
+        let script_path = {
+            let candidates = [
+                "/home/pythia/pcg-cc-mcp/scripts/render-page.js",
+                "scripts/render-page.js",
+                "./scripts/render-page.js",
+            ];
+            candidates
+                .iter()
+                .find(|p| std::path::Path::new(*p).exists())
+                .map(|p| p.to_string())
+        };
+
+        let script_path = match script_path {
+            Some(p) => p,
+            None => {
+                return Ok(serde_json::json!({
+                    "success": false,
+                    "error": "render-page.js script not found. Ensure scripts/render-page.js exists in the project root."
+                }));
+            }
+        };
+
+        // Check Playwright is installed
+        let playwright_check = tokio::task::spawn_blocking(|| {
+            Command::new("node")
+                .args(["-e", "require('playwright')"])
+                .output()
+        })
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+        if !playwright_check {
+            return Ok(serde_json::json!({
+                "success": false,
+                "error": "Playwright not installed. Run: cd /home/pythia/pcg-cc-mcp && npm install playwright && npx playwright install chromium"
+            }));
+        }
+
+        tracing::info!("[NORA TOOLS] Rendering JavaScript page via Playwright: {}", url);
+
+        let url_owned = url.to_string();
+        let output = tokio::task::spawn_blocking(move || {
+            Command::new("node")
+                .args([&script_path, &url_owned, "30000"])
+                .output()
+        })
+        .await
+        .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to spawn render task: {}", e)))?
+        .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to execute render script: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Try parsing JSON error from stdout first
+            if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                if let Some(err) = val.get("error").and_then(|e| e.as_str()) {
+                    return Ok(serde_json::json!({"success": false, "url": url, "error": err}));
+                }
+            }
+            return Ok(serde_json::json!({
+                "success": false,
+                "url": url,
+                "error": format!("Render script failed: {}", stderr.trim())
+            }));
+        }
+
+        let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)
+            .map_err(|e| crate::NoraError::ToolExecutionError(format!("Failed to parse render output: {}", e)))?;
+
+        // Convert HTML to plain text (basic stripping)
+        let html = parsed.get("html").and_then(|h| h.as_str()).unwrap_or("");
+        let title = parsed.get("title").and_then(|t| t.as_str());
+        // Strip tags for text: replace tags with spaces, collapse whitespace
+        let text: String = {
+            let mut in_tag = false;
+            let mut s = String::with_capacity(html.len());
+            for c in html.chars() {
+                match c {
+                    '<' => { in_tag = true; s.push(' '); }
+                    '>' => { in_tag = false; }
+                    _ if !in_tag => s.push(c),
+                    _ => {}
+                }
+            }
+            // Collapse whitespace
+            s.split_whitespace().collect::<Vec<_>>().join(" ")
+        };
+
+        let mut result = serde_json::json!({
+            "success": true,
+            "url": parsed.get("url").and_then(|u| u.as_str()).unwrap_or(url),
+            "title": title,
+            "text": text,
+            "text_length": text.len(),
+        });
+
+        if include_html {
+            result["html"] = serde_json::Value::String(html.to_string());
+        }
+
+        Ok(result)
     }
 
     async fn execute_summarize_content(

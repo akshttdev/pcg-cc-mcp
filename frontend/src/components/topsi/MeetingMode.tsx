@@ -96,7 +96,8 @@ function isUrl(text: string): boolean {
 
 function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+  const token = localStorage.getItem('session_id') || sessionStorage.getItem('session_id') ||
+    localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
   if (token) headers['Authorization'] = `Bearer ${token}`;
   return headers;
 }

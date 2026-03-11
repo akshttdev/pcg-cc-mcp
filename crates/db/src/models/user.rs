@@ -184,6 +184,7 @@ pub struct UpdateOrganization {
     pub slug: Option<String>,
     pub description: Option<String>,
     pub avatar_url: Option<String>,
+    pub address: Option<String>,
 }
 
 impl User {
@@ -312,9 +313,10 @@ impl Organization {
         let slug = data.slug.as_deref().unwrap_or(&existing.slug);
         let description = data.description.as_deref().or(existing.description.as_deref());
         let avatar_url = data.avatar_url.as_deref().or(existing.avatar_url.as_deref());
+        let address = data.address.as_deref().or(existing.address.as_deref());
 
         sqlx::query_as::<_, Organization>(
-            r#"UPDATE organizations SET name = ?, slug = ?, description = ?, avatar_url = ?, updated_at = datetime('now')
+            r#"UPDATE organizations SET name = ?, slug = ?, description = ?, avatar_url = ?, address = ?, updated_at = datetime('now')
                WHERE id = ?
                RETURNING id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address"#,
         )
@@ -322,6 +324,7 @@ impl Organization {
         .bind(slug)
         .bind(description)
         .bind(avatar_url)
+        .bind(address)
         .bind(id)
         .fetch_one(pool)
         .await

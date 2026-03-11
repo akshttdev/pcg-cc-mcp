@@ -1681,7 +1681,7 @@ export function Sidebar({ className }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
     <div className={cn(
       "flex flex-col h-full sidebar-container transition-all duration-200 overflow-hidden",
-      sidebarCollapsed ? "w-14" : "w-64",
+      sidebarCollapsed ? "w-14" : "w-72",
       className
     )}>
       {/* Collapsed sidebar: fixed sections */}

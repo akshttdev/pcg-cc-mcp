@@ -21,8 +21,8 @@ use db::models::crm_pipeline::{
 
 #[derive(Debug, Deserialize)]
 pub struct ListPipelinesQuery {
-    pub organization_id: Uuid,
-
+    pub organization_id: Option<Uuid>,
+    pub project_id: Option<Uuid>,
     pub pipeline_type: Option<String>,
 }
 
@@ -39,23 +39,47 @@ async fn list_pipelines(
 ) -> Result<Json<ApiResponse<Vec<CrmPipeline>>>, ApiError> {
     let pool = &deployment.db().pool;
 
-    // Ensure default pipelines exist for this org
-    CrmPipeline::ensure_defaults_for_org(pool, query.organization_id).await?;
+    // Resolve organization_id — either directly provided or looked up from project_id
+    let org_id = if let Some(oid) = query.organization_id {
+        oid
+    } else if let Some(pid) = query.project_id {
+        // Find the org that owns this project via existing crm_pipelines or clients table
+        let org_bytes: Option<Vec<u8>> = sqlx::query_scalar(
+            "SELECT organization_id FROM crm_pipelines WHERE project_id = ? AND organization_id IS NOT NULL LIMIT 1"
+        )
+        .bind(pid)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
 
+        if let Some(bytes) = org_bytes {
+            Uuid::from_slice(&bytes)
+                .map_err(|_| ApiError::BadRequest("Invalid organization UUID in pipeline".to_string()))?
+        } else {
+            return Err(ApiError::BadRequest(
+                "No pipelines found for the given project_id".to_string(),
+            ));
+        }
+    } else {
+        return Err(ApiError::BadRequest(
+            "Must provide organization_id or project_id".to_string(),
+        ));
+    };
+
+    // Ensure default pipelines exist for this org
+    CrmPipeline::ensure_defaults_for_org(pool, org_id).await?;
 
     let pipelines = if let Some(type_str) = query.pipeline_type {
         let pipeline_type: PipelineType = type_str
             .parse()
             .map_err(|_| ApiError::BadRequest(format!("Invalid pipeline type: {}", type_str)))?;
-
-        CrmPipeline::find_by_type_for_org(pool, query.organization_id, pipeline_type)
-
+        CrmPipeline::find_by_type_for_org(pool, org_id, pipeline_type)
             .await?
             .into_iter()
             .collect()
     } else {
-        CrmPipeline::find_by_organization(pool, query.organization_id, None).await?
-
+        CrmPipeline::find_by_organization(pool, org_id, None).await?
     };
 
     Ok(Json(ApiResponse::success(pipelines)))

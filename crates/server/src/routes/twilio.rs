@@ -9,7 +9,9 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
+
+use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 
 
 use axum::{
@@ -56,6 +58,91 @@ static CALL_DB_CONTEXTS: Lazy<Arc<Mutex<HashMap<String, CallDbContext>>>> =
 /// Secondary index: caller phone → call_sid (for SMS-during-call lookup)
 static ACTIVE_CALL_PHONES: Lazy<Arc<Mutex<HashMap<String, String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// Debounce window for SMS thread buffering (seconds)
+const SMS_THREAD_WINDOW_SECS: u64 = 8;
+
+/// Buffered SMS thread state per sender
+struct SmsThread {
+    messages: Vec<String>,
+    last_received: SystemTime,
+    person_context: Option<serde_json::Value>,
+}
+
+/// Global SMS thread buffer: sender phone → buffered thread
+static SMS_THREAD_BUFFER: Lazy<Arc<Mutex<HashMap<String, SmsThread>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// Look up person context from the persons table by phone number.
+/// Returns a JSON Value with `name`, `email` if found.
+async fn lookup_sms_sender_context(
+    pool: &sqlx::SqlitePool,
+    phone: &str,
+) -> Option<serde_json::Value> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        full_name: String,
+        email: Option<String>,
+    }
+    // phones column is a JSON array of {value, label} objects; search for the phone in it
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT full_name, email FROM persons \
+         WHERE phones LIKE ? OR phones LIKE ? \
+         LIMIT 1",
+    )
+    .bind(format!("%\"{}%", phone))
+    .bind(format!("%{}%", phone))
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    row.map(|r| serde_json::json!({
+        "name": r.full_name,
+        "email": r.email,
+        "phone": phone,
+    }))
+}
+
+/// Truncate a string to `max` characters, appending "…" if truncated.
+fn truncate_for_sms(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let truncated: String = text.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", truncated)
+}
+
+/// Send an outbound SMS via Twilio REST API.
+async fn send_outbound_sms(to: &str, body: &str) -> Result<(), anyhow::Error> {
+    let account_sid = std::env::var("TWILIO_ACCOUNT_SID")
+        .map_err(|_| anyhow::anyhow!("TWILIO_ACCOUNT_SID not set"))?;
+    let auth_token = std::env::var("TWILIO_AUTH_TOKEN")
+        .map_err(|_| anyhow::anyhow!("TWILIO_AUTH_TOKEN not set"))?;
+    let from_number = std::env::var("TWILIO_FROM_NUMBER")
+        .map_err(|_| anyhow::anyhow!("TWILIO_FROM_NUMBER not set"))?;
+
+    let url = format!(
+        "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
+        account_sid
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .basic_auth(&account_sid, Some(&auth_token))
+        .form(&[("To", to), ("From", &from_number), ("Body", body)])
+        .send()
+        .await?;
+
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        Err(anyhow::anyhow!("Twilio SMS error {}: {}", status, &text[..text.len().min(200)]))
+    }
+}
 
 
 /// An SMS received while a call is active, optionally with ingested content.
@@ -1621,8 +1708,6 @@ pub async fn handle_incoming_sms(
                     ingested_content: ingested,
                 });
             });
-
-            // Acknowledge immediately — Nora will weave it into the next voice turn
             let twiml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>\
                 <Message>Got it — I'll bring that into our conversation now.</Message>\
 
@@ -1631,48 +1716,111 @@ pub async fn handle_incoming_sms(
         }
     }
 
-    // ── No active call — normal standalone SMS processing ────────────────────
-    let (caller_name, caller_type) =
-        match CrmContact::find_by_phone_global(pool, &request.from).await {
-            Ok(Some(contact)) => {
-                let name = contact
-                    .full_name
-                    .unwrap_or_else(|| contact.email.unwrap_or_else(|| "Unknown".into()));
-                (name, "returning_client")
-            }
-            _ => {
-                if let Some((_, full_name, _)) =
-                    lookup_pcg_team_member(pool, &request.from).await
-                {
-                    (full_name, "pcg_team")
-                } else {
-                    ("Unknown".to_string(), "new_contact")
-                }
-            }
+    // ── No active call — SMS thread buffering + Nora orchestration ───────────
+    // Resolve sender identity (persons > crm_contacts > pcg_team)
+    let person_context = lookup_sms_sender_context(pool, &request.from).await;
+    let caller_name = person_context
+        .as_ref()
+        .and_then(|c| c.get("name").and_then(|v| v.as_str()))
+        .unwrap_or("there")
+        .to_string();
+
+    // Add to thread buffer
+    let (is_first_in_thread, msg_count) = {
+        let mut buffer = SMS_THREAD_BUFFER.lock().await;
+        let entry = buffer.entry(request.from.clone()).or_insert_with(|| SmsThread {
+            messages: Vec::new(),
+            last_received: SystemTime::now(),
+            person_context: person_context.clone(),
+        });
+        entry.messages.push(request.body.clone());
+        entry.last_received = SystemTime::now();
+        // Update person context if we just resolved it
+        if entry.person_context.is_none() && person_context.is_some() {
+            entry.person_context = person_context.clone();
+        }
+        let count = entry.messages.len();
+        (count == 1, count)
+    };
+
+    info!("SMS thread from {}: {} message(s) buffered", request.from, msg_count);
+
+    // Spawn debounced processor — each message spawns one; only the "last" one processes
+    let from_clone = request.from.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(SMS_THREAD_WINDOW_SECS)).await;
+
+        // Drain buffer only if we're still the most recent processor
+        let thread = {
+            let mut buffer = SMS_THREAD_BUFFER.lock().await;
+            let should_process = buffer.get(&from_clone).map(|t| {
+                t.last_received
+                    .elapsed()
+                    .unwrap_or_default()
+                    .as_secs()
+                    >= SMS_THREAD_WINDOW_SECS - 5
+            }).unwrap_or(false);
+            if should_process { buffer.remove(&from_clone) } else { None }
         };
 
-    let sms_context = json!({
-        "channel": "sms",
-        "caller_type": caller_type,
-        "caller": {
-            "caller_name": caller_name,
-            "caller_role": caller_type,
-            "phone": request.from,
+        if let Some(thread) = thread {
+            let combined = thread.messages.iter()
+                .enumerate()
+                .map(|(i, m)| format!("[{}] {}", i + 1, m))
+                .collect::<Vec<_>>()
+                .join("\n\n");
+
+            let sender_label = thread.person_context
+                .as_ref()
+                .and_then(|c| c.get("name").and_then(|v| v.as_str()))
+                .map(|n| format!("{} ({})", n, from_clone))
+                .unwrap_or_else(|| from_clone.clone());
+
+            let nora_content = format!(
+                "[SMS THREAD from {} — {} message(s)]\n\n{}\n\n\
+                [Channel: SMS/WhatsApp. Instructions: \
+                (1) Create exactly ONE task for this request — do not create duplicates. \
+                (2) Assign it to the Editron agent (short_name: editron-post). \
+                (3) Place it in the most relevant project for Sirak Studios — prefer 'Mopar Car Show' if the content matches. \
+                (4) Include the Dropbox link and all requirements in the task description. \
+                (5) Reply in plain text only, no markdown, MAXIMUM 280 characters. Be concise.]",
+                sender_label,
+                thread.messages.len(),
+                combined
+            );
+
+            let reply = match process_sms_with_nora(&nora_content, &from_clone, thread.person_context).await {
+                Ok(text) => truncate_for_sms(&text, 320),
+                Err(e) => {
+                    error!("SMS Nora processing failed for {}: {}", from_clone, e);
+                    "I hit a snag processing your request — please try again shortly.".to_string()
+                }
+            };
+
+            if let Err(e) = send_outbound_sms(&from_clone, &reply).await {
+                error!("Failed to send outbound SMS to {}: {}", from_clone, e);
+            }
         }
     });
 
-    let nora_text = match process_sms_with_nora(&request.body, &request.from, Some(sms_context)).await {
-        Ok(text) => text,
-        Err(e) => {
-            error!("Nora SMS processing failed: {}", e);
-            "I'm sorry, I'm having a moment. Please try again shortly.".to_string()
-        }
+    // Acknowledge immediately so Twilio doesn't time out
+    let ack = if is_first_in_thread {
+        format!(
+            "Hi {}! Got your message — send everything and I'll take care of it right away.",
+            caller_name
+        )
+    } else {
+        String::new() // Silence subsequent messages — we'll reply via outbound SMS
     };
 
-    let twiml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>{}</Message></Response>",
-        xml_escape(&nora_text)
-    );
+    let twiml = if ack.is_empty() {
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>".to_string()
+    } else {
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>{}</Message></Response>",
+            xml_escape(&ack)
+        )
+    };
 
 
     (StatusCode::OK, [("Content-Type", "application/xml")], twiml)
@@ -1796,8 +1944,7 @@ async fn process_sms_with_nora(
 
     let caller_note = context
         .as_ref()
-        .and_then(|ctx| ctx.get("caller"))
-        .and_then(|c| c.get("caller_name"))
+        .and_then(|ctx| ctx.get("name"))
         .and_then(|v| v.as_str())
         .filter(|n| !n.is_empty() && *n != "Unknown")
 

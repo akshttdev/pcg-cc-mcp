@@ -165,6 +165,7 @@ async function handleInteraction(interaction, agentName) {
   if (!interaction.guildId) return;
 
   const { commandName: cmd } = interaction;
+  console.log(`[${agentName}] Interaction received: /${cmd} from ${interaction.user.tag}`);
   const ag = agentName.toLowerCase();
 
   if (cmd === `${ag}-join`) {
@@ -423,14 +424,14 @@ async function processUtterance(pcm, userId, displayName, session) {
   console.log(`[${session.agentName}] [${displayName}]: ${transcript.slice(0, 100)}`);
 
   const addressed = detectWakeWord(transcript, session.agentName);
-  const isAddressed = addressed !== null;
+  // If wake word detected use text after it; otherwise respond to everything
+  // (user already explicitly joined with /topsi-join or /nora-join)
+  const cmd = addressed || transcript;
   const endMs = Date.now() - session.startedAt;
 
   let agentResponse = null;
-  if (isAddressed) {
-    try {
-      const cmd = addressed || transcript;
-      // Build participant context for the agent
+  try {
+    // Build participant context for the agent
       const others = [...session.participants.entries()]
         .filter(([id]) => id !== userId)
         .map(([, name]) => name);
@@ -446,9 +447,8 @@ async function processUtterance(pcm, userId, displayName, session) {
         session.meetingId,
         participantCtx
       );
-    } catch (e) {
-      console.warn(`[${session.agentName}] Agent call failed:`, e.message);
-    }
+  } catch (e) {
+    console.warn(`[${session.agentName}] Agent call failed:`, e.message);
   }
 
   // Play TTS response (non-blocking)
@@ -473,7 +473,7 @@ async function processUtterance(pcm, userId, displayName, session) {
     transcript,
     startMs,
     endMs,
-    isAddressed ? 1 : 0,
+    1,
     JSON.stringify({ discord_user_id: userId, discord_display_name: displayName, agent_response: agentResponse })
   );
 

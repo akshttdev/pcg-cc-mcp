@@ -1,7 +1,8 @@
 -- Brand research status fields on org_brand_profiles
-ALTER TABLE organization_brand_profiles ADD COLUMN research_status TEXT NOT NULL DEFAULT 'idle';
-ALTER TABLE organization_brand_profiles ADD COLUMN research_ran_at TEXT;
-ALTER TABLE organization_brand_profiles ADD COLUMN research_summary TEXT;
+-- NOTE: These columns already exist in live DB. ALTERs skipped.
+-- ALTER TABLE organization_brand_profiles ADD COLUMN research_status TEXT NOT NULL DEFAULT 'idle';
+-- ALTER TABLE organization_brand_profiles ADD COLUMN research_ran_at TEXT;
+-- ALTER TABLE organization_brand_profiles ADD COLUMN research_summary TEXT;
 
 -- Client intake tokens (shareable questionnaire links)
 CREATE TABLE IF NOT EXISTS brand_intake_tokens (
