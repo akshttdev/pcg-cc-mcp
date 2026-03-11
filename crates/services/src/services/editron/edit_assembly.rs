@@ -3,7 +3,7 @@
 //! Automated edit creation based on music analysis and footage inventory.
 //! Creates intelligent, beat-synced edits from raw footage.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 

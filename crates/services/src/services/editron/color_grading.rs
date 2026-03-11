@@ -10,7 +10,7 @@
 
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
-use super::{EditronError, EditronResult};
+use super::EditronResult;
 
 /// LUT (Look-Up Table) for color grading
 #[derive(Debug, Clone, Serialize, Deserialize)]

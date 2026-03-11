@@ -19,7 +19,7 @@ use super::music::{
     LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
     MusicTrack,
 };
-use super::{EditronError, EditronResult};
+use super::EditronError;
 
 /// Epidemic Sound API base URL
 const ES_API_BASE: &str = "https://api.epidemicsound.com/v0";

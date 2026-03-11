@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use super::{EditronError, EditronResult};
-use super::music::{MusicMood, MusicGenre, MusicSearchCriteria, MusicTrack, MusicPlatform, LicenseInfo, LicenseType};
-use super::scene_detection::{Scene, SceneDetectionResult};
+use super::music::{MusicMood, MusicGenre, MusicSearchCriteria, MusicTrack, MusicPlatform};
+use super::scene_detection::SceneDetectionResult;
 
 /// Video content analysis for music matching
 #[derive(Debug, Clone, Serialize, Deserialize)]

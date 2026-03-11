@@ -47,7 +47,6 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::RwLock;
-use uuid::Uuid;
 
 pub use ffmpeg::FFmpegClient;
 pub use premiere::PremiereProBridge;

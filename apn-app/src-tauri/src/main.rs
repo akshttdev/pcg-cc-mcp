@@ -6,7 +6,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use alpha_protocol_core::{
-    node::{AlphaNodeBuilder, NodeConfig, NodeEvent},
+    node::{AlphaNodeBuilder, NodeEvent},
     DEFAULT_NATS_RELAY,
 };
 use serde::{Deserialize, Serialize};

@@ -11,9 +11,8 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit, OsRng},
     ChaCha20Poly1305, Nonce,
 };
-use x25519_dalek::{EphemeralSecret, PublicKey, SharedSecret};
+use x25519_dalek::{EphemeralSecret, PublicKey};
 use sha2::{Sha256, Digest};
-use serde::{Serialize, Deserialize};
 
 /// Session key for encrypted communication between two peers
 #[derive(Clone)]

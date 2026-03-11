@@ -9,7 +9,7 @@
 //!   "organization" — org-level shared account, owner_id = org UUID hex
 //!   "project"      — project-scoped account, owner_id = project UUID hex
 
-use db::models::email_account::{EmailAccount, EmailProvider};
+use db::models::email_account::EmailAccount;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;

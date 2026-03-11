@@ -16,7 +16,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 
-use crate::economics::{display_to_vibe, VibeAmount, RewardRates};
+use crate::economics::{VibeAmount, RewardRates};
 use crate::relay::PeerAnnouncement;
 use crate::wire::NodeResources;
 

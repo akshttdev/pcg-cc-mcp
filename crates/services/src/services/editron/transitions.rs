@@ -487,7 +487,7 @@ impl TransitionEngine {
                     input_a, input_b, duration
                 )
             }
-            Transition::FadeToColor { duration_frames, color, .. } => {
+            Transition::FadeToColor { duration_frames,  .. } => {
                 let duration = *duration_frames as f32 / self.frame_rate;
                 format!(
                     "[{}][{}]xfade=transition=fadeblack:duration={}:offset=0",

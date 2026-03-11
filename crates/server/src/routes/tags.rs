@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     response::Json as ResponseJson,
-    routing::{get, delete},
+    routing::get,
 };
 use db::models::tag::{CreateTag, Tag, UpdateTag};
 use deployment::Deployment;

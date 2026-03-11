@@ -5,7 +5,6 @@
 
 use axum::{
     extract::State,
-    http::StatusCode,
     response::{Html, Json},
     routing::get,
     Router,

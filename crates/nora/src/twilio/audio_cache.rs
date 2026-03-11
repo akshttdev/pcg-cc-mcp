@@ -8,7 +8,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use base64::engine::Engine;
 use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::voice::AudioFormat;

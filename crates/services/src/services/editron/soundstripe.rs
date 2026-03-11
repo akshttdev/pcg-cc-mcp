@@ -16,7 +16,7 @@ use super::music::{
     LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
     MusicTrack,
 };
-use super::{EditronError, EditronResult};
+use super::EditronError;
 
 /// Soundstripe API base URL
 const SS_API_BASE: &str = "https://api.soundstripe.com/v1";

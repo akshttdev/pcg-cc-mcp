@@ -28,7 +28,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, broadcast};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 use chrono::Utc;
 

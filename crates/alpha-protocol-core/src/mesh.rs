@@ -19,7 +19,6 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-use crate::wire::{Message, MessageType};
 
 /// Gossipsub topics for the Alpha Protocol Network
 pub mod topics {

@@ -18,7 +18,7 @@ use super::music::{
     LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
     MusicTrack,
 };
-use super::{EditronError, EditronResult};
+use super::EditronError;
 
 /// Artlist API endpoints
 const ARTLIST_TOKEN_URL: &str =

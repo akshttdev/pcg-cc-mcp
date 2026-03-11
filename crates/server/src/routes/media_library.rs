@@ -12,7 +12,7 @@
 use axum::{
     Router,
     extract::{Multipart, Path, Query, State},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json,
 };
 use deployment::Deployment;
