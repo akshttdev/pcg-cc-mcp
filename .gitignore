@@ -122,6 +122,7 @@ voice_samples/
 
 # Claude Code / MCP local config
 .claude-login.json
+.claude/
 .mcp.json
 
 # SQLx offline query cache
@@ -132,6 +133,7 @@ data/
 
 # Test artifacts
 screenshots/
+test-screenshots/
 test-project/
 test-project-cleanup/
 sprint-demo-app/
