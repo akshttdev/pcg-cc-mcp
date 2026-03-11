@@ -424,8 +424,11 @@ async function processUtterance(pcm, userId, displayName, session) {
   console.log(`[${session.agentName}] [${displayName}]: ${transcript.slice(0, 100)}`);
 
   const addressed = detectWakeWord(transcript, session.agentName);
-  // If wake word detected use text after it; otherwise respond to everything
-  // (user already explicitly joined with /topsi-join or /nora-join)
+
+  // Nora: wake-word gated — only responds when explicitly addressed.
+  // Topsi: responds to everything (name is too often misheard by Whisper).
+  if (session.agentName.toLowerCase() === 'nora' && addressed === null) return;
+
   const cmd = addressed || transcript;
   const endMs = Date.now() - session.startedAt;
 
