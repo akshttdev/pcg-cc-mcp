@@ -214,6 +214,9 @@ async fn main() -> Result<(), VibeKanbanError> {
         tokio::spawn(async move {
             tracing::info!("🌐 Auto-starting APN node in background...");
 
+            // Kill any existing apn_node processes to prevent accumulation
+            utils::external_services::kill_existing_apn_nodes();
+
             let apn_binary = std::env::current_exe()
                 .ok()
                 .and_then(|p| p.parent().map(|p| p.join("apn_node")))
