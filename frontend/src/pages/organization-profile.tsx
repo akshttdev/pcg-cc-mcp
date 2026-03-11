@@ -130,7 +130,6 @@ import {
   airtableApi,
   githubAuthApi,
   discordApi,
-  pulseApi,
   type DiscordSessionSummary,
   type OrganizationData,
   type ClientData,
