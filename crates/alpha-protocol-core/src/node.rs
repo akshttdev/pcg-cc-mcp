@@ -3,7 +3,7 @@
 //! Combines identity, mesh networking, and relay into a single
 //! easy-to-use interface for building APN applications.
 
-use anyhow::{Result, Context};
+use anyhow::Result;
 use tokio::sync::mpsc;
 use std::sync::Arc;
 use tokio::sync::RwLock;

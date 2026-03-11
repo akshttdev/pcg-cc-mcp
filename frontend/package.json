@@ -4,6 +4,7 @@
   "version": "0.0.55",
   "type": "module",
   "scripts": {
+    "predev": "rm -rf node_modules/.vite/deps",
     "dev": "VITE_OPEN=${VITE_OPEN:-false} vite",
     "build": "vite build",
     "check": "tsc --noEmit",

@@ -38,18 +38,10 @@ pub struct ReviewDeliverablePayload {
 }
 
 #[derive(Debug, Serialize)]
-pub struct ReviewSourceFile {
-    pub name: String,
-    pub url: String,
-    pub size_bytes: u64,
-}
-
-#[derive(Debug, Serialize)]
 pub struct ReviewData {
     pub token: ReviewToken,
     pub deliverable: ReviewDeliverablePayload,
     pub comments: Vec<ReviewComment>,
-    pub source_files: Vec<ReviewSourceFile>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,42 +119,6 @@ fn resolve_artifact_video_url(artifact: &ExecutionArtifact) -> Option<String> {
         .or_else(|| artifact_video_url_from_dir(artifact))
 }
 
-/// List all video/media files in the artifact's directory as ReviewSourceFile entries.
-fn list_source_files(artifact: &ExecutionArtifact) -> Vec<ReviewSourceFile> {
-    let file_path = match artifact.file_path.as_deref() {
-        Some(p) => p,
-        None => return vec![],
-    };
-    let dir = {
-        let p = std::path::Path::new(file_path);
-        if p.is_absolute() { p.to_path_buf() } else { asset_dir().join(file_path) }
-    };
-    if !dir.is_dir() {
-        return vec![];
-    }
-    let mut files = vec![];
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        let mut entries: Vec<_> = entries.flatten().collect();
-        entries.sort_by_key(|e| e.file_name());
-        for entry in entries {
-            let path = entry.path();
-            if !path.is_file() { continue; }
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            if !matches!(ext.as_str(), "mp4" | "mov" | "webm" | "avi" | "mkv" | "mxf" | "prores") {
-                continue;
-            }
-            let fname = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-            let size_bytes = path.metadata().map(|m| m.len()).unwrap_or(0);
-            files.push(ReviewSourceFile {
-                url: format!("/api/artifacts/{}/files/{}", artifact.id, fname),
-                name: fname,
-                size_bytes,
-            });
-        }
-    }
-    files
-}
-
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// GET /review/{token}/data — public endpoint
@@ -178,7 +134,6 @@ async fn get_review_data(
 
     let comments;
     let payload;
-    let source_files;
 
     if let Some(artifact_id) = tok.artifact_id {
         // Artifact-based review
@@ -198,7 +153,6 @@ async fn get_review_data(
             final_link: None,
         };
 
-        source_files = list_source_files(&artifact);
         // Use artifact_id as comment scope (stored as deliverable_id in review_comments)
         comments = ReviewComment::find_by_deliverable(pool, artifact_id).await?;
     } else if let Some(deliverable_id) = tok.deliverable_id {
@@ -215,7 +169,6 @@ async fn get_review_data(
             final_link: deliverable.final_link.clone(),
         };
 
-        source_files = vec![];
         comments = ReviewComment::find_by_deliverable(pool, deliverable_id).await?;
     } else {
         return Err(ApiError::InternalError("Review token has no linked resource".into()));
@@ -225,7 +178,6 @@ async fn get_review_data(
         token: tok,
         deliverable: payload,
         comments,
-        source_files,
     })))
 }
 

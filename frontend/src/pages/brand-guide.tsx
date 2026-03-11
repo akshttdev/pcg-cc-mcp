@@ -1,8 +1,14 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { organizationsApi, type OrgBrandProfile, resolveApiUrl } from '@/lib/api';
-import { Loader2, ArrowLeft, Globe, Instagram, Linkedin, Twitter, Facebook, Youtube, ExternalLink, Download, MapPin, Printer } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { organizationsApi, type OrgBrandProfile, type OrgKnowledgeSource, resolveApiUrl } from '@/lib/api';
+import { Loader2, ArrowLeft, Globe, Instagram, Linkedin, Twitter, Facebook, Youtube, ExternalLink, MapPin, Printer, Sparkles, Palette, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { toast } from 'sonner';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -52,10 +58,6 @@ function PageLabel({ children }: { children: React.ReactNode }) {
   return (
     <p className="text-[9px] uppercase tracking-[0.25em] text-gray-300 mb-8 font-medium">{children}</p>
   );
-}
-
-function Rule({ color }: { color: string }) {
-  return <div className="h-px w-full my-8" style={{ background: color }} />;
 }
 
 // Large landscape colour swatch card
@@ -341,10 +343,231 @@ function BannerMockup({ primary, accent, org, tagline }: { primary: string; acce
   );
 }
 
+// ── Brand Setup Wizard ────────────────────────────────────────────────────────
+
+function BrandSetupWizard({
+  orgId,
+  orgName,
+  open,
+  onOpenChange,
+}: {
+  orgId: string;
+  orgName: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState({
+    tagline: '',
+    primaryColor: '#000000',
+    secondaryColor: '#FFFFFF',
+    accentColor: '#AF9041',
+    typographyHeading: '',
+    typographyBody: '',
+    missionStatement: '',
+    brandVoice: '',
+    websiteUrl: '',
+    industry: '',
+  });
+
+  const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+
+  const upsertMutation = useMutation({
+    mutationFn: (data: Partial<OrgBrandProfile>) =>
+      organizationsApi.upsertBrandProfile(orgId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      toast.success('Brand profile created');
+      onOpenChange(false);
+    },
+    onError: () => toast.error('Failed to create brand profile'),
+  });
+
+  const researchMutation = useMutation({
+    mutationFn: () => organizationsApi.triggerBrandResearch(orgId),
+    onSuccess: () => {
+      toast.success('Brand research started — results will appear shortly');
+      queryClient.invalidateQueries({ queryKey: ['orgBrandProfile', orgId] });
+      onOpenChange(false);
+    },
+    onError: () => toast.error('Failed to start brand research'),
+  });
+
+  const steps = [
+    {
+      title: 'Brand Identity',
+      content: (
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="tagline">Tagline</Label>
+            <Input id="tagline" placeholder="Your brand in one line" value={form.tagline} onChange={set('tagline')} />
+          </div>
+          <div>
+            <Label htmlFor="industry">Industry</Label>
+            <Input id="industry" placeholder="e.g. Technology, Fashion, Finance" value={form.industry} onChange={set('industry')} />
+          </div>
+          <div>
+            <Label htmlFor="mission">Mission Statement</Label>
+            <Textarea id="mission" placeholder="Why does your brand exist?" value={form.missionStatement} onChange={set('missionStatement')} rows={3} />
+          </div>
+          <div>
+            <Label htmlFor="voice">Brand Voice</Label>
+            <Input id="voice" placeholder="e.g. Professional, friendly, bold" value={form.brandVoice} onChange={set('brandVoice')} />
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Colors & Typography',
+      content: (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="primary">Primary</Label>
+              <div className="flex gap-2 items-center mt-1">
+                <input type="color" id="primary" value={form.primaryColor} onChange={set('primaryColor')} className="h-8 w-8 rounded cursor-pointer border" />
+                <Input value={form.primaryColor} onChange={set('primaryColor')} className="font-mono text-xs" />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="secondary">Secondary</Label>
+              <div className="flex gap-2 items-center mt-1">
+                <input type="color" id="secondary" value={form.secondaryColor} onChange={set('secondaryColor')} className="h-8 w-8 rounded cursor-pointer border" />
+                <Input value={form.secondaryColor} onChange={set('secondaryColor')} className="font-mono text-xs" />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="accent">Accent</Label>
+              <div className="flex gap-2 items-center mt-1">
+                <input type="color" id="accent" value={form.accentColor} onChange={set('accentColor')} className="h-8 w-8 rounded cursor-pointer border" />
+                <Input value={form.accentColor} onChange={set('accentColor')} className="font-mono text-xs" />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2 mt-2">
+            {[form.primaryColor, form.secondaryColor, form.accentColor].map((c, i) => (
+              <div key={i} className="h-12 flex-1 rounded-md border" style={{ backgroundColor: c }} />
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="headingFont">Heading Font</Label>
+              <Input id="headingFont" placeholder="e.g. Playfair Display" value={form.typographyHeading} onChange={set('typographyHeading')} />
+            </div>
+            <div>
+              <Label htmlFor="bodyFont">Body Font</Label>
+              <Input id="bodyFont" placeholder="e.g. Inter, Roboto" value={form.typographyBody} onChange={set('typographyBody')} />
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Web Presence',
+      content: (
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="website">Website URL</Label>
+            <Input id="website" placeholder="https://example.com" value={form.websiteUrl} onChange={set('websiteUrl')} />
+          </div>
+          <div className="rounded-lg border border-dashed p-4 text-center space-y-3">
+            <Sparkles className="h-8 w-8 mx-auto text-yellow-500" />
+            <p className="text-sm font-medium">Auto-fill with AI Research</p>
+            <p className="text-xs text-muted-foreground">
+              Nora can analyze your website and public presence to automatically populate your brand profile with colors, fonts, positioning, and more.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => researchMutation.mutate()}
+              disabled={researchMutation.isPending || !form.websiteUrl}
+            >
+              {researchMutation.isPending ? (
+                <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Researching...</>
+              ) : (
+                <><Wand2 className="h-3 w-3 mr-1" /> Run Brand Research</>
+              )}
+            </Button>
+          </div>
+        </div>
+      ),
+    },
+  ];
+
+  const isLast = step === steps.length - 1;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Palette className="h-5 w-5" />
+            Set Up Brand Guide — {orgName}
+          </DialogTitle>
+          <DialogDescription>
+            Step {step + 1} of {steps.length}: {steps[step].title}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex gap-1 mb-2">
+          {steps.map((_, i) => (
+            <div
+              key={i}
+              className={`h-1 flex-1 rounded-full transition-colors ${
+                i <= step ? 'bg-primary' : 'bg-muted'
+              }`}
+            />
+          ))}
+        </div>
+        {steps[step].content}
+        <div className="flex justify-between pt-4">
+          <Button variant="ghost" onClick={() => setStep((s) => s - 1)} disabled={step === 0}>
+            Back
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            {isLast ? (
+              <Button
+                onClick={() => {
+                  const data: Partial<OrgBrandProfile> = {};
+                  if (form.tagline) (data as any).tagline = form.tagline;
+                  if (form.primaryColor !== '#000000') (data as any).primaryColor = form.primaryColor;
+                  if (form.secondaryColor !== '#FFFFFF') (data as any).secondaryColor = form.secondaryColor;
+                  if (form.accentColor !== '#AF9041') (data as any).accentColor = form.accentColor;
+                  if (form.typographyHeading) (data as any).typographyHeading = form.typographyHeading;
+                  if (form.typographyBody) (data as any).typographyBody = form.typographyBody;
+                  if (form.missionStatement) (data as any).missionStatement = form.missionStatement;
+                  if (form.brandVoice) (data as any).brandVoice = form.brandVoice;
+                  if (form.websiteUrl) (data as any).websiteUrl = form.websiteUrl;
+                  if (form.industry) (data as any).industry = form.industry;
+                  upsertMutation.mutate(data);
+                }}
+                disabled={upsertMutation.isPending}
+              >
+                {upsertMutation.isPending ? (
+                  <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Saving...</>
+                ) : (
+                  'Create Brand Profile'
+                )}
+              </Button>
+            ) : (
+              <Button onClick={() => setStep((s) => s + 1)}>Next</Button>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function BrandGuidePage() {
   const { orgId } = useParams<{ orgId: string }>();
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const { data: org, isLoading: orgLoading } = useQuery({
     queryKey: ['org', orgId],
@@ -358,6 +581,12 @@ export function BrandGuidePage() {
     enabled: !!orgId,
   });
 
+  const { data: knowledge } = useQuery<{ knowledge_entries?: OrgKnowledgeSource[]; stats?: { knowledge_entry_count: number } }>({
+    queryKey: ['orgKnowledge', orgId],
+    queryFn: () => organizationsApi.getKnowledge(orgId!) as Promise<{ knowledge_entries?: OrgKnowledgeSource[]; stats?: { knowledge_entry_count: number } }>,
+    enabled: !!orgId,
+  });
+
   if (orgLoading || profileLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black">
@@ -368,8 +597,41 @@ export function BrandGuidePage() {
 
   if (!org || !profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black text-gray-500">
-        Brand guide not found.
+      <div className="min-h-screen flex flex-col items-center bg-black text-gray-400 gap-6 pt-[20vh]">
+        <div className="text-center space-y-3">
+          <Palette className="h-12 w-12 mx-auto text-gray-600" />
+          <h2 className="text-xl font-semibold text-gray-300">
+            {org ? `No brand guide for ${org.name}` : 'Brand guide not found'}
+          </h2>
+          <p className="text-sm text-gray-500 max-w-md">
+            Set up a brand profile to generate a comprehensive brand guide with colors, typography, voice, and positioning.
+          </p>
+        </div>
+        {org && orgId && (
+          <>
+            <Button
+              onClick={() => setWizardOpen(true)}
+              className="gap-2"
+              variant="outline"
+            >
+              <Wand2 className="h-4 w-4" />
+              Set Up Brand Guide
+            </Button>
+            <BrandSetupWizard
+              orgId={orgId}
+              orgName={org.name}
+              open={wizardOpen}
+              onOpenChange={setWizardOpen}
+            />
+          </>
+        )}
+        <Link
+          to={orgId ? `/organizations/${orgId}` : '/'}
+          className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+        >
+          <ArrowLeft className="h-3 w-3 inline mr-1" />
+          Back to organization
+        </Link>
       </div>
     );
   }
@@ -547,8 +809,8 @@ export function BrandGuidePage() {
               Brand Standards · Confidential
             </p>
             <div className="h-px flex-1" style={{ background: accent, opacity: 0.3 }} />
-            {org.address && (
-              <p className="text-[9px] tracking-wider" style={{ color: `${secondary}40` }}>{org.address}</p>
+            {(org as any).address && (
+              <p className="text-[9px] tracking-wider" style={{ color: `${secondary}40` }}>{(org as any).address}</p>
             )}
           </div>
         </div>
@@ -673,7 +935,7 @@ export function BrandGuidePage() {
             <div className="flex gap-2 flex-wrap">
               {[...primaryTints.map((t, i) => ({ color: t, label: `Primary ${(i + 1) * 25}%` })),
                 ...accentTints.map((t, i) => ({ color: t, label: `Accent ${(i + 1) * 25}%` }))
-              ].map(({ color, label }, i) => (
+              ].map(({ color, label: _label }, i) => (
                 <div key={i} className="flex flex-col items-center gap-1">
                   <div className="h-10 w-10 rounded-lg border border-black/8 shadow-sm" style={{ background: color }} />
                   <p className="text-[8px] font-mono text-gray-400">{color}</p>
@@ -1164,7 +1426,7 @@ export function BrandGuidePage() {
             {/* Letterhead */}
             <div>
               <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-gray-400 mb-5">Letterhead</p>
-              <LetterheadMockup org={org.name} primary={primary} accent={accent} logoUrl={effectiveLogo} address={org.address} />
+              <LetterheadMockup org={org.name} primary={primary} accent={accent} logoUrl={effectiveLogo} address={(org as any).address} />
             </div>
           </div>
         </div>
@@ -1271,7 +1533,7 @@ export function BrandGuidePage() {
           </div>
 
           {/* HQ address */}
-          {org.address && (
+          {(org as any).address && (
             <div
               className="flex items-center gap-4 rounded-2xl px-6 py-4 mb-8 border"
               style={{ borderColor: `${accent}30` }}
@@ -1279,7 +1541,7 @@ export function BrandGuidePage() {
               <MapPin className="h-5 w-5 shrink-0" style={{ color: accent }} />
               <div>
                 <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-0.5">Headquarters</p>
-                <p className="text-sm font-semibold text-gray-800">{org.address}</p>
+                <p className="text-sm font-semibold text-gray-800">{(org as any).address}</p>
               </div>
             </div>
           )}
@@ -1336,6 +1598,37 @@ export function BrandGuidePage() {
                 Brand Intelligence Report · {profile.researchRanAt ? new Date(profile.researchRanAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'long' }) : 'Recent'}
               </p>
               <p className="text-sm text-gray-700 leading-relaxed">{profile.researchSummary}</p>
+            </div>
+          )}
+
+          {/* Knowledge graph entities */}
+          {knowledge?.knowledge_entries && knowledge.knowledge_entries.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.3em] mb-4 mt-8" style={{ color: accent }}>
+                Knowledge Graph · {knowledge.knowledge_entries.length} Intelligence Sources
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {knowledge.knowledge_entries.map((src: OrgKnowledgeSource) => (
+                  <div
+                    key={src.id}
+                    className="rounded-2xl p-5"
+                    style={{ background: `${primary}08`, border: `1px solid ${primary}15` }}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <p className="text-xs font-semibold text-gray-800 leading-tight">{src.source_title}</p>
+                      <span
+                        className="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded-full"
+                        style={{ background: `${accent}20`, color: accent }}
+                      >
+                        {Math.round(src.coverage_score * 100)}%
+                      </span>
+                    </div>
+                    {src.source_summary && (
+                      <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-3">{src.source_summary}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

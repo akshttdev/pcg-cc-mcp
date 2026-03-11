@@ -1265,6 +1265,7 @@ impl NoraAgent {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn describe_roadmap(&self) -> String {
         let ctx = self.context.read().await;
         if ctx.active_projects.is_empty() {
@@ -1295,7 +1296,10 @@ impl NoraAgent {
                 request.content
             );
             // Check if a specific project is mentioned
-            if let Some(project_name) = self.extract_project_name(&request.content) {
+            // Skip extraction for SMS/phone messages to avoid false matches on instruction text
+            let is_channel_message = request.content.starts_with("[SMS from")
+                || request.content.starts_with("[PHONE CALL");
+            if let Some(project_name) = if is_channel_message { None } else { self.extract_project_name(&request.content) } {
                 tracing::info!("Extracted project name: {}", project_name);
                 // Fetch specific project data
                 match executor.find_project_by_name(&project_name).await {
@@ -1363,7 +1367,7 @@ impl NoraAgent {
                         // Project not found in database, continue with static context
                     }
                 }
-            } else if request.content.to_lowercase().contains("task") {
+            } else if !is_channel_message && request.content.to_lowercase().contains("task") {
                 // No specific project, but asking about tasks - show all tasks across all projects
                 tracing::info!(
                     "No specific project found, but request contains 'task' - fetching all tasks"

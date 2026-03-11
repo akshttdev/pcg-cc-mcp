@@ -124,6 +124,12 @@ voice_samples/
 .claude-login.json
 .mcp.json
 
+# SQLx offline query cache
+.sqlx/
+
+# Runtime data directory
+data/
+
 # Test artifacts
 screenshots/
 test-project/
@@ -138,3 +144,6 @@ dev_assets_seed/duck.db
 # Backup migration files
 *.sql.bak
 .vercel
+
+# Playwright MCP
+.playwright-mcp/

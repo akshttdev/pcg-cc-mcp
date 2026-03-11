@@ -28,6 +28,7 @@ pub enum ContactSource {
     Api,
     ZohoSync,
     GmailSync,
+    Workflow,
 }
 
 impl std::fmt::Display for ContactSource {
@@ -42,6 +43,7 @@ impl std::fmt::Display for ContactSource {
             ContactSource::Api => "api",
             ContactSource::ZohoSync => "zoho_sync",
             ContactSource::GmailSync => "gmail_sync",
+            ContactSource::Workflow => "workflow",
         };
         write!(f, "{}", s)
     }
@@ -99,7 +101,9 @@ impl std::str::FromStr for LifecycleStage {
 #[ts(export)]
 pub struct CrmContact {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+    pub client_id: Option<Uuid>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub full_name: Option<String>,
@@ -147,7 +151,8 @@ pub struct CrmContact {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateCrmContact {
-    pub project_id: Uuid,
+    pub organization_id: Uuid,
+    pub client_id: Option<Uuid>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub email: Option<String>,
@@ -205,7 +210,8 @@ pub struct UpdateCrmContact {
 
 #[derive(Debug, Deserialize)]
 pub struct ContactSearchParams {
-    pub project_id: Uuid,
+    pub organization_id: Option<Uuid>,
+    pub client_id: Option<Uuid>,
     pub query: Option<String>,
     pub lifecycle_stage: Option<LifecycleStage>,
     pub company_name: Option<String>,
@@ -242,17 +248,20 @@ impl CrmContact {
         let contact = sqlx::query_as::<_, CrmContact>(
             r#"
             INSERT INTO crm_contacts (
-                id, project_id, first_name, last_name, full_name, email,
+                id, organization_id, project_id, client_id,
+                first_name, last_name, full_name, email,
                 phone, mobile, avatar_url, company_name, job_title, department,
                 linkedin_url, twitter_handle, website, source, lifecycle_stage,
                 tags, custom_fields, zoho_contact_id, gmail_contact_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)
             RETURNING *
             "#,
         )
         .bind(id)
-        .bind(data.project_id)
+        .bind(data.organization_id)
+        .bind(None::<Uuid>)
+        .bind(data.client_id)
         .bind(&data.first_name)
         .bind(&data.last_name)
         .bind(&full_name)
@@ -288,15 +297,16 @@ impl CrmContact {
         .ok_or(CrmContactError::NotFound)
     }
 
+    /// Find contact by email within an organization (primary scope)
     pub async fn find_by_email(
         pool: &SqlitePool,
-        project_id: Uuid,
+        organization_id: Uuid,
         email: &str,
     ) -> Result<Option<Self>, CrmContactError> {
         let contact = sqlx::query_as::<_, CrmContact>(
-            r#"SELECT * FROM crm_contacts WHERE project_id = ?1 AND email = ?2"#,
+            r#"SELECT * FROM crm_contacts WHERE organization_id = ?1 AND LOWER(email) = LOWER(?2) LIMIT 1"#,
         )
-        .bind(project_id)
+        .bind(organization_id)
         .bind(email)
         .fetch_optional(pool)
         .await?;
@@ -304,6 +314,29 @@ impl CrmContact {
         Ok(contact)
     }
 
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+        limit: Option<i32>,
+    ) -> Result<Vec<Self>, CrmContactError> {
+        let limit = limit.unwrap_or(100);
+        let contacts = sqlx::query_as::<_, CrmContact>(
+            r#"
+            SELECT * FROM crm_contacts
+            WHERE organization_id = ?1
+            ORDER BY last_activity_at DESC NULLS LAST, created_at DESC
+            LIMIT ?2
+            "#,
+        )
+        .bind(organization_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(contacts)
+    }
+
+    /// Find all contacts for a project (legacy/compatibility)
     pub async fn find_by_project(
         pool: &SqlitePool,
         project_id: Uuid,
@@ -328,14 +361,14 @@ impl CrmContact {
 
     pub async fn find_by_lifecycle_stage(
         pool: &SqlitePool,
-        project_id: Uuid,
+        organization_id: Uuid,
         stage: LifecycleStage,
     ) -> Result<Vec<Self>, CrmContactError> {
         let stage_str = stage.to_string();
         let contacts = sqlx::query_as::<_, CrmContact>(
-            r#"SELECT * FROM crm_contacts WHERE project_id = ?1 AND lifecycle_stage = ?2 ORDER BY lead_score DESC"#,
+            r#"SELECT * FROM crm_contacts WHERE organization_id = ?1 AND lifecycle_stage = ?2 ORDER BY lead_score DESC"#,
         )
-        .bind(project_id)
+        .bind(organization_id)
         .bind(&stage_str)
         .fetch_all(pool)
         .await?;
@@ -361,13 +394,25 @@ impl CrmContact {
         pool: &SqlitePool,
         params: ContactSearchParams,
     ) -> Result<Vec<Self>, CrmContactError> {
-        let mut query = String::from(
-            "SELECT * FROM crm_contacts WHERE project_id = ?1"
-        );
+        // Require organization_id as primary scope
+        let org_id = if let Some(org_id) = params.organization_id {
+            org_id
+        } else {
+            return Ok(vec![]);
+        };
+
+        let mut query = "SELECT * FROM crm_contacts WHERE organization_id = ?1".to_string();
         let mut bindings: Vec<String> = vec![];
 
+        if let Some(ref client_id) = params.client_id {
+            let idx = bindings.len() + 2;
+            query.push_str(&format!(" AND client_id = ?{}", idx));
+            bindings.push(client_id.to_string());
+        }
+
         if let Some(ref q) = params.query {
-            query.push_str(" AND (full_name LIKE ?2 OR email LIKE ?2 OR company_name LIKE ?2)");
+            let idx = bindings.len() + 2;
+            query.push_str(&format!(" AND (full_name LIKE ?{idx} OR email LIKE ?{idx} OR company_name LIKE ?{idx})"));
             bindings.push(format!("%{}%", q));
         }
 
@@ -396,7 +441,7 @@ impl CrmContact {
         query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
 
         // Build the query dynamically
-        let mut db_query = sqlx::query_as::<_, CrmContact>(&query).bind(params.project_id);
+        let mut db_query = sqlx::query_as::<_, CrmContact>(&query).bind(org_id);
 
         for binding in bindings {
             db_query = db_query.bind(binding);
@@ -596,15 +641,15 @@ impl CrmContact {
         Ok(())
     }
 
-    /// Find or create a contact from an email address
+    /// Find or create a contact from an email address (org-scoped)
     pub async fn find_or_create_from_email(
         pool: &SqlitePool,
-        project_id: Uuid,
+        organization_id: Uuid,
         email: &str,
         name: Option<&str>,
         source: ContactSource,
     ) -> Result<Self, CrmContactError> {
-        if let Some(existing) = Self::find_by_email(pool, project_id, email).await? {
+        if let Some(existing) = Self::find_by_email(pool, organization_id, email).await? {
             return Ok(existing);
         }
 
@@ -621,7 +666,8 @@ impl CrmContact {
         };
 
         Self::create(pool, CreateCrmContact {
-            project_id,
+            organization_id,
+            client_id: None,
             first_name,
             last_name,
             email: Some(email.to_string()),

@@ -269,12 +269,12 @@ function PipelineDialog({ open, onOpenChange, initialValues, onSubmit, title, di
 }
 
 interface CrmPipelineSettingsProps {
-  projectId: string;
+  organizationId: string;
 }
 
-export function CrmPipelineSettings({ projectId }: CrmPipelineSettingsProps) {
+export function CrmPipelineSettings({ organizationId }: CrmPipelineSettingsProps) {
   const queryClient = useQueryClient();
-  const { data: pipelines = [], isLoading: pipelinesLoading } = useCrmPipelines(projectId);
+  const { data: pipelines = [], isLoading: pipelinesLoading } = useCrmPipelines(organizationId);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const [isStageDialogOpen, setIsStageDialogOpen] = useState(false);
   const [isPipelineDialogOpen, setIsPipelineDialogOpen] = useState(false);
@@ -376,7 +376,7 @@ export function CrmPipelineSettings({ projectId }: CrmPipelineSettingsProps) {
         toast.success('Pipeline updated.');
       } else {
         await crmPipelinesApi.createPipeline({
-          project_id: projectId,
+          organization_id: organizationId,
           name: values.name,
           description: values.description,
           color: values.color,
@@ -386,7 +386,7 @@ export function CrmPipelineSettings({ projectId }: CrmPipelineSettingsProps) {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: crmQueryKeys.pipelines(projectId) });
+      queryClient.invalidateQueries({ queryKey: crmQueryKeys.pipelines(organizationId) });
       setEditingPipeline(null);
     },
   });
@@ -421,7 +421,7 @@ export function CrmPipelineSettings({ projectId }: CrmPipelineSettingsProps) {
     },
     onSuccess: () => {
       toast.success('Pipeline deleted.');
-      queryClient.invalidateQueries({ queryKey: crmQueryKeys.pipelines(projectId) });
+      queryClient.invalidateQueries({ queryKey: crmQueryKeys.pipelines(organizationId) });
       if (selectedPipelineId) {
         queryClient.removeQueries({ queryKey: crmQueryKeys.pipeline(selectedPipelineId) });
       }

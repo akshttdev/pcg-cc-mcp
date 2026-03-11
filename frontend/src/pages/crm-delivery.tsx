@@ -18,7 +18,7 @@ export function CrmDeliveryPage() {
       projectId={projectId}
       pipelineType="delivery"
       title="Client Delivery"
-      onSettingsClick={() => navigate(`/projects/${projectId}/crm/settings`)}
+      onSettingsClick={() => navigate(`/projects/${projectId}/crm`)}
     />
   );
 }

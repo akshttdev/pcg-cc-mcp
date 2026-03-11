@@ -94,7 +94,8 @@ pub struct CrmPipelineStage {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateCrmPipeline {
-    pub project_id: Uuid,
+    pub organization_id: Option<Uuid>,
+    pub client_id: Option<Uuid>,
     pub name: String,
     pub description: Option<String>,
     pub pipeline_type: PipelineType,
@@ -156,14 +157,17 @@ impl CrmPipeline {
         let pipeline = sqlx::query_as::<_, CrmPipeline>(
             r#"
             INSERT INTO crm_pipelines (
-                id, project_id, name, description, pipeline_type, icon, color
+                id, organization_id, project_id, client_id,
+                name, description, pipeline_type, icon, color
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             RETURNING *
             "#,
         )
         .bind(id)
-        .bind(data.project_id)
+        .bind(data.organization_id)
+        .bind(None::<Uuid>)
+        .bind(data.client_id)
         .bind(&data.name)
         .bind(&data.description)
         .bind(&pipeline_type)
@@ -183,6 +187,7 @@ impl CrmPipeline {
             .ok_or(CrmPipelineError::NotFound)
     }
 
+    /// Find pipelines by project (legacy/compatibility)
     pub async fn find_by_project(
         pool: &SqlitePool,
         project_id: Uuid,
@@ -197,7 +202,7 @@ impl CrmPipeline {
         Ok(pipelines)
     }
 
-    /// List all active pipelines for an organization — both project-level and org-level.
+    /// List all active pipelines in an organization (direct org_id query)
     pub async fn find_by_organization(
         pool: &SqlitePool,
         organization_id: Uuid,
@@ -206,15 +211,9 @@ impl CrmPipeline {
         let pipelines = if let Some(pt) = pipeline_type {
             let pt_str = pt.to_string();
             sqlx::query_as::<_, CrmPipeline>(
-                r#"SELECT cp.* FROM crm_pipelines cp
-                   WHERE cp.is_active = 1 AND cp.pipeline_type = ?2
-                   AND (
-                       cp.organization_id = ?1
-                       OR (cp.project_id IS NOT NULL AND cp.project_id IN (
-                           SELECT id FROM projects WHERE organization_id = ?1
-                       ))
-                   )
-                   ORDER BY cp.name"#,
+                r#"SELECT * FROM crm_pipelines
+                   WHERE organization_id = ?1 AND is_active = 1 AND pipeline_type = ?2
+                   ORDER BY name"#,
             )
             .bind(organization_id)
             .bind(&pt_str)
@@ -222,15 +221,9 @@ impl CrmPipeline {
             .await?
         } else {
             sqlx::query_as::<_, CrmPipeline>(
-                r#"SELECT cp.* FROM crm_pipelines cp
-                   WHERE cp.is_active = 1
-                   AND (
-                       cp.organization_id = ?1
-                       OR (cp.project_id IS NOT NULL AND cp.project_id IN (
-                           SELECT id FROM projects WHERE organization_id = ?1
-                       ))
-                   )
-                   ORDER BY cp.name"#,
+                r#"SELECT * FROM crm_pipelines
+                   WHERE organization_id = ?1 AND is_active = 1
+                   ORDER BY name"#,
             )
             .bind(organization_id)
             .fetch_all(pool)
@@ -240,6 +233,25 @@ impl CrmPipeline {
         Ok(pipelines)
     }
 
+    /// Find pipeline by type scoped to an organization
+    pub async fn find_by_type_for_org(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+        pipeline_type: PipelineType,
+    ) -> Result<Option<Self>, CrmPipelineError> {
+        let pipeline_type_str = pipeline_type.to_string();
+        let pipeline = sqlx::query_as::<_, CrmPipeline>(
+            r#"SELECT * FROM crm_pipelines WHERE organization_id = ?1 AND pipeline_type = ?2 AND is_active = 1"#,
+        )
+        .bind(organization_id)
+        .bind(&pipeline_type_str)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(pipeline)
+    }
+
+    /// Find pipeline by type scoped to a project (legacy/compatibility)
     pub async fn find_by_type(
         pool: &SqlitePool,
         project_id: Uuid,
@@ -311,41 +323,61 @@ impl CrmPipeline {
         Ok(())
     }
 
-    /// Ensure default pipelines exist for a project
+    /// Ensure default pipelines exist for an organization
+    pub async fn ensure_defaults_for_org(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+    ) -> Result<(), CrmPipelineError> {
+        let existing = Self::find_by_organization(pool, organization_id, None).await?;
+
+        if !existing.iter().any(|p| p.pipeline_type == "conferences") {
+            Self::create_conferences_pipeline(pool, Some(organization_id)).await?;
+        }
+        if !existing.iter().any(|p| p.pipeline_type == "clients") {
+            Self::create_clients_pipeline(pool, Some(organization_id)).await?;
+        }
+        if !existing.iter().any(|p| p.pipeline_type == "sales") {
+            Self::create_sales_pipeline(pool, Some(organization_id)).await?;
+        }
+        if !existing.iter().any(|p| p.pipeline_type == "delivery") {
+            Self::create_delivery_pipeline(pool, Some(organization_id)).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Ensure default pipelines exist for a project (legacy/compatibility)
     pub async fn ensure_defaults(
         pool: &SqlitePool,
         project_id: Uuid,
     ) -> Result<(), CrmPipelineError> {
-        // Check if conferences pipeline exists
         if Self::find_by_type(pool, project_id, PipelineType::Conferences)
             .await?
             .is_none()
         {
-            Self::create_conferences_pipeline(pool, project_id).await?;
+            // For project-based defaults, we don't have an org_id easily, so pass None
+            Self::create_conferences_pipeline(pool, None).await?;
         }
 
-        // Check if clients pipeline exists
         if Self::find_by_type(pool, project_id, PipelineType::Clients)
             .await?
             .is_none()
         {
-            Self::create_clients_pipeline(pool, project_id).await?;
+            Self::create_clients_pipeline(pool, None).await?;
         }
 
-        // Check if sales pipeline exists
         if Self::find_by_type(pool, project_id, PipelineType::Sales)
             .await?
             .is_none()
         {
-            Self::create_sales_pipeline(pool, project_id).await?;
+            Self::create_sales_pipeline(pool, None).await?;
         }
 
-        // Check if delivery pipeline exists
         if Self::find_by_type(pool, project_id, PipelineType::Delivery)
             .await?
             .is_none()
         {
-            Self::create_delivery_pipeline(pool, project_id).await?;
+            Self::create_delivery_pipeline(pool, None).await?;
         }
 
         Ok(())
@@ -353,12 +385,13 @@ impl CrmPipeline {
 
     async fn create_conferences_pipeline(
         pool: &SqlitePool,
-        project_id: Uuid,
+        organization_id: Option<Uuid>,
     ) -> Result<Self, CrmPipelineError> {
         let pipeline = Self::create(
             pool,
             CreateCrmPipeline {
-                project_id,
+                organization_id,
+                client_id: None,
                 name: "Conferences".to_string(),
                 description: Some("Track conference applications and attendance".to_string()),
                 pipeline_type: PipelineType::Conferences,
@@ -400,12 +433,13 @@ impl CrmPipeline {
 
     async fn create_clients_pipeline(
         pool: &SqlitePool,
-        project_id: Uuid,
+        organization_id: Option<Uuid>,
     ) -> Result<Self, CrmPipelineError> {
         let pipeline = Self::create(
             pool,
             CreateCrmPipeline {
-                project_id,
+                organization_id,
+                client_id: None,
                 name: "Clients".to_string(),
                 description: Some("Track client acquisition pipeline".to_string()),
                 pipeline_type: PipelineType::Clients,
@@ -447,12 +481,13 @@ impl CrmPipeline {
 
     async fn create_sales_pipeline(
         pool: &SqlitePool,
-        project_id: Uuid,
+        organization_id: Option<Uuid>,
     ) -> Result<Self, CrmPipelineError> {
         let pipeline = Self::create(
             pool,
             CreateCrmPipeline {
-                project_id,
+                organization_id,
+                client_id: None,
                 name: "Sales Pipeline".to_string(),
                 description: Some("Agency sales process: Lead → Proposal → Win/Lose".to_string()),
                 pipeline_type: PipelineType::Sales,
@@ -492,12 +527,13 @@ impl CrmPipeline {
 
     async fn create_delivery_pipeline(
         pool: &SqlitePool,
-        project_id: Uuid,
+        organization_id: Option<Uuid>,
     ) -> Result<Self, CrmPipelineError> {
         let pipeline = Self::create(
             pool,
             CreateCrmPipeline {
-                project_id,
+                organization_id,
+                client_id: None,
                 name: "Client Delivery".to_string(),
                 description: Some("Client delivery pipeline: Onboarding → Brand Guide → Online Presence → Social Stack → Monthly Retainer".to_string()),
                 pipeline_type: PipelineType::Delivery,

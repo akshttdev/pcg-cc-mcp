@@ -20,6 +20,7 @@ import {
   FileText,
   Image as ImageIcon,
   Video,
+  Clapperboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ExecutionArtifact, ArtifactReview } from 'shared/types';
@@ -58,6 +59,8 @@ export function ArtifactPreviewPanel({
     'visual_brief',
   ]);
   const videoTypes = new Set(['walkthrough', 'browser_recording']);
+  const videoEditTypes = new Set(['video_edit_session', 'render_deliverable']);
+  const isVideoEdit = videoEditTypes.has(artifact.artifact_type);
   const documentTypes = new Set([
     'plan',
     'diff_summary',
@@ -328,7 +331,7 @@ export function ArtifactPreviewPanel({
         </Tabs>
 
         {/* Actions */}
-        <div className="flex gap-2 pt-4 border-t mt-4">
+        <div className="flex flex-wrap gap-2 pt-4 border-t mt-4">
           {artifact.content && (
             <Button variant="outline" onClick={handleCopyContent}>
               {copied ? (
@@ -354,6 +357,27 @@ export function ArtifactPreviewPanel({
             >
               <ExternalLink className="h-4 w-4 mr-2" />
               Open
+            </Button>
+          )}
+          {isVideoEdit && (
+            <Button
+              variant="outline"
+              className="border-amber-500/50 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/artifacts/${artifact.id}/review-link`, {
+                    method: 'POST',
+                    credentials: 'include',
+                  });
+                  const data = await res.json();
+                  if (data?.data?.token) {
+                    window.open(`${window.location.origin}/review/${data.data.token}`, '_blank');
+                  }
+                } catch { /* ignore */ }
+              }}
+            >
+              <Clapperboard className="h-4 w-4 mr-2" />
+              Review
             </Button>
           )}
         </div>

@@ -26,7 +26,7 @@ organization_id: string | null,
  */
 client_id: string | null, 
 /**
- * Folder this project is grouped under (deprecated -- use parent_project_id)
+ * Folder this project is grouped under (deprecated — use parent_project_id)
  */
 folder_id: string | null,
 /**
@@ -44,7 +44,11 @@ aptos_address: string | null,
 /**
  * Whether this project has been funded with on-chain VIBE
  */
-aptos_funded: boolean, created_at: Date, updated_at: Date, };
+aptos_funded: boolean, created_at: Date, updated_at: Date,
+/**
+ * Soft delete timestamp - if set, project is considered deleted
+ */
+deleted_at: Date | null, };
 
 export type CreateProject = { name: string, git_repo_path: string, use_existing_repo: boolean, setup_script: string | null, dev_script: string | null, cleanup_script: string | null, copy_files: string | null, organization_id: string | null, client_id: string | null, folder_id: string | null, parent_project_id: string | null, };
 
@@ -126,7 +130,7 @@ export type Priority = "critical" | "high" | "medium" | "low";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "changesrequested";
 
-export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
+export type Task = { id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
 /**
  * Base64 encoded screenshot image for bug reports
  */
@@ -148,7 +152,7 @@ vibe_cost: bigint | null,
 /**
  * Model used for the most recent vibe transaction on this task
  */
-vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, archived_at?: string | null,
+vibe_model: string | null, id: string, project_id: string, pod_id: string | null, board_id: string | null, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, priority: Priority, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: string | null, created_by: string, requires_approval: boolean, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: string | null, due_date: string | null, custom_properties?: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, archived_at?: string | null,
 /**
  * Base64 encoded screenshot image for bug reports
  */
@@ -156,13 +160,13 @@ screenshot: string | null, };
 
 export type TaskRelationships = { parent_task: Task | null, current_attempt: TaskAttempt, children: Array<Task>, };
 
-export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
+export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null,
 /**
  * Base64 encoded screenshot image for bug reports
  */
-screenshot?: string | null, };
+screenshot: string | null, };
 
-export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_task_attempt: string | null, image_ids: Array<string> | null, pod_id?: string | null, board_id?: string | null, priority: Priority | null, assignee_id: string | null, assigned_agent: string | null, agent_id: string | null | null, assigned_mcps: Array<string> | null, requires_approval: boolean | null, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null | null, scheduled_end: string | null | null, };
+export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_task_attempt: string | null, image_ids: Array<string> | null, pod_id?: string | null, board_id?: string | null, priority: Priority | null, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null | null, assigned_mcps: Array<string> | null, requires_approval: boolean | null, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null | null, scheduled_end: string | null | null, };
 
 export type CustomFieldType = "text" | "number" | "date" | "url" | "checkbox" | "select" | "multi_select" | "formula" | "relationship" | "user" | "file" | "auto_increment";
 
@@ -813,3 +817,32 @@ export type SidebarSharedBoard = { board_id: string, board_name: string, project
 export type ConvertEntityRequest = { source_type: string, source_id: string, target_type: string, target_parent_id: string | null, };
 
 export type ConvertEntityResponse = { new_id: string, new_type: string, };
+
+
+export type SubmitFeedbackRequest = {
+/**
+ * Type of feedback: bug, feature, improvement, question, other
+ */
+feedback_type: string,
+/**
+ * Brief title/summary
+ */
+title: string,
+/**
+ * Detailed description
+ */
+description: string,
+/**
+ * Reporter's email (optional)
+ */
+email: string | null,
+/**
+ * Severity for bugs: low, medium, high, critical
+ */
+severity: string | null,
+/**
+ * Base64 encoded screenshot image (optional)
+ */
+screenshot: string | null, };
+
+export type SubmitFeedbackResponse = { task_id: string, message: string, };

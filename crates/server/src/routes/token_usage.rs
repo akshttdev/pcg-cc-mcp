@@ -6,8 +6,8 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use db::models::token_usage::{
-    CreateTokenUsage, DailyTokenUsage, TokenUsage, TokenUsageByAgent, TokenUsageByProject,
-    TokenUsageSummary,
+    CreateTokenUsage, DailyTokenUsage, TokenUsage, TokenUsageByAgent, TokenUsageByModel,
+    TokenUsageByProject, TokenUsageByProvider, TokenUsageSummary,
 };
 use deployment::Deployment;
 use serde::Deserialize;
@@ -72,6 +72,30 @@ pub async fn get_usage_by_agent(
     Ok(ResponseJson(ApiResponse::success(usage)))
 }
 
+/// Get token usage by provider
+pub async fn get_usage_by_provider(
+    Query(query): Query<TokenUsageQuery>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<TokenUsageByProvider>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let days = query.days.unwrap_or(7);
+    let since = Utc::now() - Duration::days(days as i64);
+    let usage = TokenUsage::by_provider(pool, since).await?;
+    Ok(ResponseJson(ApiResponse::success(usage)))
+}
+
+/// Get token usage by model
+pub async fn get_usage_by_model(
+    Query(query): Query<TokenUsageQuery>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<TokenUsageByModel>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let days = query.days.unwrap_or(7);
+    let since = Utc::now() - Duration::days(days as i64);
+    let usage = TokenUsage::by_model(pool, since).await?;
+    Ok(ResponseJson(ApiResponse::success(usage)))
+}
+
 /// Get token usage for a specific project
 pub async fn get_project_usage(
     Path(project_id): Path<Uuid>,
@@ -111,6 +135,8 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/token-usage/daily", get(get_daily_usage))
         .route("/token-usage/by-project", get(get_usage_by_project))
         .route("/token-usage/by-agent", get(get_usage_by_agent))
+        .route("/token-usage/by-provider", get(get_usage_by_provider))
+        .route("/token-usage/by-model", get(get_usage_by_model))
         .route("/token-usage/projects/{project_id}", get(get_project_usage))
         .route("/token-usage/tasks/{task_attempt_id}", get(get_task_usage))
         .route("/token-usage", post(record_usage))

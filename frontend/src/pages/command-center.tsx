@@ -88,7 +88,13 @@ export function CommandCenterPage() {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto text-center text-muted-foreground">
+        <p>Unable to load Command Center data. The backend may not be running or the endpoint is unavailable.</p>
+      </div>
+    );
+  }
 
   const {
     overdue_tasks,

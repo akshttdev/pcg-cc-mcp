@@ -231,6 +231,11 @@ const handleApiResponseAsResult = async <T, E>(
   response: Response
 ): Promise<Result<T, E>> => {
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('session_id');
+      document.cookie = 'session_id=; Path=/; Max-Age=0';
+      window.location.href = '/login?expired=1';
+    }
     // HTTP error - no structured error data
     let errorMessage = `Request failed with status ${response.status}`;
 
@@ -265,6 +270,12 @@ const handleApiResponseAsResult = async <T, E>(
 
 const handleApiResponse = async <T, E = T>(response: Response): Promise<T> => {
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('session_id');
+      document.cookie = 'session_id=; Path=/; Max-Age=0';
+      window.location.href = '/login?expired=1';
+      throw new Error('Session expired');
+    }
     let errorMessage = `Request failed with status ${response.status}`;
 
     try {
@@ -765,6 +776,10 @@ export interface AssignedTask {
 export const tasksApi = {
   getAssignedToMe: async (): Promise<AssignedTask[]> => {
     const response = await makeRequest('/api/tasks/assigned-to-me');
+    return handleApiResponse<AssignedTask[]>(response);
+  },
+  getWatchedTasks: async (): Promise<AssignedTask[]> => {
+    const response = await makeRequest('/api/tasks/watched');
     return handleApiResponse<AssignedTask[]>(response);
   },
   getAll: async (projectId: string): Promise<TaskWithAttemptStatus[]> => {
@@ -2665,6 +2680,96 @@ export const socialApi = {
     const response = await makeRequest(`/api/social/inbox/stats/${projectId}`);
     return handleApiResponse<SocialInboxStats>(response);
   },
+
+  listPostsFiltered: async (params: {
+    projectId?: string;
+    status?: string;
+    category?: string;
+    platform?: string;
+    limit?: number;
+  }): Promise<SocialPostRecord[]> => {
+    const sp = new URLSearchParams();
+    if (params.projectId) sp.set('project_id', params.projectId);
+    if (params.status) sp.set('status', params.status);
+    if (params.category) sp.set('category', params.category);
+    if (params.platform) sp.set('platform', params.platform);
+    if (params.limit) sp.set('limit', params.limit.toString());
+    const response = await makeRequest(`/api/social/posts?${sp.toString()}`);
+    return handleApiResponse<SocialPostRecord[]>(response);
+  },
+
+  createPost: async (data: {
+    project_id: string;
+    caption: string;
+    platforms: string;
+    content_type?: string;
+    status?: string;
+    scheduled_for?: string;
+    category?: string;
+    hashtags?: string;
+  }): Promise<SocialPostRecord> => {
+    const response = await makeRequest('/api/social/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SocialPostRecord>(response);
+  },
+
+  updatePost: async (id: string, data: Partial<{
+    caption: string;
+    status: string;
+    scheduled_for: string | null;
+    category: string;
+    platforms: string;
+  }>): Promise<SocialPostRecord> => {
+    const response = await makeRequest(`/api/social/posts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SocialPostRecord>(response);
+  },
+
+  deletePost: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/social/posts/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  updateMention: async (id: string, data: Partial<{
+    status: string;
+    priority: string;
+    sentiment: string;
+    reply_content: string;
+    replied_by: string;
+    replied_at: string;
+  }>): Promise<SocialMentionRecord> => {
+    const response = await makeRequest(`/api/social/inbox/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SocialMentionRecord>(response);
+  },
+
+  updateAccount: async (id: string, data: Partial<{
+    status: string;
+    username: string;
+    display_name: string;
+    follower_count: number;
+  }>): Promise<SocialAccountRecord> => {
+    const response = await makeRequest(`/api/social/accounts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SocialAccountRecord>(response);
+  },
+
+  deleteAccount: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/social/accounts/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
 };
 
 // =============================================================================
@@ -2802,7 +2907,9 @@ export const emailApi = {
 
 export interface CrmContactRecord {
   id: string;
-  project_id: string;
+  organization_id: string;
+  project_id: string | null;
+  client_id: string | null;
   first_name: string | null;
   last_name: string | null;
   full_name: string | null;
@@ -2848,7 +2955,8 @@ export interface CrmContactRecord {
 }
 
 export interface CreateCrmContactRequest {
-  project_id: string;
+  organization_id: string;
+  client_id?: string;
   first_name?: string;
   last_name?: string;
   email?: string;
@@ -2972,11 +3080,11 @@ export const quickbooksApi = {
 
 export const crmApi = {
   listContacts: async (
-    projectId: string,
+    organizationId: string,
     options?: { lifecycleStage?: string; limit?: number }
   ): Promise<CrmContactRecord[]> => {
     const searchParams = new URLSearchParams();
-    searchParams.set('project_id', projectId);
+    searchParams.set('organization_id', organizationId);
     if (options?.lifecycleStage) searchParams.set('lifecycle_stage', options.lifecycleStage);
     if (options?.limit) searchParams.set('limit', options.limit.toString());
     const response = await makeRequest(`/api/crm/contacts?${searchParams.toString()}`);
@@ -2984,7 +3092,7 @@ export const crmApi = {
   },
 
   searchContacts: async (
-    projectId: string,
+    organizationId: string,
     query?: string,
     options?: {
       lifecycleStage?: string;
@@ -2995,7 +3103,7 @@ export const crmApi = {
     }
   ): Promise<CrmContactRecord[]> => {
     const searchParams = new URLSearchParams();
-    searchParams.set('project_id', projectId);
+    searchParams.set('organization_id', organizationId);
     if (query) searchParams.set('query', query);
     if (options?.lifecycleStage) searchParams.set('lifecycle_stage', options.lifecycleStage);
     if (options?.companyName) searchParams.set('company_name', options.companyName);
@@ -3039,8 +3147,8 @@ export const crmApi = {
     await handleApiResponse<void>(response);
   },
 
-  getContactStats: async (projectId: string): Promise<CrmContactStats> => {
-    const response = await makeRequest(`/api/crm/contacts/stats/${projectId}`);
+  getContactStats: async (organizationId: string): Promise<CrmContactStats> => {
+    const response = await makeRequest(`/api/crm/contacts/stats/${organizationId}`);
     return handleApiResponse<CrmContactStats>(response);
   },
 
@@ -3095,17 +3203,13 @@ export type {
 };
 
 export const crmPipelinesApi = {
-  /** List pipelines for a project or organization */
+  /** List pipelines for an organization */
   listPipelines: async (
-    projectId: string,
-    options?: { pipelineType?: PipelineType; organizationId?: string }
+    organizationId: string,
+    options?: { pipelineType?: PipelineType }
   ): Promise<CrmPipeline[]> => {
     const params = new URLSearchParams();
-    if (options?.organizationId) {
-      params.set('organization_id', options.organizationId);
-    } else {
-      params.set('project_id', projectId);
-    }
+    params.set('organization_id', organizationId);
     if (options?.pipelineType) params.set('pipeline_type', options.pipelineType);
     const response = await makeRequest(`/api/crm/pipelines?${params.toString()}`);
     return handleApiResponse<CrmPipeline[]>(response);
@@ -3202,13 +3306,13 @@ export const crmPipelinesApi = {
 
 export const crmDealsApi = {
   listDeals: async (options: {
-    project_id?: string;
+    organization_id?: string;
     pipeline_id?: string;
     stage_id?: string;
     contact_id?: string;
   }): Promise<CrmDealRecord[]> => {
     const params = new URLSearchParams();
-    if (options.project_id) params.set('project_id', options.project_id);
+    if (options.organization_id) params.set('organization_id', options.organization_id);
     if (options.pipeline_id) params.set('pipeline_id', options.pipeline_id);
     if (options.stage_id) params.set('stage_id', options.stage_id);
     if (options.contact_id) params.set('contact_id', options.contact_id);
@@ -3250,8 +3354,8 @@ export const crmDealsApi = {
     await handleApiResponse<void>(response);
   },
 
-  getMetrics: async (projectId: string, pipelineId?: string): Promise<PipelineMetricsRecord> => {
-    const params = new URLSearchParams({ project_id: projectId });
+  getMetrics: async (organizationId: string, pipelineId?: string): Promise<PipelineMetricsRecord> => {
+    const params = new URLSearchParams({ organization_id: organizationId });
     if (pipelineId) params.set('pipeline_id', pipelineId);
     const response = await makeRequest(`/api/crm/deals/metrics?${params}`);
     return handleApiResponse<PipelineMetricsRecord>(response);
@@ -3281,7 +3385,9 @@ export const crmDealsApi = {
 // CRM Activities API
 export interface CrmActivityRecord {
   id: string;
-  project_id: string;
+  organization_id: string;
+  project_id: string | null;
+  client_id: string | null;
   crm_contact_id?: string;
   crm_deal_id?: string;
   activity_type: string;
@@ -3323,13 +3429,13 @@ export interface PipelineMetricsRecord {
 
 export const crmActivitiesApi = {
   listActivities: async (options: {
-    project_id?: string;
+    organization_id?: string;
     contact_id?: string;
     deal_id?: string;
     limit?: number;
   }): Promise<CrmActivityRecord[]> => {
     const params = new URLSearchParams();
-    if (options.project_id) params.set('project_id', options.project_id);
+    if (options.organization_id) params.set('organization_id', options.organization_id);
     if (options.contact_id) params.set('contact_id', options.contact_id);
     if (options.deal_id) params.set('deal_id', options.deal_id);
     if (options.limit) params.set('limit', options.limit.toString());
@@ -3338,7 +3444,7 @@ export const crmActivitiesApi = {
   },
 
   createActivity: async (data: {
-    project_id: string;
+    organization_id: string;
     crm_contact_id?: string;
     crm_deal_id?: string;
     activity_type: string;
@@ -3832,6 +3938,8 @@ export interface SidebarClient {
   active_issues_count?: number;
   knowledge_completeness?: number;
   last_activity_at?: string;
+  crm_person_id?: string;
+  crm_confidence?: number;
   projects: SidebarProject[];
 }
 
@@ -3976,6 +4084,64 @@ export const organizationsApi = {
     return handleApiResponse<void>(response);
   },
 
+  changeMemberRole: async (orgId: string, userId: string, role: string): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  // Member assignments
+  getMemberAssignments: async (orgId: string, userId: string): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments`);
+    return handleApiResponse<any>(response);
+  },
+
+  assignMember: async (orgId: string, userId: string, type: string, targetId: string, role?: string): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ type, target_id: targetId, role }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  watchTaskForMember: async (orgId: string, userId: string, taskId: string): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/watch`, {
+      method: 'POST',
+      body: JSON.stringify({ task_id: taskId }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  unassignProject: async (orgId: string, userId: string, projectId: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments/project/${projectId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  unassignClient: async (orgId: string, userId: string, clientId: string): Promise<void> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/members/${userId}/assignments/client/${clientId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  // Org invitations
+  createInvitation: async (orgId: string, role?: string, maxUses?: number, expiresInHours?: number): Promise<any> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/invitations`, {
+      method: 'POST',
+      body: JSON.stringify({ role, max_uses: maxUses, expires_in_hours: expiresInHours }),
+    });
+    return handleApiResponse<any>(response);
+  },
+
+  listInvitations: async (orgId: string): Promise<any[]> => {
+    const response = await makeRequest(`/api/organizations/${orgId}/invitations`);
+    return handleApiResponse<any[]>(response);
+  },
+
   // Clients
   getClients: async (orgId: string): Promise<ClientData[]> => {
     const response = await makeRequest(`/api/organizations/${orgId}/clients`);
@@ -4069,7 +4235,7 @@ export const organizationsApi = {
     return handleApiResponse(r);
   },
   seedBrandProject: async (orgId: string) => {
-    const r = await fetch(`${API_BASE}/organizations/${orgId}/seed-brand-project`, {
+    const r = await fetch(`/api/organizations/${orgId}/seed-brand-project`, {
       method: 'POST',
       credentials: 'include',
     });
@@ -4081,6 +4247,94 @@ export const organizationsApi = {
   },
   generateIntakeToken: async (orgId: string): Promise<{ token: string; url: string; expiresAt: string }> => {
     const r = await makeRequest(`/api/organizations/${orgId}/intake-token`, { method: 'POST' });
+    return handleApiResponse(r);
+  },
+  getKnowledge: async (orgId: string): Promise<{ knowledge_entries: OrgKnowledgeSource[]; stats: { knowledge_entry_count: number; data_source_count: number; avg_coverage: number } }> => {
+    const r = await makeRequest(`/api/organizations/${orgId}/knowledge`);
+    return handleApiResponse(r);
+  },
+};
+
+// ============================================================================
+// Brand Guide Types & Intake API
+// ============================================================================
+
+export interface OrgBrandProfile {
+  id: string;
+  organizationId: string;
+  tagline?: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor?: string | null;
+  typographyHeading?: string | null;
+  typographyBody?: string | null;
+  logoUrl?: string | null;
+  industry?: string | null;
+  marketPosition?: string | null;
+  uniqueValueProposition?: string | null;
+  missionStatement?: string | null;
+  visionStatement?: string | null;
+  brandValues?: string | null;
+  brandVoice?: string | null;
+  brandArchetype?: string | null;
+  targetAudience?: string | null;
+  icpDescription?: string | null;
+  icpCompanySize?: string | null;
+  icpIndustries?: string | null;
+  competitorBrands?: string | null;
+  differentiators?: string | null;
+  contentPillars?: string | null;
+  contentTone?: string | null;
+  websiteUrl?: string | null;
+  socialInstagram?: string | null;
+  socialTwitter?: string | null;
+  socialLinkedin?: string | null;
+  socialFacebook?: string | null;
+  socialYoutube?: string | null;
+  socialTiktok?: string | null;
+  researchStatus: string;
+  researchRanAt?: string | null;
+  researchSummary?: string | null;
+  moodBoardUrls?: string | null;
+  clearbitLogoUrl?: string | null;
+  brandPhotographyNotes?: string | null;
+  researchIterations?: number;
+  researchDepth?: number;
+  founderName?: string | null;
+  foundingYear?: string | null;
+  keyClients?: string | null;
+  estimatedTeamSize?: string | null;
+  techStack?: string | null;
+  geographicFocus?: string | null;
+  fundingStage?: string | null;
+  contentStrategyNotes?: string | null;
+  awardsAndRecognition?: string | null;
+  brandGapNotes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrgKnowledgeSource {
+  id: string;
+  source_type: string;
+  source_title: string;
+  source_summary?: string | null;
+  coverage_score: number;
+  is_active: boolean;
+  is_stale: boolean;
+  project_id?: string | null;
+  owner_type?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const intakeApi = {
+  getContext: async (token: string): Promise<{ orgName: string; orgId: string; existing: Record<string, string | null> }> => {
+    const r = await makeRequest(`/api/intake/${token}`);
+    return handleApiResponse(r);
+  },
+  submit: async (token: string, data: Record<string, string>): Promise<{ message: string }> => {
+    const r = await makeRequest(`/api/intake/${token}`, { method: 'POST', body: JSON.stringify(data) });
     return handleApiResponse(r);
   },
 };
@@ -4540,6 +4794,8 @@ export interface PersonRecord {
   intelligence_confidence: number;
   intelligence_status?: 'idle' | 'queued' | 'running' | 'done' | 'failed';
   intelligence_agent?: string;
+  research_pass_count?: number;
+  research_depth?: 'shallow' | 'moderate' | 'deep';
   notes?: string;
   tags: string;
   custom_fields: string;
@@ -4861,6 +5117,7 @@ export const proposalsApi = {
     lead_id?: string;
     project_id?: string;
     owner_id?: string;
+    organization_id?: string;
     limit?: number;
   }): Promise<ProposalRecord[]> => {
     const qs = params ? '?' + new URLSearchParams(
@@ -5165,10 +5422,11 @@ export interface CompanyRecord {
 }
 
 export const companiesApi = {
-  list: async (params?: { limit?: number; has_platform_org?: boolean }): Promise<CompanyRecord[]> => {
+  list: async (params?: { limit?: number; has_platform_org?: boolean; created_by_org_id?: string }): Promise<CompanyRecord[]> => {
     const qs = new URLSearchParams();
     if (params?.limit != null) qs.set('limit', String(params.limit));
     if (params?.has_platform_org != null) qs.set('has_platform_org', String(params.has_platform_org));
+    if (params?.created_by_org_id != null) qs.set('created_by_org_id', params.created_by_org_id);
     const response = await makeRequest(`/api/companies?${qs.toString()}`);
     return handleApiResponse<CompanyRecord[]>(response);
   },
@@ -5178,7 +5436,7 @@ export const companiesApi = {
     return handleApiResponse<CompanyRecord>(response);
   },
 
-  create: async (data: { name: string; website?: string; industry?: string; description?: string }): Promise<CompanyRecord> => {
+  create: async (data: { name: string; website?: string; industry?: string; description?: string; headquarters?: string; created_by_org_id?: string }): Promise<CompanyRecord> => {
     const response = await makeRequest('/api/companies', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -5388,7 +5646,97 @@ export const intelligenceApi = {
     const response = await makeRequest(`/api/persons/${personId}/intelligence-status`);
     return handleApiResponse<IntelligenceStatus>(response);
   },
+
+  listResearchPasses: async (personId: string): Promise<ResearchPass[]> => {
+    const response = await makeRequest(`/api/persons/${personId}/research-passes`);
+    return handleApiResponse<ResearchPass[]>(response);
+  },
+
+  triggerNextPass: async (personId: string, opts?: { focus?: string; project_id?: string }): Promise<{ pass_id: string; pass_number: number; focus: string; status: string }> => {
+    const response = await makeRequest(`/api/persons/${personId}/research-passes/next`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts ?? {}),
+    });
+    return handleApiResponse(response);
+  },
+
+  listPersonReports: async (personId: string): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest(`/api/persons/${personId}/reports`);
+    return handleApiResponse<BusinessReportRecord[]>(response);
+  },
 };
+
+export const reportsApi = {
+  list: async (): Promise<BusinessReportRecord[]> => {
+    const response = await makeRequest('/api/business-reports');
+    return handleApiResponse<BusinessReportRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}`);
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+
+  patch: async (id: string, data: Partial<BusinessReportRecord>): Promise<BusinessReportRecord> => {
+    const response = await makeRequest(`/api/business-reports/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<BusinessReportRecord>(response);
+  },
+
+  generate: async (personId: string, reportType?: string): Promise<{ status: string; person_id: string }> => {
+    const response = await makeRequest('/api/business-reports/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ person_id: personId, report_type: reportType }),
+    });
+    return handleApiResponse(response);
+  },
+};
+
+export interface ResearchPass {
+  id: string;
+  person_id: string;
+  pass_number: number;
+  research_focus: string;
+  status: string;
+  summary?: string;
+  key_findings: string; // JSON
+  confidence_delta: number;
+  agent_used?: string;
+  created_at: string;
+  completed_at?: string;
+  error?: string;
+}
+
+export interface BusinessReportRecord {
+  id: string;
+  person_id?: string;
+  company_id?: string;
+  report_type: string;
+  title: string;
+  status: string;
+  executive_summary?: string;
+  company_overview?: string;
+  pain_points: string; // JSON [{point, severity}]
+  opportunities: string; // JSON [{title, description, priority, estimated_value}]
+  recommended_services: string; // JSON [{name, rationale, timeline}]
+  next_steps: string; // JSON [{action, owner, deadline}]
+  // Enhanced analytics sections
+  individual_profiles: string; // JSON [{name, role, company, linkedin, summary, key_insights}]
+  market_analysis?: string;
+  competitor_analysis: string; // JSON [{name, website, strengths, weaknesses, threat_level}]
+  target_clients?: string;
+  brand_positioning?: string;
+  digital_presence?: string;
+  sources: string; // JSON [{title, url, excerpt}]
+  full_report_md?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 // ============================================================================
 // Data Sources API
@@ -5527,11 +5875,11 @@ export const dataSourcesApi = {
     return handleApiResponse<any>(response);
   },
 
-  runWorkflow: async (dataSourceId: string, workflowId: string, model?: string) => {
+  runWorkflow: async (dataSourceId: string, workflowId: string, model?: string, force?: boolean) => {
     const response = await makeRequest(`/api/data-sources/${dataSourceId}/workflows/${workflowId}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model }),
+      body: JSON.stringify({ model, force }),
     });
     return handleApiResponse<any>(response);
   },
@@ -5585,6 +5933,7 @@ export interface WorkflowDefinition {
   is_system: boolean;
   owner_type: string;  // "system", "organization", "user"
   owner_id?: string;
+  default_model?: string;
 }
 
 export interface CreateWorkflowRequest {
@@ -5595,6 +5944,7 @@ export interface CreateWorkflowRequest {
   connections: WorkflowConnection[];
   owner_type?: string;
   owner_id?: string;
+  default_model?: string;
 }
 
 export interface PreviewNodeResult {
@@ -5602,6 +5952,13 @@ export interface PreviewNodeResult {
   node_name: string;
   node_type: string;
   output: string;
+  usage?: {
+    model_used?: string;
+    provider?: string;
+    input_tokens?: number;
+    output_tokens?: number;
+    estimated_cost_micros?: number;
+  };
 }
 
 export interface UpdateWorkflowRequest {
@@ -5609,6 +5966,16 @@ export interface UpdateWorkflowRequest {
   description?: string;
   nodes?: WorkflowNode[];
   connections?: WorkflowConnection[];
+  default_model?: string;
+}
+
+export interface AvailableModel {
+  id: string;
+  label: string;
+  is_default: boolean;
+  provider: string;
+  cost_per_million_input: number;
+  cost_per_million_output: number;
 }
 
 export const workflowsApi = {
@@ -5651,14 +6018,557 @@ export const workflowsApi = {
     return handleApiResponse<PreviewNodeResult[]>(response);
   },
 
-  listRecentArtifacts: async () => {
-    const response = await makeRequest('/api/artifacts/recent');
+  listRecentArtifacts: async (organizationId?: string) => {
+    const params = organizationId ? `?organization_id=${organizationId}` : '';
+    const response = await makeRequest(`/api/artifacts/recent${params}`);
     return handleApiResponse<ExecutionArtifact[]>(response);
   },
 
-  listAvailableModels: async (): Promise<{ id: string; label: string; is_default: boolean }[]> => {
+  listAvailableModels: async (): Promise<AvailableModel[]> => {
     const response = await makeRequest('/api/workflows/models');
-    return handleApiResponse<{ id: string; label: string; is_default: boolean }[]>(response);
+    return handleApiResponse<AvailableModel[]>(response);
+  },
+
+  listRecentRuns: async (params?: { workflow_id?: string; organization_id?: string; limit?: number }): Promise<WorkflowRun[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.workflow_id) searchParams.set('workflow_id', params.workflow_id);
+    if (params?.organization_id) searchParams.set('organization_id', params.organization_id);
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const qs = searchParams.toString();
+    const response = await makeRequest(`/api/workflows/runs/recent${qs ? `?${qs}` : ''}`);
+    return handleApiResponse<WorkflowRun[]>(response);
+  },
+
+  getRunById: async (id: string): Promise<WorkflowRun> => {
+    const response = await makeRequest(`/api/workflows/runs/${id}`);
+    return handleApiResponse<WorkflowRun>(response);
+  },
+
+  getRunStats: async (id: string): Promise<WorkflowRunStats> => {
+    const response = await makeRequest(`/api/workflows/runs/${id}/stats`);
+    return handleApiResponse<WorkflowRunStats>(response);
+  },
+};
+
+// ── Workflow Run types ──────────────────────────────────────────────────────
+
+export interface WorkflowRun {
+  id: string;
+  workflow_id: string;
+  workflow_name: string;
+  data_source_id?: string;
+  organization_id?: string;
+  project_id?: string;
+  model_used?: string;
+  status: 'running' | 'completed' | 'failed';
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_estimated_cost_micros?: number;
+  total_records_staged?: number;
+  total_records_approved?: number;
+  total_records_rejected?: number;
+  total_records_committed?: number;
+  total_duplicates_found?: number;
+  total_validation_errors?: number;
+  node_count?: number;
+  llm_node_count?: number;
+  duration_ms?: number;
+  content_hash?: string;
+  started_at: string;
+  completed_at?: string;
+  created_at: string;
+}
+
+export interface WorkflowRunStats {
+  run: WorkflowRun;
+  live_counts: {
+    total: number;
+    approved: number;
+    rejected: number;
+    committed: number;
+    duplicates: number;
+    pending: number;
+  };
+  rates: {
+    approval_rate: number;
+    duplicate_rate: number;
+  };
+  cost_dollars: number;
+}
+
+// ── Workflow Trigger types ──────────────────────────────────────────────────
+
+export interface WorkflowTrigger {
+  id: string;
+  workflow_id: string;
+  name: string;
+  enabled: boolean;
+  trigger_type: 'data_source_created' | 'data_source_updated' | 'scheduled';
+  filter_data_source_types: string | null;  // JSON array
+  filter_organization_id: string | null;
+  filter_project_id: string | null;
+  filter_tags: string | null;  // JSON array
+  model_override: string | null;
+  auto_approve: boolean;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateWorkflowTrigger {
+  workflow_id: string;
+  name: string;
+  trigger_type?: string;
+  filter_data_source_types?: string[];
+  filter_organization_id?: string;
+  filter_project_id?: string;
+  filter_tags?: string[];
+  model_override?: string;
+  auto_approve?: boolean;
+}
+
+export interface UpdateWorkflowTrigger {
+  name?: string;
+  enabled?: boolean;
+  trigger_type?: string;
+  filter_data_source_types?: string[];
+  filter_organization_id?: string;
+  filter_project_id?: string;
+  filter_tags?: string[];
+  model_override?: string;
+  auto_approve?: boolean;
+}
+
+export const triggersApi = {
+  list: async (workflowId?: string): Promise<WorkflowTrigger[]> => {
+    const params = workflowId ? `?workflow_id=${encodeURIComponent(workflowId)}` : '';
+    const response = await makeRequest(`/api/workflows/triggers${params}`);
+    return handleApiResponse<WorkflowTrigger[]>(response);
+  },
+
+  get: async (id: string): Promise<WorkflowTrigger> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}`);
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  create: async (data: CreateWorkflowTrigger): Promise<WorkflowTrigger> => {
+    const response = await makeRequest('/api/workflows/triggers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  update: async (id: string, data: UpdateWorkflowTrigger): Promise<WorkflowTrigger> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}`, {
+      method: 'DELETE',
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  toggle: async (id: string): Promise<WorkflowTrigger> => {
+    const response = await makeRequest(`/api/workflows/triggers/${id}/toggle`, {
+      method: 'POST',
+    });
+    return handleApiResponse<WorkflowTrigger>(response);
+  },
+
+  check: async (dataSourceId: string): Promise<WorkflowTrigger[]> => {
+    const response = await makeRequest('/api/workflows/triggers/check', {
+      method: 'POST',
+      body: JSON.stringify({ data_source_id: dataSourceId }),
+    });
+    return handleApiResponse<WorkflowTrigger[]>(response);
+  },
+};
+
+// ── Schema types and API ──────────────────────────────────────────────────────
+
+export interface FieldDef {
+  type: string;
+  required: boolean;
+  description: string;
+  enum_values?: string[];
+  format?: string;
+}
+
+export interface TargetSchema {
+  target_type: string;
+  description: string;
+  fields: Record<string, FieldDef>;
+}
+
+export const schemasApi = {
+  list: async (): Promise<{ target_type: string; description: string; icon: string }[]> => {
+    const response = await makeRequest('/api/schemas');
+    return response.json();
+  },
+
+  get: async (targetType: string): Promise<TargetSchema> => {
+    const response = await makeRequest(`/api/schemas/${targetType}`);
+    return response.json();
+  },
+};
+
+export interface WorkflowStagingRecord {
+  id: string;
+  workflow_run_id: string;
+  workflow_id: string;
+  node_id: string;
+  data_source_id: string | null;
+  organization_id: string | null;
+  project_id: string | null;
+  target_type: 'crm_contact' | 'company' | 'crm_deal' | 'task';
+  record_data: string;  // JSON string
+  status: 'pending_review' | 'approved' | 'rejected' | 'committed' | 'error';
+  duplicate_of_id: string | null;
+  duplicate_of_type: string | null;
+  confidence: number | null;
+  error_message: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  committed_at: string | null;
+  validation_errors: string | null;  // JSON array string of validation error messages, or null
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommitResult {
+  id: string;
+  target_type: string;
+  created_id: string | null;
+  error: string | null;
+}
+
+export interface BatchCommitResult {
+  committed: number;
+  errors: number;
+  results: CommitResult[];
+}
+
+export const stagingApi = {
+  listByRun: async (workflowRunId: string): Promise<WorkflowStagingRecord[]> => {
+    const response = await makeRequest(`/api/workflow-staging?workflow_run_id=${workflowRunId}`);
+    return handleApiResponse<WorkflowStagingRecord[]>(response);
+  },
+
+  listPending: async (organizationId: string): Promise<WorkflowStagingRecord[]> => {
+    const response = await makeRequest(`/api/workflow-staging/pending?organization_id=${organizationId}`);
+    return handleApiResponse<WorkflowStagingRecord[]>(response);
+  },
+
+  get: async (id: string): Promise<WorkflowStagingRecord> => {
+    const response = await makeRequest(`/api/workflow-staging/${id}`);
+    return handleApiResponse<WorkflowStagingRecord>(response);
+  },
+
+  update: async (id: string, data: { status?: string; record_data?: any }): Promise<WorkflowStagingRecord> => {
+    const response = await makeRequest(`/api/workflow-staging/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<WorkflowStagingRecord>(response);
+  },
+
+  batchAction: async (ids: string[], action: 'approve' | 'reject'): Promise<void> => {
+    const response = await makeRequest('/api/workflow-staging/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, action }),
+    });
+    await handleApiResponse<void>(response);
+  },
+
+  commit: async (id: string): Promise<CommitResult> => {
+    const response = await makeRequest(`/api/workflow-staging/${id}/commit`, {
+      method: 'POST',
+    });
+    return handleApiResponse<CommitResult>(response);
+  },
+
+  batchCommit: async (workflowRunId: string): Promise<BatchCommitResult> => {
+    const response = await makeRequest('/api/workflow-staging/batch-commit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow_run_id: workflowRunId }),
+    });
+    return handleApiResponse<BatchCommitResult>(response);
+  },
+
+  autoApprove: async (workflowRunId: string): Promise<{ affected: number }> => {
+    const response = await makeRequest('/api/workflow-staging/auto-approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow_run_id: workflowRunId }),
+    });
+    return handleApiResponse<{ affected: number }>(response);
+  },
+
+  rejectDuplicates: async (workflowRunId: string): Promise<{ affected: number }> => {
+    const response = await makeRequest('/api/workflow-staging/reject-duplicates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow_run_id: workflowRunId }),
+    });
+    return handleApiResponse<{ affected: number }>(response);
+  },
+};
+
+// ── PCG Router / Provider Keys API ──────────────────────────────────────────
+
+export interface ProviderKeyStatus {
+  provider: string;
+  has_key: boolean;
+  model_count: number;
+  enabled_count: number;
+  env_var: string | null;
+}
+
+export interface PcgRouterModelInfo {
+  id: string;
+  name: string;
+  model_id: string;
+  provider: string;
+  provider_base_url: string | null;
+  api_key_env_var: string | null;
+  priority: number;
+  context_window: number | null;
+  max_output_tokens: number | null;
+  supports_tools: boolean;
+  supports_vision: boolean;
+  cost_per_million_input: number;
+  cost_per_million_output: number;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// PCG Router returns raw JSON (not wrapped in { success, data })
+const handleRawJsonResponse = async <T>(response: Response): Promise<T> => {
+  if (!response.ok) {
+    const text = await response.text().catch(() => response.statusText);
+    throw new ApiError(text || 'Request failed', response.status, response);
+  }
+  return response.json();
+};
+
+export const pcgRouterApi = {
+  listModels: async (): Promise<PcgRouterModelInfo[]> => {
+    const response = await makeRequest('/api/pcg-router/models');
+    return handleRawJsonResponse<PcgRouterModelInfo[]>(response);
+  },
+
+  listProviderKeys: async (): Promise<ProviderKeyStatus[]> => {
+    const response = await makeRequest('/api/pcg-router/provider-keys');
+    return handleRawJsonResponse<ProviderKeyStatus[]>(response);
+  },
+
+  setProviderKey: async (provider: string, apiKey: string): Promise<{ provider: string; models_updated: number; has_key: boolean }> => {
+    const response = await makeRequest('/api/pcg-router/provider-keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, api_key: apiKey }),
+    });
+    return handleRawJsonResponse<{ provider: string; models_updated: number; has_key: boolean }>(response);
+  },
+
+  deleteProviderKey: async (provider: string): Promise<void> => {
+    const response = await makeRequest(`/api/pcg-router/provider-keys/${provider}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new ApiError('Failed to delete provider key', response.status, response);
+    }
+  },
+
+  patchModel: async (id: string, data: Record<string, unknown>): Promise<PcgRouterModelInfo> => {
+    const response = await makeRequest(`/api/pcg-router/models/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleRawJsonResponse<PcgRouterModelInfo>(response);
+  },
+};
+
+// Axios-compatible client for pages that use apiClient.get/post/patch/delete
+export const apiClient = {
+  get: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`); const data = await r.json() as T; return { data }; },
+  post: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  patch: async <T = unknown>(url: string, body?: unknown) => { const r = await makeRequest(`/api${url}`, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }); const data = await r.json() as T; return { data }; },
+  delete: async <T = unknown>(url: string) => { const r = await makeRequest(`/api${url}`, { method: 'DELETE' }); const data = await r.json() as T; return { data }; },
+};
+
+export const authApi = {
+  getInviteInfo: async (token: string): Promise<{ org_name: string; pending_owner_email?: string }> => {
+    const response = await makeRequest(`/api/auth/invite-info?token=${encodeURIComponent(token)}`);
+    return handleApiResponse(response);
+  },
+  register: async (data: { username: string; password: string; full_name: string; email?: string; invite_token: string }): Promise<void> => {
+    const response = await makeRequest('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse(response);
+  },
+};
+
+export interface MediaAsset {
+  id: string;
+  project_id: string;
+  batch_id?: string;
+  filename: string;
+  file_path: string;
+  file_size_bytes: number;
+  mime_type: string;
+  duration_seconds?: number;
+  width?: number;
+  height?: number;
+  ai_description?: string;
+  shot_type?: string;
+  energy_level: number;
+  motion_intensity: number;
+  dominant_colors: string;
+  scene_tags: string;
+  ai_confidence: number;
+  analysis_status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const mediaApi = {
+  list: async (projectId: string) => {
+    const r = await makeRequest(`/api/projects/${projectId}/media`);
+    return handleApiResponse<MediaAsset[]>(r);
+  },
+  search: async (projectId: string, q: string) => {
+    const r = await makeRequest(`/api/projects/${projectId}/media/search?q=${encodeURIComponent(q)}`);
+    return handleApiResponse<MediaAsset[]>(r);
+  },
+  upload: async (projectId: string, fd: FormData) => {
+    const r = await makeRequest(`/api/projects/${projectId}/media`, {
+      method: 'POST',
+      headers: {},
+      body: fd,
+    } as RequestInit);
+    return handleApiResponse<MediaAsset>(r);
+  },
+  delete: async (id: string) => {
+    const r = await makeRequest(`/api/media/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(r);
+  },
+};
+
+export interface ReviewComment { id: string; author_name?: string; content: string; timecode_seconds?: number; is_resolved: boolean; resolved_at?: string; created_at: string; }
+export interface ReviewDeliverable { id: string; title: string; status: string; description?: string; working_file_url?: string; final_link?: string; }
+export interface ReviewToken { id: string; view_count: number; expires_at?: string; }
+export interface ReviewSourceFile { name: string; url: string; size_bytes: number; }
+export interface ReviewData { token: ReviewToken; deliverable: ReviewDeliverable; comments: ReviewComment[]; source_files: ReviewSourceFile[]; }
+
+export const reviewApi = {
+  getData: async (token: string): Promise<ReviewData> => {
+    const r = await makeRequest(`/api/review/${token}/data`);
+    return handleApiResponse<ReviewData>(r);
+  },
+  addComment: async (token: string, data: { author_name?: string; author_email?: string; content: string; timecode_seconds?: number }): Promise<ReviewComment> => {
+    const r = await makeRequest(`/api/review/${token}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    return handleApiResponse<ReviewComment>(r);
+  },
+  resolve: async (token: string, commentId: string): Promise<ReviewComment> => {
+    const r = await makeRequest(`/api/review/${token}/comments/${commentId}/resolve`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    return handleApiResponse<ReviewComment>(r);
+  },
+};
+
+// Token Usage API Types
+export interface TokenUsageSummary {
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_cents: number | null;
+  request_count: number;
+}
+
+export interface DailyTokenUsage {
+  usage_date: string;
+  project_id: string;
+  model: string;
+  provider: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_cents: number | null;
+  request_count: number;
+}
+
+export interface TokenUsageByProject {
+  project_id: string;
+  project_name: string | null;
+  total_tokens: number;
+  request_count: number;
+}
+
+export interface TokenUsageByAgent {
+  agent_id: string;
+  agent_name: string | null;
+  total_tokens: number;
+  request_count: number;
+}
+
+export interface TokenUsageByProvider {
+  provider: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_cents: number | null;
+  request_count: number;
+}
+
+export interface TokenUsageByModel {
+  model: string;
+  provider: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_cents: number | null;
+  request_count: number;
+}
+
+export const tokenUsageApi = {
+  getToday: async (): Promise<TokenUsageSummary> => {
+    const r = await makeRequest('/api/token-usage/today');
+    return handleApiResponse<TokenUsageSummary>(r);
+  },
+  getDaily: async (days: number = 7): Promise<DailyTokenUsage[]> => {
+    const r = await makeRequest(`/api/token-usage/daily?days=${days}`);
+    return handleApiResponse<DailyTokenUsage[]>(r);
+  },
+  getByProject: async (days: number = 7): Promise<TokenUsageByProject[]> => {
+    const r = await makeRequest(`/api/token-usage/by-project?days=${days}`);
+    return handleApiResponse<TokenUsageByProject[]>(r);
+  },
+  getByAgent: async (days: number = 7): Promise<TokenUsageByAgent[]> => {
+    const r = await makeRequest(`/api/token-usage/by-agent?days=${days}`);
+    return handleApiResponse<TokenUsageByAgent[]>(r);
+  },
+  getByProvider: async (days: number = 7): Promise<TokenUsageByProvider[]> => {
+    const r = await makeRequest(`/api/token-usage/by-provider?days=${days}`);
+    return handleApiResponse<TokenUsageByProvider[]>(r);
+  },
+  getByModel: async (days: number = 7): Promise<TokenUsageByModel[]> => {
+    const r = await makeRequest(`/api/token-usage/by-model?days=${days}`);
+    return handleApiResponse<TokenUsageByModel[]>(r);
   },
 };
 

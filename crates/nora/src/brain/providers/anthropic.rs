@@ -7,7 +7,7 @@ use futures::{Stream, StreamExt};
 use reqwest::Client;
 
 use super::provider_trait::{
-    ChatConfig, ChatMessage, ChatRequest, ContentBlock, LLMProviderTrait, MessageRole,
+    ChatMessage, ChatRequest, ContentBlock, LLMProviderTrait, MessageRole,
     ProviderError, ProviderResponse, ProviderType, StreamChunk, TokenUsage, ToolCallRequest,
     ToolDefinition,
 };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Plus, ExternalLink, Globe } from 'lucide-react';
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -41,61 +42,188 @@ function CreateCompanyDialog({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [name, setName] = useState('');
-  const [website, setWebsite] = useState('');
-  const [industry, setIndustry] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    website: '',
+    industry: '',
+    description: '',
+    headquarters: '',
+    phone: '',
+    email: '',
+    linkedin_url: '',
+    twitter_handle: '',
+    instagram_handle: '',
+  });
+
+  const resetForm = useCallback(() => {
+    setFormData({
+      name: '',
+      website: '',
+      industry: '',
+      description: '',
+      headquarters: '',
+      phone: '',
+      email: '',
+      linkedin_url: '',
+      twitter_handle: '',
+      instagram_handle: '',
+    });
+  }, []);
 
   const create = useMutation({
     mutationFn: () =>
       companiesApi.create({
-        name,
-        website: website || undefined,
-        industry: industry || undefined,
+        name: formData.name,
+        website: formData.website || undefined,
+        industry: formData.industry || undefined,
+        description: formData.description || undefined,
+        headquarters: formData.headquarters || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (company) => {
+      // If extra fields were provided, update them via PATCH
+      const extraFields: Record<string, string> = {};
+      if (formData.phone) extraFields.phone = formData.phone;
+      if (formData.email) extraFields.email = formData.email;
+      if (formData.linkedin_url) extraFields.linkedin_url = formData.linkedin_url;
+      if (formData.twitter_handle) extraFields.twitter_handle = formData.twitter_handle;
+      if (formData.instagram_handle) extraFields.instagram_handle = formData.instagram_handle;
+
+      if (Object.keys(extraFields).length > 0) {
+        companiesApi.update(company.id, extraFields).catch(() => {
+          // Non-critical — company was already created
+        });
+      }
+
       queryClient.invalidateQueries({ queryKey: ['companies'] });
       toast.success('Company created');
-      setName('');
-      setWebsite('');
-      setIndustry('');
+      resetForm();
       onClose();
     },
     onError: () => toast.error('Failed to create company'),
   });
 
+  const handleFieldChange = useCallback(
+    (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+    },
+    [],
+  );
+
+  const handleSubmit = useCallback(() => {
+    create.mutate();
+  }, [create]);
+
+  const handleOpenChange = useCallback(
+    (v: boolean) => {
+      if (!v) onClose();
+    },
+    [onClose],
+  );
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[550px]">
         <DialogHeader>
           <DialogTitle>New Company</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-3 py-2">
+        <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
           <div className="grid gap-1.5">
             <Label htmlFor="co-name">Name *</Label>
             <Input
               id="co-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={formData.name}
+              onChange={handleFieldChange('name')}
               placeholder="Sandals Resorts"
             />
           </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-web">Website</Label>
+              <Input
+                id="co-web"
+                value={formData.website}
+                onChange={handleFieldChange('website')}
+                placeholder="https://sandals.com"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-ind">Industry</Label>
+              <Input
+                id="co-ind"
+                value={formData.industry}
+                onChange={handleFieldChange('industry')}
+                placeholder="Hospitality"
+              />
+            </div>
+          </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="co-web">Website</Label>
-            <Input
-              id="co-web"
-              value={website}
-              onChange={(e) => setWebsite(e.target.value)}
-              placeholder="https://sandals.com"
+            <Label htmlFor="co-desc">Description</Label>
+            <Textarea
+              id="co-desc"
+              value={formData.description}
+              onChange={handleFieldChange('description')}
+              placeholder="Brief description of the company..."
+              rows={2}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="co-ind">Industry</Label>
+            <Label htmlFor="co-hq">Headquarters</Label>
             <Input
-              id="co-ind"
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-              placeholder="Hospitality"
+              id="co-hq"
+              value={formData.headquarters}
+              onChange={handleFieldChange('headquarters')}
+              placeholder="Miami, FL"
             />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-phone">Phone</Label>
+              <Input
+                id="co-phone"
+                value={formData.phone}
+                onChange={handleFieldChange('phone')}
+                placeholder="+1 555-0100"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-email">Email</Label>
+              <Input
+                id="co-email"
+                type="email"
+                value={formData.email}
+                onChange={handleFieldChange('email')}
+                placeholder="info@company.com"
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-li">LinkedIn</Label>
+              <Input
+                id="co-li"
+                value={formData.linkedin_url}
+                onChange={handleFieldChange('linkedin_url')}
+                placeholder="linkedin.com/company/..."
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-tw">Twitter</Label>
+              <Input
+                id="co-tw"
+                value={formData.twitter_handle}
+                onChange={handleFieldChange('twitter_handle')}
+                placeholder="@handle"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="co-ig">Instagram</Label>
+              <Input
+                id="co-ig"
+                value={formData.instagram_handle}
+                onChange={handleFieldChange('instagram_handle')}
+                placeholder="@handle"
+              />
+            </div>
           </div>
         </div>
         <DialogFooter>
@@ -103,8 +231,8 @@ function CreateCompanyDialog({
             Cancel
           </Button>
           <Button
-            disabled={!name.trim() || create.isPending}
-            onClick={() => create.mutate()}
+            disabled={!formData.name.trim() || create.isPending}
+            onClick={handleSubmit}
           >
             Create
           </Button>
@@ -168,9 +296,22 @@ export function CompaniesPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground gap-2">
-            <Building2 className="h-10 w-10 opacity-20" />
-            <p className="text-sm">{search ? 'No companies match your search' : 'No companies yet'}</p>
+          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+            <Building2 className="h-12 w-12 mb-3 opacity-30" />
+            <p className="text-lg font-semibold mb-1 text-foreground">
+              {search ? 'No companies match your search' : 'No companies yet'}
+            </p>
+            <p className="text-sm max-w-sm text-center">
+              {search
+                ? 'Try adjusting your search terms.'
+                : 'Add companies to track organizations, run intelligence, and link them to your CRM.'}
+            </p>
+            {!search && (
+              <Button size="sm" className="mt-4" onClick={() => setShowCreate(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                New Company
+              </Button>
+            )}
           </div>
         ) : (
           <table className="w-full text-sm">

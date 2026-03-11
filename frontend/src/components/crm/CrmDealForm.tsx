@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
@@ -26,7 +26,7 @@ import type { CrmDealWithContact, CrmPipelineStage, CreateCrmDeal, UpdateCrmDeal
 interface CrmDealFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  projectId: string;
+  organizationId: string;
   pipelineId: string;
   stages: CrmPipelineStage[];
   deal?: CrmDealWithContact;
@@ -37,7 +37,7 @@ interface CrmDealFormProps {
 export function CrmDealForm({
   open,
   onOpenChange,
-  projectId,
+  organizationId,
   pipelineId,
   stages,
   deal,
@@ -47,7 +47,7 @@ export function CrmDealForm({
   const isEditing = !!deal;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const getInitialFormData = () => ({
+  const getInitialFormData = useCallback(() => ({
     name: deal?.name ?? '',
     description: deal?.description ?? '',
     amount: deal?.amount != null && Number.isFinite(deal.amount) ? deal.amount.toString() : '',
@@ -57,7 +57,10 @@ export function CrmDealForm({
     expectedCloseDate: deal?.expected_close_date
       ? new Date(deal.expected_close_date).toISOString().split('T')[0]
       : '',
-  });
+    tags: deal?.tags ? (typeof deal.tags === 'string' ? deal.tags : '') : '',
+    lostReason: deal?.lost_reason ?? '',
+    winReason: deal?.win_reason ?? '',
+  }), [deal, initialStageId, stages]);
 
   const [formData, setFormData] = useState(getInitialFormData);
 
@@ -66,27 +69,53 @@ export function CrmDealForm({
     if (open) {
       setFormData(getInitialFormData());
     }
-  }, [open, deal?.id]);
+  }, [open, deal?.id, getInitialFormData]);
 
   // Fetch contacts for the dropdown
   const { data: contacts = [] } = useQuery({
-    queryKey: ['crm', 'contacts', projectId],
-    queryFn: () => crmApi.listContacts(projectId, { limit: 100 }),
-    enabled: open,
+    queryKey: ['crm', 'contacts', organizationId],
+    queryFn: () => crmApi.listContacts(organizationId, { limit: 100 }),
+    enabled: open && !!organizationId,
   });
 
-  const parseAmount = (value: string): number | undefined => {
-    if (!value) return undefined;
-    const num = parseFloat(value);
-    if (!Number.isFinite(num)) return undefined;
-    return num;
-  };
+  const handleFieldChange = useCallback(
+    (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+    },
+    [],
+  );
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSelectChange = useCallback(
+    (field: string) => (value: string) => {
+      setFormData((prev) => ({ ...prev, [field]: value }));
+    },
+    [],
+  );
+
+  const handleContactChange = useCallback((value: string) => {
+    setFormData((prev) => ({ ...prev, contactId: value === '__none__' ? '' : value }));
+  }, []);
+
+  const handleCancel = useCallback(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
+    const parseAmount = (value: string): number | undefined => {
+      if (!value) return undefined;
+      const num = parseFloat(value);
+      if (!Number.isFinite(num)) return undefined;
+      return num;
+    };
+
     try {
+      const parsedTags = formData.tags
+        ? formData.tags.split(',').map((t) => t.trim()).filter(Boolean)
+        : undefined;
+
       if (isEditing) {
         const updateData: UpdateCrmDeal = {
           name: formData.name || undefined,
@@ -96,11 +125,14 @@ export function CrmDealForm({
           crm_stage_id: formData.stageId || undefined,
           crm_contact_id: formData.contactId || undefined,
           expected_close_date: formData.expectedCloseDate || undefined,
+          tags: parsedTags,
+          lost_reason: formData.lostReason || undefined,
+          win_reason: formData.winReason || undefined,
         };
         await onSubmit(updateData);
       } else {
         const createData: CreateCrmDeal = {
-          project_id: projectId,
+          organization_id: organizationId,
           crm_pipeline_id: pipelineId,
           crm_stage_id: formData.stageId || undefined,
           crm_contact_id: formData.contactId || undefined,
@@ -109,6 +141,7 @@ export function CrmDealForm({
           amount: parseAmount(formData.amount),
           currency: formData.currency || undefined,
           expected_close_date: formData.expectedCloseDate || undefined,
+          tags: parsedTags,
         };
         await onSubmit(createData);
       }
@@ -118,11 +151,11 @@ export function CrmDealForm({
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [formData, isEditing, organizationId, pipelineId, onSubmit, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[550px]">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Deal' : 'Create Deal'}</DialogTitle>
           <DialogDescription>
@@ -132,14 +165,14 @@ export function CrmDealForm({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
           {/* Deal Name */}
           <div className="space-y-2">
             <Label htmlFor="name">Deal Name *</Label>
             <Input
               id="name"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={handleFieldChange('name')}
               placeholder="e.g., Enterprise License - Acme Corp"
               required
             />
@@ -153,7 +186,7 @@ export function CrmDealForm({
                 id="amount"
                 type="number"
                 value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                onChange={handleFieldChange('amount')}
                 placeholder="0"
                 min="0"
                 step="0.01"
@@ -163,7 +196,7 @@ export function CrmDealForm({
               <Label htmlFor="currency">Currency</Label>
               <Select
                 value={formData.currency}
-                onValueChange={(value) => setFormData({ ...formData, currency: value })}
+                onValueChange={handleSelectChange('currency')}
               >
                 <SelectTrigger id="currency">
                   <SelectValue />
@@ -184,7 +217,7 @@ export function CrmDealForm({
             <Label htmlFor="stage">Stage</Label>
             <Select
               value={formData.stageId}
-              onValueChange={(value) => setFormData({ ...formData, stageId: value })}
+              onValueChange={handleSelectChange('stageId')}
             >
               <SelectTrigger id="stage">
                 <SelectValue placeholder="Select stage" />
@@ -209,20 +242,18 @@ export function CrmDealForm({
           <div className="space-y-2">
             <Label htmlFor="contact">Contact</Label>
             <Select
-              value={formData.contactId}
-              onValueChange={(value) => setFormData({ ...formData, contactId: value })}
+              value={formData.contactId || '__none__'}
+              onValueChange={handleContactChange}
             >
               <SelectTrigger id="contact">
                 <SelectValue placeholder="Select contact (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">No contact</SelectItem>
+                <SelectItem value="__none__">No contact</SelectItem>
                 {contacts.map((contact) => (
                   <SelectItem key={contact.id} value={contact.id}>
                     {contact.full_name || contact.email || 'Unknown'}
-                    {contact.company_name && (
-                      <span className="text-muted-foreground ml-1">({contact.company_name})</span>
-                    )}
+                    {contact.company_name ? ` (${contact.company_name})` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -236,7 +267,7 @@ export function CrmDealForm({
               id="expectedCloseDate"
               type="date"
               value={formData.expectedCloseDate}
-              onChange={(e) => setFormData({ ...formData, expectedCloseDate: e.target.value })}
+              onChange={handleFieldChange('expectedCloseDate')}
             />
           </div>
 
@@ -246,14 +277,49 @@ export function CrmDealForm({
             <Textarea
               id="description"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={handleFieldChange('description')}
               placeholder="Add notes about this deal..."
               rows={3}
             />
           </div>
 
+          {/* Tags */}
+          <div className="space-y-2">
+            <Label htmlFor="tags">Tags</Label>
+            <Input
+              id="tags"
+              value={formData.tags}
+              onChange={handleFieldChange('tags')}
+              placeholder="Comma-separated tags, e.g. enterprise, urgent"
+            />
+          </div>
+
+          {/* Win/Lost Reason (edit mode only) */}
+          {isEditing && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="winReason">Win Reason</Label>
+                <Input
+                  id="winReason"
+                  value={formData.winReason}
+                  onChange={handleFieldChange('winReason')}
+                  placeholder="Why was this deal won?"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lostReason">Lost Reason</Label>
+                <Input
+                  id="lostReason"
+                  value={formData.lostReason}
+                  onChange={handleFieldChange('lostReason')}
+                  placeholder="Why was this deal lost?"
+                />
+              </div>
+            </div>
+          )}
+
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={handleCancel}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting || !formData.name}>

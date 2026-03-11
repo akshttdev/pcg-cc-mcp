@@ -9,7 +9,7 @@
 //!   "organization" — org-level shared account, owner_id = org UUID hex
 //!   "project"      — project-scoped account, owner_id = project UUID hex
 
-use db::models::email_account::{EmailAccount, EmailProvider};
+use db::models::email_account::EmailAccount;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -73,11 +73,13 @@ struct ZohoTokenResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ZohoSendResponse {
     status: ZohoStatus,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ZohoStatus {
     #[serde(rename = "httpStatusCode")]
     http_status_code: u16,
@@ -278,10 +280,12 @@ impl AgentChannelService {
         let from_number = std::env::var("TWILIO_PHONE_NUMBER")
             .map_err(|_| ChannelError::Api("TWILIO_PHONE_NUMBER not set".into()))?;
 
-        let url = format!(
-            "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
-            account_sid
-        );
+        let url = if let Ok(space) = std::env::var("SIGNALWIRE_SPACE_URL") {
+            let space = space.trim_end_matches('/').to_string();
+            format!("https://{}/api/laml/2010-04-01/Accounts/{}/Messages.json", space, account_sid)
+        } else {
+            format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", account_sid)
+        };
 
         let resp = self
             .http

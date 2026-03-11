@@ -76,6 +76,24 @@ pub struct PatchRouterModel {
     pub is_enabled: Option<bool>,
     pub provider_base_url: Option<String>,
     pub api_key_env_var: Option<String>,
+    pub api_key_value: Option<String>,
+}
+
+/// Set API key for a provider (updates all models of that provider)
+#[derive(Debug, Deserialize)]
+pub struct SetProviderKeyRequest {
+    pub provider: String,
+    pub api_key: String,
+}
+
+/// Provider key status (returned by GET /pcg-router/provider-keys)
+#[derive(Debug, Serialize)]
+pub struct ProviderKeyStatus {
+    pub provider: String,
+    pub has_key: bool,
+    pub model_count: usize,
+    pub enabled_count: usize,
+    pub env_var: Option<String>,
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -124,7 +142,7 @@ async fn create_model(
 
     let created: PcgRouterModel = sqlx::query_as(
         "SELECT id, name, model_id, provider, provider_base_url, api_key_env_var,
-                priority, context_window, max_output_tokens,
+                api_key_value, priority, context_window, max_output_tokens,
                 supports_tools, supports_vision,
                 cost_per_million_input, cost_per_million_output,
                 is_enabled, created_at, updated_at
@@ -152,6 +170,7 @@ async fn patch_model(
              is_enabled        = COALESCE(?, is_enabled),
              provider_base_url = COALESCE(?, provider_base_url),
              api_key_env_var   = COALESCE(?, api_key_env_var),
+             api_key_value     = COALESCE(?, api_key_value),
              updated_at        = datetime('now','subsec')
          WHERE id = ?",
     )
@@ -160,6 +179,7 @@ async fn patch_model(
     .bind(body.is_enabled)
     .bind(&body.provider_base_url)
     .bind(&body.api_key_env_var)
+    .bind(&body.api_key_value)
     .bind(id)
     .execute(pool)
     .await
@@ -167,7 +187,7 @@ async fn patch_model(
 
     let updated: PcgRouterModel = sqlx::query_as(
         "SELECT id, name, model_id, provider, provider_base_url, api_key_env_var,
-                priority, context_window, max_output_tokens,
+                api_key_value, priority, context_window, max_output_tokens,
                 supports_tools, supports_vision,
                 cost_per_million_input, cost_per_million_output,
                 is_enabled, created_at, updated_at
@@ -197,44 +217,60 @@ async fn delete_model(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /pcg-router/v1/chat/completions
-///
-/// OpenRouter-compatible endpoint. Selects the best available model, forwards
-/// the request to the appropriate provider, and returns the response verbatim.
-/// Falls back through models in priority order on failure.
-async fn chat_completions(
-    State(deployment): State<DeploymentImpl>,
-    Json(body): Json<ChatCompletionRequest>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let pool = &deployment.db().pool;
+// ── Shared routing logic (used by both HTTP endpoint and workflow engine) ────
 
+/// Metadata about a routed completion request.
+#[derive(Debug, Clone, Serialize)]
+pub struct RoutingMetadata {
+    pub model_used: String,
+    pub provider: String,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub estimated_cost_micros: Option<i64>,
+}
+
+/// Route a chat completion through the PCG Router model registry.
+///
+/// This is the core routing function shared by the HTTP endpoint and internal
+/// callers like the workflow engine. Returns the OpenAI-format response and
+/// routing metadata, or an error if all models fail.
+pub async fn route_completion(
+    pool: &sqlx::SqlitePool,
+    messages: Vec<ChatMessage>,
+    model_hint: Option<&str>,
+    max_tokens: Option<i64>,
+    temperature: Option<f64>,
+) -> Result<(Value, RoutingMetadata), anyhow::Error> {
     // Resolve candidate models: prefer requested model, fall back by priority
-    let candidates = if let Some(model_id) = &body.model {
+    let candidates = if let Some(model_id) = model_hint {
         let mut specific = PcgRouterModel::get_by_model_id(pool, model_id)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .await?
             .map(|m| vec![m])
             .unwrap_or_default();
         if specific.is_empty() {
-            specific = PcgRouterModel::list_enabled(pool)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            specific = PcgRouterModel::list_enabled(pool).await?;
         }
         specific
     } else {
-        PcgRouterModel::list_enabled(pool)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        PcgRouterModel::list_enabled(pool).await?
     };
 
     if candidates.is_empty() {
-        return Err((StatusCode::SERVICE_UNAVAILABLE, "No enabled models in PCG Router".into()));
+        anyhow::bail!("No enabled models in PCG Router");
     }
 
     let http = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .build()?;
+
+    let request = ChatCompletionRequest {
+        model: model_hint.map(|s| s.to_string()),
+        messages,
+        temperature,
+        max_tokens,
+        stream: Some(false),
+        extra: Default::default(),
+    };
 
     for model in &candidates {
         let Some(api_key) = model.resolve_api_key() else {
@@ -242,11 +278,34 @@ async fn chat_completions(
             continue;
         };
 
-        let result = forward_to_provider(&http, model, &body, &api_key).await;
+        let result = forward_to_provider(&http, model, &request, &api_key).await;
         match result {
             Ok(resp) => {
                 tracing::info!("[PCG_ROUTER] Routed to '{}' ({})", model.name, model.provider);
-                return Ok(Json(resp));
+
+                // Extract token usage from response
+                let input_tokens = resp["usage"]["prompt_tokens"].as_i64();
+                let output_tokens = resp["usage"]["completion_tokens"].as_i64();
+
+                // Estimate cost in microdollars (millionths of a dollar)
+                let estimated_cost_micros = match (input_tokens, output_tokens) {
+                    (Some(inp), Some(out)) => {
+                        let input_cost = (inp as f64 / 1_000_000.0) * model.cost_per_million_input as f64;
+                        let output_cost = (out as f64 / 1_000_000.0) * model.cost_per_million_output as f64;
+                        Some(((input_cost + output_cost) * 1_000_000.0) as i64)
+                    }
+                    _ => None,
+                };
+
+                let metadata = RoutingMetadata {
+                    model_used: model.model_id.clone(),
+                    provider: model.provider.clone(),
+                    input_tokens,
+                    output_tokens,
+                    estimated_cost_micros,
+                };
+
+                return Ok((resp, metadata));
             }
             Err(e) => {
                 tracing::warn!("[PCG_ROUTER] '{}' failed: {}, trying next model", model.name, e);
@@ -254,7 +313,29 @@ async fn chat_completions(
         }
     }
 
-    Err((StatusCode::BAD_GATEWAY, "All PCG Router models failed".into()))
+    anyhow::bail!("All PCG Router models failed")
+}
+
+/// POST /pcg-router/v1/chat/completions
+///
+/// OpenRouter-compatible endpoint. Thin wrapper around `route_completion`.
+async fn chat_completions(
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<ChatCompletionRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let pool = &deployment.db().pool;
+
+    let (resp, _metadata) = route_completion(
+        pool,
+        body.messages,
+        body.model.as_deref(),
+        body.max_tokens,
+        body.temperature,
+    )
+    .await
+    .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+
+    Ok(Json(resp))
 }
 
 async fn forward_to_provider(
@@ -416,11 +497,105 @@ async fn forward_to_gemini(
     Ok(resp.json().await?)
 }
 
+// ── Provider key management ──────────────────────────────────────────────────
+
+/// GET /pcg-router/provider-keys — list all providers and their key status
+async fn list_provider_keys(
+    State(deployment): State<DeploymentImpl>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let models = PcgRouterModel::list(&deployment.db().pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Group by provider
+    let mut providers: std::collections::BTreeMap<String, ProviderKeyStatus> =
+        std::collections::BTreeMap::new();
+
+    for model in &models {
+        let entry = providers.entry(model.provider.clone()).or_insert_with(|| {
+            ProviderKeyStatus {
+                provider: model.provider.clone(),
+                has_key: false,
+                model_count: 0,
+                enabled_count: 0,
+                env_var: model.api_key_env_var.clone(),
+            }
+        });
+        entry.model_count += 1;
+        if model.is_enabled {
+            entry.enabled_count += 1;
+        }
+        // Check if any model in this provider has a resolvable key
+        if model.resolve_api_key().is_some() {
+            entry.has_key = true;
+        }
+    }
+
+    let statuses: Vec<ProviderKeyStatus> = providers.into_values().collect();
+    Ok(Json(statuses))
+}
+
+/// POST /pcg-router/provider-keys — set API key for all models of a provider
+async fn set_provider_key(
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<SetProviderKeyRequest>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let pool = &deployment.db().pool;
+
+    // If key is empty, clear it (set to NULL)
+    let key_value: Option<&str> = if body.api_key.is_empty() {
+        None
+    } else {
+        Some(&body.api_key)
+    };
+
+    let result = sqlx::query(
+        "UPDATE pcg_router_models
+         SET api_key_value = ?,
+             updated_at = datetime('now','subsec')
+         WHERE provider = ?",
+    )
+    .bind(key_value)
+    .bind(&body.provider)
+    .execute(pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(json!({
+        "provider": body.provider,
+        "models_updated": result.rows_affected(),
+        "has_key": key_value.is_some(),
+    })))
+}
+
+/// DELETE /pcg-router/provider-keys/:provider — clear API key for a provider
+async fn delete_provider_key(
+    State(deployment): State<DeploymentImpl>,
+    Path(provider): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let pool = &deployment.db().pool;
+
+    sqlx::query(
+        "UPDATE pcg_router_models
+         SET api_key_value = NULL,
+             updated_at = datetime('now','subsec')
+         WHERE provider = ?",
+    )
+    .bind(&provider)
+    .execute(pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/pcg-router/models", get(list_models).post(create_model))
         .route("/pcg-router/models/{id}", patch(patch_model).delete(delete_model))
+        .route("/pcg-router/provider-keys", get(list_provider_keys).post(set_provider_key))
+        .route("/pcg-router/provider-keys/{provider}", delete(delete_provider_key))
         .route("/pcg-router/v1/chat/completions", post(chat_completions))
 }

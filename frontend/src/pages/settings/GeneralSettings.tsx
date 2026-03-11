@@ -1,6 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cloneDeep, merge, isEqual } from 'lodash';
+
+/** Deep equality check (JSON-safe objects only) */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    if (a.length !== (b as unknown[]).length) return false;
+    return a.every((v, i) => deepEqual(v, (b as unknown[])[i]));
+  }
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(aObj), ...Object.keys(bObj)]);
+  for (const key of keys) {
+    if (!deepEqual(aObj[key], bObj[key])) return false;
+  }
+  return true;
+}
+
 import {
   Card,
   CardContent,
@@ -38,7 +58,7 @@ import {
 import { getLanguageOptions } from '@/i18n/languages';
 
 import { toPrettyCase } from '@/utils/string';
-import { useTheme } from '@/components/theme-provider';
+import { useTheme, type TextSize } from '@/components/theme-provider';
 import { useUserSystem } from '@/components/config-provider';
 import { TaskTemplateManager } from '@/components/TaskTemplateManager';
 import NiceModal from '@ebay/nice-modal-react';
@@ -61,35 +81,35 @@ export function GeneralSettings() {
   } = useUserSystem();
 
   // Draft state management
-  const [draft, setDraft] = useState(() => (config ? cloneDeep(config) : null));
+  const [draft, setDraft] = useState(() => (config ? structuredClone(config) : null));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const { setTheme } = useTheme();
+  const { setTheme, textSize, setTextSize } = useTheme();
 
   // When config loads or changes externally, update draft only if not dirty
   useEffect(() => {
     if (!config) return;
     if (!dirty) {
-      setDraft(cloneDeep(config));
+      setDraft(structuredClone(config));
     }
   }, [config, dirty]);
 
   // Check for unsaved changes
   const hasUnsavedChanges = useMemo(() => {
     if (!draft || !config) return false;
-    return !isEqual(draft, config);
+    return !deepEqual(draft, config);
   }, [draft, config]);
 
-  // Generic draft update helper
+  // Generic draft update helper — uses shallow spread, so each call must pass
+  // complete top-level values (e.g. { executor_profile: { ...fullProfile } }).
   const updateDraft = useCallback(
     (patch: Partial<typeof config>) => {
-      setDraft((prev: typeof config) => {
+      setDraft((prev) => {
         if (!prev) return prev;
-        const next = merge({}, prev, patch);
-        // Mark dirty if changed
-        if (!isEqual(next, config)) {
+        const next = { ...prev, ...patch };
+        if (!deepEqual(next, config)) {
           setDirty(true);
         }
         return next;
@@ -142,7 +162,7 @@ export function GeneralSettings() {
 
   const handleDiscard = () => {
     if (!config) return;
-    setDraft(cloneDeep(config));
+    setDraft(structuredClone(config));
     setDirty(false);
   };
 
@@ -272,6 +292,27 @@ export function GeneralSettings() {
             </Select>
             <p className="text-sm text-muted-foreground">
               {t('settings.general.appearance.language.helper')}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="text-size">Text Size</Label>
+            <Select
+              value={textSize}
+              onValueChange={(value: string) => setTextSize(value as TextSize)}
+            >
+              <SelectTrigger id="text-size">
+                <SelectValue placeholder="Select text size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="small">Small (14px)</SelectItem>
+                <SelectItem value="default">Default (16px)</SelectItem>
+                <SelectItem value="large">Large (18px)</SelectItem>
+                <SelectItem value="extra-large">Extra Large (20px)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              Adjust the base text size across the application. All UI elements scale proportionally.
             </p>
           </div>
         </CardContent>

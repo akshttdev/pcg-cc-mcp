@@ -217,7 +217,7 @@ export function TaskCard({
                 {onArchive && (
                   <DropdownMenuItem onClick={() => onArchive(task)}>
                     <Archive className="h-4 w-4 mr-2" />
-                    {(task as Record<string, unknown>).archived_at ? 'Unarchive' : 'Archive'}
+                    {task.archived_at ? 'Unarchive' : 'Archive'}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem

@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use super::{EditronError, EditronResult};
-use super::music::{MusicMood, MusicGenre, MusicSearchCriteria, MusicTrack, MusicPlatform, LicenseInfo, LicenseType};
-use super::scene_detection::{Scene, SceneDetectionResult};
+use super::music::{MusicMood, MusicGenre, MusicSearchCriteria, MusicTrack, MusicPlatform};
+use super::scene_detection::SceneDetectionResult;
 
 /// Video content analysis for music matching
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +114,7 @@ pub struct PlatformCredentials {
 }
 
 /// Music Automation Engine
+#[allow(dead_code)]
 pub struct MusicAutomationEngine {
     ffmpeg_path: PathBuf,
     download_path: PathBuf,
@@ -764,7 +765,7 @@ fi
 
     async fn analyze_motion_energy(&self, path: &Path) -> EditronResult<(f32, f32)> {
         // Use FFmpeg's mpdecimate filter to detect motion
-        let output = Command::new(&self.ffmpeg_path)
+        let _output = Command::new(&self.ffmpeg_path)
             .args([
                 "-i", &path.to_string_lossy(),
                 "-vf", "mpdecimate,metadata=print:file=-",
@@ -778,7 +779,7 @@ fi
         Ok((0.6, 0.5)) // Default moderate energy/motion
     }
 
-    async fn analyze_color_temperature(&self, path: &Path) -> EditronResult<ColorTemperature> {
+    async fn analyze_color_temperature(&self, _path: &Path) -> EditronResult<ColorTemperature> {
         // Sample a frame and analyze color
         // Simplified - would need histogram analysis
         Ok(ColorTemperature::Neutral)
@@ -789,7 +790,7 @@ fi
         energy: f32,
         pacing: &PacingLevel,
         color_temp: &ColorTemperature,
-        motion: f32,
+        _motion: f32,
     ) -> Vec<MusicMood> {
         let mut moods = Vec::new();
 

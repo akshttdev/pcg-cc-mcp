@@ -117,11 +117,11 @@ impl MediaEncoderBridge {
     pub async fn add_to_queue<P: AsRef<Path>>(
         &self,
         source: P,
-        preset: &str,
+        _preset: &str,
         output: P,
     ) -> EditronResult<()> {
         let source = source.as_ref();
-        let output = output.as_ref();
+        let _output = output.as_ref();
 
         if !source.exists() {
             return Err(EditronError::FileNotFound(source.to_path_buf()));

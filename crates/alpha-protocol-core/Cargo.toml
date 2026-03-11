@@ -32,7 +32,6 @@ path = "src/bin/apn_reward_distributor.rs"
 
 [features]
 default = []
-tauri = ["dep:tauri"]
 mobile = []
 
 [dependencies]
@@ -80,9 +79,6 @@ async-nats = "0.37"
 # Time
 chrono = { version = "0.4", features = ["serde"] }
 
-# Storage
-sled = "0.34"
-
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -106,8 +102,4 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 db = { path = "../db" }
 dotenv = "0.15"
 
-# Tauri integration (optional)
-tauri = { version = "2", optional = true }
-
 [dev-dependencies]
-tokio-test = "0.4"

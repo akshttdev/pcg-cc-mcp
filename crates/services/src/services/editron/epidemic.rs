@@ -19,7 +19,7 @@ use super::music::{
     LicenseInfo, LicenseType, MusicGenre, MusicMood, MusicPlatform, MusicSearchCriteria,
     MusicTrack,
 };
-use super::{EditronError, EditronResult};
+use super::EditronError;
 
 /// Epidemic Sound API base URL
 const ES_API_BASE: &str = "https://api.epidemicsound.com/v0";
@@ -161,6 +161,7 @@ pub struct EpidemicArtist {
 
 /// Track search response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct TrackSearchResponse {
     #[serde(default)]
     tracks: Vec<EpidemicTrack>,

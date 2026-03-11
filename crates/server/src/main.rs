@@ -35,7 +35,7 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     let log_level = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let filter_string = format!(
-        "warn,server={level},services={level},db={level},executors={level},deployment={level},local_deployment={level},utils={level},nora={level},discord_bots={level},serenity=warn,songbird=warn",
+        "warn,server={level},services={level},db={level},executors={level},deployment={level},local_deployment={level},utils={level},nora={level},discord_bot={level},discord_bots={level},serenity=warn,songbird=warn",
         level = log_level
     );
     let env_filter = EnvFilter::try_new(filter_string).expect("Failed to create tracing filter");
@@ -130,6 +130,9 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Start Discord bot agents (Nora + Topsi) if tokens are configured
     discord_bots::spawn_discord_bots();
 
+    // Start Discord bot agents (Nora + Topsi) if tokens are configured
+    discord_bots::spawn_discord_bots();
+
     // Pre-warm file search cache for most active projects
     let deployment_for_cache = deployment.clone();
     tokio::spawn(async move {
@@ -206,6 +209,9 @@ async fn main() -> Result<(), VibeKanbanError> {
     if auto_start_apn {
         tokio::spawn(async move {
             tracing::info!("🌐 Auto-starting APN node in background...");
+
+            // Kill any existing apn_node processes to prevent accumulation
+            utils::external_services::kill_existing_apn_nodes();
 
             let apn_binary = std::env::current_exe()
                 .ok()

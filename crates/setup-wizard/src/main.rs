@@ -197,7 +197,7 @@ async fn run_wizard() -> Result<SetupConfig> {
     println!("{}", "└─────────────────────────────────────────────────────┘".bright_blue());
     println!();
 
-    let hostname = whoami::hostname();
+    let hostname = whoami::fallible::hostname().unwrap_or_default();
     let device_name = Text::new("Device name:")
         .with_default(&hostname)
         .with_help_message("A friendly name for this device")

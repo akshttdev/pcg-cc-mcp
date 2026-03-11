@@ -24,84 +24,74 @@ A comprehensive project management dashboard with built-in Model Context Protoco
 
 ### Prerequisites
 
-Before running this project, you need to install:
-
-1. **Node.js 18+** and **npm** (or **pnpm 8+**)
-   - Check: `node --version` and `npm --version`
-   - Install from: https://nodejs.org/
-
-2. **Rust toolchain** (nightly version specified in rust-toolchain.toml)
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source $HOME/.cargo/env
-   ```
-
-3. **cargo-watch** (for backend hot reload)
-   ```bash
-   cargo install cargo-watch
-   ```
-
-4. **sqlx-cli** (for database migrations)
-   ```bash
-   cargo install sqlx-cli --no-default-features --features sqlite
-   ```
-
-5. **(Optional) pnpm** for faster package management
-   ```bash
-   npm install -g pnpm
-   ```
-
-### 🐳 Docker Deployment (Recommended for Production)
-
-The easiest way to deploy is using Docker with Cloudflare Tunnel for secure port forwarding:
+Install [Flox](https://flox.dev/docs/install-flox/) — it manages all project dependencies (Node.js, Rust, pnpm, cargo-watch, sqlx-cli, sccache, lld, etc.) automatically.
 
 ```bash
-# 1. Copy environment file
-cp .env.example .env
-
-# 2. Get Cloudflare Tunnel token from https://one.dash.cloudflare.com/
-#    and add it to .env
-
-# 3. Run the deployment script
-./deploy.sh
+# macOS
+brew install flox
 ```
 
-**Or manually:**
-```bash
-docker-compose build
-docker-compose up -d
-```
-
-See **[DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)** for complete deployment guide.
-
-**Pull from Docker Hub (when available):**
-```bash
-docker pull kingbodhi/pcg-cc-mcp:latest
-```
-
-### Development Setup
+### First-Time Setup
 
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone <repository-url>
 cd pcg-dashboard-mcp
 
-# Install dependencies
-pnpm install
-# or if you don't have pnpm: npm install
+# 2. Activate the flox environment (installs all tooling automatically)
+flox activate
 
-# Start development servers (frontend + backend)
-pnpm run dev
-# or: npm run dev
+# 3. Install frontend dependencies
+pnpm install
+
+# 4. Start development servers (frontend + backend with hot reload)
+npm run dev
 ```
 
-This will:
-- Auto-copy the development database from `dev_assets_seed/` (first run only)
-- Start frontend dev server on port 3000 (or auto-assigned)
-- Start backend server on auto-assigned port
-- Enable hot reload for both frontend and backend
+On first `flox activate`, the Rust nightly toolchain is installed automatically via rustup (this may take a minute). Subsequent activations are instant.
 
-The frontend will be available at http://localhost:3000
+### What Happens on `npm run dev`
+
+- Copies the seed database from `dev_assets_seed/` to `dev_assets/` (first run only)
+- Starts the Vite frontend dev server (default port 3000)
+- Starts the Rust backend server via `cargo-watch` (auto-assigned port)
+- Enables hot reload for both frontend and backend
+- Frontend proxies API requests to the backend automatically
+
+The app will be available at **http://localhost:3000**
+
+Default login: `admin` / `admin123`
+
+### Build Optimizations
+
+The dev environment includes build speed tools configured in `.cargo/config.toml`:
+- **sccache** — caches compiled crates across `cargo clean` and branch switches
+- **lld** — faster linker for macOS (replaces default ld)
+
+These are installed automatically via the flox environment.
+
+### Manual Setup (without Flox)
+
+If you prefer not to use flox, install these manually:
+
+1. **Node.js 18+** and **pnpm 8+**
+2. **Rust nightly** (version pinned in `rust-toolchain.toml`)
+3. **cargo-watch** (`cargo install cargo-watch`)
+4. **sqlx-cli** (`cargo install sqlx-cli --no-default-features --features sqlite`)
+5. **sccache** and **lld** (optional, for faster builds)
+
+### Docker Deployment (Production)
+
+```bash
+# 1. Copy environment file and configure
+cp .env.example .env
+
+# 2. Deploy
+./deploy.sh
+# or manually: docker-compose build && docker-compose up -d
+```
+
+See **[DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)** for the complete deployment guide.
 
 ### Building for Production
 
@@ -223,6 +213,10 @@ sqlx database create    # Create database
 
 ## Environment Variables
 
+The following variables are set automatically by the flox environment (`.flox/env/manifest.toml`):
+- `SQLX_OFFLINE=true` — use cached query metadata instead of a live database connection
+- `RUSTC_WRAPPER=sccache` — enable compilation caching
+
 ### Build-time
 - `GITHUB_CLIENT_ID`: GitHub OAuth app ID (optional, defaults to Bloop AI's app)
 - `POSTHOG_API_KEY`: Analytics key (optional)
@@ -231,6 +225,8 @@ sqlx database create    # Create database
 - `BACKEND_PORT`: Backend server port (default: auto-assign)
 - `FRONTEND_PORT`: Frontend dev port (default: 3000)
 - `HOST`: Backend host (default: 127.0.0.1)
+- `DATABASE_URL`: SQLite database path (default: `sqlite://dev_assets/db.sqlite`)
+- `RUST_LOG`: Log level (default: `debug` in dev)
 - `DISABLE_WORKTREE_ORPHAN_CLEANUP`: Debug flag for worktrees
 
 ## Contributing

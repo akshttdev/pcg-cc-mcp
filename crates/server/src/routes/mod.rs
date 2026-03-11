@@ -81,6 +81,7 @@ pub mod pulse;
 pub mod pythia;
 pub mod wallet;
 pub mod invitations;
+pub mod org_invitations;
 pub mod organizations;
 pub mod clients;
 pub mod project_folders;
@@ -108,8 +109,17 @@ pub mod pcg_router;
 pub mod oss_listener;
 pub mod oss_listener_bg;
 pub mod companies;
+pub mod media_library;
+pub mod review;
 pub mod data_sources;
 pub mod data_source_workflows;
+pub mod workflow_staging;
+pub mod workflow_triggers;
+pub mod output_schemas;
+pub mod pcg_router;
+pub mod discord;
+pub mod oss_listener;
+pub mod oss_listener_bg;
 pub mod meet;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
@@ -165,6 +175,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(wallet::router())
         .merge(pulse::router(&deployment))
         .merge(organizations::router(&deployment))
+        .merge(org_invitations::router(&deployment))
         .merge(clients::router(&deployment))
         // project_folders routes deprecated — projects now use parent_project_id nesting
         .merge(board_shares::router(&deployment))
@@ -183,10 +194,16 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(deliverables::router(&deployment))
         .merge(command_center::router(&deployment))
         .merge(intelligence::router(&deployment))
-        .merge(intake::router(&deployment))
-        .merge(marketplace::router(&deployment))
+        .merge(companies::router(&deployment))
+        .merge(data_sources::router(&deployment))
+        .merge(data_source_workflows::router(&deployment))
+        .merge(workflow_staging::router(&deployment))
+        .merge(workflow_triggers::router(&deployment))
+        .merge(output_schemas::router())
+        .merge(graph::router(&deployment))
+        .merge(invite_dispatch::router(&deployment))
+        .merge(discord::router(&deployment))
         .merge(media_library::router(&deployment))
-        .merge(pcg_router::router(&deployment))
         .merge(oss_listener::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
@@ -208,6 +225,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(execution_summaries::routes())
         .merge(auth::router(&deployment))
         .merge(invitations::public_router(&deployment))
+        .merge(org_invitations::public_router(&deployment))
         .merge(organizations::public_router(&deployment))
         .merge(filesystem::router())
         .merge(events::router(&deployment))
@@ -249,6 +267,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(peer_rewards::router(&deployment))
         .merge(marketplace::public_router(&deployment))
         .merge(pythia::router(&deployment))
+        .merge(pcg_router::router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))
         .merge(protected_routes)
         .merge(admin_routes)

@@ -1,7 +1,7 @@
 use axum::{
     Extension, Json, Router,
     extract::{Path, State},
-    routing::{delete, get},
+    routing::get,
 };
 use db::models::{
     project::Project,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Project } from 'shared/types';
@@ -66,7 +66,7 @@ import {
   UpdateCrmContactRequest,
 } from '@/lib/api';
 import { EmailAccountConnect } from '@/components/email/EmailAccountConnect';
-import { LIFECYCLE_STAGE_INFO } from '@/types/crm';
+import { LIFECYCLE_STAGE_INFO, CONTACT_SOURCE_INFO } from '@/types/crm';
 import type { LifecycleStage } from '@/types/crm';
 import type { EmailProvider } from '@/types/email';
 
@@ -227,9 +227,9 @@ export function CrmPage() {
             <Users className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="page-title">CRM & Email</h1>
+            <h1 className="page-title">CRM Administration</h1>
             <p className="page-description">
-              Manage contacts, track leads, and connect email accounts
+              Platform-level contact management and email account configuration
             </p>
           </div>
         </div>
@@ -370,9 +370,19 @@ export function CrmPage() {
                   </div>
                 ) : contacts.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
-                    <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No contacts yet</p>
-                    <p className="text-sm">Add your first contact to get started</p>
+                    <Users className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                    <p className="text-lg font-semibold mb-1">No contacts yet</p>
+                    <p className="text-sm max-w-sm mx-auto">Add your first contact to start building your CRM pipeline, or connect an email account to import contacts automatically.</p>
+                    <div className="flex gap-2 justify-center mt-4">
+                      <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
+                        <UserPlus className="h-4 w-4 mr-1" />
+                        Add Contact
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setActiveTab('email')}>
+                        <Mail className="h-4 w-4 mr-1" />
+                        Connect Email
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -585,7 +595,7 @@ function ContactCard({
 function ContactFormDialog({
   open,
   onOpenChange,
-  projectId,
+  projectId: _projectId,
   contact,
   onSubmit,
   isLoading,
@@ -597,65 +607,86 @@ function ContactFormDialog({
   onSubmit: (data: CreateCrmContactRequest | UpdateCrmContactRequest) => void;
   isLoading: boolean;
 }) {
-  const [formData, setFormData] = useState({
-    first_name: contact?.first_name || '',
-    last_name: contact?.last_name || '',
-    email: contact?.email || '',
-    phone: contact?.phone || '',
-    company_name: contact?.company_name || '',
-    job_title: contact?.job_title || '',
-    linkedin_url: contact?.linkedin_url || '',
-    twitter_handle: contact?.twitter_handle || '',
-    website: contact?.website || '',
-    lifecycle_stage: contact?.lifecycle_stage || 'lead',
+  const emptyForm = {
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    mobile: '',
+    company_name: '',
+    job_title: '',
+    department: '',
+    linkedin_url: '',
+    twitter_handle: '',
+    website: '',
+    lifecycle_stage: 'lead',
+    source: '' as string,
+    tags: '',
+  };
+
+  const contactToForm = (c: CrmContactRecord) => ({
+    first_name: c.first_name || '',
+    last_name: c.last_name || '',
+    email: c.email || '',
+    phone: c.phone || '',
+    mobile: c.mobile || '',
+    company_name: c.company_name || '',
+    job_title: c.job_title || '',
+    department: c.department || '',
+    linkedin_url: c.linkedin_url || '',
+    twitter_handle: c.twitter_handle || '',
+    website: c.website || '',
+    lifecycle_stage: c.lifecycle_stage || 'lead',
+    source: c.source || '',
+    tags: Array.isArray(c.tags) ? c.tags.join(', ') : (c.tags || ''),
   });
 
+  const [formData, setFormData] = useState(contact ? contactToForm(contact) : emptyForm);
+
   useEffect(() => {
-    if (contact) {
-      setFormData({
-        first_name: contact.first_name || '',
-        last_name: contact.last_name || '',
-        email: contact.email || '',
-        phone: contact.phone || '',
-        company_name: contact.company_name || '',
-        job_title: contact.job_title || '',
-        linkedin_url: contact.linkedin_url || '',
-        twitter_handle: contact.twitter_handle || '',
-        website: contact.website || '',
-        lifecycle_stage: contact.lifecycle_stage || 'lead',
-      });
-    } else {
-      setFormData({
-        first_name: '',
-        last_name: '',
-        email: '',
-        phone: '',
-        company_name: '',
-        job_title: '',
-        linkedin_url: '',
-        twitter_handle: '',
-        website: '',
-        lifecycle_stage: 'lead',
-      });
-    }
+    setFormData(contact ? contactToForm(contact) : emptyForm);
   }, [contact, open]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFieldChange = useCallback(
+    (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+    },
+    [],
+  );
+
+  const handleSelectChange = useCallback(
+    (field: string) => (value: string) => {
+      setFormData((prev) => ({ ...prev, [field]: value === '__none__' ? '' : value }));
+    },
+    [],
+  );
+
+  const handleCancel = useCallback(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
+    const parsedTags = formData.tags
+      ? formData.tags.split(',').map((t) => t.trim()).filter(Boolean)
+      : undefined;
     onSubmit({
-      project_id: projectId,
       ...formData,
       first_name: formData.first_name || undefined,
       last_name: formData.last_name || undefined,
       email: formData.email || undefined,
       phone: formData.phone || undefined,
+      mobile: formData.mobile || undefined,
       company_name: formData.company_name || undefined,
       job_title: formData.job_title || undefined,
+      department: formData.department || undefined,
       linkedin_url: formData.linkedin_url || undefined,
       twitter_handle: formData.twitter_handle || undefined,
       website: formData.website || undefined,
+      source: formData.source || undefined,
+      tags: parsedTags,
     });
-  };
+  }, [formData, onSubmit]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -668,16 +699,14 @@ function ContactFormDialog({
               : 'Add a new contact to your CRM'}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="first_name">First Name</Label>
               <Input
                 id="first_name"
                 value={formData.first_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, first_name: e.target.value })
-                }
+                onChange={handleFieldChange('first_name')}
               />
             </div>
             <div className="space-y-2">
@@ -685,9 +714,7 @@ function ContactFormDialog({
               <Input
                 id="last_name"
                 value={formData.last_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, last_name: e.target.value })
-                }
+                onChange={handleFieldChange('last_name')}
               />
             </div>
           </div>
@@ -697,16 +724,28 @@ function ContactFormDialog({
               id="email"
               type="email"
               value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              onChange={handleFieldChange('email')}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
-            <Input
-              id="phone"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-            />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                value={formData.phone}
+                onChange={handleFieldChange('phone')}
+                placeholder="+1 555-0100"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mobile">Mobile</Label>
+              <Input
+                id="mobile"
+                value={formData.mobile}
+                onChange={handleFieldChange('mobile')}
+                placeholder="+1 555-0101"
+              />
+            </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -714,9 +753,7 @@ function ContactFormDialog({
               <Input
                 id="company_name"
                 value={formData.company_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, company_name: e.target.value })
-                }
+                onChange={handleFieldChange('company_name')}
               />
             </div>
             <div className="space-y-2">
@@ -724,40 +761,64 @@ function ContactFormDialog({
               <Input
                 id="job_title"
                 value={formData.job_title}
-                onChange={(e) =>
-                  setFormData({ ...formData, job_title: e.target.value })
-                }
+                onChange={handleFieldChange('job_title')}
               />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="lifecycle_stage">Lifecycle Stage</Label>
-            <Select
-              value={formData.lifecycle_stage}
-              onValueChange={(value) =>
-                setFormData({ ...formData, lifecycle_stage: value })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(LIFECYCLE_STAGE_INFO).map(([key, info]) => (
-                  <SelectItem key={key} value={key}>
-                    {info.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="department">Department</Label>
+            <Input
+              id="department"
+              value={formData.department}
+              onChange={handleFieldChange('department')}
+              placeholder="Engineering, Sales, Marketing..."
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="lifecycle_stage">Lifecycle Stage</Label>
+              <Select
+                value={formData.lifecycle_stage}
+                onValueChange={handleSelectChange('lifecycle_stage')}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(LIFECYCLE_STAGE_INFO).map(([key, info]) => (
+                    <SelectItem key={key} value={key}>
+                      {info.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="source">Source</Label>
+              <Select
+                value={formData.source || '__none__'}
+                onValueChange={handleSelectChange('source')}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Not specified</SelectItem>
+                  {Object.entries(CONTACT_SOURCE_INFO).map(([key, info]) => (
+                    <SelectItem key={key} value={key}>
+                      {info.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="linkedin_url">LinkedIn URL</Label>
             <Input
               id="linkedin_url"
               value={formData.linkedin_url}
-              onChange={(e) =>
-                setFormData({ ...formData, linkedin_url: e.target.value })
-              }
+              onChange={handleFieldChange('linkedin_url')}
               placeholder="https://linkedin.com/in/..."
             />
           </div>
@@ -767,9 +828,7 @@ function ContactFormDialog({
               <Input
                 id="twitter_handle"
                 value={formData.twitter_handle}
-                onChange={(e) =>
-                  setFormData({ ...formData, twitter_handle: e.target.value })
-                }
+                onChange={handleFieldChange('twitter_handle')}
                 placeholder="@handle"
               />
             </div>
@@ -778,15 +837,22 @@ function ContactFormDialog({
               <Input
                 id="website"
                 value={formData.website}
-                onChange={(e) =>
-                  setFormData({ ...formData, website: e.target.value })
-                }
+                onChange={handleFieldChange('website')}
                 placeholder="https://..."
               />
             </div>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="tags">Tags</Label>
+            <Input
+              id="tags"
+              value={formData.tags}
+              onChange={handleFieldChange('tags')}
+              placeholder="Comma-separated tags, e.g. vip, conference-2026"
+            />
+          </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={handleCancel}>
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>

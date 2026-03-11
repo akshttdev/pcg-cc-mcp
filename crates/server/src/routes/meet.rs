@@ -28,7 +28,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, broadcast};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 use chrono::Utc;
 
@@ -615,7 +615,6 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
             file_size_bytes: None,
             file_hash: None,
             metadata: Some(metadata),
-            folder: Some("Meetings".to_string()),
         }).await;
 
         // Mark as ready immediately (no processing needed for text)
@@ -782,7 +781,6 @@ async fn detect_and_link_attendees(
             file_size_bytes: None,
             file_hash: None,
             metadata: Some(metadata),
-            folder: Some("Meetings".to_string()),
         }).await;
 
         let _ = sqlx::query(

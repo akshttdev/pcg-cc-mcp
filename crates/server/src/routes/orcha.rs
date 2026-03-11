@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
 use crate::middleware::access_control::get_current_user;
-use db::models::agent::{Agent, AgentBrief, AgentStatus, AutonomyLevel, CreateAgent};
+use db::models::agent::{Agent, AgentStatus, AutonomyLevel, CreateAgent};
 use deployment::Deployment;
 
 /// Response for GET /orcha/status

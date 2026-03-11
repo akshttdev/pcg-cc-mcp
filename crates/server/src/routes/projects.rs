@@ -233,13 +233,6 @@ pub async fn list_project_assets(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ProjectAsset>>>, ApiError> {
     let assets = ProjectAsset::find_by_project(&deployment.db().pool, project.id).await?;
-
-    if assets.is_empty() {
-        return Err(ApiError::NotFound(
-            "No assets found for the project".to_string(),
-        ));
-    }
-
     Ok(ResponseJson(ApiResponse::success(assets)))
 }
 

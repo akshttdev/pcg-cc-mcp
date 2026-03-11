@@ -23,7 +23,8 @@ export interface CrmPipelineStage {
 // Pipeline (matches backend CrmPipeline)
 export interface CrmPipeline {
   id: string;
-  project_id: string;
+  organization_id?: string;
+  project_id?: string;
   name: string;
   description?: string;
   pipeline_type: string;
@@ -41,7 +42,7 @@ export interface CrmPipelineWithStages extends CrmPipeline {
 
 // Create/Update pipeline types
 export interface CreateCrmPipeline {
-  project_id: string;
+  organization_id: string;
   name: string;
   description?: string;
   pipeline_type: PipelineType;
@@ -81,7 +82,8 @@ export interface UpdateCrmPipelineStage {
 // Deal with contact info for Kanban display (matches backend CrmDealWithContact)
 export interface CrmDealWithContact {
   id: string;
-  project_id: string;
+  organization_id: string;
+  project_id?: string;
   crm_contact_id?: string;
   crm_pipeline_id?: string;
   crm_stage_id?: string;
@@ -114,6 +116,8 @@ export interface CrmDealWithContact {
   task_total?: number;
   task_done?: number;
   deliverable_count?: number;
+  person_id?: string;
+  report_id?: string;
 }
 
 // Kanban board data structure
@@ -131,7 +135,7 @@ export interface KanbanBoardData {
 
 // Create/Update deal types
 export interface CreateCrmDeal {
-  project_id: string;
+  organization_id: string;
   crm_contact_id?: string;
   crm_pipeline_id?: string;
   crm_stage_id?: string;
@@ -172,7 +176,7 @@ export type CrmDealRecord = CrmDealWithContact;
 
 // Create activity type for logging
 export interface CreateCrmActivity {
-  project_id: string;
+  organization_id: string;
   crm_contact_id?: string;
   crm_deal_id?: string;
   activity_type: CrmActivityType;
@@ -264,7 +268,8 @@ export type CrmActivityType =
 
 export interface CrmContact {
   id: string;
-  project_id: string;
+  organization_id?: string;
+  project_id?: string;
   first_name?: string;
   last_name?: string;
   full_name?: string;
@@ -310,7 +315,7 @@ export interface CrmContact {
 }
 
 export interface CreateCrmContact {
-  project_id: string;
+  organization_id: string;
   first_name?: string;
   last_name?: string;
   email?: string;
@@ -366,7 +371,8 @@ export interface UpdateCrmContact {
 
 export interface CrmDeal {
   id: string;
-  project_id: string;
+  organization_id?: string;
+  project_id?: string;
   crm_contact_id?: string;
   name: string;
   description?: string;
@@ -392,7 +398,8 @@ export interface CrmDeal {
 
 export interface CrmActivity {
   id: string;
-  project_id: string;
+  organization_id?: string;
+  project_id?: string;
   crm_contact_id?: string;
   crm_deal_id?: string;
   activity_type: CrmActivityType;

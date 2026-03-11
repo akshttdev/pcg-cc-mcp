@@ -643,11 +643,11 @@ export function EnhancedTaskDetailsPanel({
             >
               <Coins className="h-4 w-4 mr-2" />
               Vibe
-              {task.vibe_cost && Number(task.vibe_cost) > 0 && (
+              {task.vibe_cost && Number(task.vibe_cost) > 0 ? (
                 <Badge variant="secondary" className="ml-2 h-5">
                   {Number(task.vibe_cost).toLocaleString()}
                 </Badge>
-              )}
+              ) : null}
             </TabsTrigger>
           </TabsList>
 

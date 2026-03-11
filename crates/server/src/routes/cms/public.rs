@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Router,
     extract::{Path, State},
     response::Json as ResponseJson,
     routing::get,

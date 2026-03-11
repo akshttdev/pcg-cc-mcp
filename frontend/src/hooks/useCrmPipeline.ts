@@ -10,32 +10,32 @@ import type {
 
 // Query keys for cache invalidation
 export const crmQueryKeys = {
-  pipelines: (projectId: string) => ['crm', 'pipelines', projectId] as const,
-  pipelinesByType: (projectId: string, type: PipelineType) =>
-    ['crm', 'pipelines', projectId, type] as const,
+  pipelines: (organizationId: string) => ['crm', 'pipelines', organizationId] as const,
+  pipelinesByType: (organizationId: string, type: PipelineType) =>
+    ['crm', 'pipelines', organizationId, type] as const,
   pipeline: (id: string) => ['crm', 'pipeline', id] as const,
   kanban: (pipelineId: string) => ['crm', 'kanban', pipelineId] as const,
-  deals: (projectId: string) => ['crm', 'deals', projectId] as const,
+  deals: (organizationId: string) => ['crm', 'deals', organizationId] as const,
   deal: (id: string) => ['crm', 'deal', id] as const,
 };
 
-// Hook to list all pipelines for a project
-export function useCrmPipelines(projectId: string, pipelineType?: PipelineType) {
+// Hook to list all pipelines for an organization
+export function useCrmPipelines(organizationId: string, pipelineType?: PipelineType) {
   return useQuery({
     queryKey: pipelineType
-      ? crmQueryKeys.pipelinesByType(projectId, pipelineType)
-      : crmQueryKeys.pipelines(projectId),
+      ? crmQueryKeys.pipelinesByType(organizationId, pipelineType)
+      : crmQueryKeys.pipelines(organizationId),
     queryFn: () =>
-      crmPipelinesApi.listPipelines(projectId, pipelineType ? { pipelineType } : undefined),
-    enabled: !!projectId,
+      crmPipelinesApi.listPipelines(organizationId, pipelineType ? { pipelineType } : undefined),
+    enabled: !!organizationId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     placeholderData: keepPreviousData,
   });
 }
 
 // Hook to get a single pipeline by type (for board pages)
-export function useCrmPipelineByType(projectId: string, pipelineType: PipelineType) {
-  const { data: pipelines, ...rest } = useCrmPipelines(projectId, pipelineType);
+export function useCrmPipelineByType(organizationId: string, pipelineType: PipelineType) {
+  const { data: pipelines, ...rest } = useCrmPipelines(organizationId, pipelineType);
   return {
     ...rest,
     data: pipelines?.[0],
@@ -117,15 +117,20 @@ export function useCreateDeal() {
   return useMutation({
     mutationFn: (data: CreateCrmDeal) => crmDealsApi.createDeal(data),
     onSuccess: (deal) => {
-      // Invalidate kanban data for the pipeline
+      // Invalidate kanban data for both project-scoped and org-scoped queries
       if (deal.crm_pipeline_id) {
         queryClient.invalidateQueries({
           queryKey: crmQueryKeys.kanban(deal.crm_pipeline_id),
         });
+        if (deal.organization_id) {
+          queryClient.invalidateQueries({
+            queryKey: orgCrmQueryKeys.kanban(deal.organization_id, deal.crm_pipeline_id),
+          });
+        }
       }
       // Invalidate deals list
       queryClient.invalidateQueries({
-        queryKey: crmQueryKeys.deals(deal.project_id),
+        queryKey: crmQueryKeys.deals(deal.organization_id),
       });
     },
   });
@@ -143,11 +148,16 @@ export function useUpdateDeal() {
       queryClient.invalidateQueries({
         queryKey: crmQueryKeys.deal(deal.id),
       });
-      // Invalidate kanban data
+      // Invalidate kanban data for both project-scoped and org-scoped queries
       if (deal.crm_pipeline_id) {
         queryClient.invalidateQueries({
           queryKey: crmQueryKeys.kanban(deal.crm_pipeline_id),
         });
+        if (deal.organization_id) {
+          queryClient.invalidateQueries({
+            queryKey: orgCrmQueryKeys.kanban(deal.organization_id, deal.crm_pipeline_id),
+          });
+        }
       }
     },
   });
@@ -253,8 +263,9 @@ export function useDeleteDeal() {
   return useMutation({
     mutationFn: (id: string) => crmDealsApi.deleteDeal(id),
     onSuccess: () => {
-      // Invalidate all kanban queries
+      // Invalidate all kanban queries (both project-scoped and org-scoped)
       queryClient.invalidateQueries({ queryKey: ['crm', 'kanban'] });
+      queryClient.invalidateQueries({ queryKey: ['crm', 'org-kanban'] });
       queryClient.invalidateQueries({ queryKey: ['crm', 'deals'] });
     },
   });

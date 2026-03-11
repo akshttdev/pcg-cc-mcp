@@ -1,6 +1,6 @@
 //! Topology engine - Graph algorithms for pathfinding and analysis
 
-use super::graph::{GraphEdge, GraphNode, TopologyGraph};
+use super::graph::TopologyGraph;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::cmp::Ordering;
 use uuid::Uuid;

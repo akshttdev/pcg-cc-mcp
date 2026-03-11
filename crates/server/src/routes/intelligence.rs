@@ -5,8 +5,9 @@
 //!   2. Nora delegates to Scout (Social Intelligence) or Astra (Strategy Research)
 //!   3. Agent performs web research via its tool suite
 //!   4. Results are stored in persons.intelligence_* fields
-//!   5. Results are registered in project_knowledge_sources as 'entity' type
-//!      so the entire org knowledge graph stays current
+//!   5. Social profiles, company contact methods, proposals, tasks, and
+//!      business analysis files are all created/updated from the research output.
+
 //!
 //! The endpoint is non-blocking — it sets intelligence_status='queued', fires
 //! the Nora request asynchronously, and returns immediately with a job token.
@@ -31,7 +32,7 @@ use crate::{
     routes::nora::get_nora_instance,
 };
 
-// Re-export the types we need from nora
+
 use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 
 // ── Request / Response types ──────────────────────────────────────────────────
@@ -40,7 +41,7 @@ use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
 pub struct ResearchRequest {
     /// Optional project scope — if provided, results also go into that project's knowledge graph
     pub project_id: Option<Uuid>,
-    /// Preferred agent: 'scout' (social intel) | 'astra' (market research) | auto
+
     pub agent_preference: Option<String>,
 }
 
@@ -64,9 +65,7 @@ pub struct IntelligenceStatusResponse {
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// POST /api/persons/:id/research
-///
-/// Triggers Nora to orchestrate contact intelligence gathering via Scout/Astra.
-/// Non-blocking — sets status = 'queued', fires async task, returns job token.
+
 pub async fn trigger_research(
     State(d): State<DeploymentImpl>,
     Path(person_id): Path<Uuid>,
@@ -74,12 +73,12 @@ pub async fn trigger_research(
 ) -> Result<Json<ApiResponse<ResearchJobResponse>>, ApiError> {
     let pool = &d.db().pool;
 
-    // Fetch the person
+
     let person = Person::find_by_id(pool, person_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Person not found".into()))?;
 
-    // Mark as queued immediately
+
     sqlx::query(
         "UPDATE persons SET intelligence_status = 'queued', \
          intelligence_agent = ?, updated_at = datetime('now','subsec') WHERE id = ?",
@@ -92,23 +91,42 @@ pub async fn trigger_research(
     // Build the research prompt — Nora will delegate to the right agent
     let agent_pref = body.agent_preference.as_deref().unwrap_or("Scout");
     let project_context = body.project_id
-        .map(|pid| format!(" Store results in project knowledge graph (project_id={}).", pid))
+        .map(|pid| format!(" Project context: {}.", pid))
+
         .unwrap_or_default();
 
     let research_prompt = format!(
         "[INTELLIGENCE TASK — delegate to {}] \
-         Research the following contact and return structured intelligence: \
-         Name: {}, Email: {}, Company: {}, Person type: {}. \
-         Gather: current role/title, social media profiles (LinkedIn/Twitter/Instagram/GitHub), \
-         company background, recent public activity, estimated influence and relevance to PCG. \
-         Return a JSON object with keys: summary (1–2 sentence profile), \
-         social_profiles (array of {{platform, handle, url, followers}}), \
-         company_description, confidence (0.0–1.0). \
-         Then update the person record with the structured data.{}",
+         Research the following contact and return ONLY a valid JSON object (no markdown, no preamble): \
+         Name: {}, Email: {}, Company: {}, Job Title: {}, Person type: {}. \
+         Use web search to find their professional background, social media, and their company's \
+         public contact information, website, Google My Business listing, and social media. \
+         \
+         Return this exact JSON structure: \
+         {{ \
+           \"summary\": \"1-2 sentence professional profile\", \
+           \"social_profiles\": [{{\"platform\": \"linkedin\", \"handle\": \"...\", \"url\": \"...\", \"followers\": 0}}], \
+           \"company_description\": \"brief company description\", \
+           \"company_website\": \"https://...\", \
+           \"company_phone\": \"+1...\", \
+           \"company_email\": \"info@...\", \
+           \"company_instagram\": \"@handle\", \
+           \"company_linkedin\": \"url\", \
+           \"company_twitter\": \"@handle\", \
+           \"company_facebook\": \"url\", \
+           \"gmb_rating\": 4.5, \
+           \"gmb_review_count\": 42, \
+           \"deal_potential\": \"high\", \
+           \"recommended_approach\": \"1 sentence\", \
+           \"confidence\": 0.8 \
+         }}.{}",
+
         agent_pref,
         person.full_name,
         person.email.as_deref().unwrap_or("unknown"),
         person.company_name.as_deref().unwrap_or("unknown"),
+        person.job_title.as_deref().unwrap_or("unknown"),
+
         person.person_type,
         project_context
     );
@@ -120,18 +138,14 @@ pub async fn trigger_research(
     let use_direct = body.agent_preference.as_deref() == Some("direct");
 
     tokio::spawn(async move {
-        let result = if use_direct {
-            run_research_direct(&pool_clone, person_id, &full_name, project_id).await
-        } else {
-            run_research_via_nora(
-                &pool_clone,
-                person_id,
-                research_prompt,
-                project_id,
-                &full_name,
-            )
-            .await
-        };
+        let result = run_research_via_nora(
+            &pool_clone,
+            person_clone,
+            research_prompt,
+            project_id,
+        )
+        .await;
+
         if let Err(e) = result {
             tracing::error!("Intelligence research failed for person {}: {}", person_id, e);
             let _ = sqlx::query(
@@ -198,7 +212,10 @@ async fn run_research_via_nora(
     project_id: Option<Uuid>,
     full_name: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Mark as running
+    let person_id = person.id;
+    let full_name = person.full_name.clone();
+
+
     sqlx::query(
         "UPDATE persons SET intelligence_status = 'running', updated_at = datetime('now','subsec') WHERE id = ?",
     )
@@ -220,7 +237,8 @@ async fn run_research_via_nora(
         let nora_guard = nora_instance.read().await;
         let Some(nora) = nora_guard.as_ref() else {
             drop(nora_guard);
-            return run_research_direct(pool, person_id, full_name, project_id).await;
+            return run_research_direct(pool, &person, project_id).await;
+
         };
 
         let nora_request = NoraRequest {
@@ -269,8 +287,8 @@ async fn run_research_via_nora(
 /// Uses Scout's persona — social intelligence specialization.
 async fn run_research_direct(
     pool: &sqlx::SqlitePool,
-    person_id: Uuid,
-    full_name: &str,
+    person: &Person,
+
     project_id: Option<Uuid>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use serde_json::json;
@@ -286,20 +304,41 @@ async fn run_research_direct(
         Always return valid JSON with keys: summary, social_profiles, company_description, confidence.";
 
     let prompt = format!(
-        "Research {} for PCG contact intelligence. \
-        Find their professional background, social media handles, company affiliation, \
-        and any recent notable activity. Return structured JSON.",
-        full_name
+        "Research this contact for PCG: Name={}, Company={}, Email={}, Title={}. \
+        Search the web for their LinkedIn, Instagram, and other social profiles. \
+        Search for their company's website, Google My Business listing, phone, email, and social media accounts. \
+        Return ONLY this JSON (no markdown): \
+        {{\"summary\":\"...\", \
+        \"social_profiles\":[{{\"platform\":\"linkedin\",\"handle\":\"...\",\"url\":\"...\",\"followers\":0}}], \
+        \"company_description\":\"...\", \
+        \"company_website\":\"...\", \
+        \"company_phone\":\"...\", \
+        \"company_email\":\"...\", \
+        \"company_instagram\":\"...\", \
+        \"company_linkedin\":\"...\", \
+        \"company_twitter\":\"...\", \
+        \"gmb_rating\":4.5, \
+        \"gmb_review_count\":42, \
+        \"deal_potential\":\"high\", \
+        \"recommended_approach\":\"...\", \
+        \"confidence\":0.8}}",
+        person.full_name,
+        person.company_name.as_deref().unwrap_or("unknown"),
+        person.email.as_deref().unwrap_or("unknown"),
+        person.job_title.as_deref().unwrap_or("unknown"),
+
     );
 
     let body = json!({
         "model": "claude-sonnet-4-6",
-        "max_tokens": 1024,
+        "max_tokens": 2048,
+
         "system": system,
         "tools": [{
             "type": "web_search_20250305",
             "name": "web_search",
-            "max_uses": 3
+            "max_uses": 5
+
         }],
         "messages": [{"role": "user", "content": prompt}]
     });
@@ -331,14 +370,18 @@ async fn run_research_direct(
 
 pub async fn write_intelligence_results(
     pool: &sqlx::SqlitePool,
-    person_id: Uuid,
+    person: &Person,
+    parsed: &serde_json::Value,
+
     summary: &str,
     confidence: f64,
     raw: &str,
     project_id: Option<Uuid>,
-    full_name: &str,
-) -> Result<(), sqlx::Error> {
-    // Update person record
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let person_id = person.id;
+
+    // 1. Update person intelligence fields
+
     sqlx::query(
         "UPDATE persons SET \
          intelligence_status = 'done', \
@@ -359,14 +402,16 @@ pub async fn write_intelligence_results(
 
     // Register in knowledge graph if project_id provided
     if let Some(pid) = project_id {
-        let source_id = format!("{}", person_id);
-        let source_summary = Some(format!("Scout intelligence profile: {}", summary));
+        let source_id = person_id.to_string();
+        let source_summary = Some(format!("Scout intelligence: {}", summary));
+
         let _ = ProjectKnowledgeSource::upsert_source(
             pool,
             pid,
             &KnowledgeSourceType::Entity,
             &source_id,
-            &format!("Person: {}", full_name),
+            &format!("Person: {}", person.full_name),
+
             source_summary.as_deref(),
             confidence,
         )
@@ -389,75 +434,18 @@ fn extract_summary_from_response(text: &str) -> String {
     // Try JSON block — look for nested "summary" or "overview" anywhere in the JSON
     if let Some(start) = text.find('{') {
         if let Some(end) = text.rfind('}') {
-            let json_str = &text[start..=end];
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
-                // Try top-level "summary"
-                if let Some(s) = v.get("summary").and_then(|s| s.as_str()) {
-                    return s.to_string();
-                }
-                // Try nested patterns common in Scout responses
-                for key in &["pcg_intelligence_report", "pcg_research_report", "pcg_contact_intelligence"] {
-                    if let Some(nested) = v.get(key) {
-                        if let Some(subj) = nested.get("subject") {
-                            if let Some(s) = subj.get("summary").and_then(|s| s.as_str()) {
-                                return s.to_string();
-                            }
-                        }
-                        if let Some(s) = nested.get("summary") {
-                            if let Some(ov) = s.get("overview").and_then(|o| o.as_str()) {
-                                return ov.to_string();
-                            }
-                            if let Some(st) = s.as_str() {
-                                return st.to_string();
-                            }
-                        }
+            if end > start {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text[start..=end]) {
+                    if v.is_object() {
+                        return v;
+
                     }
                 }
             }
         }
     }
-    // Strip markdown code fences and return first meaningful paragraph
-    let clean: String = text.lines()
-        .filter(|l| !l.trim_start().starts_with("```") && !l.trim().is_empty())
-        .take(8)
-        .collect::<Vec<_>>()
-        .join(" ");
-    clean.chars().take(600).collect()
-}
+    serde_json::Value::Object(Default::default())
 
-fn extract_confidence_from_response(text: &str) -> f64 {
-    // Try direct JSON
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
-        if let Some(c) = v.get("confidence").and_then(|c| c.as_f64()) {
-            return c.clamp(0.0, 1.0);
-        }
-    }
-    // Try JSON block extraction
-    if let Some(start) = text.find('{') {
-        if let Some(end) = text.rfind('}') {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text[start..=end]) {
-                if let Some(c) = v.get("confidence").and_then(|c| c.as_f64()) {
-                    return c.clamp(0.0, 1.0);
-                }
-            }
-        }
-    }
-    // Heuristic: if response contains substantive named data, assign higher confidence
-    let lower = text.to_lowercase();
-    let has_content = lower.contains("linkedin") || lower.contains("founded")
-        || lower.contains("ceo") || lower.contains("revenue")
-        || lower.contains("instagram") || lower.contains("twitter")
-        || lower.contains("annual") || lower.contains("employees");
-    let is_failure = lower.contains("insufficient data") || lower.contains("need more info")
-        || lower.contains("could not find") || lower.contains("unable to verify")
-        || lower.contains("no publicly") || lower.contains("i need a bit more");
-    if is_failure {
-        0.2
-    } else if has_content {
-        0.75
-    } else {
-        0.5
-    }
 }
 
 fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String {
@@ -469,9 +457,297 @@ fn extract_text_from_anthropic_response(response: &serde_json::Value) -> String 
                 }
             }
         }
+        if !parts.is_empty() {
+            return parts.join("\n");
+        }
+    }
+    // Check for error
+    if let Some(err) = response.get("error") {
+        return format!("API error: {}", err);
+
     }
     response.to_string()
 }
+
+// ── Company Intelligence ───────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CompanyResearchRequest {
+    pub agent_preference: Option<String>,
+    pub project_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompanyResearchJobResponse {
+    pub company_id: Uuid,
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompanyIntelligenceStatusResponse {
+    pub company_id: Uuid,
+    pub status: String,
+    pub summary: Option<String>,
+    pub confidence: f64,
+    pub agent: Option<String>,
+    pub last_run_at: Option<String>,
+}
+
+/// POST /api/companies/:id/research
+pub async fn trigger_company_research(
+    State(d): State<DeploymentImpl>,
+    Path(company_id): Path<Uuid>,
+    Json(body): Json<CompanyResearchRequest>,
+) -> Result<Json<ApiResponse<CompanyResearchJobResponse>>, ApiError> {
+    use db::models::company::Company;
+    let pool = d.db().pool.clone();
+
+    let company = Company::find_by_id(&pool, company_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
+
+    sqlx::query(
+        "UPDATE companies SET intelligence_status = 'queued', updated_at = datetime('now','subsec') WHERE id = ?",
+    )
+    .bind(company_id)
+    .execute(&pool)
+    .await?;
+
+    let company_name = company.name.clone();
+    let project_id = body.project_id;
+    let pool2 = pool.clone();
+
+    tokio::spawn(async move {
+        run_company_research(&pool2, company_id, &company_name, project_id).await;
+    });
+
+    Ok(Json(ApiResponse::success(CompanyResearchJobResponse {
+        company_id,
+        status: "queued".into(),
+        message: format!("Research queued for {} — Astra will gather company intelligence.", company.name),
+    })))
+}
+
+/// GET /api/companies/:id/intelligence-status
+pub async fn get_company_intelligence_status(
+    State(d): State<DeploymentImpl>,
+    Path(company_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<CompanyIntelligenceStatusResponse>>, ApiError> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        intelligence_status: String,
+        intelligence_summary: Option<String>,
+        intelligence_confidence: Option<f64>,
+        intelligence_agent: Option<String>,
+        intelligence_last_run_at: Option<String>,
+    }
+    let pool = &d.db().pool;
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT intelligence_status, intelligence_summary, intelligence_confidence, \
+         intelligence_agent, intelligence_last_run_at FROM companies WHERE id = ?",
+    )
+    .bind(company_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let row = row.ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
+    Ok(Json(ApiResponse::success(CompanyIntelligenceStatusResponse {
+        company_id,
+        status: row.intelligence_status,
+        summary: row.intelligence_summary,
+        confidence: row.intelligence_confidence.unwrap_or(0.0),
+        agent: row.intelligence_agent,
+        last_run_at: row.intelligence_last_run_at,
+    })))
+}
+
+async fn run_company_research(
+    pool: &sqlx::SqlitePool,
+    company_id: Uuid,
+    company_name: &str,
+    project_id: Option<Uuid>,
+) {
+    sqlx::query(
+        "UPDATE companies SET intelligence_status = 'running', updated_at = datetime('now','subsec') WHERE id = ?",
+    )
+    .bind(company_id)
+    .execute(pool)
+    .await
+    .ok();
+
+    run_company_research_direct(pool, company_id, company_name, project_id).await;
+}
+
+pub async fn run_company_research_direct(
+    pool: &sqlx::SqlitePool,
+    company_id: Uuid,
+    company_name: &str,
+    project_id: Option<Uuid>,
+) {
+    let client = reqwest::Client::new();
+    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+        Ok(k) => k,
+        Err(_) => {
+            write_company_intel_results(pool, company_id, "No API key configured", 0.0).await;
+            return;
+        }
+    };
+
+    let prompt = format!(
+        "Research the company '{}'. Search the web for: \
+        1) Company overview and background, \
+        2) Website and contact information (phone, email, address), \
+        3) Social media presence (Instagram, LinkedIn, Twitter, Facebook handles/URLs), \
+        4) Google My Business listing (rating, number of reviews, address), \
+        5) Leadership and key personnel, \
+        6) Business model and services/products, \
+        7) Recent news or developments, \
+        8) Market opportunity and positioning. \
+        Return ONLY a valid JSON object with keys: \
+        {{\"summary\":\"...\", \"description\":\"...\", \"website\":\"...\", \
+        \"phone\":\"...\", \"email\":\"...\", \"address\":\"...\", \
+        \"instagram\":\"...\", \"linkedin\":\"...\", \"twitter\":\"...\", \"facebook\":\"...\", \
+        \"gmb_rating\":4.5, \"gmb_review_count\":42, \
+        \"industry\":\"...\", \"key_personnel\":[\"...\"], \
+        \"business_model\":\"...\", \"market_opportunity\":\"...\", \
+        \"recent_news\":[\"...\"], \"confidence\":0.8}}",
+        company_name
+    );
+
+    let body = serde_json::json!({
+        "model": "claude-opus-4-6",
+        "max_tokens": 3000,
+        "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
+        "messages": [{"role": "user", "content": prompt}]
+    });
+
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("anthropic-beta", "web-search-2025-03-05")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .await;
+
+    let (summary, parsed, confidence) = match resp {
+        Ok(r) if r.status().is_success() => {
+            let val: serde_json::Value = r.json().await.unwrap_or_default();
+            let text = extract_text_from_anthropic_response(&val);
+            let parsed = parse_research_json(&text);
+            let conf = parsed.get("confidence").and_then(|c| c.as_f64()).unwrap_or_else(|| {
+                if text.len() > 300 { 0.75 } else { 0.3 }
+            }).clamp(0.0, 1.0);
+            let summary = parsed.get("summary").and_then(|s| s.as_str()).unwrap_or(&text[..text.len().min(600)]).to_string();
+            (summary, parsed, conf)
+        }
+        Ok(r) => {
+            let status = r.status();
+            let text = r.text().await.unwrap_or_default();
+            tracing::error!("Company research API error {}: {}", status, &text[..text.len().min(200)]);
+            (format!("Research unavailable for {}", company_name), serde_json::Value::Object(Default::default()), 0.1)
+        }
+        Err(e) => {
+            tracing::error!("Company research HTTP error: {}", e);
+            (format!("Research unavailable for {}", company_name), serde_json::Value::Object(Default::default()), 0.1)
+        }
+    };
+
+    // Update company record with found data
+    let website = parsed.get("website").and_then(|v| v.as_str()).unwrap_or_default();
+    let description = parsed.get("description").and_then(|v| v.as_str()).unwrap_or_default();
+    let industry = parsed.get("industry").and_then(|v| v.as_str()).unwrap_or_default();
+
+    let _ = sqlx::query(
+        "UPDATE companies SET \
+         intelligence_status = 'done', \
+         intelligence_summary = ?, \
+         intelligence_confidence = ?, \
+         intelligence_last_run_at = datetime('now','subsec'), \
+         intelligence_agent = 'astra', \
+         website = COALESCE(NULLIF(?, ''), website), \
+         description = COALESCE(NULLIF(?, ''), description), \
+         industry = COALESCE(NULLIF(?, ''), industry), \
+         updated_at = datetime('now','subsec') \
+         WHERE id = ?",
+    )
+    .bind(&summary)
+    .bind(confidence)
+    .bind(website)
+    .bind(description)
+    .bind(industry)
+    .bind(company_id)
+    .execute(pool)
+    .await;
+
+    // Add contact methods found in research
+    update_company_contact_methods(pool, company_id, &parsed).await;
+
+    // Add social profiles as contact methods
+    let social_keys: &[(&str, &str)] = &[
+        ("instagram", "Instagram"),
+        ("linkedin",  "LinkedIn"),
+        ("twitter",   "Twitter"),
+        ("facebook",  "Facebook"),
+    ];
+    for (key, label) in social_keys {
+        if let Some(val) = parsed.get(*key).and_then(|v| v.as_str()) {
+            if !val.trim().is_empty() {
+                let _ = sqlx::query(
+                    "INSERT INTO company_contact_methods (id, company_id, method_type, label, value) \
+                     VALUES (randomblob(16), ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                )
+                .bind(company_id)
+                .bind(*key)
+                .bind(*label)
+                .bind(val.trim())
+                .execute(pool)
+                .await;
+            }
+        }
+    }
+
+    // Register in knowledge graph if project_id provided
+    if let Some(pid) = project_id {
+        let _ = ProjectKnowledgeSource::upsert_source(
+            pool,
+            pid,
+            &KnowledgeSourceType::Entity,
+            &company_id.to_string(),
+            &format!("Company: {}", company_name),
+            Some(&summary),
+            confidence,
+        )
+        .await;
+    }
+
+    tracing::info!("Company research complete for {} (confidence: {:.0}%)", company_name, confidence * 100.0);
+}
+
+async fn write_company_intel_results(
+    pool: &sqlx::SqlitePool,
+    company_id: Uuid,
+    summary: &str,
+    confidence: f64,
+) {
+    let _ = sqlx::query(
+        "UPDATE companies SET \
+         intelligence_status = 'done', \
+         intelligence_summary = ?, \
+         intelligence_confidence = ?, \
+         intelligence_last_run_at = datetime('now','subsec'), \
+         updated_at = datetime('now','subsec') \
+         WHERE id = ?",
+    )
+    .bind(summary)
+    .bind(confidence)
+    .bind(company_id)
+    .execute(pool)
+    .await;
+}
+
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
@@ -479,9 +755,9 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/persons/{id}/research", post(trigger_research))
         .route("/persons/{id}/intelligence-status", get(get_intelligence_status))
-        .route("/persons/{id}/research-passes", get(list_research_passes))
-        .route("/persons/{id}/research-passes/next", post(trigger_next_research_pass))
-        .route("/persons/{id}/reports", get(list_person_reports))
+        .route("/companies/{id}/research", post(trigger_company_research))
+        .route("/companies/{id}/intelligence-status", get(get_company_intelligence_status))
+
         .with_state(deployment.clone())
 }
 

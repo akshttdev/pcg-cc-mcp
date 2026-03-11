@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
     middleware::from_fn_with_state,
     response::Json as ResponseJson,
-    routing::{get, put, delete},
+    routing::get,
 };
 use db::models::cms_site_setting::{CmsSiteSetting, SetCmsSiteSetting};
 use db::models::cms_site::CmsSite;

@@ -301,6 +301,7 @@ impl<D: Deployment + Clone + Send + Sync + 'static> TaskScheduler<D> {
 
 /// Eligible task for execution
 #[derive(Debug, sqlx::FromRow)]
+#[allow(dead_code)]
 struct EligibleTask {
     id: Uuid,
     project_id: Uuid,

@@ -10,7 +10,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use super::{EditronError, EditronResult};
 
 /// Loudness standard for normalization
 #[derive(Debug, Clone, Serialize, Deserialize)]

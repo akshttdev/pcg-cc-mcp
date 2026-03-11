@@ -18,7 +18,7 @@ export function CrmConferencesPage() {
       projectId={projectId}
       pipelineType="conferences"
       title="Conferences Pipeline"
-      onSettingsClick={() => navigate(`/projects/${projectId}/crm/settings`)}
+      onSettingsClick={() => navigate(`/projects/${projectId}/crm`)}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,8 +23,13 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  AlertTriangle,
+  History,
+  ExternalLink,
 } from 'lucide-react';
-import { dataSourcesApi, workflowsApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
+import { dataSourcesApi, workflowsApi, stagingApi, DATA_TYPE_OPTIONS, SOURCE_TYPE_OPTIONS } from '@/lib/api';
+import { StagingReviewPanel } from '@/components/workflows/StagingReviewPanel';
+import { WorkflowRunsPanel } from '@/components/workflows/WorkflowRunsPanel';
 
 export function DataSourceDetailPage() {
   const { orgId, dataSourceId } = useParams<{ orgId: string; dataSourceId: string }>();
@@ -36,6 +41,8 @@ export function DataSourceDetailPage() {
   const [workflowResult, setWorkflowResult] = useState<any>(null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
+  const [reviewRunId, setReviewRunId] = useState<string | null>(null);
+  const [showRunHistory, setShowRunHistory] = useState(false);
 
   const { data: source, isLoading } = useQuery({
     queryKey: ['dataSource', dataSourceId],
@@ -61,15 +68,57 @@ export function DataSourceDetailPage() {
     staleTime: 60 * 60 * 1000,
   });
 
+  // Fetch staging records for the current workflow run result
+  const { data: stagingRecords = [] } = useQuery({
+    queryKey: ['staging', workflowResult?.workflow_run_id],
+    queryFn: () => stagingApi.listByRun(workflowResult.workflow_run_id),
+    enabled: !!workflowResult?.workflow_run_id,
+  });
+
+  // Compute summary stats from staging records
+  const runSummary = useMemo(() => {
+    if (stagingRecords.length === 0) return null;
+
+    const byTargetType: Record<string, number> = {};
+    let validationIssueCount = 0;
+    let duplicateCount = 0;
+
+    for (const rec of stagingRecords) {
+      byTargetType[rec.target_type] = (byTargetType[rec.target_type] || 0) + 1;
+
+      if (rec.duplicate_of_id) duplicateCount++;
+
+      if (rec.validation_errors) {
+        try {
+          const errs = JSON.parse(rec.validation_errors);
+          if (Array.isArray(errs) && errs.length > 0) validationIssueCount++;
+        } catch {}
+      }
+    }
+
+    return { byTargetType, validationIssueCount, duplicateCount, total: stagingRecords.length };
+  }, [stagingRecords]);
+
   const effectiveModel = selectedModel || availableModels?.find((m) => m.is_default)?.id || '';
+
+  // Clear stale results when switching workflows
+  useEffect(() => {
+    setWorkflowResult(null);
+    setReviewRunId(null);
+  }, [selectedWorkflowId]);
 
   // Auto-select first workflow when loaded
   const effectiveWorkflowId = selectedWorkflowId || (Array.isArray(workflows) && workflows.length > 0 ? workflows[0].id : '');
 
   const runWorkflowMutation = useMutation({
-    mutationFn: () => dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId, effectiveModel || undefined),
+    mutationFn: (opts?: { force?: boolean }) =>
+      dataSourcesApi.runWorkflow(dataSourceId!, effectiveWorkflowId, effectiveModel || undefined, opts?.force),
     onSuccess: (data) => {
       setWorkflowResult(data);
+      // Auto-open review panel if there are staged records
+      if (data.workflow_run_id && data.staged_records > 0) {
+        setReviewRunId(data.workflow_run_id);
+      }
       queryClient.invalidateQueries({ queryKey: ['dataSourceArtifacts', dataSourceId] });
     },
   });
@@ -224,7 +273,7 @@ export function DataSourceDetailPage() {
           size="sm"
           className="gap-1.5 -ml-2"
           onClick={() =>
-            navigate(`/organizations/${orgId}?tab=knowledge&view=datasources`)
+            navigate(`/organizations/${orgId}/intelligence/data-sources`)
           }
         >
           <ArrowLeft className="h-4 w-4" />
@@ -358,7 +407,7 @@ export function DataSourceDetailPage() {
                   onValueChange={setSelectedModel}
                 >
                   <SelectTrigger className="h-8 w-[240px] text-xs">
-                    <SelectValue placeholder="Select model" />
+                    <SelectValue placeholder="Use workflow default" />
                   </SelectTrigger>
                   <SelectContent>
                     {availableModels.map((m) => (
@@ -371,8 +420,27 @@ export function DataSourceDetailPage() {
               )}
               <Button
                 size="sm"
+                variant="ghost"
+                className="gap-1.5 text-xs"
+                onClick={() => navigate(`/workflows`)}
+                title="Open workflow in the Workflow Builder"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Builder
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
                 className="gap-1.5"
-                onClick={() => runWorkflowMutation.mutate()}
+                onClick={() => setShowRunHistory(true)}
+              >
+                <History className="h-3.5 w-3.5" />
+                Run History
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => runWorkflowMutation.mutate({})}
                 disabled={runWorkflowMutation.isPending || !effectiveWorkflowId}
               >
                 {runWorkflowMutation.isPending ? (
@@ -407,6 +475,84 @@ export function DataSourceDetailPage() {
               <p className="text-sm text-red-700 dark:text-red-300">
                 Workflow failed: {(runWorkflowMutation.error as Error)?.message ?? 'Unknown error'}
               </p>
+            </div>
+          )}
+
+          {workflowResult?.reused && (
+            <div className="flex items-center gap-3 p-4 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-4">
+              <CheckCircle2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                  Using results from a previous identical run
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                  The same content was already processed by this workflow.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs"
+                onClick={() => runWorkflowMutation.mutate({ force: true })}
+                disabled={runWorkflowMutation.isPending}
+              >
+                Force Re-run
+              </Button>
+            </div>
+          )}
+
+          {(workflowResult?.staged_records > 0 || stagingRecords.length > 0) && (
+            <div className="mb-4 p-4 rounded-md border bg-muted/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Run Results</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => navigate('/workflows?tab=staging&run=' + workflowResult.workflow_run_id)}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Review in Staging
+                </Button>
+              </div>
+
+              {/* Per-target-type breakdown */}
+              {runSummary && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {Object.entries(runSummary.byTargetType).map(([type, count]) => {
+                    const labels: Record<string, string> = {
+                      crm_contact: 'contacts',
+                      company: 'companies',
+                      crm_deal: 'deals',
+                      task: 'tasks',
+                    };
+                    return (
+                      <Badge key={type} variant="secondary" className="text-xs">
+                        {count} {labels[type] || type}
+                      </Badge>
+                    );
+                  })}
+
+                  {runSummary.validationIssueCount > 0 && (
+                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-200 gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      {runSummary.validationIssueCount} record{runSummary.validationIssueCount !== 1 ? 's have' : ' has'} validation issues
+                    </Badge>
+                  )}
+
+                  {runSummary.duplicateCount > 0 && (
+                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-200">
+                      {runSummary.duplicateCount} duplicate{runSummary.duplicateCount !== 1 ? 's' : ''}
+                    </Badge>
+                  )}
+                </div>
+              )}
+
+              {!runSummary && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{workflowResult.staged_records} records staged for review</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -574,6 +720,21 @@ export function DataSourceDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {reviewRunId && (
+        <StagingReviewPanel
+          open={!!reviewRunId}
+          onOpenChange={(open) => !open && setReviewRunId(null)}
+          workflowRunId={reviewRunId}
+          workflowName={workflowResult?.workflow_name}
+        />
+      )}
+
+      <WorkflowRunsPanel
+        open={showRunHistory}
+        onOpenChange={setShowRunHistory}
+        organizationId={orgId}
+      />
     </div>
   );
 }

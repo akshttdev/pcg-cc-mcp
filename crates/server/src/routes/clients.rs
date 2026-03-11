@@ -127,19 +127,69 @@ pub async fn delete_client(
     Ok(Json(ApiResponse::success(())))
 }
 
-/// GET /api/clients/:id/members — list members
+/// GET /api/clients/:id/members — list members with user details
 pub async fn list_client_members(
     Path(id): Path<Uuid>,
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
-) -> Result<Json<ApiResponse<Vec<ClientMember>>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, ApiError> {
     let client = Client::find_by_id(&deployment.db().pool, id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
     require_org_access(&deployment.db().pool, &access_context, client.organization_id).await?;
 
-    let members = Client::get_members(&deployment.db().pool, id).await?;
+    #[derive(sqlx::FromRow)]
+    struct MemberWithUser {
+        id: Vec<u8>,
+        client_id: Vec<u8>,
+        user_id: Vec<u8>,
+        role: String,
+        granted_by: Option<Vec<u8>>,
+        granted_at: String,
+        username: String,
+        full_name: String,
+        avatar_url: Option<String>,
+        granted_by_username: Option<String>,
+    }
+
+    let rows: Vec<MemberWithUser> = sqlx::query_as(
+        r#"SELECT cm.id, cm.client_id, cm.user_id, cm.role, cm.granted_by, cm.granted_at,
+                  u.username, u.full_name, u.avatar_url,
+                  gb.username as granted_by_username
+           FROM client_members cm
+           JOIN users u ON u.id = cm.user_id
+           LEFT JOIN users gb ON gb.id = cm.granted_by
+           WHERE cm.client_id = ?
+           ORDER BY cm.granted_at ASC"#,
+    )
+    .bind(id)
+    .fetch_all(&deployment.db().pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Database error: {}", e)))?;
+
+    let members: Vec<serde_json::Value> = rows
+        .into_iter()
+        .filter_map(|row| {
+            let id = Uuid::from_slice(&row.id).ok()?;
+            let client_id = Uuid::from_slice(&row.client_id).ok()?;
+            let user_id = Uuid::from_slice(&row.user_id).ok()?;
+            let granted_by = row.granted_by.as_ref().and_then(|b| Uuid::from_slice(b).ok());
+            Some(serde_json::json!({
+                "id": id.to_string(),
+                "client_id": client_id.to_string(),
+                "user_id": user_id.to_string(),
+                "role": row.role,
+                "granted_by": granted_by.map(|u| u.to_string()),
+                "granted_at": row.granted_at,
+                "username": row.username,
+                "full_name": row.full_name,
+                "avatar_url": row.avatar_url,
+                "granted_by_username": row.granted_by_username,
+            }))
+        })
+        .collect();
+
     Ok(Json(ApiResponse::success(members)))
 }
 

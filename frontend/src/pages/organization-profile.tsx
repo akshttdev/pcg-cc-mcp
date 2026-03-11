@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import type React from 'react';
+import { useParams, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -101,12 +102,19 @@ import {
   Megaphone,
   Lightbulb,
   Crosshair,
+  CalendarDays,
+  CheckCircle,
+  BarChart2,
+  ChevronLeft,
+  CalendarRange,
+  List,
 } from 'lucide-react';
 import {
   organizationsApi,
   crmDealsApi,
   crmActivitiesApi,
   knowledgeApi,
+  pulseApi,
   socialApi,
   tasksApi,
   emailApi,
@@ -122,6 +130,7 @@ import {
   type ProjectKnowledgeResponse,
   type ProjectKnowledgeSource,
   type SocialAccountRecord,
+  type SocialPostRecord,
   type SocialMentionRecord,
   type PersonOrgContact,
   dataSourcesApi,
@@ -133,6 +142,8 @@ import {
   DATA_TYPE_OPTIONS,
   type EmailAccountRecord,
   type OrgBrandProfile,
+  companiesApi,
+  type CompanyRecord,
 } from '@/lib/api';
 import { useUserSystem } from '@/components/config-provider';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
@@ -182,7 +193,7 @@ function parseJsonArray(val: string | null | undefined): string[] {
   try { return JSON.parse(val); } catch { return []; }
 }
 
-function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: string }) {
+export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: string }) {
   const qc = useQueryClient();
   const { data: profile, isLoading } = useQuery<OrgBrandProfile | null>({
     queryKey: ['orgBrandProfile', orgId],
@@ -630,8 +641,8 @@ function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: string 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({
-  orgId,
-  orgName,
+  orgId: _orgId,
+  orgName: _orgName,
   projectEntries,
   projectCount,
   clientCount: _clientCount,
@@ -639,7 +650,6 @@ function OverviewTab({
   totalDealValue,
   totalDeals,
   contactCount,
-  onSwitchTab,
 }: {
   orgId: string;
   orgName: string;
@@ -650,7 +660,6 @@ function OverviewTab({
   totalDealValue: number;
   totalDeals: number;
   contactCount: number;
-  onSwitchTab: (tab: string) => void;
 }) {
   // Aggregate tasks across all projects
   const taskQueries = useQueries({
@@ -671,7 +680,7 @@ function OverviewTab({
   const activityQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['crm-activities-org', entry.id],
-      queryFn: () => crmActivitiesApi.listActivities({ project_id: entry.id, limit: 10 }),
+      queryFn: () => crmActivitiesApi.listActivities({ organization_id: entry.id, limit: 10 }),
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
     })),
@@ -739,30 +748,15 @@ function OverviewTab({
         </Card>
       </div>
 
-      {/* Quick links */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        {[
-          { label: 'Pipelines', icon: Target, tab: 'pipelines', color: 'text-amber-500' },
-          { label: 'Contacts', icon: Contact2, tab: 'contacts', color: 'text-blue-500' },
-          { label: 'Projects', icon: FolderOpen, tab: 'projects', color: 'text-emerald-500' },
-          { label: 'Social', icon: Share2, tab: 'social', color: 'text-pink-500' },
-          { label: 'Intelligence', icon: Brain, tab: 'knowledge', color: 'text-orange-500' },
-          { label: 'Members', icon: Users, tab: 'members', color: 'text-purple-500' },
-          { label: 'Integrations', icon: Plug, tab: 'integrations', color: 'text-indigo-500' },
-        ].map(({ label, icon: Icon, tab, color }) => (
-          <button
-            key={tab}
-            onClick={() => onSwitchTab(tab)}
-            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group"
-          >
-            <Icon className={`h-5 w-5 ${color} group-hover:scale-110 transition-transform`} />
-            <span className="text-sm font-medium">{label}</span>
-            <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
-        ))}
-      </div>
-
-      {/* Recent activity - aggregated across all projects */}
+      {/* Recent activity - aggregated across all projects
+         TODO: Unify activity data sources. Currently this uses crmActivitiesApi.listActivities()
+         which only returns CRM-specific activity (deal/contact/pipeline events). The notification
+         center (NotificationCenter.tsx) uses GET /api/notifications which returns task-level
+         ActivityLog entries. To show a complete picture here, we should:
+         1. Create a unified server endpoint that merges both CRM activities and task ActivityLog
+         2. Or query both APIs client-side and merge/sort by timestamp
+         3. Consider adding deal creation/update events to the ActivityLog table on the server
+         Related: NotificationCenter.tsx, crates/server/src/routes/notifications.rs */}
       <Card className="bg-card/80 backdrop-blur-sm border-border/50">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -776,6 +770,7 @@ function OverviewTab({
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No recent activity</p>
+              <p className="text-xs mt-1">Activity from tasks, deals, and contacts will appear here.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -812,6 +807,8 @@ function OverviewTab({
     </div>
   );
 }
+
+// ── Leads Pipeline Panel ──────────────────────────────────────────────────────
 
 // ── Pipelines Tab ─────────────────────────────────────────────────────────────
 
@@ -855,9 +852,10 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
   );
 }
 
-// ── Contacts Tab ──────────────────────────────────────────────────────────────
+// ── Contacts Tab (with Companies sub-section) ─────────────────────────────────
 
 function ContactsTab({ orgId }: { orgId: string }) {
+  const [crmView, setCrmView] = useState<'contacts' | 'companies'>('contacts');
   const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
@@ -869,13 +867,19 @@ function ContactsTab({ orgId }: { orgId: string }) {
     staleTime: 60_000,
   });
 
-  // Build a lookup map: person_id → context
+  const { data: companies = [], isLoading: companiesLoading } = useQuery<CompanyRecord[]>({
+    queryKey: ['org-companies', orgId],
+    queryFn: () => companiesApi.list({ created_by_org_id: orgId, limit: 500 }),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
   const contextMap = useMemo(
     () => Object.fromEntries(personContacts.map(pc => [pc.person_id, pc.context])),
     [personContacts]
   );
 
-  const filtered = useMemo(() => {
+  const filteredContacts = useMemo(() => {
     let result = contacts;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -892,46 +896,142 @@ function ContactsTab({ orgId }: { orgId: string }) {
     return result;
   }, [contacts, searchQuery, stageFilter]);
 
+  const filteredCompanies = useMemo(() => {
+    if (!searchQuery) return companies;
+    const q = searchQuery.toLowerCase();
+    return companies.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.industry && c.industry.toLowerCase().includes(q)) ||
+      (c.headquarters && c.headquarters.toLowerCase().includes(q))
+    );
+  }, [companies, searchQuery]);
+
   const stageInfo = LIFECYCLE_STAGE_INFO;
 
   return (
     <div className="space-y-4">
+      {/* Sub-tab toggle */}
+      <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+        <button
+          onClick={() => setCrmView('contacts')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+            crmView === 'contacts' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Contact2 className="h-3.5 w-3.5" />
+          Contacts
+          <span className="text-xs text-muted-foreground">({contacts.length})</span>
+        </button>
+        <button
+          onClick={() => setCrmView('companies')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+            crmView === 'companies' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Building2 className="h-3.5 w-3.5" />
+          Companies
+          <span className="text-xs text-muted-foreground">({companies.length})</span>
+        </button>
+      </div>
+
+      {/* Search + filter bar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search contacts..."
+            placeholder={crmView === 'contacts' ? 'Search contacts...' : 'Search companies...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </div>
-        <select
-          value={stageFilter}
-          onChange={(e) => setStageFilter(e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-        >
-          <option value="all">All Stages</option>
-          {Object.entries(stageInfo).map(([key, info]) => (
-            <option key={key} value={key}>{info.label}</option>
-          ))}
-        </select>
-        {isLoading && (
-          <span className="text-xs text-muted-foreground">Loading contacts…</span>
+        {crmView === 'contacts' && (
+          <select
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="all">All Stages</option>
+            {Object.entries(stageInfo).map(([key, info]) => (
+              <option key={key} value={key}>{info.label}</option>
+            ))}
+          </select>
+        )}
+        {(isLoading || companiesLoading) && (
+          <span className="text-xs text-muted-foreground">Loading…</span>
         )}
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
-          ))}
-        </div>
+      {/* Contacts view */}
+      {crmView === 'contacts' && (
+        filteredContacts.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Contact2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>{isLoading ? 'Loading contacts...' : 'No contacts found'}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredContacts.map((contact) => (
+              <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Companies view */}
+      {crmView === 'companies' && (
+        filteredCompanies.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>{companiesLoading ? 'Loading companies...' : 'No companies found'}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredCompanies.map(company => (
+              <Link
+                key={company.id}
+                to={`/companies/${company.id}`}
+                className="block p-4 rounded-lg border bg-card hover:border-primary/40 hover:shadow-sm transition-all group"
+              >
+                <div className="flex items-start gap-3">
+                  {company.logo_url ? (
+                    <img src={company.logo_url} alt="" className="w-9 h-9 rounded object-cover shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded bg-muted flex items-center justify-center shrink-0">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">{company.name}</p>
+                    {company.industry && (
+                      <p className="text-xs text-muted-foreground truncate">{company.industry}</p>
+                    )}
+                    {company.headquarters && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <MapPin className="h-3 w-3 shrink-0" />{company.headquarters}
+                      </p>
+                    )}
+                  </div>
+                  {company.intelligence_status && company.intelligence_status !== 'idle' && (
+                    <span className={`w-2 h-2 rounded-full shrink-0 mt-1 ${
+                      company.intelligence_status === 'done' ? 'bg-green-500' :
+                      company.intelligence_status === 'running' ? 'bg-blue-500 animate-pulse' :
+                      'bg-yellow-500'
+                    }`} />
+                  )}
+                </div>
+                {company.intelligence_summary && (
+                  <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{company.intelligence_summary}</p>
+                )}
+                {company.website && (
+                  <p className="text-xs text-primary/70 mt-1 truncate flex items-center gap-1">
+                    <Globe className="h-3 w-3 shrink-0" />{company.website.replace(/^https?:\/\//, '')}
+                  </p>
+                )}
+              </Link>
+            ))}
+          </div>
+        )
       )}
     </div>
   );
@@ -945,19 +1045,40 @@ const CONTEXT_COLORS: Record<string, string> = {
   contact: 'bg-gray-100 text-gray-600',
 };
 
+const RESEARCH_DEPTH_COLOR: Record<string, string> = {
+  shallow:  'bg-gray-100 text-gray-600',
+  moderate: 'bg-yellow-100 text-yellow-700',
+  deep:     'bg-green-100 text-green-700',
+};
+
+const INTEL_STATUS_DOT: Record<string, string> = {
+  queued:  'bg-yellow-400',
+  running: 'bg-blue-400 animate-pulse',
+  done:    'bg-green-400',
+  failed:  'bg-red-400',
+};
+
 function ContactCard({ contact, context }: { contact: OrgContact; context?: string }) {
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
+  const statusDot = contact.intelligence_status && contact.intelligence_status !== 'idle'
+    ? INTEL_STATUS_DOT[contact.intelligence_status]
+    : null;
 
   return (
     <Link
-      to={`/people/${contact.id}`}
+      to={`/persons/${contact.id}`}
       className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate group-hover:text-foreground">
-            {contact.full_name || 'Unnamed'}
-          </p>
+          <div className="flex items-center gap-1.5">
+            {statusDot && (
+              <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${statusDot}`} />
+            )}
+            <p className="text-sm font-medium truncate group-hover:text-foreground">
+              {contact.full_name || 'Unnamed'}
+            </p>
+          </div>
           {contact.job_title && (
             <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.job_title}</p>
           )}
@@ -974,7 +1095,7 @@ function ContactCard({ contact, context }: { contact: OrgContact; context?: stri
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2 mt-3">
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
         {stageInfo && (
           <Badge
             variant="secondary"
@@ -986,6 +1107,16 @@ function ContactCard({ contact, context }: { contact: OrgContact; context?: stri
         )}
         {contact.person_type && (
           <Badge variant="outline" className="text-[10px] capitalize">{contact.person_type}</Badge>
+        )}
+        {contact.research_depth && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium capitalize ${RESEARCH_DEPTH_COLOR[contact.research_depth] ?? ''}`}>
+            {contact.research_depth}
+          </span>
+        )}
+        {(contact.research_pass_count ?? 0) > 0 && (
+          <span className="text-[10px] text-muted-foreground">
+            {contact.research_pass_count} pass{contact.research_pass_count === 1 ? '' : 'es'}
+          </span>
         )}
         {context && context !== 'contact' && (
           <span className={`text-[10px] px-1.5 py-0.5 rounded capitalize font-medium ${CONTEXT_COLORS[context] ?? CONTEXT_COLORS.contact}`}>
@@ -1175,7 +1306,7 @@ function AddDataSourceDialog({
   const [description, setDescription] = useState(editingSource?.description ?? '');
   const [content, setContent] = useState(editingSource?.content ?? '');
   const [file, setFile] = useState<File | null>(null);
-  const [folder, setFolder] = useState(editingSource?.folder ?? '');
+  const [folder, setFolder] = useState((editingSource as any)?.folder ?? '');
 
   // Reset form when dialog opens/closes or editingSource changes
   const resetForm = () => {
@@ -1185,7 +1316,7 @@ function AddDataSourceDialog({
     setTitle(editingSource?.title ?? '');
     setDescription(editingSource?.description ?? '');
     setContent(editingSource?.content ?? '');
-    setFolder(editingSource?.folder ?? '');
+    setFolder((editingSource as any)?.folder ?? '');
     setFile(null);
   };
 
@@ -1211,8 +1342,7 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
-        folder: folder.trim() || undefined,
-      });
+      } as any);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dataSources', orgId] });
@@ -1239,8 +1369,7 @@ function AddDataSourceDialog({
         data_type: dataType,
         source_type: sourceType,
         content: sourceType === 'text' && content.trim() ? content.trim() : undefined,
-        folder: folder.trim() || undefined,
-      });
+      } as any);
     } else {
       createMutation.mutate();
     }
@@ -2374,7 +2503,446 @@ function LegacyPipelinesView({ orgId: _orgId }: { orgId: string }) {
 
 
 
-function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+// ── Data Sources Intel View (restored from main — summary cards) ──────────────
+
+function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string; projectEntries: { id: string; name: string }[] }) {
+  const { data: orgSources = [], isLoading: orgLoading } = useQuery({
+    queryKey: ['dataSources', orgId],
+    queryFn: () => dataSourcesApi.listByOrganization(orgId),
+    staleTime: 60_000,
+  });
+
+  const projSourceQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['dataSourcesProject', entry.id],
+      queryFn: () => dataSourcesApi.listByProject(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const isLoading = orgLoading || projSourceQueries.some(q => q.isLoading);
+
+  const sources = useMemo(() => {
+    const projSources = projSourceQueries.flatMap(q => q.data || []);
+    const all = [...orgSources, ...projSources];
+    const seen = new Set<string>();
+    return all.filter(s => {
+      if (seen.has((s as any).id)) return false;
+      seen.add((s as any).id);
+      return true;
+    });
+  }, [orgSources, projSourceQueries]);
+
+  const typeCount = useMemo(() => {
+    const counts: Record<string, number> = {};
+    sources.forEach((s: any) => { counts[s.data_type] = (counts[s.data_type] || 0) + 1; });
+    return counts;
+  }, [sources]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground">Data Library Summary</h3>
+        <Link
+          to={`/organizations/${orgId}/data-sources`}
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <Database className="h-3.5 w-3.5" />
+          Open Full Library
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+          <Loader2 className="h-4 w-4 animate-spin" />Loading data sources...
+        </div>
+      ) : sources.length === 0 ? (
+        <Card className="bg-card/80 border-border/50">
+          <CardContent className="py-8 text-center">
+            <Database className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No data sources yet.</p>
+            <Link to={`/organizations/${orgId}/intelligence/data-sources`} className="text-sm text-primary hover:underline mt-1 inline-block">
+              Add your first data source →
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Object.entries(typeCount).map(([type, count]) => (
+            <Card key={type} className="bg-card/80 border-border/50">
+              <CardContent className="pt-4 pb-4">
+                <p className="text-xs text-muted-foreground capitalize">{type.replace(/_/g, ' ')}</p>
+                <p className="text-2xl font-bold mt-1">{count as number}</p>
+              </CardContent>
+            </Card>
+          ))}
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="pt-4 pb-4">
+              <p className="text-xs text-muted-foreground">Total Files</p>
+              <p className="text-2xl font-bold mt-1 text-primary">{sources.length}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Artifacts Intel View (restored from main — knowledge graph) ───────────────
+
+function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const knowledgeQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['projectKnowledge', entry.id],
+      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const artifacts = useMemo(() => {
+    const all: { title: string; summary?: string; projectName: string; projectId: string }[] = [];
+    knowledgeQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      ((q.data as any).sources_by_type?.artifact || []).forEach((src: any) => {
+        all.push({ title: src.source_title, summary: src.source_summary, projectName: entry.name, projectId: entry.id });
+      });
+    });
+    return all;
+  }, [knowledgeQueries, projectEntries]);
+
+  const isLoading = knowledgeQueries.some(q => q.isLoading);
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+      <Loader2 className="h-4 w-4 animate-spin" />Loading knowledge graph artifacts...
+    </div>
+  );
+
+  if (artifacts.length === 0) return (
+    <Card className="bg-card/80 border-border/50">
+      <CardContent className="py-8 text-center">
+        <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">No artifacts in the knowledge graph yet.</p>
+        <p className="text-xs text-muted-foreground mt-1">Artifacts are added automatically when deliverables are marked done.</p>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-medium text-muted-foreground">Knowledge Graph Artifacts</h3>
+      <p className="text-xs text-muted-foreground">{artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''} across {new Set(artifacts.map(a => a.projectId)).size} project{new Set(artifacts.map(a => a.projectId)).size !== 1 ? 's' : ''}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {artifacts.map((a, i) => (
+          <Card key={i} className="bg-card/80 border-border/50">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <FileText className="h-4 w-4 text-[hsl(var(--brand))] shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{a.title}</p>
+                  {a.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.summary}</p>}
+                  <Link to={`/projects/${a.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── System Automations Section (restored from main) ───────────────────────────
+
+function SystemAutomationsSection() {
+  const { data: automations = [] } = useQuery({
+    queryKey: ['system-automations'],
+    queryFn: async () => {
+      const r = await fetch('/api/automations', { credentials: 'include' });
+      const d = await r.json();
+      return d.data || [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  if (automations.length === 0) return null;
+
+  return (
+    <div className="border-t pt-6">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        System Automations ({automations.length} active)
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {automations.map((a: any) => (
+          <Card key={a.id} className="bg-card/80 border-border/50">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <Activity className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{a.name}</p>
+                  {a.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.description}</p>}
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Badge variant="default" className="text-[9px] bg-green-500/10 text-green-700 border-green-200">Active</Badge>
+                    {a.schedule && <span className="text-[9px] text-muted-foreground">{a.schedule}</span>}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Pulse View — alerts + signals aggregated across projects ──────────────────
+
+function PulseView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const alertQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['pulse-alerts-org', entry.id],
+      queryFn: () => pulseApi.getAlerts(entry.id, 20),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const contentQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['pulse-content-org', entry.id],
+      queryFn: () => pulseApi.getLatestContent(entry.id, 10),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const aggregated = useMemo(() => {
+    const allAlerts: any[] = [];
+    const allContent: any[] = [];
+
+    alertQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      (q.data as any[]).forEach((a: any) => allAlerts.push({ ...a, _projectName: entry.name }));
+    });
+
+    contentQueries.forEach((q, i) => {
+      if (!q.data?.items) return;
+      const entry = projectEntries[i];
+      q.data.items.forEach((c: any) => allContent.push({ ...c, _projectName: entry.name }));
+    });
+
+    allAlerts.sort((a, b) => new Date(b.triggered_at || b.created_at).getTime() - new Date(a.triggered_at || a.created_at).getTime());
+    allContent.sort((a, b) => new Date(b.collected_at || b.created_at).getTime() - new Date(a.collected_at || a.created_at).getTime());
+
+    const unacknowledged = allAlerts.filter(a => !a.acknowledged_at).length;
+    return { alerts: allAlerts.slice(0, 20), content: allContent.slice(0, 20), unacknowledged };
+  }, [alertQueries, contentQueries, projectEntries]);
+
+  const fmtDate = (iso: string) => {
+    try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+    catch { return '—'; }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Unacknowledged Alerts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <span className={`text-2xl font-bold ${aggregated.unacknowledged > 0 ? 'text-amber-600' : ''}`}>
+              {aggregated.unacknowledged}
+              {aggregated.unacknowledged > 0 && (
+                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+              )}
+            </span>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Recent Signals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <span className="text-2xl font-bold">{aggregated.content.length}</span>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Recent Alerts
+              {aggregated.unacknowledged > 0 && (
+                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unacknowledged} new</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {aggregated.alerts.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p>No alerts</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2 pr-3">
+                  {aggregated.alerts.map((alert: any) => (
+                    <div
+                      key={alert.id}
+                      className={`p-3 rounded-lg border border-border/50 ${!alert.acknowledged_at ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{alert.rule_name || 'Alert'}</p>
+                          {alert.message && (
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{alert.message}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-[9px]">{alert._projectName}</Badge>
+                            <span className="text-[10px] text-muted-foreground">
+                              {fmtDate(alert.triggered_at || alert.created_at)}
+                            </span>
+                          </div>
+                        </div>
+                        {!alert.acknowledged_at && (
+                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Radio className="h-4 w-4 text-blue-500" />
+              Latest Signals
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {aggregated.content.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Radio className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p>No signals collected yet</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2 pr-3">
+                  {aggregated.content.map((item: any) => (
+                    <div key={item.id} className="p-3 rounded-lg border border-border/50">
+                      <p className="text-sm font-medium line-clamp-2">{item.title || item.content_preview || 'Signal'}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-[9px]">{item._projectName}</Badge>
+                        {item.source_name && (
+                          <span className="text-[10px] text-muted-foreground">{item.source_name}</span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {fmtDate(item.collected_at || item.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Topology View — knowledge graph topology snapshots ─────────────────────────
+
+function TopologyView({
+  projectEntries,
+  aggregated,
+  isLoading,
+  loadedCount,
+}: {
+  projectEntries: { id: string; name: string }[];
+  aggregated: { byType: Record<string, { source: ProjectKnowledgeSource; projectName: string; projectId: string }[]> };
+  isLoading: boolean;
+  loadedCount: number;
+}) {
+  const topologyItems = aggregated.byType['topology_snapshot'] || [];
+
+  if (isLoading && topologyItems.length === 0) return (
+    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+      <Loader2 className="h-4 w-4 animate-spin" />Loading topology data ({loadedCount}/{projectEntries.length} projects)...
+    </div>
+  );
+
+  if (topologyItems.length === 0) return (
+    <Card className="bg-card/80 border-border/50">
+      <CardContent className="py-8 text-center">
+        <Network className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">No topology snapshots in the knowledge graph yet.</p>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Network className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Topology</h2>
+        <Badge variant="secondary">{topologyItems.length}</Badge>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {topologyItems.map(({ source, projectName, projectId }) => (
+          <Card key={source.id} className={`bg-card/80 ${source.is_stale ? 'border-yellow-500/30' : 'border-border/50'}`}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start gap-2">
+                <Network className="h-4 w-4 text-[hsl(var(--info))] shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{source.source_title}</p>
+                  {source.source_summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{source.source_summary}</p>}
+                  <div className="flex items-center justify-between mt-1.5">
+                    <Link to={`/projects/${projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground">{projectName}</Link>
+                    <span className="text-[10px] text-muted-foreground">{Math.round(source.coverage_score * 100)}% coverage</span>
+                  </div>
+                  {source.is_stale && <Badge variant="outline" className="text-[9px] mt-1 text-yellow-600 border-yellow-600">Stale</Badge>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Knowledge Tab (main intelligence container) ───────────────────────────────
+
+function KnowledgeTab({
+  orgId,
+  projectEntries,
+  view,
+}: {
+  orgId: string;
+  projectEntries: { id: string; name: string }[];
+  view?: string | null;
+}) {
+  // Org-level knowledge (brand research, intelligence)
+  const { data: orgKnowledge } = useQuery({
+    queryKey: ['orgKnowledge', orgId],
+    queryFn: () => organizationsApi.getKnowledge(orgId),
+    staleTime: 60_000,
+    enabled: !!orgId,
+  });
+
   const knowledgeQueries = useQueries({
     queries: projectEntries.map((entry) => ({
       queryKey: ['projectKnowledge', entry.id],
@@ -2408,10 +2976,124 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
       }
     });
 
+    const orgEntryCount = orgKnowledge?.knowledge_entries?.length ?? 0;
+    totalSources += orgEntryCount;
     const avgCompleteness = coverageCount > 0 ? Math.round((totalCoverage / coverageCount) * 100) : 0;
     return { totalSources, staleSources, avgCompleteness, sourcesByProject };
-  }, [knowledgeQueries, projectEntries]);
+  }, [knowledgeQueries, projectEntries, orgKnowledge]);
 
+  // Deep view: "datasources" shows the new data sources table; others filter knowledge by type
+  if (view && view !== 'overview') {
+    if (view === 'datasources') {
+      return (
+        <div className="space-y-6">
+          <DataSourcesIntelView orgId={orgId} projectEntries={projectEntries} />
+          <DataSourcesView orgId={orgId} projectEntries={projectEntries} />
+        </div>
+      );
+    }
+
+    if (view === 'artifacts') {
+      return (
+        <div className="space-y-6">
+          <ArtifactsIntelView projectEntries={projectEntries} />
+          <ArtifactsView orgId={orgId} />
+        </div>
+      );
+    }
+
+    if (view === 'workflows') {
+      return (
+        <div className="space-y-8">
+          <EditableWorkflowsView orgId={orgId} />
+          <SystemAutomationsSection />
+          <div className="border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Network className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Pipeline Blueprints</h2>
+              <Badge variant="secondary" className="text-[10px]">Legacy</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Agent-based pipeline templates for client engagements and production workflows. These are read-only blueprints — use the workflow editor above to build custom pipelines.
+            </p>
+            <LegacyPipelinesView orgId={orgId} />
+          </div>
+        </div>
+      );
+    }
+
+    if (view === 'pulse') {
+      return <PulseView projectEntries={projectEntries} />;
+    }
+
+    if (view === 'topology') {
+      return <TopologyView projectEntries={projectEntries} aggregated={aggregated as any} isLoading={isLoading} loadedCount={loadedCount} />;
+    }
+
+    // Generic fallback for other knowledge source types (e.g. conversations)
+    const typeKey =
+      view === 'conversations' ? 'conversation'
+      : null;
+    const items = typeKey ? ((aggregated as any).byType?.[typeKey] || []) : [];
+    const meta = typeKey ? SOURCE_TYPE_META[typeKey] : null;
+    const Icon = meta?.icon ?? BookOpen;
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Icon className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-lg font-semibold">{meta?.label ?? view}</h2>
+          <Badge variant="secondary">{items.length}</Badge>
+          {isLoading && (
+            <span className="text-xs text-muted-foreground ml-2">
+              Loading {loadedCount}/{projectEntries.length} projects…
+            </span>
+          )}
+        </div>
+        {items.length === 0 && !isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Icon className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p>No {meta?.label.toLowerCase() ?? view} indexed yet</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {items.map(({ source, projectName, projectId }: { source: any; projectName: string; projectId: string }) => (
+              <Card key={source.id} className="bg-card/80 backdrop-blur-sm border-border/50">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{source.source_title}</p>
+                      {source.source_summary && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{source.source_summary}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <Link
+                          to={`/projects/${projectId}/knowledge`}
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                          {projectName}
+                        </Link>
+                        {source.is_stale && (
+                          <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300">stale</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <Progress value={Math.round(source.coverage_score * 100)} className="w-16 h-1.5 mb-1" />
+                      <span className="text-xs text-muted-foreground">{Math.round(source.coverage_score * 100)}%</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Overview (default)
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2453,12 +3135,37 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
         <p className="text-xs text-muted-foreground">Loading {loadedCount}/{projectEntries.length} projects...</p>
       )}
 
-      {aggregated.sourcesByProject.length === 0 && !isLoading ? (
+      {orgKnowledge?.knowledge_entries && orgKnowledge.knowledge_entries.length > 0 && (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Brain className="h-4 w-4 text-[hsl(var(--brand))]" />
+              Organization Intelligence
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {orgKnowledge.knowledge_entries.map((entry: any) => (
+                <Badge key={entry.source_id} variant="secondary" className="text-xs gap-1 cursor-default" title={entry.source_summary || entry.source_title}>
+                  <Brain className="h-3 w-3" />
+                  {entry.source_title}
+                  {entry.coverage_score != null && (
+                    <span className="opacity-60 ml-1">{Math.round(entry.coverage_score * 100)}%</span>
+                  )}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {aggregated.sourcesByProject.length === 0 && !isLoading && !(orgKnowledge?.knowledge_entries?.length) ? (
         <div className="text-center py-12 text-muted-foreground">
           <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p>No knowledge sources indexed yet</p>
+          <p className="text-xs mt-1">Connect a data source in one of your projects to start building intelligence.</p>
         </div>
-      ) : (
+      ) : aggregated.sourcesByProject.length > 0 ? (
         <div className="space-y-4">
           {aggregated.sourcesByProject.map(({ projectName, projectId, data }) => {
             const completeness = data.completeness
@@ -2509,7 +3216,7 @@ function KnowledgeSection({ projectEntries }: { projectEntries: { id: string; na
             );
           })}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -2678,7 +3385,18 @@ function PulseSection({ projectEntries }: { projectEntries: { id: string; name: 
 
 function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const viewFromUrl = searchParams.get('view') || 'overview';
+  const location = useLocation();
+
+  // Derive view from pathname (sidebar links) or query param (tab clicks)
+  const pathSegment = location.pathname.match(/\/intelligence\/([^/]+)/)?.[1];
+  const PATH_TO_VIEW: Record<string, string> = {
+    'data-sources': 'datasources',
+    'artifacts': 'artifacts',
+    'workflows': 'workflows',
+    'pulse': 'pulse',
+    'topology': 'topology',
+  };
+  const viewFromUrl = searchParams.get('view') || (pathSegment ? PATH_TO_VIEW[pathSegment] : null) || 'overview';
 
   const views = [
     { key: 'overview',    label: 'Overview',      icon: Brain },
@@ -2718,160 +3436,12 @@ function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: stri
         ))}
       </div>
 
-      {viewFromUrl === 'overview'    && <KnowledgeSection projectEntries={projectEntries} />}
+      {viewFromUrl === 'overview'    && <KnowledgeTab orgId={orgId} projectEntries={projectEntries} />}
       {viewFromUrl === 'datasources' && <DataSourcesIntelView orgId={orgId} projectEntries={projectEntries} />}
       {viewFromUrl === 'artifacts'   && <ArtifactsIntelView projectEntries={projectEntries} />}
       {viewFromUrl === 'workflows'   && <WorkflowsIntelView orgId={orgId} />}
       {viewFromUrl === 'pulse'       && <PulseSection projectEntries={projectEntries} />}
       {viewFromUrl === 'topology'    && <TopologyIntelView projectEntries={projectEntries} />}
-    </div>
-  );
-}
-
-function DataSourcesIntelView({ orgId, projectEntries }: { orgId: string; projectEntries: { id: string; name: string }[] }) {
-  const { data: orgSources = [], isLoading: orgLoading } = useQuery({
-    queryKey: ['dataSources', orgId],
-    queryFn: () => dataSourcesApi.listByOrganization(orgId),
-    staleTime: 60_000,
-  });
-
-  const projSourceQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['dataSourcesProject', entry.id],
-      queryFn: () => dataSourcesApi.listByProject(entry.id),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const isLoading = orgLoading || projSourceQueries.some(q => q.isLoading);
-
-  const sources = useMemo(() => {
-    const projSources = projSourceQueries.flatMap(q => q.data || []);
-    // Deduplicate by id
-    const all = [...orgSources, ...projSources];
-    const seen = new Set<string>();
-    return all.filter(s => {
-      if (seen.has((s as any).id)) return false;
-      seen.add((s as any).id);
-      return true;
-    });
-  }, [orgSources, projSourceQueries]);
-
-  const typeCount = useMemo(() => {
-    const counts: Record<string, number> = {};
-    sources.forEach((s: any) => { counts[s.data_type] = (counts[s.data_type] || 0) + 1; });
-    return counts;
-  }, [sources]);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">Data Library</h3>
-        <Link
-          to={`/organizations/${orgId}/data-sources`}
-          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-        >
-          <Database className="h-3.5 w-3.5" />
-          Open Full Library
-          <ExternalLink className="h-3 w-3" />
-        </Link>
-      </div>
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-          <Loader2 className="h-4 w-4 animate-spin" />Loading data sources...
-        </div>
-      ) : sources.length === 0 ? (
-        <Card className="bg-card/80 border-border/50">
-          <CardContent className="py-8 text-center">
-            <Database className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No data sources yet.</p>
-            <Link to={`/organizations/${orgId}/data-sources`} className="text-sm text-primary hover:underline mt-1 inline-block">
-              Add your first data source →
-            </Link>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {Object.entries(typeCount).map(([type, count]) => (
-            <Card key={type} className="bg-card/80 border-border/50">
-              <CardContent className="pt-4 pb-4">
-                <p className="text-xs text-muted-foreground capitalize">{type.replace(/_/g, ' ')}</p>
-                <p className="text-2xl font-bold mt-1">{count as number}</p>
-              </CardContent>
-            </Card>
-          ))}
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-muted-foreground">Total Files</p>
-              <p className="text-2xl font-bold mt-1 text-primary">{sources.length}</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ArtifactsIntelView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
-  const knowledgeQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['projectKnowledge', entry.id],
-      queryFn: () => knowledgeApi.getProjectKnowledge(entry.id),
-      staleTime: 60_000,
-      enabled: projectEntries.length > 0,
-    })),
-  });
-
-  const artifacts = useMemo(() => {
-    const all: { title: string; summary?: string; projectName: string; projectId: string }[] = [];
-    knowledgeQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      ((q.data as any).sources_by_type?.artifact || []).forEach((src: any) => {
-        all.push({ title: src.source_title, summary: src.source_summary, projectName: entry.name, projectId: entry.id });
-      });
-    });
-    return all;
-  }, [knowledgeQueries, projectEntries]);
-
-  const isLoading = knowledgeQueries.some(q => q.isLoading);
-
-  if (isLoading) return (
-    <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-      <Loader2 className="h-4 w-4 animate-spin" />Loading artifacts...
-    </div>
-  );
-
-  if (artifacts.length === 0) return (
-    <Card className="bg-card/80 border-border/50">
-      <CardContent className="py-8 text-center">
-        <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-        <p className="text-sm text-muted-foreground">No artifacts in the knowledge graph yet.</p>
-        <p className="text-xs text-muted-foreground mt-1">Artifacts are added automatically when deliverables are marked done.</p>
-      </CardContent>
-    </Card>
-  );
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">{artifacts.length} artifact{artifacts.length !== 1 ? 's' : ''} across {projectEntries.length} project{projectEntries.length !== 1 ? 's' : ''}</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {artifacts.map((a, i) => (
-          <Card key={i} className="bg-card/80 border-border/50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start gap-2">
-                <FileText className="h-4 w-4 text-[hsl(var(--brand))] shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{a.title}</p>
-                  {a.summary && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{a.summary}</p>}
-                  <Link to={`/projects/${a.projectId}`} className="text-[10px] text-muted-foreground hover:text-foreground mt-1 block">{a.projectName}</Link>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }
@@ -3004,12 +3574,16 @@ function TopologyIntelView({ projectEntries }: { projectEntries: { id: string; n
 
 // ── Social Tab ────────────────────────────────────────────────────────────────
 
-const PLATFORM_ICONS: Record<string, typeof Linkedin> = {
+const PLATFORM_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   linkedin: Linkedin,
   instagram: Instagram,
   twitter: Twitter,
   facebook: Facebook,
   youtube: Youtube,
+  tiktok: Globe,
+  threads: Globe,
+  bluesky: Globe,
+  pinterest: Globe,
 };
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -3018,152 +3592,210 @@ const PLATFORM_COLORS: Record<string, string> = {
   twitter: 'text-foreground',
   facebook: 'text-[#1877F2]',
   youtube: 'text-[#FF0000]',
+  tiktok: 'text-foreground',
+  threads: 'text-foreground',
+  bluesky: 'text-sky-500',
+  pinterest: 'text-[#E60023]',
 };
 
-function SocialTab({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+const PLATFORM_BG: Record<string, string> = {
+  linkedin: 'bg-[#0A66C2]/10',
+  instagram: 'bg-[#E4405F]/10',
+  twitter: 'bg-foreground/10',
+  facebook: 'bg-[#1877F2]/10',
+  youtube: 'bg-[#FF0000]/10',
+  tiktok: 'bg-muted',
+  bluesky: 'bg-sky-500/10',
+  pinterest: 'bg-[#E60023]/10',
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  draft: 'text-muted-foreground border-border',
+  pending_review: 'text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/20',
+  approved: 'text-blue-600 border-blue-300 bg-blue-50 dark:bg-blue-950/20',
+  scheduled: 'text-purple-600 border-purple-300 bg-purple-50 dark:bg-purple-950/20',
+  published: 'text-green-600 border-green-300 bg-green-50 dark:bg-green-950/20',
+  failed: 'text-destructive border-destructive/30 bg-destructive/10',
+  cancelled: 'text-muted-foreground border-border',
+};
+
+const SENTIMENT_COLORS: Record<string, string> = {
+  positive: 'text-green-600',
+  negative: 'text-destructive',
+  neutral: 'text-muted-foreground',
+  unknown: 'text-muted-foreground',
+};
+
+const PRIORITY_COLORS: Record<string, string> = {
+  urgent: 'text-destructive',
+  high: 'text-amber-600',
+  normal: 'text-muted-foreground',
+  low: 'text-muted-foreground/60',
+};
+
+// ── Social: Overview ──────────────────────────────────────────────────────────
+
+function SocialOverviewView({
+  projectEntries,
+  orgId,
+  onSwitchView,
+}: {
+  projectEntries: { id: string; name: string }[];
+  orgId: string;
+  onSwitchView: (v: string) => void;
+}) {
+  const { data: brandProfile } = useQuery({
+    queryKey: ['brandProfile', orgId],
+    queryFn: () => organizationsApi.getBrandProfile(orgId),
+    staleTime: 300_000,
+    enabled: !!orgId,
+  });
+
   const accountQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['social-accounts', entry.id],
-      queryFn: () => socialApi.listAccounts(entry.id),
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-accounts', e.id],
+      queryFn: () => socialApi.listAccounts(e.id),
       staleTime: 60_000,
-      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const postQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-posts', e.id],
+      queryFn: () => socialApi.listPostsFiltered({ projectId: e.id, limit: 20 }),
+      staleTime: 60_000,
     })),
   });
 
   const mentionQueries = useQueries({
-    queries: projectEntries.map((entry) => ({
-      queryKey: ['social-mentions', entry.id],
-      queryFn: () => socialApi.listMentions(entry.id, { limit: 20 }),
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-mentions-ov', e.id],
+      queryFn: () => socialApi.listMentions(e.id, { limit: 10 }),
       staleTime: 60_000,
-      enabled: projectEntries.length > 0,
     })),
   });
 
-  const isLoading = accountQueries.some(q => q.isLoading);
-
-  const aggregated = useMemo(() => {
-    const allAccounts: (SocialAccountRecord & { _projectName: string; _projectId: string })[] = [];
-    const allMentions: (SocialMentionRecord & { _projectName: string })[] = [];
+  const agg = useMemo(() => {
+    const allAccounts: (SocialAccountRecord & { _project: string })[] = [];
+    const allPosts: (SocialPostRecord & { _project: string })[] = [];
+    const allMentions: (SocialMentionRecord & { _project: string })[] = [];
 
     accountQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      q.data.forEach(a => allAccounts.push({ ...a, _projectName: entry.name, _projectId: entry.id }));
+      q.data?.forEach(a => allAccounts.push({ ...a, _project: projectEntries[i].name }));
     });
-
+    postQueries.forEach((q, i) => {
+      q.data?.forEach(p => allPosts.push({ ...p, _project: projectEntries[i].name }));
+    });
     mentionQueries.forEach((q, i) => {
-      if (!q.data) return;
-      const entry = projectEntries[i];
-      q.data.forEach(m => allMentions.push({ ...m, _projectName: entry.name }));
+      q.data?.forEach(m => allMentions.push({ ...m, _project: projectEntries[i].name }));
     });
 
-    // Dedupe accounts by platform + username
-    const uniqueAccounts = new Map<string, typeof allAccounts[0]>();
-    for (const a of allAccounts) {
-      const key = `${a.platform}:${a.username || a.display_name || a.id}`;
-      if (!uniqueAccounts.has(key)) uniqueAccounts.set(key, a);
+    const totalFollowers = allAccounts.reduce((s, a) => s + (a.follower_count || 0), 0);
+    const scheduled = allPosts.filter(p => p.status === 'scheduled').length;
+    const published = allPosts.filter(p => p.status === 'published').length;
+    const unread = allMentions.filter(m => m.status === 'unread').length;
+    const urgent = allMentions.filter(m => m.priority === 'urgent' || m.priority === 'high').length;
+
+    const recentPosts = [...allPosts]
+      .filter(p => p.status === 'published' || p.status === 'scheduled')
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 6);
+
+    const recentMentions = [...allMentions]
+      .sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime())
+      .slice(0, 5);
+
+    // Platform breakdown
+    const byPlatform: Record<string, { accounts: number; followers: number }> = {};
+    allAccounts.forEach(a => {
+      if (!byPlatform[a.platform]) byPlatform[a.platform] = { accounts: 0, followers: 0 };
+      byPlatform[a.platform].accounts++;
+      byPlatform[a.platform].followers += a.follower_count || 0;
+    });
+
+    // Brand profile platforms (if no connected accounts)
+    const brandHandles: { platform: string; handle: string }[] = [];
+    if (allAccounts.length === 0 && brandProfile) {
+      if (brandProfile.socialInstagram) brandHandles.push({ platform: 'instagram', handle: brandProfile.socialInstagram });
+      if (brandProfile.socialLinkedin) brandHandles.push({ platform: 'linkedin', handle: brandProfile.socialLinkedin });
+      if (brandProfile.socialTwitter) brandHandles.push({ platform: 'twitter', handle: brandProfile.socialTwitter });
+      if (brandProfile.socialTiktok) brandHandles.push({ platform: 'tiktok', handle: brandProfile.socialTiktok });
+      if (brandProfile.socialYoutube) brandHandles.push({ platform: 'youtube', handle: brandProfile.socialYoutube });
     }
 
-    // Sort mentions by date
-    allMentions.sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
+    return { totalFollowers, scheduled, published, unread, urgent, recentPosts, recentMentions, byPlatform, brandHandles, totalAccounts: allAccounts.length };
+  }, [accountQueries, postQueries, mentionQueries, projectEntries, brandProfile]);
 
-    const unreadCount = allMentions.filter(m => m.status === 'unread').length;
-    const totalFollowers = [...uniqueAccounts.values()].reduce((sum, a) => sum + (a.follower_count || 0), 0);
-
-    return {
-      accounts: [...uniqueAccounts.values()],
-      mentions: allMentions.slice(0, 30),
-      unreadCount,
-      totalFollowers,
-    };
-  }, [accountQueries, mentionQueries, projectEntries]);
+  const fmtFollowers = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
 
   return (
     <div className="space-y-6">
-      {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Connected Accounts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-bold">{aggregated.accounts.length}</span>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Followers</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className="text-2xl font-bold">
-              {aggregated.totalFollowers >= 1000
-                ? `${(aggregated.totalFollowers / 1000).toFixed(1)}k`
-                : aggregated.totalFollowers}
-            </span>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Unread Mentions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <span className={`text-2xl font-bold ${aggregated.unreadCount > 0 ? 'text-blue-600' : ''}`}>
-              {aggregated.unreadCount}
-            </span>
-          </CardContent>
-        </Card>
+      {/* KPI row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Followers', value: fmtFollowers(agg.totalFollowers), icon: Users, color: 'text-blue-500', action: () => onSwitchView('accounts') },
+          { label: 'Scheduled Posts', value: agg.scheduled, icon: CalendarDays, color: 'text-purple-500', action: () => onSwitchView('content') },
+          { label: 'Unread Mentions', value: agg.unread, icon: Inbox, color: agg.unread > 0 ? 'text-amber-500' : 'text-muted-foreground', action: () => onSwitchView('inbox') },
+          { label: 'Published', value: agg.published, icon: CheckCircle, color: 'text-green-500', action: () => onSwitchView('content') },
+        ].map(({ label, value, icon: Icon, color, action }) => (
+          <Card key={label} className="bg-card/80 backdrop-blur-sm border-border/50 cursor-pointer hover:border-border transition-colors" onClick={action}>
+            <CardContent className="pt-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                  <p className="text-2xl font-bold">{value}</p>
+                </div>
+                <Icon className={`h-5 w-5 ${color} mt-0.5`} />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {isLoading && (
-        <p className="text-xs text-muted-foreground">Loading social data...</p>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Accounts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Platform breakdown */}
         <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Share2 className="h-4 w-4" />
-              Connected Accounts
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Share2 className="h-4 w-4 text-pink-500" />
+              Platforms
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {aggregated.accounts.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Share2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>No social accounts connected</p>
+            {Object.keys(agg.byPlatform).length === 0 && agg.brandHandles.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <Share2 className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                <p className="text-xs">No accounts connected</p>
+                <button onClick={() => onSwitchView('accounts')} className="mt-2 text-xs text-primary hover:underline">Connect accounts →</button>
+              </div>
+            ) : agg.brandHandles.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-[10px] text-muted-foreground mb-2">From brand profile</p>
+                {agg.brandHandles.map(({ platform, handle }) => {
+                  const Icon = PLATFORM_ICONS[platform] || Globe;
+                  return (
+                    <div key={platform} className="flex items-center gap-2.5 p-2 rounded-lg bg-muted/40">
+                      <Icon className={`h-4 w-4 shrink-0 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium truncate">{handle}</p>
+                        <p className="text-[10px] text-muted-foreground capitalize">{platform}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
-              <div className="space-y-3">
-                {aggregated.accounts.map((account) => {
-                  const PlatformIcon = PLATFORM_ICONS[account.platform] || Globe;
-                  const platformColor = PLATFORM_COLORS[account.platform] || 'text-muted-foreground';
+              <div className="space-y-2">
+                {Object.entries(agg.byPlatform).map(([platform, data]) => {
+                  const Icon = PLATFORM_ICONS[platform] || Globe;
                   return (
-                    <div key={account.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50">
-                      <PlatformIcon className={`h-5 w-5 shrink-0 ${platformColor}`} />
+                    <div key={platform} className={`flex items-center gap-2.5 p-2 rounded-lg ${PLATFORM_BG[platform] || 'bg-muted/40'}`}>
+                      <Icon className={`h-4 w-4 shrink-0 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">
-                          {account.display_name || account.username || account.platform}
-                        </p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="capitalize">{account.platform}</span>
-                          {account.follower_count != null && (
-                            <>
-                              <span>-</span>
-                              <span>{account.follower_count.toLocaleString()} followers</span>
-                            </>
-                          )}
-                        </div>
+                        <p className="text-xs font-medium capitalize">{platform}</p>
+                        <p className="text-[10px] text-muted-foreground">{fmtFollowers(data.followers)} followers</p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px]">{account._projectName}</Badge>
-                        <Badge
-                          variant={account.status === 'active' ? 'default' : 'secondary'}
-                          className="text-[10px]"
-                        >
-                          {account.status}
-                        </Badge>
-                      </div>
+                      <span className="text-[10px] text-muted-foreground">{data.accounts} acct{data.accounts !== 1 ? 's' : ''}</span>
                     </div>
                   );
                 })}
@@ -3172,64 +3804,1171 @@ function SocialTab({ projectEntries }: { projectEntries: { id: string; name: str
           </CardContent>
         </Card>
 
-        {/* Recent Mentions */}
-        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Inbox className="h-4 w-4" />
-              Recent Mentions
-              {aggregated.unreadCount > 0 && (
-                <Badge variant="default" className="text-[10px] ml-1">{aggregated.unreadCount} new</Badge>
-              )}
-            </CardTitle>
+        {/* Recent posts */}
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50 lg:col-span-2">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <FileText className="h-4 w-4 text-purple-500" />
+                Recent Content
+              </CardTitle>
+              <button onClick={() => onSwitchView('content')} className="text-xs text-primary hover:underline">View all →</button>
+            </div>
           </CardHeader>
           <CardContent>
-            {aggregated.mentions.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Inbox className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>No mentions yet</p>
+            {agg.recentPosts.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <FileText className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                <p className="text-xs">No posts yet</p>
+                <button onClick={() => onSwitchView('content')} className="mt-2 text-xs text-primary hover:underline">Create first post →</button>
               </div>
             ) : (
-              <ScrollArea className="h-[400px]">
-                <div className="space-y-2 pr-3">
-                  {aggregated.mentions.map((mention) => {
-                    const PlatformIcon = PLATFORM_ICONS[mention.platform] || Globe;
-                    const isUnread = mention.status === 'unread';
-                    return (
-                      <div
-                        key={mention.id}
-                        className={`p-3 rounded-lg border border-border/50 ${isUnread ? 'bg-accent/20' : ''}`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <PlatformIcon className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium">
-                                {mention.author_display_name || mention.author_username || 'Unknown'}
-                              </span>
-                              <Badge variant="outline" className="text-[9px]">{mention.mention_type}</Badge>
-                              {isUnread && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />}
-                            </div>
-                            {mention.content && (
-                              <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{mention.content}</p>
-                            )}
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] text-muted-foreground">
-                                {formatDate(mention.received_at)}
-                              </span>
-                              <Badge variant="outline" className="text-[9px]">{mention._projectName}</Badge>
-                            </div>
-                          </div>
+              <div className="space-y-2">
+                {agg.recentPosts.map(post => {
+                  const platforms: string[] = (() => { try { return JSON.parse(post.platforms); } catch { return [post.platforms]; } })();
+                  return (
+                    <div key={post.id} className="flex items-start gap-3 p-2.5 rounded-lg border border-border/40 hover:bg-muted/30 transition-colors">
+                      <div className="flex gap-1 mt-0.5">
+                        {platforms.slice(0, 3).map(p => {
+                          const Icon = PLATFORM_ICONS[p] || Globe;
+                          return <Icon key={p} className={`h-3.5 w-3.5 ${PLATFORM_COLORS[p] || 'text-muted-foreground'}`} />;
+                        })}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs line-clamp-1 font-medium">{post.caption || '(no caption)'}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status}</span>
+                          {post.scheduled_for && <span className="text-[10px] text-muted-foreground">{formatDate(post.scheduled_for)}</span>}
+                          <span className="text-[10px] text-muted-foreground">{post._project}</span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
+                      {(post.likes > 0 || post.impressions > 0) && (
+                        <div className="text-right shrink-0">
+                          {post.impressions > 0 && <p className="text-[10px] text-muted-foreground">{fmtFollowers(post.impressions)} views</p>}
+                          {post.likes > 0 && <p className="text-[10px] text-muted-foreground">{post.likes} ♥</p>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Recent inbox */}
+      {agg.recentMentions.length > 0 && (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Inbox className="h-4 w-4 text-amber-500" />
+                Recent Inbox
+                {agg.unread > 0 && <Badge variant="default" className="text-[10px]">{agg.unread} unread</Badge>}
+                {agg.urgent > 0 && <Badge variant="destructive" className="text-[10px]">{agg.urgent} urgent</Badge>}
+              </CardTitle>
+              <button onClick={() => onSwitchView('inbox')} className="text-xs text-primary hover:underline">View all →</button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {agg.recentMentions.map(m => {
+                const Icon = PLATFORM_ICONS[m.platform] || Globe;
+                return (
+                  <div key={m.id} className={`p-2.5 rounded-lg border border-border/40 ${m.status === 'unread' ? 'bg-accent/20' : ''}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon className={`h-3.5 w-3.5 shrink-0 ${PLATFORM_COLORS[m.platform] || 'text-muted-foreground'}`} />
+                      <span className="text-xs font-medium truncate flex-1">{m.author_display_name || m.author_username || 'Unknown'}</span>
+                      {m.status === 'unread' && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />}
+                    </div>
+                    {m.content && <p className="text-[11px] text-muted-foreground line-clamp-2">{m.content}</p>}
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Badge variant="outline" className="text-[9px]">{m.mention_type}</Badge>
+                      {m.sentiment && m.sentiment !== 'unknown' && (
+                        <span className={`text-[9px] ${SENTIMENT_COLORS[m.sentiment]}`}>{m.sentiment}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Social: Accounts ──────────────────────────────────────────────────────────
+
+function SocialAccountsView({
+  projectEntries,
+  orgId,
+}: {
+  projectEntries: { id: string; name: string }[];
+  orgId: string;
+}) {
+  const { data: brandProfile } = useQuery({
+    queryKey: ['brandProfile', orgId],
+    queryFn: () => organizationsApi.getBrandProfile(orgId),
+    staleTime: 300_000,
+    enabled: !!orgId,
+  });
+
+  const accountQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-accounts', e.id],
+      queryFn: () => socialApi.listAccounts(e.id),
+      staleTime: 60_000,
+    })),
+  });
+
+  const allAccounts = useMemo(() => {
+    const list: (SocialAccountRecord & { _project: string; _projectId: string })[] = [];
+    accountQueries.forEach((q, i) => {
+      q.data?.forEach(a => list.push({ ...a, _project: projectEntries[i].name, _projectId: projectEntries[i].id }));
+    });
+    return list.sort((a, b) => a.platform.localeCompare(b.platform));
+  }, [accountQueries, projectEntries]);
+
+  const queryClient = useQueryClient();
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => socialApi.deleteAccount(id),
+    onSuccess: () => {
+      accountQueries.forEach((_, i) => {
+        queryClient.invalidateQueries({ queryKey: ['social-accounts', projectEntries[i].id] });
+      });
+    },
+  });
+
+  const fmtFollowers = (n?: number | null) => !n ? '—' : n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
+
+  const brandHandles: { platform: string; handle: string }[] = [];
+  if (brandProfile) {
+    if (brandProfile.socialInstagram) brandHandles.push({ platform: 'instagram', handle: brandProfile.socialInstagram });
+    if (brandProfile.socialLinkedin) brandHandles.push({ platform: 'linkedin', handle: brandProfile.socialLinkedin });
+    if (brandProfile.socialTwitter) brandHandles.push({ platform: 'twitter', handle: brandProfile.socialTwitter });
+    if (brandProfile.socialTiktok) brandHandles.push({ platform: 'tiktok', handle: brandProfile.socialTiktok });
+    if (brandProfile.socialYoutube) brandHandles.push({ platform: 'youtube', handle: brandProfile.socialYoutube });
+    if (brandProfile.socialFacebook) brandHandles.push({ platform: 'facebook', handle: brandProfile.socialFacebook });
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Brand profile handles */}
+      {brandHandles.length > 0 && (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Share2 className="h-4 w-4 text-pink-500" />
+              Brand Profile Handles
+              <Badge variant="outline" className="text-[10px] ml-1">From brand research</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {brandHandles.map(({ platform, handle }) => {
+                const Icon = PLATFORM_ICONS[platform] || Globe;
+                const isConnected = allAccounts.some(a => a.platform === platform);
+                return (
+                  <div key={platform} className={`flex items-center gap-3 p-3 rounded-lg border ${isConnected ? 'border-green-300 bg-green-50 dark:bg-green-950/20' : 'border-border/50 bg-muted/30'}`}>
+                    <div className={`h-9 w-9 rounded-full flex items-center justify-center ${PLATFORM_BG[platform] || 'bg-muted'}`}>
+                      <Icon className={`h-4.5 w-4.5 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium truncate">{handle}</p>
+                      <p className="text-[10px] text-muted-foreground capitalize">{platform}</p>
+                    </div>
+                    {isConnected
+                      ? <Badge variant="outline" className="text-[9px] text-green-600 border-green-300">connected</Badge>
+                      : <Badge variant="outline" className="text-[9px]">not connected</Badge>
+                    }
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Connected accounts */}
+      <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Connected Accounts
+              <Badge variant="secondary" className="text-[10px]">{allAccounts.length}</Badge>
+            </CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {allAccounts.length === 0 ? (
+            <div className="text-center py-10 text-muted-foreground">
+              <Share2 className="h-8 w-8 mx-auto mb-3 opacity-40" />
+              <p className="text-sm font-medium mb-1">No accounts connected yet</p>
+              <p className="text-xs">Connect social accounts to your projects to start tracking and publishing</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {allAccounts.map(account => {
+                const Icon = PLATFORM_ICONS[account.platform] || Globe;
+                return (
+                  <div key={account.id} className="flex items-center gap-4 p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
+                    <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${PLATFORM_BG[account.platform] || 'bg-muted'}`}>
+                      {account.avatar_url
+                        ? <img src={account.avatar_url} className="h-10 w-10 rounded-full object-cover" alt="" />
+                        : <Icon className={`h-5 w-5 ${PLATFORM_COLORS[account.platform] || 'text-muted-foreground'}`} />
+                      }
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{account.display_name || account.username || account.platform}</p>
+                        <Badge variant={account.status === 'active' ? 'default' : account.status === 'error' ? 'destructive' : 'secondary'} className="text-[10px]">
+                          {account.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                        <span className="capitalize">{account.platform}</span>
+                        <span>·</span>
+                        <span>{fmtFollowers(account.follower_count)} followers</span>
+                        {account.post_count != null && <><span>·</span><span>{account.post_count} posts</span></>}
+                        <span>·</span>
+                        <span>{account._project}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {account.profile_url && (
+                        <a href={account.profile_url} target="_blank" rel="noopener noreferrer"
+                          className="p-1.5 rounded hover:bg-muted transition-colors" title="View profile">
+                          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                        </a>
+                      )}
+                      <button
+                        onClick={() => { if (confirm('Disconnect this account?')) deleteMut.mutate(account.id); }}
+                        className="p-1.5 rounded hover:bg-destructive/10 transition-colors" title="Disconnect">
+                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Social: Content ───────────────────────────────────────────────────────────
+
+// Helper: get all days in a month grid (6 rows × 7 cols, padded with prev/next month days)
+function buildMonthGrid(year: number, month: number) {
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrev = new Date(year, month, 0).getDate();
+  const cells: { date: Date; inMonth: boolean }[] = [];
+  for (let i = firstDay - 1; i >= 0; i--) {
+    cells.push({ date: new Date(year, month - 1, daysInPrev - i), inMonth: false });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ date: new Date(year, month, d), inMonth: true });
+  }
+  while (cells.length % 7 !== 0) {
+    cells.push({ date: new Date(year, month + 1, cells.length - daysInMonth - firstDay + 1), inMonth: false });
+  }
+  return cells;
+}
+
+// Helper: get 7 days of a week starting from a given date
+function buildWeekDays(anchor: Date) {
+  const start = new Date(anchor);
+  start.setDate(anchor.getDate() - anchor.getDay()); // Sunday
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return d;
+  });
+}
+
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function SocialContentView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const [calView, setCalView] = useState<'list' | 'week' | 'month'>('list');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [showCreate, setShowCreate] = useState(false);
+  const [newCaption, setNewCaption] = useState('');
+  const [newPlatforms, setNewPlatforms] = useState<string[]>([]);
+  const [newStatus, setNewStatus] = useState('draft');
+  const [newProjectId, setNewProjectId] = useState(projectEntries[0]?.id || '');
+  const [newScheduled, setNewScheduled] = useState('');
+  const [calDate, setCalDate] = useState(new Date()); // anchor for week/month navigation
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+
+  const postQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-posts', e.id],
+      queryFn: () => socialApi.listPostsFiltered({ projectId: e.id, limit: 100 }),
+      staleTime: 60_000,
+    })),
+  });
+
+  const allPosts = useMemo(() => {
+    const list: (SocialPostRecord & { _project: string; _projectId: string })[] = [];
+    postQueries.forEach((q, i) => {
+      q.data?.forEach(p => list.push({ ...p, _project: projectEntries[i].name, _projectId: projectEntries[i].id }));
+    });
+    return list.sort((a, b) => {
+      if (a.scheduled_for && b.scheduled_for) return new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime();
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
+  }, [postQueries, projectEntries]);
+
+  const filtered = useMemo(() => {
+    return allPosts.filter(p => {
+      if (statusFilter !== 'all' && p.status !== statusFilter) return false;
+      if (projectFilter !== 'all' && p._projectId !== projectFilter) return false;
+      return true;
+    });
+  }, [allPosts, statusFilter, projectFilter]);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: allPosts.length };
+    allPosts.forEach(p => { c[p.status] = (c[p.status] || 0) + 1; });
+    return c;
+  }, [allPosts]);
+
+  const queryClient = useQueryClient();
+  const createMut = useMutation({
+    mutationFn: () => socialApi.createPost({
+      project_id: newProjectId,
+      caption: newCaption,
+      platforms: JSON.stringify(newPlatforms),
+      status: newStatus,
+      scheduled_for: newScheduled || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['social-posts'] });
+      setShowCreate(false);
+      setNewCaption('');
+      setNewPlatforms([]);
+      setNewScheduled('');
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => socialApi.deletePost(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['social-posts'] }),
+  });
+
+  // Helpers shared across views
+  const STATUS_TABS = ['all', 'draft', 'pending_review', 'scheduled', 'published', 'failed'];
+  const parsePlatforms = (p: string): string[] => { try { return JSON.parse(p); } catch { return [p].filter(Boolean); } };
+  const fmtFollowers = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
+
+  // Calendar navigation
+  const monthYear = `${MONTH_NAMES[calDate.getMonth()]} ${calDate.getFullYear()}`;
+  const weekDays = buildWeekDays(calDate);
+  const monthGrid = buildMonthGrid(calDate.getFullYear(), calDate.getMonth());
+
+  // Posts indexed by date string "YYYY-MM-DD" using scheduled_for or published_at
+  const postsByDate = useMemo(() => {
+    const map: Record<string, typeof allPosts> = {};
+    allPosts.forEach(p => {
+      const d = p.scheduled_for || p.published_at;
+      if (!d) return;
+      const key = d.slice(0, 10);
+      if (!map[key]) map[key] = [];
+      map[key].push(p);
+    });
+    return map;
+  }, [allPosts]);
+
+  const dateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const today = new Date();
+
+  // Post pill used in calendar cells
+  const PostPill = ({ post, compact = false }: { post: typeof allPosts[0]; compact?: boolean }) => {
+    const platforms = parsePlatforms(post.platforms);
+    const Icon = PLATFORM_ICONS[platforms[0]] || Globe;
+    const statusColor =
+      post.status === 'published' ? 'bg-green-500/15 text-green-700 dark:text-green-400 border-green-300/50' :
+      post.status === 'scheduled' ? 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-300/50' :
+      post.status === 'failed'    ? 'bg-destructive/15 text-destructive border-destructive/30' :
+      'bg-muted text-muted-foreground border-border/50';
+    return (
+      <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] leading-tight truncate ${statusColor}`}>
+        <Icon className={`h-2.5 w-2.5 shrink-0 ${PLATFORM_COLORS[platforms[0]] || ''}`} />
+        {!compact && <span className="truncate">{post.caption?.slice(0, 28) || '(no caption)'}</span>}
+        {compact && <span className="truncate">{platforms[0]}</span>}
+      </div>
+    );
+  };
+
+  // Day detail panel (shown when a day is selected in month view)
+  const DayDetail = ({ day }: { day: Date }) => {
+    const posts = postsByDate[dateKey(day)] || [];
+    return (
+      <Card className="bg-card/80 backdrop-blur-sm border-border/50 mt-4">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium">
+              {day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </CardTitle>
+            <button onClick={() => setSelectedDay(null)} className="text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {posts.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-3 text-center">No posts this day</p>
+          ) : (
+            <div className="space-y-2">
+              {posts.map(post => {
+                const platforms = parsePlatforms(post.platforms);
+                return (
+                  <div key={post.id} className="flex items-start gap-2 p-2 rounded-lg border border-border/40 hover:bg-muted/30">
+                    <div className="flex gap-0.5 mt-0.5">
+                      {platforms.slice(0,3).map(p => {
+                        const Icon = PLATFORM_ICONS[p] || Globe;
+                        return <Icon key={p} className={`h-3.5 w-3.5 ${PLATFORM_COLORS[p] || ''}`} />;
+                      })}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs line-clamp-2">{post.caption || <span className="italic text-muted-foreground">No caption</span>}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status.replace('_',' ')}</span>
+                        {(post.scheduled_for || post.published_at) && (
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(post.scheduled_for || post.published_at!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground">{post._project}</span>
+                      </div>
+                    </div>
+                    <button onClick={() => { if (confirm('Delete?')) deleteMut.mutate(post.id); }}
+                      className="p-1 rounded hover:bg-destructive/10 shrink-0">
+                      <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // Shared create form
+  const CreateForm = () => (
+    <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Plus className="h-4 w-4" /> Create Post
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <label className="text-xs font-medium mb-1 block">Caption</label>
+          <textarea value={newCaption} onChange={e => setNewCaption(e.target.value)}
+            placeholder="Write your caption..." rows={3}
+            className="w-full text-sm border border-border rounded-md p-2 bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium mb-1 block">Platforms</label>
+            <div className="flex flex-wrap gap-1.5">
+              {['instagram','linkedin','twitter','facebook','youtube','tiktok'].map(p => {
+                const Icon = PLATFORM_ICONS[p] || Globe;
+                const selected = newPlatforms.includes(p);
+                return (
+                  <button key={p} onClick={() => setNewPlatforms(prev => selected ? prev.filter(x => x !== p) : [...prev, p])}
+                    className={`flex items-center gap-1 px-2 py-1 rounded border text-xs transition-colors ${selected ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-border/80'}`}>
+                    <Icon className={`h-3 w-3 ${selected ? '' : PLATFORM_COLORS[p]}`} />
+                    <span className="capitalize">{p}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs font-medium mb-1 block">Status</label>
+              <select value={newStatus} onChange={e => setNewStatus(e.target.value)}
+                className="w-full text-xs border border-border rounded-md px-2 py-1.5 bg-background">
+                <option value="draft">Draft</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="pending_review">Pending Review</option>
+              </select>
+            </div>
+            {projectEntries.length > 1 && (
+              <div>
+                <label className="text-xs font-medium mb-1 block">Project</label>
+                <select value={newProjectId} onChange={e => setNewProjectId(e.target.value)}
+                  className="w-full text-xs border border-border rounded-md px-2 py-1.5 bg-background">
+                  {projectEntries.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Schedule for {newStatus !== 'scheduled' && <span className="text-muted-foreground">(optional)</span>}</label>
+          <input type="datetime-local" value={newScheduled} onChange={e => setNewScheduled(e.target.value)}
+            className="text-xs border border-border rounded-md px-2 py-1.5 bg-background" />
+        </div>
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" onClick={() => createMut.mutate()} disabled={createMut.isPending || !newCaption || newPlatforms.length === 0}
+            className="text-xs gap-1 h-8">
+            {createMut.isPending ? 'Creating…' : 'Create Post'}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setShowCreate(false)} className="text-xs h-8">Cancel</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Top toolbar */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        {/* View toggle */}
+        <div className="flex gap-0.5 p-0.5 bg-muted/60 rounded-lg border border-border/40">
+          {([['list', 'List', List], ['week', 'Week', CalendarDays], ['month', 'Month', CalendarRange]] as const).map(([v, label, Icon]) => (
+            <button key={v} onClick={() => { setCalView(v); setSelectedDay(null); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${calView === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              <Icon className="h-3.5 w-3.5" />{label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Calendar navigation (week/month only) */}
+          {calView !== 'list' && (
+            <div className="flex items-center gap-1">
+              <button onClick={() => {
+                  const d = new Date(calDate);
+                  if (calView === 'month') d.setMonth(d.getMonth() - 1);
+                  else d.setDate(d.getDate() - 7);
+                  setCalDate(d); setSelectedDay(null);
+                }} className="p-1.5 rounded hover:bg-muted transition-colors">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm font-medium min-w-[140px] text-center">
+                {calView === 'month' ? monthYear : `${weekDays[0].toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${weekDays[6].toLocaleDateString('en-US',{month:'short',day:'numeric', year:'numeric'})}`}
+              </span>
+              <button onClick={() => {
+                  const d = new Date(calDate);
+                  if (calView === 'month') d.setMonth(d.getMonth() + 1);
+                  else d.setDate(d.getDate() + 7);
+                  setCalDate(d); setSelectedDay(null);
+                }} className="p-1.5 rounded hover:bg-muted transition-colors">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button onClick={() => { setCalDate(new Date()); setSelectedDay(null); }}
+                className="text-xs px-2 py-1 rounded border border-border hover:bg-muted transition-colors">
+                Today
+              </button>
+            </div>
+          )}
+
+          {/* List-only filters */}
+          {calView === 'list' && (
+            <>
+              {projectEntries.length > 1 && (
+                <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}
+                  className="text-xs border border-border rounded-md px-2 py-1.5 bg-background">
+                  <option value="all">All projects</option>
+                  {projectEntries.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              )}
+            </>
+          )}
+
+          <Button size="sm" className="gap-1.5 text-xs h-8" onClick={() => setShowCreate(v => !v)}>
+            <Plus className="h-3.5 w-3.5" /> New Post
+          </Button>
+        </div>
+      </div>
+
+      {/* Create form */}
+      {showCreate && <CreateForm />}
+
+      {/* ── LIST VIEW ── */}
+      {calView === 'list' && (
+        <>
+          <div className="flex gap-1 p-1 bg-muted/50 rounded-lg flex-wrap">
+            {STATUS_TABS.map(s => (
+              <button key={s} onClick={() => setStatusFilter(s)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-all capitalize ${statusFilter === s ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                {s === 'all' ? 'All' : s.replace('_', ' ')}
+                {counts[s] != null && counts[s] > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">{counts[s]}</span>}
+              </button>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p>{statusFilter === 'all' ? 'No posts yet' : `No ${statusFilter.replace('_',' ')} posts`}</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map(post => {
+                const platforms = parsePlatforms(post.platforms);
+                const hashtags: string[] = (() => { try { return post.hashtags ? JSON.parse(post.hashtags) : []; } catch { return []; } })();
+                return (
+                  <Card key={post.id} className="bg-card/80 backdrop-blur-sm border-border/50 hover:border-border transition-colors">
+                    <CardContent className="pt-4 pb-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex gap-1 mt-0.5 shrink-0">
+                          {platforms.map(p => {
+                            const Icon = PLATFORM_ICONS[p] || Globe;
+                            return <div key={p} className={`h-7 w-7 rounded-full flex items-center justify-center ${PLATFORM_BG[p] || 'bg-muted'}`}>
+                              <Icon className={`h-3.5 w-3.5 ${PLATFORM_COLORS[p] || 'text-muted-foreground'}`} />
+                            </div>;
+                          })}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm line-clamp-2">{post.caption || <span className="text-muted-foreground italic">No caption</span>}</p>
+                          {hashtags.length > 0 && <p className="text-xs text-blue-500 mt-1 line-clamp-1">{hashtags.map(h => `#${h}`).join(' ')}</p>}
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[post.status] || ''}`}>{post.status.replace('_',' ')}</span>
+                            {post.scheduled_for && <span className="text-[10px] text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" />{formatDate(post.scheduled_for)}</span>}
+                            {post.published_at && <span className="text-[10px] text-muted-foreground">Published {formatDate(post.published_at)}</span>}
+                            <span className="text-[10px] text-muted-foreground">{post._project}</span>
+                          </div>
+                          {post.status === 'published' && (post.impressions > 0 || post.likes > 0) && (
+                            <div className="flex gap-3 mt-2 text-[11px] text-muted-foreground">
+                              {post.impressions > 0 && <span>👁 {fmtFollowers(post.impressions)}</span>}
+                              {post.reach > 0 && <span>📡 {fmtFollowers(post.reach)}</span>}
+                              {post.likes > 0 && <span>♥ {post.likes}</span>}
+                              {post.comments > 0 && <span>💬 {post.comments}</span>}
+                              {post.engagement_rate > 0 && <span>{(post.engagement_rate * 100).toFixed(1)}% eng</span>}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {post.platform_url && <a href={post.platform_url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded hover:bg-muted"><ExternalLink className="h-3.5 w-3.5 text-muted-foreground" /></a>}
+                          <button onClick={() => { if (confirm('Delete this post?')) deleteMut.mutate(post.id); }} className="p-1.5 rounded hover:bg-destructive/10">
+                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                          </button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── WEEK VIEW ── */}
+      {calView === 'week' && (
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50 overflow-hidden">
+          <div className="grid grid-cols-7 border-b border-border/50">
+            {weekDays.map((day, i) => {
+              const isToday = isSameDay(day, today);
+              const dayPosts = postsByDate[dateKey(day)] || [];
+              return (
+                <div key={i} className={`border-r border-border/40 last:border-r-0 min-h-[520px] flex flex-col ${isToday ? 'bg-primary/5' : ''}`}>
+                  {/* Day header */}
+                  <div className={`px-2 py-2 border-b border-border/40 ${isToday ? 'bg-primary/10' : 'bg-muted/20'}`}>
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase">{DAY_NAMES[day.getDay()]}</p>
+                    <p className={`text-lg font-bold leading-none mt-0.5 ${isToday ? 'text-primary' : ''}`}>{day.getDate()}</p>
+                    {dayPosts.length > 0 && (
+                      <p className="text-[9px] text-muted-foreground mt-1">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}</p>
+                    )}
+                  </div>
+                  {/* Posts */}
+                  <div className="p-1.5 space-y-1 flex-1">
+                    {dayPosts.map(post => {
+                      const platforms = parsePlatforms(post.platforms);
+                      const Icon = PLATFORM_ICONS[platforms[0]] || Globe;
+                      const timeStr = (post.scheduled_for || post.published_at)
+                        ? new Date(post.scheduled_for || post.published_at!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                        : null;
+                      const statusColor =
+                        post.status === 'published' ? 'bg-green-500/10 border-green-300/40 text-green-700 dark:text-green-400' :
+                        post.status === 'scheduled' ? 'bg-purple-500/10 border-purple-300/40 text-purple-700 dark:text-purple-400' :
+                        post.status === 'failed'    ? 'bg-destructive/10 border-destructive/30 text-destructive' :
+                        'bg-muted/60 border-border/40 text-muted-foreground';
+                      return (
+                        <div key={post.id} className={`rounded border p-1.5 cursor-default group relative ${statusColor}`}>
+                          <div className="flex items-center gap-1 mb-0.5">
+                            <Icon className={`h-2.5 w-2.5 shrink-0 ${PLATFORM_COLORS[platforms[0]] || ''}`} />
+                            {timeStr && <span className="text-[9px] font-mono opacity-70">{timeStr}</span>}
+                          </div>
+                          <p className="text-[10px] leading-tight line-clamp-3">{post.caption || '(no caption)'}</p>
+                          {platforms.length > 1 && (
+                            <div className="flex gap-0.5 mt-1">
+                              {platforms.slice(1).map(p => {
+                                const I = PLATFORM_ICONS[p] || Globe;
+                                return <I key={p} className={`h-2 w-2 ${PLATFORM_COLORS[p] || ''} opacity-60`} />;
+                              })}
+                            </div>
+                          )}
+                          <button
+                            onClick={() => { if (confirm('Delete?')) deleteMut.mutate(post.id); }}
+                            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 transition-opacity">
+                            <Trash2 className="h-2.5 w-2.5 text-destructive" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {dayPosts.length === 0 && (
+                      <button
+                        onClick={() => { setNewScheduled(`${dateKey(day)}T09:00`); setNewStatus('scheduled'); setShowCreate(true); }}
+                        className="w-full h-8 rounded border border-dashed border-border/30 text-[10px] text-muted-foreground/40 hover:border-border/60 hover:text-muted-foreground transition-colors flex items-center justify-center gap-1">
+                        <Plus className="h-2.5 w-2.5" /> Add
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Week summary bar */}
+          <div className="px-4 py-2 bg-muted/20 border-t border-border/40 flex items-center gap-4 text-xs text-muted-foreground">
+            <span>{weekDays.reduce((s, d) => s + (postsByDate[dateKey(d)]?.length || 0), 0)} posts this week</span>
+            <span>·</span>
+            <span>{weekDays.reduce((s, d) => s + (postsByDate[dateKey(d)]?.filter(p => p.status === 'scheduled').length || 0), 0)} scheduled</span>
+            <span>·</span>
+            <span>{weekDays.reduce((s, d) => s + (postsByDate[dateKey(d)]?.filter(p => p.status === 'published').length || 0), 0)} published</span>
+          </div>
+        </Card>
+      )}
+
+      {/* ── MONTH VIEW ── */}
+      {calView === 'month' && (
+        <>
+          <Card className="bg-card/80 backdrop-blur-sm border-border/50 overflow-hidden">
+            {/* Day-of-week headers */}
+            <div className="grid grid-cols-7 bg-muted/30 border-b border-border/40">
+              {DAY_NAMES.map(d => (
+                <div key={d} className="py-2 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{d}</div>
+              ))}
+            </div>
+            {/* Calendar grid */}
+            <div className="grid grid-cols-7">
+              {monthGrid.map((cell, idx) => {
+                const key = dateKey(cell.date);
+                const dayPosts = postsByDate[key] || [];
+                const isToday = isSameDay(cell.date, today);
+                const isSelected = selectedDay ? isSameDay(cell.date, selectedDay) : false;
+                const MAX_VISIBLE = 3;
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => setSelectedDay(isSelected ? null : cell.date)}
+                    className={[
+                      'min-h-[100px] p-1.5 border-b border-r border-border/30 cursor-pointer transition-colors',
+                      !cell.inMonth && 'opacity-40',
+                      isToday && 'bg-primary/5',
+                      isSelected && 'ring-2 ring-inset ring-primary/40 bg-primary/5',
+                      'hover:bg-muted/30',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={[
+                        'text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full leading-none',
+                        isToday ? 'bg-primary text-primary-foreground' : '',
+                        !cell.inMonth ? 'text-muted-foreground/50' : '',
+                      ].filter(Boolean).join(' ')}>
+                        {cell.date.getDate()}
+                      </span>
+                      {dayPosts.length > 0 && (
+                        <span className="text-[9px] text-muted-foreground">{dayPosts.length}</span>
+                      )}
+                    </div>
+                    <div className="space-y-0.5">
+                      {dayPosts.slice(0, MAX_VISIBLE).map(post => (
+                        <PostPill key={post.id} post={post} />
+                      ))}
+                      {dayPosts.length > MAX_VISIBLE && (
+                        <div className="text-[9px] text-muted-foreground pl-1">+{dayPosts.length - MAX_VISIBLE} more</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Month legend */}
+            <div className="px-4 py-2 bg-muted/20 border-t border-border/40 flex items-center gap-4 text-[11px]">
+              {[['bg-purple-500/15 border-purple-300/50','scheduled'],['bg-green-500/15 border-green-300/50','published'],['bg-destructive/15 border-destructive/30','failed'],['bg-muted border-border/50','draft']].map(([cls, lbl]) => (
+                <span key={lbl} className="flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded border ${cls}`} />
+                  <span className="text-muted-foreground capitalize">{lbl}</span>
+                </span>
+              ))}
+            </div>
+          </Card>
+
+          {/* Day detail panel */}
+          {selectedDay && <DayDetail day={selectedDay} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Social: Inbox ─────────────────────────────────────────────────────────────
+
+function SocialInboxView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [platformFilter, setPlatformFilter] = useState<string>('all');
+
+  const mentionQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-mentions', e.id],
+      queryFn: () => socialApi.listMentions(e.id, { limit: 50 }),
+      staleTime: 30_000,
+    })),
+  });
+
+  const allMentions = useMemo(() => {
+    const list: (SocialMentionRecord & { _project: string })[] = [];
+    mentionQueries.forEach((q, i) => {
+      q.data?.forEach(m => list.push({ ...m, _project: projectEntries[i].name }));
+    });
+    return list.sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
+  }, [mentionQueries, projectEntries]);
+
+  const platforms = useMemo(() => [...new Set(allMentions.map(m => m.platform))], [allMentions]);
+
+  const filtered = useMemo(() => {
+    return allMentions.filter(m => {
+      if (statusFilter === 'unread' && m.status !== 'unread') return false;
+      if (statusFilter === 'urgent' && m.priority !== 'urgent' && m.priority !== 'high') return false;
+      if (statusFilter === 'replied' && m.status !== 'replied') return false;
+      if (statusFilter === 'archived' && m.status !== 'archived') return false;
+      if (platformFilter !== 'all' && m.platform !== platformFilter) return false;
+      return true;
+    });
+  }, [allMentions, statusFilter, platformFilter]);
+
+  const counts = useMemo(() => ({
+    all: allMentions.length,
+    unread: allMentions.filter(m => m.status === 'unread').length,
+    urgent: allMentions.filter(m => m.priority === 'urgent' || m.priority === 'high').length,
+    replied: allMentions.filter(m => m.status === 'replied').length,
+    archived: allMentions.filter(m => m.status === 'archived').length,
+  }), [allMentions]);
+
+  const queryClient = useQueryClient();
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof socialApi.updateMention>[1] }) =>
+      socialApi.updateMention(id, data),
+    onSuccess: () => {
+      projectEntries.forEach(e => queryClient.invalidateQueries({ queryKey: ['social-mentions', e.id] }));
+    },
+  });
+
+  const INBOX_TABS = [
+    { key: 'all', label: 'All' },
+    { key: 'unread', label: 'Unread' },
+    { key: 'urgent', label: 'Urgent' },
+    { key: 'replied', label: 'Replied' },
+    { key: 'archived', label: 'Archived' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex gap-1 p-1 bg-muted/50 rounded-lg">
+          {INBOX_TABS.map(({ key, label }) => (
+            <button key={key} onClick={() => setStatusFilter(key)}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${statusFilter === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              {label}
+              {(counts as any)[key] > 0 && <span className="ml-1.5 text-[10px] text-muted-foreground">{(counts as any)[key]}</span>}
+            </button>
+          ))}
+        </div>
+        {platforms.length > 1 && (
+          <select value={platformFilter} onChange={e => setPlatformFilter(e.target.value)}
+            className="text-xs border border-border rounded-md px-2 py-1.5 bg-background">
+            <option value="all">All platforms</option>
+            {platforms.map(p => <option key={p} value={p} className="capitalize">{p}</option>)}
+          </select>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Inbox className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>{statusFilter === 'all' ? 'No mentions yet' : `No ${statusFilter} mentions`}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(mention => {
+            const Icon = PLATFORM_ICONS[mention.platform] || Globe;
+            const isUnread = mention.status === 'unread';
+            return (
+              <Card key={mention.id} className={`backdrop-blur-sm border-border/50 transition-colors ${isUnread ? 'bg-accent/10 border-accent/30' : 'bg-card/80'}`}>
+                <CardContent className="pt-3 pb-3">
+                  <div className="flex items-start gap-3">
+                    <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${PLATFORM_BG[mention.platform] || 'bg-muted'}`}>
+                      <Icon className={`h-4 w-4 ${PLATFORM_COLORS[mention.platform] || 'text-muted-foreground'}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">{mention.author_display_name || mention.author_username || 'Unknown'}</span>
+                        {mention.author_is_verified && <span className="text-[10px] text-blue-500">✓ verified</span>}
+                        <Badge variant="outline" className="text-[9px]">{mention.mention_type}</Badge>
+                        <span className={`text-[10px] font-medium ${PRIORITY_COLORS[mention.priority]}`}>{mention.priority !== 'normal' ? mention.priority : ''}</span>
+                        {isUnread && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
+                      </div>
+                      {mention.content && <p className="text-sm text-muted-foreground mt-1 line-clamp-3">{mention.content}</p>}
+                      {mention.reply_content && (
+                        <div className="mt-2 pl-3 border-l-2 border-primary/30">
+                          <p className="text-xs text-muted-foreground">Reply: {mention.reply_content}</p>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {mention.sentiment && mention.sentiment !== 'unknown' && (
+                          <span className={`text-[10px] ${SENTIMENT_COLORS[mention.sentiment]}`}>● {mention.sentiment}</span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground">{formatDate(mention.received_at)}</span>
+                        <Badge variant="outline" className="text-[9px]">{mention._project}</Badge>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_COLORS[mention.status] || 'border-border text-muted-foreground'}`}>{mention.status}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1 shrink-0">
+                      {isUnread && (
+                        <button onClick={() => updateMut.mutate({ id: mention.id, data: { status: 'read' } })}
+                          className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted transition-colors" title="Mark read">
+                          Mark read
+                        </button>
+                      )}
+                      {mention.status !== 'archived' && (
+                        <button onClick={() => updateMut.mutate({ id: mention.id, data: { status: 'archived' } })}
+                          className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted transition-colors">
+                          Archive
+                        </button>
+                      )}
+                      {mention.status !== 'replied' && (
+                        <button onClick={() => updateMut.mutate({ id: mention.id, data: { status: 'flagged', priority: 'high' } })}
+                          className="text-[10px] px-2 py-1 rounded border border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/20 text-amber-600 transition-colors">
+                          Flag
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Social: Analytics ─────────────────────────────────────────────────────────
+
+function SocialAnalyticsView({ projectEntries }: { projectEntries: { id: string; name: string }[] }) {
+  const postQueries = useQueries({
+    queries: projectEntries.map(e => ({
+      queryKey: ['social-posts', e.id],
+      queryFn: () => socialApi.listPostsFiltered({ projectId: e.id, status: 'published', limit: 100 }),
+      staleTime: 120_000,
+    })),
+  });
+
+  const agg = useMemo(() => {
+    const posts: (SocialPostRecord & { _project: string })[] = [];
+    postQueries.forEach((q, i) => {
+      q.data?.forEach(p => posts.push({ ...p, _project: projectEntries[i].name }));
+    });
+
+    const totalImpressionsN = posts.reduce((s, p) => s + (p.impressions || 0), 0);
+    const totalReachN = posts.reduce((s, p) => s + (p.reach || 0), 0);
+    const totalLikes = posts.reduce((s, p) => s + (p.likes || 0), 0);
+    const totalComments = posts.reduce((s, p) => s + (p.comments || 0), 0);
+    const totalShares = posts.reduce((s, p) => s + (p.shares || 0), 0);
+    const totalSaves = posts.reduce((s, p) => s + (p.saves || 0), 0);
+    const avgEngagement = posts.length > 0 ? posts.reduce((s, p) => s + (p.engagement_rate || 0), 0) / posts.length : 0;
+
+    const topPosts = [...posts]
+      .sort((a, b) => (b.impressions || 0) - (a.impressions || 0))
+      .slice(0, 10);
+
+    const byPlatform: Record<string, { posts: number; impressions: number; likes: number; engagement: number }> = {};
+    posts.forEach(p => {
+      const platforms: string[] = (() => { try { return JSON.parse(p.platforms); } catch { return [p.platforms].filter(Boolean); } })();
+      platforms.forEach(pl => {
+        if (!byPlatform[pl]) byPlatform[pl] = { posts: 0, impressions: 0, likes: 0, engagement: 0 };
+        byPlatform[pl].posts++;
+        byPlatform[pl].impressions += p.impressions || 0;
+        byPlatform[pl].likes += p.likes || 0;
+        byPlatform[pl].engagement += p.engagement_rate || 0;
+      });
+    });
+    Object.keys(byPlatform).forEach(pl => {
+      if (byPlatform[pl].posts > 0) byPlatform[pl].engagement /= byPlatform[pl].posts;
+    });
+
+    return { totalImpressionsN, totalReachN, totalLikes, totalComments, totalShares, totalSaves, avgEngagement, topPosts, byPlatform, totalPosts: posts.length };
+  }, [postQueries, projectEntries]);
+
+  const fmt = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : n.toString();
+
+  if (agg.totalPosts === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <BarChart2 className="h-10 w-10 mx-auto mb-3 opacity-40" />
+        <p className="font-medium mb-1">No analytics data yet</p>
+        <p className="text-xs">Publish posts to start tracking engagement metrics</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Impressions', value: fmt(agg.totalImpressionsN), sub: `${agg.totalPosts} posts` },
+          { label: 'Total Reach', value: fmt(agg.totalReachN), sub: 'unique accounts' },
+          { label: 'Total Likes', value: fmt(agg.totalLikes), sub: `+ ${fmt(agg.totalComments)} comments` },
+          { label: 'Avg Engagement', value: `${(agg.avgEngagement * 100).toFixed(2)}%`, sub: `${fmt(agg.totalShares)} shares` },
+        ].map(({ label, value, sub }) => (
+          <Card key={label} className="bg-card/80 backdrop-blur-sm border-border/50">
+            <CardContent className="pt-5">
+              <p className="text-xs text-muted-foreground mb-1">{label}</p>
+              <p className="text-2xl font-bold">{value}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Platform breakdown */}
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <BarChart2 className="h-4 w-4 text-blue-500" />
+              Platform Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {Object.entries(agg.byPlatform).sort((a, b) => b[1].impressions - a[1].impressions).map(([platform, data]) => {
+                const Icon = PLATFORM_ICONS[platform] || Globe;
+                const maxImpressions = Math.max(...Object.values(agg.byPlatform).map(d => d.impressions));
+                const pct = maxImpressions > 0 ? (data.impressions / maxImpressions) * 100 : 0;
+                return (
+                  <div key={platform}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Icon className={`h-3.5 w-3.5 shrink-0 ${PLATFORM_COLORS[platform] || 'text-muted-foreground'}`} />
+                      <span className="text-xs capitalize flex-1">{platform}</span>
+                      <span className="text-xs text-muted-foreground">{data.posts} posts</span>
+                      <span className="text-xs font-medium">{fmt(data.impressions)} imp</span>
+                      <span className="text-xs text-muted-foreground">{(data.engagement * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div className={`h-full rounded-full ${PLATFORM_COLORS[platform]?.replace('text-', 'bg-') || 'bg-primary'}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Top performing posts */}
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-green-500" />
+              Top Posts
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[280px]">
+              <div className="space-y-2 pr-2">
+                {agg.topPosts.map((post, i) => {
+                  const platforms: string[] = (() => { try { return JSON.parse(post.platforms); } catch { return [post.platforms].filter(Boolean); } })();
+                  return (
+                    <div key={post.id} className="flex items-start gap-2 p-2 rounded-lg hover:bg-muted/30 transition-colors">
+                      <span className="text-xs text-muted-foreground font-mono w-4 shrink-0 mt-0.5">{i + 1}</span>
+                      <div className="flex gap-0.5 shrink-0 mt-0.5">
+                        {platforms.slice(0, 2).map(p => {
+                          const Icon = PLATFORM_ICONS[p] || Globe;
+                          return <Icon key={p} className={`h-3 w-3 ${PLATFORM_COLORS[p] || 'text-muted-foreground'}`} />;
+                        })}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs line-clamp-2">{post.caption || '(no caption)'}</p>
+                        <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                          <span>👁 {fmt(post.impressions)}</span>
+                          {post.likes > 0 && <span>♥ {post.likes}</span>}
+                          {post.engagement_rate > 0 && <span>{(post.engagement_rate * 100).toFixed(1)}%</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Social Tab (Router) ───────────────────────────────────────────────────────
+
+function SocialTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const socialView = searchParams.get('sv') || 'overview';
+
+  const views = [
+    { key: 'overview',  label: 'Overview',  icon: LayoutGrid },
+    { key: 'accounts',  label: 'Accounts',  icon: Share2 },
+    { key: 'content',   label: 'Content',   icon: FileText },
+    { key: 'inbox',     label: 'Inbox',     icon: Inbox },
+    { key: 'analytics', label: 'Analytics', icon: BarChart2 },
+  ];
+
+  const setSocialView = (v: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (v === 'overview') params.delete('sv'); else params.set('sv', v);
+    setSearchParams(params, { replace: true });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit flex-wrap">
+        {views.map(({ key, label, icon: Icon }) => (
+          <button key={key} onClick={() => setSocialView(key)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+              socialView === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}>
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {socialView === 'overview'  && <SocialOverviewView projectEntries={projectEntries} orgId={orgId} onSwitchView={setSocialView} />}
+      {socialView === 'accounts'  && <SocialAccountsView projectEntries={projectEntries} orgId={orgId} />}
+      {socialView === 'content'   && <SocialContentView projectEntries={projectEntries} />}
+      {socialView === 'inbox'     && <SocialInboxView projectEntries={projectEntries} />}
+      {socialView === 'analytics' && <SocialAnalyticsView projectEntries={projectEntries} />}
     </div>
   );
 }
@@ -3853,7 +5592,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     params.set('tab', tab);
     if (tab !== 'pipelines') params.delete('pipeline');
     if (tab !== 'projects') params.delete('client');
-    if (tab !== 'knowledge') params.delete('view');
+    if (tab !== 'intelligence') params.delete('view');
     setSearchParams(params, { replace: true });
   };
 
@@ -3958,16 +5697,6 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     bset(k, JSON.stringify(v.split(',').map((s: string) => s.trim()).filter(Boolean)));
 
   // ── Brand research ──────────────────────────────────────────────────────────
-  const seedProjectMutation = useMutation({
-    mutationFn: () => organizationsApi.seedBrandProject(orgId!),
-    onSuccess: (data) => {
-      const projectId = data?.data?.project_id;
-      if (projectId) {
-        window.open(`/projects/${projectId}`, '_blank');
-      }
-    },
-  });
-
   const [brandResearching, setBrandResearching] = useState(false);
   const [intakeUrl, setIntakeUrl] = useState<string | null>(null);
   const [intakeCopied, setIntakeCopied] = useState(false);
@@ -4096,10 +5825,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 ) : org.description ? (
                   <p className="text-sm text-muted-foreground mt-0.5 truncate">{org.description}</p>
                 ) : null}
-                {org.address && (
+                {(org as any).address && (
                   <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
                     <MapPin className="h-3 w-3 shrink-0" />
-                    {org.address}
+                    {(org as any).address}
                   </p>
                 )}
                 {brandProfile && (
@@ -4164,17 +5893,6 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                   }
                 </Button>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => seedProjectMutation.mutate()}
-                  disabled={seedProjectMutation.isPending}
-                  className="text-xs gap-1.5"
-                >
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  {seedProjectMutation.isPending ? 'Seeding...' : 'Seed Brand Project'}
-                </Button>
-
                 {brandProfile ? (
                   <>
                     <Link to={`/organizations/${orgId}/brand-guide`}>
@@ -4233,7 +5951,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 <Share2 className="h-4 w-4 mr-2" />
                 Social
               </TabsTrigger>
-              <TabsTrigger value="knowledge">
+              <TabsTrigger value="intelligence">
                 <Brain className="h-4 w-4 mr-2" />
                 Intelligence
               </TabsTrigger>
@@ -4266,7 +5984,6 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
                 contactCount={contacts.length}
-                onSwitchTab={setTab}
               />
             </TabsContent>
 
@@ -4288,10 +6005,10 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
             </TabsContent>
 
             <TabsContent value="social">
-              <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} />
+              <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} orgId={orgId} />
             </TabsContent>
 
-            <TabsContent value="knowledge">
+            <TabsContent value="intelligence">
               <IntelligenceTab
                 projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
                 orgId={orgId}

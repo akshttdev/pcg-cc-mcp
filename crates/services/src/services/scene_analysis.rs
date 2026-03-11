@@ -580,6 +580,7 @@ impl SceneAnalysisEngine {
         None
     }
 
+    #[allow(dead_code)]
     fn parse_inline_value(line: &str) -> Option<f64> {
         line.split('=')
             .last()

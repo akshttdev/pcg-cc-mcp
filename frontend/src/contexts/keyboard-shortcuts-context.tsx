@@ -53,27 +53,17 @@ export function KeyboardShortcutsProvider({
       const id = `shortcut-${idCounter.current++}`;
       const registeredShortcut: RegisteredShortcut = { ...config, id };
 
-      // Development-only conflict detection using ref to avoid dependency cycle
-      if (import.meta.env.DEV) {
-        const conflictingShortcut = shortcutsRef.current.find((existing) => {
+      // Replace existing shortcut with same key+scope instead of duplicating
+      setShortcuts((prev) => {
+        const filtered = prev.filter((existing) => {
           const sameScope =
             (existing.scope || 'global') === (config.scope || 'global');
           const sameKeys =
             JSON.stringify(existing.keys) === JSON.stringify(config.keys);
-          return sameScope && sameKeys;
+          return !(sameScope && sameKeys);
         });
-
-        if (conflictingShortcut) {
-          console.warn(
-            `Keyboard shortcut conflict detected!`,
-            `\nExisting: ${conflictingShortcut.description} (${conflictingShortcut.keys})`,
-            `\nNew: ${config.description} (${config.keys})`,
-            `\nScope: ${config.scope || 'global'}`
-          );
-        }
-      }
-
-      setShortcuts((prev) => [...prev, registeredShortcut]);
+        return [...filtered, registeredShortcut];
+      });
 
       // Return cleanup function
       return () => {

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle, Archive, Plus, Sparkles } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
-import { projectsApi, tasksApi, attemptsApi, agentsApi, usersApi, resolveApiUrl } from '@/lib/api';
+import { projectsApi, tasksApi, agentsApi, usersApi, resolveApiUrl } from '@/lib/api';
 import type { UserListItem } from '@/lib/api';
 import type { AgentChatRequest } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
@@ -51,10 +51,9 @@ import {
 
 import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { SortMenu } from '@/components/tasks/SortMenu';
-import { TaskDetailsPanel } from '@/components/tasks/TaskDetailsPanel';
 import { EnhancedTaskDetailsPanel } from '@/components/tasks';
 import { ProjectOverview } from '@/components/projects/ProjectOverview';
-import type { TaskWithAttemptStatus, Project, TaskAttempt } from 'shared/types';
+import type { TaskWithAttemptStatus, Project } from 'shared/types';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
 import { useProjectAccess } from '@/hooks/useProjectAccess';
@@ -68,7 +67,7 @@ type Task = TaskWithAttemptStatus;
 
 export function ProjectTasks() {
   const { t } = useTranslation(['tasks', 'common']);
-  const { projectId, taskId, attemptId } = useParams<{
+  const { projectId, taskId } = useParams<{
     projectId: string;
     taskId?: string;
     attemptId?: string;
@@ -104,12 +103,19 @@ export function ProjectTasks() {
   } = useBulkSelectionStore();
   const { getActiveFilters } = useFilterStore();
 
+  // Extract board filter from URL - used for task creation and filtering
+  const boardFilter = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('board') ?? null;
+  }, [location.search]);
+
   // Helper functions to open task forms - memoized to prevent re-renders
   const handleCreateTask = useCallback(() => {
+    console.log('[ProjectTasks] Creating task with boardFilter:', boardFilter, 'URL search:', location.search);
     if (project?.id) {
-      openTaskForm({ projectId: project.id });
+      openTaskForm({ projectId: project.id, initialBoardId: boardFilter });
     }
-  }, [project?.id]);
+  }, [project?.id, boardFilter, location.search]);
 
   const handleEditTask = useCallback((task: Task) => {
     if (project?.id) {
@@ -131,38 +137,6 @@ export function ProjectTasks() {
   // Fullscreen state using custom hook
   const { isFullscreen, navigateToTask, navigateToAttempt, toggleFullscreen } =
     useTaskViewManager();
-
-  // Attempts fetching (only when task is selected)
-  const { data: attempts = [] } = useQuery({
-    queryKey: ['taskAttempts', selectedTask?.id],
-    queryFn: () => attemptsApi.getAll(selectedTask!.id),
-    enabled: !!selectedTask?.id,
-    refetchInterval: 5000,
-  });
-
-  // Selected attempt logic
-  const selectedAttempt = useMemo(() => {
-    if (!attempts.length) return null;
-    if (attemptId) {
-      const found = attempts.find((a) => a.id === attemptId);
-      if (found) return found;
-    }
-    return attempts[0] || null; // Most recent fallback
-  }, [attempts, attemptId]);
-
-  // Navigation callback for attempt selection
-  const setSelectedAttempt = useCallback(
-    (attempt: TaskAttempt | null) => {
-      if (!selectedTask) return;
-
-      if (attempt) {
-        navigateToAttempt(projectId!, selectedTask.id, attempt.id);
-      } else {
-        navigateToTask(projectId!, selectedTask.id);
-      }
-    },
-    [navigateToTask, navigateToAttempt, projectId, selectedTask]
-  );
 
   const { user } = useAuth();
 
@@ -251,7 +225,7 @@ export function ProjectTasks() {
     { scope: Scope.KANBAN }
   );
 
-  // Toggle fullscreen with Cmd+Enter
+  // Toggle fullscreen with 'f' key
   useKeyToggleFullscreen(() => toggleFullscreen(!isFullscreen), {
     scope: Scope.KANBAN,
   });
@@ -266,19 +240,14 @@ export function ProjectTasks() {
   ] as const;
 
   // Memoize filtered tasks based on search query and filters
-  const boardFilter = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return params.get('board') ?? null;
-  }, [location.search]);
-
-  const archivedCount = useMemo(() => tasks.filter((t) => (t as Record<string, unknown>).archived_at).length, [tasks]);
+  const archivedCount = useMemo(() => tasks.filter((t) => t.archived_at).length, [tasks]);
 
   const filteredTasks = useMemo(() => {
     let result = tasks;
 
     // Hide archived tasks unless explicitly requested
     if (!showArchived) {
-      result = result.filter((t) => !(t as Record<string, unknown>).archived_at);
+      result = result.filter((t) => !t.archived_at);
     }
 
     if (boardFilter) {
@@ -475,7 +444,7 @@ export function ProjectTasks() {
   const handleArchiveTask = useCallback(
     async (task: Task) => {
       try {
-        if ((task as Record<string, unknown>).archived_at) {
+        if (task.archived_at) {
           await tasksApi.unarchive(task.id);
         } else {
           await tasksApi.archive(task.id);
@@ -908,8 +877,8 @@ export function ProjectTasks() {
                 tasks={filteredTasks}
                 onTaskClick={(task) => handleViewTaskDetails(task, undefined, true)}
                 onCreateTask={() => {
-                  // Open task creation form with pre-filled date
-                  openTaskForm({ projectId });
+                  // Open task creation form with pre-filled date and current board
+                  openTaskForm({ projectId, initialBoardId: boardFilter });
                 }}
               />
             </div>
@@ -943,8 +912,8 @@ export function ProjectTasks() {
           )}
         </div>
 
-        {/* Right Column - Task Details Panel */}
-        {isPanelOpen && selectedTask && useEnhancedCards ? (
+        {/* Right Column - Task Details Panel (always Enhanced for PCG workflow tasks) */}
+        {isPanelOpen && selectedTask ? (
           <EnhancedTaskDetailsPanel
             task={selectedTask}
             projectId={projectId!}
@@ -955,27 +924,6 @@ export function ProjectTasks() {
             onToggleFullscreen={() => toggleFullscreen(!isFullscreen)}
             isFullscreen={isFullscreen}
             className={isFullscreen ? 'fixed inset-0 z-50' : 'w-[600px] xl:w-[700px] shrink-0'}
-          />
-        ) : isPanelOpen ? (
-          <TaskDetailsPanel
-            task={selectedTask}
-            projectHasDevScript={!!project?.dev_script}
-            projectId={projectId!}
-            onClose={handleClosePanel}
-            onEditTask={handleEditTaskCallback}
-            onDeleteTask={handleDeleteTask}
-            onDuplicateTask={handleDuplicateTaskCallback}
-            onNavigateToTask={(taskId) => {
-              const task = tasksById[taskId];
-              if (task) {
-                handleViewTaskDetails(task, undefined, true);
-              }
-            }}
-            isFullScreen={isFullscreen}
-            selectedAttempt={selectedAttempt}
-            attempts={attempts}
-            setSelectedAttempt={setSelectedAttempt}
-            tasksById={tasksById}
           />
         ) : null}
       </div>

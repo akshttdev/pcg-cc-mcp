@@ -18,7 +18,7 @@ export function CrmClientsPage() {
       projectId={projectId}
       pipelineType="clients"
       title="Clients Pipeline"
-      onSettingsClick={() => navigate(`/projects/${projectId}/crm/settings`)}
+      onSettingsClick={() => navigate(`/projects/${projectId}/crm`)}
     />
   );
 }
