@@ -773,12 +773,21 @@ export interface AssignedTask {
   due_date: string | null;
   project_id: string;
   project_name: string;
+  description?: string | null;
+  assigned_agent?: string | null;
+  assignee_id?: string | null;
+  created_by?: string | null;
+  tags?: string | null;
 }
 
 // Task Management APIs
 export const tasksApi = {
   getAssignedToMe: async (): Promise<AssignedTask[]> => {
     const response = await makeRequest('/api/tasks/assigned-to-me');
+    return handleApiResponse<AssignedTask[]>(response);
+  },
+  getCreatedByMe: async (): Promise<AssignedTask[]> => {
+    const response = await makeRequest('/api/tasks/created-by-me');
     return handleApiResponse<AssignedTask[]>(response);
   },
   getWatchedTasks: async (): Promise<AssignedTask[]> => {
@@ -6594,5 +6603,31 @@ export const tokenUsageApi = {
   getByModel: async (days: number = 7): Promise<TokenUsageByModel[]> => {
     const r = await makeRequest(`/api/token-usage/by-model?days=${days}`);
     return handleApiResponse<TokenUsageByModel[]>(r);
+  },
+};
+
+// ========================================
+// System Settings API
+// ========================================
+
+export interface SystemSetting {
+  key: string;
+  value: string;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export const systemSettingsApi = {
+  getAll: async (): Promise<SystemSetting[]> => {
+    const r = await makeRequest('/api/config/system-settings');
+    return handleApiResponse<SystemSetting[]>(r);
+  },
+  update: async (key: string, value: string): Promise<string> => {
+    const r = await makeRequest(`/api/config/system-settings/${key}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value }),
+    });
+    return handleApiResponse<string>(r);
   },
 };
