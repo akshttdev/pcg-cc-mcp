@@ -11,8 +11,13 @@ const PROFILE_DIR = path.join(os.homedir(), 'nora-zoho-profile');
 const SERVER = `http://127.0.0.1:${process.env.SERVER_PORT || '3000'}`;
 const BOT = path.join(__dirname, 'meet-bot.js');
 
-const ZOHO_USER = process.env.SMTP_USERNAME || 'nora@powerclubglobal.com';
-const ZOHO_PASS = process.env.SMTP_PASSWORD || 'caHZ9rneFix8';
+if (!process.env.SMTP_USERNAME || !process.env.SMTP_PASSWORD) {
+  console.error('Fatal: SMTP_USERNAME and SMTP_PASSWORD env vars are required.');
+  process.exit(1);
+}
+
+const ZOHO_USER = process.env.SMTP_USERNAME;
+const ZOHO_PASS = process.env.SMTP_PASSWORD;
 
 async function findMeetLinkInZoho() {
   // Kill any existing browser on this profile

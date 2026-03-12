@@ -7,11 +7,16 @@ const tls = require('tls');
 const { spawn } = require('child_process');
 const path = require('path');
 
+if (!process.env.SMTP_USERNAME || !process.env.SMTP_PASSWORD) {
+  console.error('Fatal: SMTP_USERNAME and SMTP_PASSWORD env vars are required.');
+  process.exit(1);
+}
+
 const IMAP = {
   host: 'imap.zoho.com',
   port: 993,
-  user: process.env.SMTP_USERNAME || 'nora@powerclubglobal.com',
-  pass: process.env.SMTP_PASSWORD || 'caHZ9rneFix8',
+  user: process.env.SMTP_USERNAME,
+  pass: process.env.SMTP_PASSWORD,
 };
 
 const SERVER  = `http://127.0.0.1:${process.env.SERVER_PORT || '3000'}`;
