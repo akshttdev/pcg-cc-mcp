@@ -1304,7 +1304,7 @@ impl NoraAgent {
                 // Fetch specific project data
                 match executor.find_project_by_name(&project_name).await {
                     Ok(project_id) => {
-                        match executor.get_project_details(project_id).await {
+                        match executor.get_project_details(&project_id).await {
                             Ok(details) => {
                                 sections.push(format!(
                                     "**LIVE DATA FOR {} PROJECT:**",
@@ -1313,7 +1313,7 @@ impl NoraAgent {
                                 sections.push(format!("Repository: {}", details.git_repo_path));
 
                                 // Get project stats
-                                if let Ok(stats) = executor.get_project_stats(project_id).await {
+                                if let Ok(stats) = executor.get_project_stats(&project_id).await {
                                     sections.push(format!(
                                         "Tasks: {} total ({} completed, {} in progress, {} blocked)",
                                         stats.total_tasks, stats.completed_tasks,
@@ -1651,19 +1651,19 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         };
 
         let project = executor.create_project_entry(payload).await?;
-        let boards = executor.ensure_default_boards(project.id).await?;
-        let pods = executor.seed_default_pods(project.id).await?;
-        let default_board = executor.get_default_board_for_tasks(project.id).await?;
+        let boards = executor.ensure_default_boards(&project.id).await?;
+        let pods = executor.seed_default_pods(&project.id).await?;
+        let default_board = executor.get_default_board_for_tasks(&project.id).await?;
         let board_name = default_board
             .as_ref()
             .map(|b| b.name.clone())
             .unwrap_or_else(|| "the intake board".to_string());
-        let board_id = default_board.as_ref().map(|b| b.id);
+        let board_id = default_board.as_ref().map(|b| b.id.clone());
 
         let kickoff_tasks = if let Some(board_id) = board_id {
             executor
                 .create_tasks_batch(
-                    project.id,
+                    project.id.clone(),
                     Self::spinup_task_templates(project_name, board_id),
                 )
                 .await?
@@ -1694,7 +1694,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         context.last_updated = Utc::now();
     }
 
-    async fn resolve_project_for_task(&self, project_hint: Option<&str>) -> Option<(Uuid, String)> {
+    async fn resolve_project_for_task(&self, project_hint: Option<&str>) -> Option<(String, String)> {
         if let Some(executor) = &self.executor {
             if let Some(hint) = project_hint {
                 if let Ok(Some(project)) = executor.find_project_record_by_name(hint).await {
@@ -1709,8 +1709,8 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         };
 
         if let Some(project_ctx) = context_hint {
-            if let Ok(uuid) = Uuid::parse_str(&project_ctx.project_id) {
-                return Some((uuid, project_ctx.name));
+            if !project_ctx.project_id.is_empty() {
+                return Some((project_ctx.project_id, project_ctx.name));
             }
 
             if let Some(executor) = &self.executor {
@@ -1731,7 +1731,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
     ) -> Option<String> {
         let executor = self.executor.as_ref()?;
         let (project_id, project_label) = self.resolve_project_for_task(project_hint).await?;
-        let board = match executor.get_default_board_for_tasks(project_id).await {
+        let board = match executor.get_default_board_for_tasks(&project_id).await {
             Ok(board) => board,
             Err(err) => {
                 tracing::error!("Failed to look up default board: {}", err);
@@ -1749,7 +1749,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
             priority: Some(Self::infer_priority_from_text(utterance)),
             tags: Some(vec!["nora".to_string(), "direct".to_string()]),
             assignee_id: None,
-            board_id: board.as_ref().map(|b| b.id),
+            board_id: board.as_ref().map(|b| b.id.clone()),
             pod_id: None,
         };
 
@@ -1837,7 +1837,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         }
     }
 
-    fn spinup_task_templates(name: &str, board_id: Uuid) -> Vec<TaskDefinition> {
+    fn spinup_task_templates(name: &str, board_id: String) -> Vec<TaskDefinition> {
         vec![
             TaskDefinition {
                 title: format!("Author {} briefing + success criteria", name),
@@ -1845,7 +1845,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                 priority: Some(Priority::High),
                 tags: Some(vec!["nora".to_string(), "spinup".to_string()]),
                 assignee_id: None,
-                board_id: Some(board_id),
+                board_id: Some(board_id.clone()),
                 pod_id: None,
             },
             TaskDefinition {
@@ -1854,7 +1854,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                 priority: Some(Priority::Medium),
                 tags: Some(vec!["nora".to_string(), "infra".to_string()]),
                 assignee_id: None,
-                board_id: Some(board_id),
+                board_id: Some(board_id.clone()),
                 pod_id: None,
             },
             TaskDefinition {
@@ -2092,7 +2092,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
         let executor = self.executor.as_ref()?;
         let project_name = self.extract_project_name(user_text)?;
         let project_id = executor.find_project_by_name(&project_name).await.ok()?;
-        let details = executor.get_project_details(project_id).await.ok()?;
+        let details = executor.get_project_details(&project_id).await.ok()?;
 
         let mut status_counts: HashMap<String, usize> = HashMap::new();
         for task in &details.tasks {
@@ -2418,7 +2418,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                         })
                         .collect();
 
-                    let created_tasks = executor.create_tasks_batch(project_id, task_defs).await?;
+                    let created_tasks = executor.create_tasks_batch(project_id.to_string(), task_defs).await?;
 
                     let task_list = created_tasks
                         .iter()
@@ -2516,7 +2516,7 @@ Provide concise, insight-driven British executive responses. Surface actionable 
                                 action_id: Uuid::new_v4().to_string(),
                                 action_type: PendingActionType::CreateTasks,
                                 project_name: Some(proj_name),
-                                project_id: Some(project_id),
+                                project_id: Uuid::parse_str(&project_id).ok(),
                                 tasks,
                                 created_at: Utc::now(),
                             });

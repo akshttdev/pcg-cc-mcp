@@ -118,19 +118,19 @@ async fn check_triggers(
     let ds_id = Uuid::parse_str(&body.data_source_id)
         .map_err(|e| ApiError::BadRequest(format!("Invalid data_source_id: {e}")))?;
 
-    let ds = DataSource::find_by_id(pool, ds_id)
+    let ds = DataSource::find_by_id(pool, &ds_id.to_string())
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to find data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
 
-    let org_id = ds.organization_id.map(|u| u.to_string());
-    let proj_id = ds.project_id.map(|u| u.to_string());
+    let org_id = ds.organization_id.as_deref();
+    let proj_id = ds.project_id.as_deref();
 
     let triggers = WorkflowTrigger::find_matching_triggers(
         pool,
         &ds.data_type,
-        org_id.as_deref(),
-        proj_id.as_deref(),
+        org_id,
+        proj_id,
     )
     .await
     .map_err(|e| ApiError::InternalError(format!("Failed to check triggers: {e}")))?;

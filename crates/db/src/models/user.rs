@@ -26,19 +26,19 @@ pub struct User {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, TS)]
 #[ts(export)]
 pub struct Organization {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
     pub avatar_url: Option<String>,
-    pub owner_id: Uuid,
+    pub owner_id: String,
     pub settings: serde_json::Value,
     pub is_active: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub invite_token: Option<String>,
     pub pending_owner_email: Option<String>,
-    pub created_by_org_id: Option<Uuid>,
+    pub created_by_org_id: Option<String>,
     pub address: Option<String>,
 }
 
@@ -86,8 +86,8 @@ pub struct OrgMemberUser {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct OrganizationMember {
-    pub id: Uuid,
-    pub organization_id: Uuid,
+    pub id: String,
+    pub organization_id: String,
     pub user_id: Uuid,
     pub role: String,
     pub joined_at: chrono::DateTime<chrono::Utc>,
@@ -135,7 +135,7 @@ pub struct UserProfile {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct UserOrganization {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     pub slug: String,
     pub role: OrganizationRole,
@@ -232,7 +232,7 @@ impl User {
 }
 
 impl Organization {
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
             "SELECT id, name, slug, description, avatar_url, owner_id, settings, is_active, created_at, updated_at, invite_token, pending_owner_email, created_by_org_id, address FROM organizations WHERE id = ?"
         )
@@ -281,8 +281,8 @@ impl Organization {
 
     pub async fn create(
         pool: &SqlitePool,
-        id: Uuid,
-        owner_id: Uuid,
+        id: &str,
+        owner_id: &str,
         data: &CreateOrganization,
     ) -> Result<Self, sqlx::Error> {
         sqlx::query_as::<_, Organization>(
@@ -302,7 +302,7 @@ impl Organization {
 
     pub async fn update(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &str,
         data: &UpdateOrganization,
     ) -> Result<Self, sqlx::Error> {
         let existing = Self::find_by_id(pool, id)
@@ -330,7 +330,7 @@ impl Organization {
         .await
     }
 
-    pub async fn deactivate(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn deactivate(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE organizations SET is_active = 0, updated_at = datetime('now') WHERE id = ?")
             .bind(id)
             .execute(pool)
@@ -338,7 +338,7 @@ impl Organization {
         Ok(())
     }
 
-    pub async fn activate(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn activate(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE organizations SET is_active = 1, updated_at = datetime('now') WHERE id = ?")
             .bind(id)
             .execute(pool)
@@ -348,16 +348,16 @@ impl Organization {
 
     pub async fn add_member(
         pool: &SqlitePool,
-        org_id: Uuid,
+        org_id: &str,
         user_id: Uuid,
         role: &str,
     ) -> Result<OrganizationMember, sqlx::Error> {
-        let id = Uuid::new_v4();
+        let id = Uuid::new_v4().to_string();
         sqlx::query(
             r#"INSERT INTO organization_members (id, organization_id, user_id, role)
                VALUES (?, ?, ?, ?)"#,
         )
-        .bind(id)
+        .bind(&id)
         .bind(org_id)
         .bind(user_id)
         .bind(role)
@@ -374,7 +374,7 @@ impl Organization {
 
     pub async fn remove_member(
         pool: &SqlitePool,
-        org_id: Uuid,
+        org_id: &str,
         user_id: Uuid,
     ) -> Result<u64, sqlx::Error> {
         let result = sqlx::query("DELETE FROM organization_members WHERE organization_id = ? AND user_id = ?")
@@ -387,12 +387,12 @@ impl Organization {
 
     pub async fn get_members(
         pool: &SqlitePool,
-        org_id: Uuid,
+        org_id: &str,
     ) -> Result<Vec<OrganizationMember>, sqlx::Error> {
         #[derive(sqlx::FromRow)]
         struct MemberRow {
-            id: Uuid,
-            organization_id: Uuid,
+            id: String,
+            organization_id: String,
             user_id: Uuid,
             role: String,
             joined_at: chrono::DateTime<chrono::Utc>,
@@ -431,7 +431,7 @@ impl Organization {
 
     pub async fn get_user_role(
         pool: &SqlitePool,
-        org_id: Uuid,
+        org_id: &str,
         user_id: Uuid,
     ) -> Result<Option<String>, sqlx::Error> {
         #[derive(sqlx::FromRow)]

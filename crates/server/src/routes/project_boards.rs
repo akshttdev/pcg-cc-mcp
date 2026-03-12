@@ -37,7 +37,7 @@ async fn list_boards(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<ProjectBoard>>>, ApiError> {
-    let boards = ProjectBoard::list_by_project(&deployment.db().pool, project.id).await?;
+    let boards = ProjectBoard::list_by_project(&deployment.db().pool, &project.id).await?;
     Ok(Json(ApiResponse::success(boards)))
 }
 
@@ -63,7 +63,7 @@ async fn create_board(
     let board = ProjectBoard::create(
         &deployment.db().pool,
         &CreateProjectBoard {
-            project_id: project.id,
+            project_id: project.id.clone(),
             name: payload.name,
             slug,
             board_type: payload.board_type,
@@ -88,7 +88,7 @@ async fn update_board(
             *slug = normalize_slug(slug);
         }
     }
-    let board = ProjectBoard::update(&deployment.db().pool, board_id, &payload)
+    let board = ProjectBoard::update(&deployment.db().pool, &board_id.to_string(), &payload)
         .await?
         .ok_or_else(|| ApiError::NotFound("Board not found".into()))?;
     if board.project_id != project.id {
@@ -104,7 +104,7 @@ async fn delete_board(
     State(deployment): State<DeploymentImpl>,
     Path(board_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let board = ProjectBoard::find_by_id(&deployment.db().pool, board_id)
+    let board = ProjectBoard::find_by_id(&deployment.db().pool, &board_id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Board not found".into()))?;
     if board.project_id != project.id {
@@ -112,6 +112,6 @@ async fn delete_board(
             "Board does not belong to project".into(),
         ));
     }
-    ProjectBoard::delete(&deployment.db().pool, board_id).await?;
+    ProjectBoard::delete(&deployment.db().pool, &board_id.to_string()).await?;
     Ok(Json(ApiResponse::success(())))
 }

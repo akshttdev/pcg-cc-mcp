@@ -842,7 +842,7 @@ pub async fn chat_with_topsi(
                 None, None, None,
             ).await {
                 Ok(tx) => {
-                    let _ = Project::adjust_vibe_spent(&pool, project_id, tx.amount_vibe).await;
+                    let _ = Project::adjust_vibe_spent(&pool, &project_id.to_string(), tx.amount_vibe).await;
                     tracing::info!("[VIBE] Topsi recorded {} VIBE for project {}", tx.amount_vibe, project_id);
                 }
                 Err(e) => tracing::error!("[VIBE] Failed to record Topsi usage: {}", e),

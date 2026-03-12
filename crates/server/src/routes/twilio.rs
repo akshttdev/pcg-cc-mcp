@@ -1219,7 +1219,7 @@ pub async fn handle_speech_input(
                     None,
                     None,
                 ).await {
-                    if let Err(e) = db::models::project::Project::adjust_vibe_spent(&pool, project_id, tx.amount_vibe).await {
+                    if let Err(e) = db::models::project::Project::adjust_vibe_spent(&pool, &project_id.to_string(), tx.amount_vibe).await {
                         tracing::warn!("[VIBE] Failed to adjust project vibe_spent: {e}");
                     }
                     tracing::info!("[VIBE] Phone turn: {} VIBE charged to project={}", tx.amount_vibe, project_id);

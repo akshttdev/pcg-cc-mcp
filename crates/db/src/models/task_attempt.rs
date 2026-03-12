@@ -91,7 +91,7 @@ pub struct CreateTaskAttempt {
 
 impl TaskAttempt {
     pub async fn parent_task(&self, pool: &SqlitePool) -> Result<Option<Task>, sqlx::Error> {
-        Task::find_by_id(pool, self.task_id).await
+        Task::find_by_id(pool, &self.task_id.to_string()).await
     }
 
     /// Fetch all task attempts, optionally filtered by task_id. Newest first.
@@ -188,11 +188,11 @@ impl TaskAttempt {
         .ok_or(TaskAttemptError::TaskNotFound)?;
 
         // Load task and project (we know they exist due to JOIN validation)
-        let task = Task::find_by_id(pool, task_id)
+        let task = Task::find_by_id(pool, &task_id.to_string())
             .await?
             .ok_or(TaskAttemptError::TaskNotFound)?;
 
-        let project = Project::find_by_id(pool, project_id)
+        let project = Project::find_by_id(pool, &project_id.to_string())
             .await?
             .ok_or(TaskAttemptError::ProjectNotFound)?;
 

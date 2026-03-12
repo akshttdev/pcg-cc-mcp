@@ -3419,7 +3419,7 @@ impl ExecutiveTools {
                             });
 
                     match executor
-                        .create_board(project_uuid, name.clone(), description, board_type_enum)
+                        .create_board(&project_uuid.to_string(), name.clone(), description, board_type_enum)
                         .await
                     {
                         Ok(board) => Ok(serde_json::json!({
@@ -3547,7 +3547,7 @@ impl ExecutiveTools {
                     // First find project by name, then get details
                     match executor.find_project_by_name(&project_name).await {
                         Ok(project_id) => {
-                            match executor.get_project_details(project_id).await {
+                            match executor.get_project_details(&project_id).await {
                                 Ok(details) => Ok(serde_json::json!({
                                     "success": true,
                                     "project": {
@@ -3699,7 +3699,7 @@ impl ExecutiveTools {
                     };
 
                     // Delegate and execute
-                    match executor.delegate_and_execute_task(task_uuid, &assignee, executor_type).await {
+                    match executor.delegate_and_execute_task(task_uuid.to_string(), &assignee, executor_type).await {
                         Ok(result) => Ok(serde_json::json!({
                             "success": true,
                             "message": format!("Task delegated to {} and execution started", result.agent_name),
@@ -5780,7 +5780,7 @@ impl ExecutiveTools {
                         }
                     };
 
-                    match executor.add_task_to_board(task_uuid, board_uuid).await {
+                    match executor.add_task_to_board(&task_uuid.to_string(), &board_uuid.to_string()).await {
                         Ok(()) => Ok(serde_json::json!({
                             "success": true,
                             "message": "Task assigned to board successfully",
@@ -6775,7 +6775,7 @@ impl ExecutiveTools {
                 return Ok(id);
             }
             if let Ok(Some(project)) = executor.find_project_record_by_name(hint).await {
-                return Ok(project.id);
+                return Uuid::parse_str(&project.id).map_err(|e| NoraError::ConfigError(format!("Invalid project id: {}", e)));
             }
         }
 
@@ -6806,8 +6806,9 @@ impl ExecutiveTools {
         };
 
         let project_id = self.resolve_project_id(project_hint).await?;
+        let project_id_str = project_id.to_string();
         let board_id = executor
-            .get_default_board_for_tasks(project_id)
+            .get_default_board_for_tasks(&project_id_str)
             .await?
             .map(|board| board.id);
 
@@ -6821,17 +6822,17 @@ impl ExecutiveTools {
             pod_id: None,
         };
 
-        let task = executor.create_task(project_id, definition).await?;
+        let task = executor.create_task(project_id_str, definition).await?;
         executor
-            .update_task_status(task.id, TaskStatus::InProgress)
+            .update_task_status(&task.id, TaskStatus::InProgress)
             .await?;
 
-        Ok(Some(task.id))
+        Ok(Some(Uuid::parse_str(&task.id).unwrap_or(project_id)))
     }
 
     async fn complete_pipeline_task(&self, task_id: Uuid, status: TaskStatus) {
         if let Some(executor) = &self.task_executor {
-            if let Err(err) = executor.update_task_status(task_id, status).await {
+            if let Err(err) = executor.update_task_status(&task_id.to_string(), status).await {
                 tracing::warn!("Failed to update pipeline task {}: {}", task_id, err);
             }
         }

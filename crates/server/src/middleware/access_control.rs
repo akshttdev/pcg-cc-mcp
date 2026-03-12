@@ -437,12 +437,9 @@ impl AccessContext {
             return Ok(Some(ProjectRole::Owner));
         }
 
-        let board_uuid = Uuid::parse_str(board_id)
-            .map_err(|e| ApiError::InternalError(format!("Invalid board UUID: {}", e)))?;
-
         let permission = db::models::board_share::BoardShare::check_user_share_access(
             pool,
-            board_uuid,
+            board_id,
             self.user_id,
         )
         .await

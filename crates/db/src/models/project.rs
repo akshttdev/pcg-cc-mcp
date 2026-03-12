@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
 use ts_rs::TS;
-use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum ProjectError {
@@ -23,7 +22,7 @@ pub enum ProjectError {
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct Project {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     #[sqlx(try_from = "String")]
     pub git_repo_path: PathBuf,
@@ -38,13 +37,13 @@ pub struct Project {
     #[ts(type = "number")]
     pub vibe_spent_amount: i64,
     /// Organization this project belongs to
-    pub organization_id: Option<Uuid>,
+    pub organization_id: Option<String>,
     /// Client this project is for (within the organization)
-    pub client_id: Option<Uuid>,
+    pub client_id: Option<String>,
     /// Folder this project is grouped under (deprecated — use parent_project_id)
-    pub folder_id: Option<Uuid>,
+    pub folder_id: Option<String>,
     /// Parent project for nesting (max 3 levels deep). None = top-level.
-    pub parent_project_id: Option<Uuid>,
+    pub parent_project_id: Option<String>,
     /// Sort order among siblings
     #[ts(type = "number")]
     pub sort_order: i32,
@@ -71,10 +70,10 @@ pub struct CreateProject {
     pub dev_script: Option<String>,
     pub cleanup_script: Option<String>,
     pub copy_files: Option<String>,
-    pub organization_id: Option<Uuid>,
-    pub client_id: Option<Uuid>,
-    pub folder_id: Option<Uuid>,
-    pub parent_project_id: Option<Uuid>,
+    pub organization_id: Option<String>,
+    pub client_id: Option<String>,
+    pub folder_id: Option<String>,
+    pub parent_project_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -156,7 +155,7 @@ impl Project {
         .await
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
                       vibe_budget_limit, COALESCE(vibe_spent_amount, 0) as vibe_spent_amount,
@@ -205,7 +204,7 @@ impl Project {
     pub async fn find_by_git_repo_path_excluding_id(
         pool: &SqlitePool,
         git_repo_path: &str,
-        exclude_id: Uuid,
+        exclude_id: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
@@ -225,18 +224,14 @@ impl Project {
         pool: &SqlitePool,
         name: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
-        let row: Option<(Vec<u8>,)> =
+        let row: Option<(String,)> =
             sqlx::query_as("SELECT id FROM projects WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL LIMIT 1")
                 .bind(name)
                 .fetch_optional(pool)
                 .await?;
 
-        if let Some((bytes,)) = row {
-            if let Ok(uuid) = Uuid::from_slice(&bytes) {
-                Project::find_by_id(pool, uuid).await
-            } else {
-                Ok(None)
-            }
+        if let Some((id,)) = row {
+            Project::find_by_id(pool, &id).await
         } else {
             Ok(None)
         }
@@ -245,7 +240,7 @@ impl Project {
     pub async fn create(
         pool: &SqlitePool,
         data: &CreateProject,
-        project_id: Uuid,
+        project_id: &str,
     ) -> Result<Self, sqlx::Error> {
         sqlx::query_as::<_, Project>(
             r#"INSERT INTO projects (id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files, organization_id, client_id, folder_id, parent_project_id)
@@ -263,10 +258,10 @@ impl Project {
         .bind(&data.dev_script)
         .bind(&data.cleanup_script)
         .bind(&data.copy_files)
-        .bind(data.organization_id)
-        .bind(data.client_id)
-        .bind(data.folder_id)
-        .bind(data.parent_project_id)
+        .bind(data.organization_id.clone())
+        .bind(data.client_id.clone())
+        .bind(data.folder_id.clone())
+        .bind(data.parent_project_id.clone())
         .fetch_one(pool)
         .await
     }
@@ -274,15 +269,15 @@ impl Project {
     #[allow(clippy::too_many_arguments)]
     pub async fn update(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &str,
         name: String,
         git_repo_path: String,
         setup_script: Option<String>,
         dev_script: Option<String>,
         cleanup_script: Option<String>,
         copy_files: Option<String>,
-        organization_id: Option<Uuid>,
-        client_id: Option<Uuid>,
+        organization_id: Option<&str>,
+        client_id: Option<&str>,
     ) -> Result<Self, sqlx::Error> {
         sqlx::query_as::<_, Project>(
             r#"UPDATE projects SET name = ?, git_repo_path = ?, setup_script = ?, dev_script = ?, cleanup_script = ?, copy_files = ?,
@@ -310,14 +305,14 @@ impl Project {
     /// Set VIBE budget limit for a project
     pub async fn set_vibe_budget(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &str,
         vibe_budget_limit: Option<i64>,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
+        sqlx::query(
             r#"UPDATE projects SET vibe_budget_limit = ?, updated_at = datetime('now', 'subsec') WHERE id = ?"#,
-            vibe_budget_limit,
-            project_id
         )
+        .bind(vibe_budget_limit)
+        .bind(project_id)
         .execute(pool)
         .await?;
         Ok(())
@@ -326,14 +321,14 @@ impl Project {
     /// Adjust VIBE spent amount for a project
     pub async fn adjust_vibe_spent(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &str,
         delta: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
+        sqlx::query(
             r#"UPDATE projects SET vibe_spent_amount = COALESCE(vibe_spent_amount, 0) + ?, updated_at = datetime('now', 'subsec') WHERE id = ?"#,
-            delta,
-            project_id
         )
+        .bind(delta)
+        .bind(project_id)
         .execute(pool)
         .await?;
         Ok(())
@@ -353,7 +348,7 @@ impl Project {
     }
 
     /// Soft delete a project by setting deleted_at timestamp
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn delete(pool: &SqlitePool, id: &str) -> Result<u64, sqlx::Error> {
         let result = sqlx::query(
             "UPDATE projects SET deleted_at = datetime('now', 'subsec') WHERE id = ? AND deleted_at IS NULL"
         )
@@ -363,7 +358,7 @@ impl Project {
         Ok(result.rows_affected())
     }
 
-    pub async fn exists(pool: &SqlitePool, id: Uuid) -> Result<bool, sqlx::Error> {
+    pub async fn exists(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error> {
         let result: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM projects WHERE id = ? AND deleted_at IS NULL"
         )
@@ -376,7 +371,7 @@ impl Project {
 
     pub async fn find_by_organization(
         pool: &SqlitePool,
-        organization_id: Uuid,
+        organization_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
@@ -393,7 +388,7 @@ impl Project {
 
     pub async fn find_by_client(
         pool: &SqlitePool,
-        client_id: Uuid,
+        client_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
@@ -411,7 +406,7 @@ impl Project {
     /// Register an Aptos wallet address for on-chain deposits
     pub async fn set_aptos_wallet(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &str,
         aptos_address: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
@@ -427,8 +422,8 @@ impl Project {
     /// Set or clear the folder assignment for a project
     pub async fn set_folder(
         pool: &SqlitePool,
-        project_id: Uuid,
-        folder_id: Option<Uuid>,
+        project_id: &str,
+        folder_id: Option<&str>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE projects SET folder_id = ?, updated_at = datetime('now') WHERE id = ?",
@@ -443,7 +438,7 @@ impl Project {
     /// Find direct children of a project
     pub async fn find_children(
         pool: &SqlitePool,
-        parent_id: Uuid,
+        parent_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Project>(
             r#"SELECT id, name, git_repo_path, setup_script, dev_script, cleanup_script, copy_files,
@@ -461,8 +456,8 @@ impl Project {
     /// Set or clear the parent project (reparenting). Validates max 3-level depth.
     pub async fn set_parent(
         pool: &SqlitePool,
-        project_id: Uuid,
-        parent_project_id: Option<Uuid>,
+        project_id: &str,
+        parent_project_id: Option<&str>,
     ) -> Result<(), ProjectError> {
         if let Some(parent_id) = parent_project_id {
             // Prevent circular reference
@@ -491,7 +486,7 @@ impl Project {
     /// Update the sort order of a project among its siblings
     pub async fn reorder(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &str,
         sort_order: i32,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
@@ -508,31 +503,27 @@ impl Project {
     /// Depth counts: level 1 = top-level, level 2 = child, level 3 = grandchild.
     async fn validate_depth(
         pool: &SqlitePool,
-        project_id: Uuid,
-        proposed_parent_id: Uuid,
+        project_id: &str,
+        proposed_parent_id: &str,
     ) -> Result<bool, ProjectError> {
         // Count ancestors of proposed_parent (including itself) to get parent depth
         let mut ancestor_count = 1; // the proposed parent itself
-        let mut current_id = proposed_parent_id;
+        let mut current_id = proposed_parent_id.to_string();
         loop {
-            let parent: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
+            let parent: Option<(Option<String>,)> = sqlx::query_as(
                 "SELECT parent_project_id FROM projects WHERE id = ?",
             )
-            .bind(current_id)
+            .bind(&current_id)
             .fetch_optional(pool)
             .await?;
 
             match parent {
-                Some((Some(parent_bytes),)) => {
-                    if let Ok(pid) = Uuid::from_slice(&parent_bytes) {
-                        ancestor_count += 1;
-                        if ancestor_count >= 3 {
-                            return Ok(false); // Already at depth 3, can't nest further
-                        }
-                        current_id = pid;
-                    } else {
-                        break;
+                Some((Some(pid),)) => {
+                    ancestor_count += 1;
+                    if ancestor_count >= 3 {
+                        return Ok(false); // Already at depth 3, can't nest further
                     }
+                    current_id = pid;
                 }
                 _ => break,
             }
@@ -548,11 +539,11 @@ impl Project {
     /// Recursively find the maximum descendant depth of a project
     async fn max_descendant_depth(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &str,
     ) -> Result<usize, ProjectError> {
         #[derive(sqlx::FromRow)]
         struct IdRow {
-            id: Vec<u8>,
+            id: String,
         }
 
         let children: Vec<IdRow> = sqlx::query_as(
@@ -568,11 +559,9 @@ impl Project {
 
         let mut max_depth = 0;
         for child in children {
-            if let Ok(child_id) = Uuid::from_slice(&child.id) {
-                let depth = Box::pin(Self::max_descendant_depth(pool, child_id)).await?;
-                if depth + 1 > max_depth {
-                    max_depth = depth + 1;
-                }
+            let depth = Box::pin(Self::max_descendant_depth(pool, &child.id)).await?;
+            if depth + 1 > max_depth {
+                max_depth = depth + 1;
             }
         }
         Ok(max_depth)

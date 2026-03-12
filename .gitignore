@@ -125,8 +125,9 @@ voice_samples/
 .claude/
 .mcp.json
 
-# SQLx offline query cache
-.sqlx/
+# SQLx offline query cache — .sqlx/ MUST be committed for SQLX_OFFLINE=true
+# Only ignore backup copies
+.sqlx.bak/
 
 # Runtime data directory
 data/
@@ -147,5 +148,8 @@ dev_assets_seed/duck.db
 *.sql.bak
 .vercel
 
-# Playwright MCP
+# Playwright MCP & test artifacts
 .playwright-mcp/
+playwright-report/
+test-results/
+blob-report/

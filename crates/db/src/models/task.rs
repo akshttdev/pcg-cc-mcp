@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::{FromRow, SqlitePool, Type, types::Json};
+use sqlx::{FromRow, Row, SqlitePool, Type, types::Json};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -40,14 +40,14 @@ pub enum ApprovalStatus {
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct Task {
-    pub id: Uuid,
-    pub project_id: Uuid, // Foreign key to Project
-    pub pod_id: Option<Uuid>,
-    pub board_id: Option<Uuid>,
+    pub id: String,
+    pub project_id: String, // Foreign key to Project
+    pub pod_id: Option<String>,
+    pub board_id: Option<String>,
     pub title: String,
     pub description: Option<String>,
     pub status: TaskStatus,
-    pub parent_task_attempt: Option<Uuid>, // Foreign key to parent TaskAttempt
+    pub parent_task_attempt: Option<String>, // Foreign key to parent TaskAttempt
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 
@@ -56,12 +56,12 @@ pub struct Task {
     pub assignee_id: Option<String>,
     pub assignee_type: Option<String>,   // Polymorphic: "user", "agent", "team"
     pub assigned_agent: Option<String>,  // Legacy: agent name (e.g., "Nora")
-    pub agent_id: Option<Uuid>,           // New: foreign key to agents table
+    pub agent_id: Option<String>,           // New: foreign key to agents table
     pub assigned_mcps: Option<String>,    // JSON array of strings
     pub created_by: String,
     pub requires_approval: bool,
     pub approval_status: Option<ApprovalStatus>,
-    pub parent_task_id: Option<Uuid>, // For subtasks
+    pub parent_task_id: Option<String>, // For subtasks
     pub tags: Option<String>,         // JSON array of strings
     pub due_date: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -214,6 +214,77 @@ pub struct UpdateTask {
     pub output_format: Option<String>,
 }
 
+/// Intermediate row struct for the complex find_by_project_id_with_attempt_status query
+#[derive(Debug, FromRow)]
+struct TaskWithStatusRow {
+    pub id: String,
+    pub project_id: String,
+    pub pod_id: Option<String>,
+    pub board_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub status: TaskStatus,
+    pub parent_task_attempt: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub priority: Priority,
+    pub assignee_id: Option<String>,
+    pub assignee_type: Option<String>,
+    pub assigned_agent: Option<String>,
+    pub agent_id: Option<String>,
+    pub assigned_mcps: Option<String>,
+    pub created_by: String,
+    pub requires_approval: bool,
+    pub approval_status: Option<ApprovalStatus>,
+    pub parent_task_id: Option<String>,
+    pub tags: Option<String>,
+    pub due_date: Option<DateTime<Utc>>,
+    pub custom_properties: Option<Json<Value>>,
+    pub scheduled_start: Option<DateTime<Utc>>,
+    pub scheduled_end: Option<DateTime<Utc>>,
+    pub collaborators: Option<String>,
+    pub screenshot: Option<String>,
+    pub completion_criteria: Option<String>,
+    pub output_format: Option<String>,
+    pub has_in_progress_attempt: i64,
+    pub last_attempt_failed: i64,
+    pub executor: String,
+    pub vibe_cost: i64,
+    pub vibe_model: Option<String>,
+}
+
+/// SQL fragment for selecting all Task columns (for use in query_as::<_, Task>)
+const TASK_SELECT_SQL: &str = r#"
+    id,
+    project_id,
+    pod_id,
+    board_id,
+    title,
+    description,
+    status,
+    parent_task_attempt,
+    created_at,
+    updated_at,
+    priority,
+    assignee_id,
+    assignee_type,
+    assigned_agent,
+    agent_id,
+    assigned_mcps,
+    created_by,
+    requires_approval,
+    approval_status,
+    parent_task_id,
+    tags,
+    due_date,
+    NULLIF(custom_properties, '') AS custom_properties,
+    scheduled_start,
+    scheduled_end,
+    screenshot,
+    completion_criteria,
+    output_format
+"#;
+
 impl Task {
     pub fn to_prompt(&self) -> String {
         let mut parts = vec![format!("Title: {}", &self.title)];
@@ -234,43 +305,40 @@ impl Task {
     }
 
     pub async fn parent_project(&self, pool: &SqlitePool) -> Result<Option<Project>, sqlx::Error> {
-        Project::find_by_id(pool, self.project_id).await
+        Project::find_by_id(pool, &self.project_id).await
     }
 
     pub async fn find_by_project_id_with_attempt_status(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &str,
     ) -> Result<Vec<TaskWithAttemptStatus>, sqlx::Error> {
-        let records = sqlx::query!(
+        let records = sqlx::query_as::<_, TaskWithStatusRow>(
             r#"SELECT
-  t.id                            AS "id!: Uuid",
-  t.project_id                    AS "project_id!: Uuid",
-  t.pod_id                        AS "pod_id: Uuid",
-  t.board_id                      AS "board_id: Uuid",
+  t.id,
+  t.project_id,
+  t.pod_id,
+  t.board_id,
   t.title,
   t.description,
-  t.status                        AS "status!: TaskStatus",
-  t.parent_task_attempt           AS "parent_task_attempt: Uuid",
-  t.created_at                    AS "created_at!: DateTime<Utc>",
-  t.updated_at                    AS "updated_at!: DateTime<Utc>",
-  t.priority                      AS "priority!: Priority",
-  CASE WHEN t.assignee_id IS NULL THEN NULL ELSE lower(
-    substr(hex(t.assignee_id),1,8)||'-'||substr(hex(t.assignee_id),9,4)||'-'||
-    substr(hex(t.assignee_id),13,4)||'-'||substr(hex(t.assignee_id),17,4)||'-'||
-    substr(hex(t.assignee_id),21,12)) END AS "assignee_id: String",
-  t.assignee_type                 AS "assignee_type: String",
-  t.assigned_agent                AS "assigned_agent: String",
-  t.agent_id                      AS "agent_id: Uuid",
-  t.assigned_mcps                 AS "assigned_mcps: String",
-  t.created_by                    AS "created_by!",
-  t.requires_approval             AS "requires_approval!: bool",
-  t.approval_status               AS "approval_status: ApprovalStatus",
-  t.parent_task_id                AS "parent_task_id: Uuid",
-  t.tags                          AS "tags: String",
-  t.due_date                      AS "due_date: DateTime<Utc>",
-  NULLIF(t.custom_properties, '') AS "custom_properties: Json<Value>",
-  t.scheduled_start               AS "scheduled_start: DateTime<Utc>",
-  t.scheduled_end                 AS "scheduled_end: DateTime<Utc>",
+  t.status,
+  t.parent_task_attempt,
+  t.created_at,
+  t.updated_at,
+  t.priority,
+  t.assignee_id,
+  t.assignee_type,
+  t.assigned_agent,
+  t.agent_id,
+  t.assigned_mcps,
+  t.created_by,
+  t.requires_approval,
+  t.approval_status,
+  t.parent_task_id,
+  t.tags,
+  t.due_date,
+  NULLIF(t.custom_properties, '') AS custom_properties,
+  t.scheduled_start,
+  t.scheduled_end,
 
   CASE WHEN EXISTS (
     SELECT 1
@@ -281,7 +349,7 @@ impl Task {
        AND ep.status        = 'running'
        AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
      LIMIT 1
-  ) THEN 1 ELSE 0 END            AS "has_in_progress_attempt!: i64",
+  ) THEN 1 ELSE 0 END            AS has_in_progress_attempt,
 
   CASE WHEN (
     SELECT ep.status
@@ -293,37 +361,37 @@ impl Task {
      ORDER BY ep.created_at DESC
      LIMIT 1
   ) IN ('failed','killed') THEN 1 ELSE 0 END
-                                 AS "last_attempt_failed!: i64",
+                                 AS last_attempt_failed,
 
-  ( SELECT ta.executor
+  COALESCE(( SELECT ta.executor
       FROM task_attempts ta
       WHERE ta.task_id = t.id
      ORDER BY ta.created_at DESC
       LIMIT 1
-    )                               AS "executor!: String",
+    ), '')                         AS executor,
 
-  t.collaborators                   AS "collaborators: String",
-  t.screenshot                      AS "screenshot: String",
-  t.completion_criteria              AS "completion_criteria: String",
-  t.output_format                    AS "output_format: String",
+  t.collaborators,
+  t.screenshot,
+  t.completion_criteria,
+  t.output_format,
 
   COALESCE(( SELECT SUM(vt.amount_vibe)
       FROM vibe_transactions vt
      WHERE vt.task_id = t.id
-  ), 0)                             AS "vibe_cost!: i64",
+  ), 0)                             AS vibe_cost,
 
   ( SELECT vt.model
       FROM vibe_transactions vt
      WHERE vt.task_id = t.id
      ORDER BY vt.created_at DESC
      LIMIT 1
-  )                                 AS "vibe_model: String"
+  )                                 AS vibe_model
 
 FROM tasks t
 WHERE t.project_id = $1 AND t.deleted_at IS NULL
 ORDER BY t.created_at DESC"#,
-            project_id
         )
+        .bind(project_id)
         .fetch_all(pool)
         .await?;
 
@@ -376,135 +444,48 @@ ORDER BY t.created_at DESC"#,
         Ok(tasks)
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Task,
-            r#"SELECT
-                id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
-                pod_id as "pod_id: Uuid",
-                board_id as "board_id: Uuid",
-                title as "title!",
-                description,
-                status as "status!: TaskStatus",
-                parent_task_attempt as "parent_task_attempt: Uuid",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                priority as "priority!: Priority",
-                assignee_id,
-                assignee_type,
-                assigned_agent,
-                agent_id as "agent_id: Uuid",
-                assigned_mcps,
-                created_by as "created_by!",
-                requires_approval as "requires_approval!: bool",
-                approval_status as "approval_status: ApprovalStatus",
-                parent_task_id as "parent_task_id: Uuid",
-                tags,
-                due_date as "due_date: DateTime<Utc>",
-                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
-                scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot,
-                completion_criteria,
-                output_format
-               FROM tasks
-               WHERE id = $1 AND deleted_at IS NULL"#,
-            id
-        )
-        .fetch_optional(pool)
-        .await
+    pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
+        let sql = format!(
+            "SELECT {} FROM tasks WHERE id = $1 AND deleted_at IS NULL",
+            TASK_SELECT_SQL
+        );
+        sqlx::query_as::<_, Task>(&sql)
+            .bind(id)
+            .fetch_optional(pool)
+            .await
     }
 
     pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Task,
-            r#"SELECT
-                id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
-                pod_id as "pod_id: Uuid",
-                board_id as "board_id: Uuid",
-                title as "title!",
-                description,
-                status as "status!: TaskStatus",
-                parent_task_attempt as "parent_task_attempt: Uuid",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                priority as "priority!: Priority",
-                assignee_id,
-                assignee_type,
-                assigned_agent,
-                agent_id as "agent_id: Uuid",
-                assigned_mcps,
-                created_by as "created_by!",
-                requires_approval as "requires_approval!: bool",
-                approval_status as "approval_status: ApprovalStatus",
-                parent_task_id as "parent_task_id: Uuid",
-                tags,
-                due_date as "due_date: DateTime<Utc>",
-                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
-                scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot,
-                completion_criteria,
-                output_format
-               FROM tasks
-               WHERE rowid = $1 AND deleted_at IS NULL"#,
-            rowid
-        )
-        .fetch_optional(pool)
-        .await
+        let sql = format!(
+            "SELECT {} FROM tasks WHERE rowid = $1 AND deleted_at IS NULL",
+            TASK_SELECT_SQL
+        );
+        sqlx::query_as::<_, Task>(&sql)
+            .bind(rowid)
+            .fetch_optional(pool)
+            .await
     }
 
     pub async fn find_by_id_and_project_id(
         pool: &SqlitePool,
-        id: Uuid,
-        project_id: Uuid,
+        id: &str,
+        project_id: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Task,
-            r#"SELECT
-                id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
-                pod_id as "pod_id: Uuid",
-                board_id as "board_id: Uuid",
-                title as "title!",
-                description,
-                status as "status!: TaskStatus",
-                parent_task_attempt as "parent_task_attempt: Uuid",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                priority as "priority!: Priority",
-                assignee_id,
-                assignee_type,
-                assigned_agent,
-                agent_id as "agent_id: Uuid",
-                assigned_mcps,
-                created_by as "created_by!",
-                requires_approval as "requires_approval!: bool",
-                approval_status as "approval_status: ApprovalStatus",
-                parent_task_id as "parent_task_id: Uuid",
-                tags,
-                due_date as "due_date: DateTime<Utc>",
-                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
-                scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot,
-                completion_criteria,
-                output_format
-               FROM tasks
-               WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL"#,
-            id,
-            project_id
-        )
-        .fetch_optional(pool)
-        .await
+        let sql = format!(
+            "SELECT {} FROM tasks WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL",
+            TASK_SELECT_SQL
+        );
+        sqlx::query_as::<_, Task>(&sql)
+            .bind(id)
+            .bind(project_id)
+            .fetch_optional(pool)
+            .await
     }
 
     pub async fn create(
         pool: &SqlitePool,
         data: &CreateTask,
-        task_id: Uuid,
+        task_id: &str,
     ) -> Result<Self, sqlx::Error> {
         let priority = data.priority.clone().unwrap_or(Priority::Medium);
         let requires_approval = data.requires_approval.unwrap_or(false);
@@ -518,8 +499,15 @@ ORDER BY t.created_at DESC"#,
             else { None }
         });
 
-        sqlx::query_as!(
-            Task,
+        let project_id = data.project_id.to_string();
+        let pod_id = data.pod_id.map(|u| u.to_string());
+        let board_id = data.board_id.map(|u| u.to_string());
+        let parent_task_attempt = data.parent_task_attempt.map(|u| u.to_string());
+        let agent_id = data.agent_id.map(|u| u.to_string());
+        let parent_task_id = data.parent_task_id.map(|u| u.to_string());
+        let status_str = "todo";
+
+        let sql = format!(
             r#"INSERT INTO tasks (
                 id, project_id, pod_id, board_id, title, description, status, parent_task_attempt,
                 priority, assignee_id, assignee_type, assigned_agent, agent_id, assigned_mcps, created_by,
@@ -528,75 +516,50 @@ ORDER BY t.created_at DESC"#,
                 completion_criteria, output_format
                )
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
-               RETURNING
-                id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
-                pod_id as "pod_id: Uuid",
-                board_id as "board_id: Uuid",
-                title as "title!",
-                description,
-                status as "status!: TaskStatus",
-                parent_task_attempt as "parent_task_attempt: Uuid",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                priority as "priority!: Priority",
-                assignee_id,
-                assignee_type,
-                assigned_agent,
-                agent_id as "agent_id: Uuid",
-                assigned_mcps,
-                created_by as "created_by!",
-                requires_approval as "requires_approval!: bool",
-                approval_status as "approval_status: ApprovalStatus",
-                parent_task_id as "parent_task_id: Uuid",
-                tags,
-                due_date as "due_date: DateTime<Utc>",
-                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
-                scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot,
-                completion_criteria,
-                output_format"#,
-            task_id,
-            data.project_id,
-            data.pod_id,
-            data.board_id,
-            data.title,
-            data.description,
-            TaskStatus::Todo as TaskStatus,
-            data.parent_task_attempt,
-            priority,
-            data.assignee_id,
-            assignee_type,
-            data.assigned_agent,
-            data.agent_id,
-            assigned_mcps_json,
-            data.created_by,
-            requires_approval,
-            data.parent_task_id,
-            tags_json,
-            data.due_date,
-            custom_properties,
-            data.scheduled_start,
-            data.scheduled_end,
-            data.screenshot,
-            data.completion_criteria,
-            data.output_format
-        )
-        .fetch_one(pool)
-        .await
+               RETURNING {}"#,
+            TASK_SELECT_SQL
+        );
+
+        sqlx::query_as::<_, Task>(&sql)
+            .bind(task_id)
+            .bind(&project_id)
+            .bind(&pod_id)
+            .bind(&board_id)
+            .bind(&data.title)
+            .bind(&data.description)
+            .bind(status_str)
+            .bind(&parent_task_attempt)
+            .bind(&priority)
+            .bind(&data.assignee_id)
+            .bind(&assignee_type)
+            .bind(&data.assigned_agent)
+            .bind(&agent_id)
+            .bind(&assigned_mcps_json)
+            .bind(&data.created_by)
+            .bind(requires_approval)
+            .bind(&parent_task_id)
+            .bind(&tags_json)
+            .bind(&data.due_date)
+            .bind(&custom_properties)
+            .bind(&data.scheduled_start)
+            .bind(&data.scheduled_end)
+            .bind(&data.screenshot)
+            .bind(&data.completion_criteria)
+            .bind(&data.output_format)
+            .fetch_one(pool)
+            .await
     }
 
     pub async fn update(
         pool: &SqlitePool,
-        id: Uuid,
-        project_id: Uuid,
+        id: &str,
+        project_id: &str,
         title: String,
         description: Option<String>,
         status: TaskStatus,
-        parent_task_attempt: Option<Uuid>,
-        pod_id: Option<Uuid>,
-        board_id: Option<Uuid>,
+        parent_task_attempt: Option<String>,
+        pod_id: Option<String>,
+        board_id: Option<String>,
         priority: Priority,
         assignee_id: Option<String>,
         assignee_type: Option<String>,
@@ -604,7 +567,7 @@ ORDER BY t.created_at DESC"#,
         assigned_mcps: Option<String>,
         requires_approval: bool,
         approval_status: Option<ApprovalStatus>,
-        parent_task_id: Option<Uuid>,
+        parent_task_id: Option<String>,
         tags: Option<String>,
         due_date: Option<DateTime<Utc>>,
         custom_properties: Option<Json<Value>>,
@@ -613,8 +576,7 @@ ORDER BY t.created_at DESC"#,
         completion_criteria: Option<String>,
         output_format: Option<String>,
     ) -> Result<Self, sqlx::Error> {
-        sqlx::query_as!(
-            Task,
+        let sql = format!(
             r#"UPDATE tasks
                SET title = $3, description = $4, status = $5, parent_task_attempt = $6,
                    pod_id = $7,
@@ -630,80 +592,54 @@ ORDER BY t.created_at DESC"#,
                    output_format = $23,
                    updated_at = datetime('now', 'subsec')
                WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL
-               RETURNING
-                id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
-                pod_id as "pod_id: Uuid",
-                board_id as "board_id: Uuid",
-                title as "title!",
-                description,
-                status as "status!: TaskStatus",
-                parent_task_attempt as "parent_task_attempt: Uuid",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                priority as "priority!: Priority",
-                assignee_id,
-                assignee_type,
-                assigned_agent,
-                agent_id as "agent_id: Uuid",
-                assigned_mcps,
-                created_by as "created_by!",
-                requires_approval as "requires_approval!: bool",
-                approval_status as "approval_status: ApprovalStatus",
-                parent_task_id as "parent_task_id: Uuid",
-                tags,
-                due_date as "due_date: DateTime<Utc>",
-                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
-                scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot,
-                completion_criteria,
-                output_format"#,
-            id,
-            project_id,
-            title,
-            description,
-            status,
-            parent_task_attempt,
-            pod_id,
-            board_id,
-            priority,
-            assignee_id,
-            assignee_type,
-            assigned_agent,
-            assigned_mcps,
-            requires_approval,
-            approval_status,
-            parent_task_id,
-            tags,
-            due_date,
-            custom_properties,
-            scheduled_start,
-            scheduled_end,
-            completion_criteria,
-            output_format
-        )
-        .fetch_one(pool)
-        .await
+               RETURNING {}"#,
+            TASK_SELECT_SQL
+        );
+
+        sqlx::query_as::<_, Task>(&sql)
+            .bind(id)
+            .bind(project_id)
+            .bind(&title)
+            .bind(&description)
+            .bind(&status)
+            .bind(&parent_task_attempt)
+            .bind(&pod_id)
+            .bind(&board_id)
+            .bind(&priority)
+            .bind(&assignee_id)
+            .bind(&assignee_type)
+            .bind(&assigned_agent)
+            .bind(&assigned_mcps)
+            .bind(requires_approval)
+            .bind(&approval_status)
+            .bind(&parent_task_id)
+            .bind(&tags)
+            .bind(&due_date)
+            .bind(&custom_properties)
+            .bind(&scheduled_start)
+            .bind(&scheduled_end)
+            .bind(&completion_criteria)
+            .bind(&output_format)
+            .fetch_one(pool)
+            .await
     }
 
     pub async fn update_status(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &str,
         status: TaskStatus,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "UPDATE tasks SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
-            id,
-            status
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE tasks SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1")
+            .bind(id)
+            .bind(&status)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
+    pub async fn delete(pool: &SqlitePool, id: &str) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM tasks WHERE id = $1")
+            .bind(id)
             .execute(pool)
             .await?;
         Ok(result.rows_affected())
@@ -712,22 +648,20 @@ ORDER BY t.created_at DESC"#,
     /// Update collaborators on a task, adding or updating a collaborator entry
     pub async fn update_collaborator(
         pool: &SqlitePool,
-        task_id: Uuid,
+        task_id: &str,
         actor_id: &str,
         actor_type: &str,
         action: &str,
     ) -> Result<(), sqlx::Error> {
         // Get existing collaborators
-        let record = sqlx::query!(
-            r#"SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL"#,
-            task_id
-        )
-        .fetch_optional(pool)
-        .await?;
+        let record = sqlx::query("SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL")
+            .bind(task_id)
+            .fetch_optional(pool)
+            .await?;
 
         let mut collaborators: Vec<TaskCollaborator> = match record {
             Some(rec) => rec
-                .collaborators
+                .get::<Option<String>, _>("collaborators")
                 .as_deref()
                 .and_then(|json| serde_json::from_str(json).ok())
                 .unwrap_or_default(),
@@ -756,75 +690,40 @@ ORDER BY t.created_at DESC"#,
         let collaborators_json = serde_json::to_string(&collaborators)
             .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
 
-        sqlx::query!(
-            "UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
-            task_id,
-            collaborators_json
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1")
+            .bind(task_id)
+            .bind(&collaborators_json)
+            .execute(pool)
+            .await?;
 
         Ok(())
     }
 
     pub async fn exists(
         pool: &SqlitePool,
-        id: Uuid,
-        project_id: Uuid,
+        id: &str,
+        project_id: &str,
     ) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query!(
-            "SELECT id as \"id!: Uuid\" FROM tasks WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL",
-            id,
-            project_id
-        )
-        .fetch_optional(pool)
-        .await?;
+        let result = sqlx::query("SELECT id FROM tasks WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL")
+            .bind(id)
+            .bind(project_id)
+            .fetch_optional(pool)
+            .await?;
         Ok(result.is_some())
     }
 
     pub async fn find_children_by_attempt_id(
         pool: &SqlitePool,
-        attempt_id: Uuid,
+        attempt_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        // Find only child tasks that have this attempt as their parent
-        sqlx::query_as!(
-            Task,
-            r#"SELECT
-                id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
-                pod_id as "pod_id: Uuid",
-                board_id as "board_id: Uuid",
-                title as "title!",
-                description,
-                status as "status!: TaskStatus",
-                parent_task_attempt as "parent_task_attempt: Uuid",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                priority as "priority!: Priority",
-                assignee_id,
-                assignee_type,
-                assigned_agent,
-                agent_id as "agent_id: Uuid",
-                assigned_mcps,
-                created_by as "created_by!",
-                requires_approval as "requires_approval!: bool",
-                approval_status as "approval_status: ApprovalStatus",
-                parent_task_id as "parent_task_id: Uuid",
-                tags,
-                due_date as "due_date: DateTime<Utc>",
-                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
-                scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot,
-                completion_criteria,
-                output_format
-               FROM tasks
-               WHERE parent_task_attempt = $1 AND deleted_at IS NULL
-               ORDER BY created_at DESC"#,
-            attempt_id,
-        )
-        .fetch_all(pool)
-        .await
+        let sql = format!(
+            "SELECT {} FROM tasks WHERE parent_task_attempt = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
+            TASK_SELECT_SQL
+        );
+        sqlx::query_as::<_, Task>(&sql)
+            .bind(attempt_id)
+            .fetch_all(pool)
+            .await
     }
 
     pub async fn find_relationships_for_attempt(
@@ -832,17 +731,22 @@ ORDER BY t.created_at DESC"#,
         task_attempt: &TaskAttempt,
     ) -> Result<TaskRelationships, sqlx::Error> {
         // 1. Get the current task (task that owns this attempt)
-        let current_task = Self::find_by_id(pool, task_attempt.task_id)
+        let current_task = Self::find_by_id(pool, &task_attempt.task_id.to_string())
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 
         // 2. Get parent task (if current task was created by another task's attempt)
-        let parent_task = if let Some(parent_attempt_id) = current_task.parent_task_attempt {
+        let parent_task = if let Some(ref parent_attempt_id) = current_task.parent_task_attempt {
             // Find the attempt that created the current task
-            if let Ok(Some(parent_attempt)) = TaskAttempt::find_by_id(pool, parent_attempt_id).await
-            {
-                // Find the task that owns that parent attempt - THAT's the real parent
-                Self::find_by_id(pool, parent_attempt.task_id).await?
+            // parent_attempt_id is now a String, parse to Uuid for TaskAttempt::find_by_id
+            if let Ok(parent_uuid) = Uuid::parse_str(parent_attempt_id) {
+                if let Ok(Some(parent_attempt)) = TaskAttempt::find_by_id(pool, parent_uuid).await
+                {
+                    // Find the task that owns that parent attempt - THAT's the real parent
+                    Self::find_by_id(pool, &parent_attempt.task_id.to_string()).await?
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -851,7 +755,7 @@ ORDER BY t.created_at DESC"#,
         };
 
         // 3. Get children tasks (created by this attempt)
-        let children = Self::find_children_by_attempt_id(pool, task_attempt.id).await?;
+        let children = Self::find_children_by_attempt_id(pool, &task_attempt.id.to_string()).await?;
 
         Ok(TaskRelationships {
             parent_task,
@@ -863,7 +767,7 @@ ORDER BY t.created_at DESC"#,
     /// Add a user as a watcher on a task
     pub async fn add_watcher(
         pool: &SqlitePool,
-        task_id: Uuid,
+        task_id: &str,
         user_id: &str,
     ) -> Result<(), sqlx::Error> {
         Self::update_collaborator(pool, task_id, user_id, "watcher", "watching").await
@@ -872,19 +776,17 @@ ORDER BY t.created_at DESC"#,
     /// Remove a watcher from a task
     pub async fn remove_watcher(
         pool: &SqlitePool,
-        task_id: Uuid,
+        task_id: &str,
         user_id: &str,
     ) -> Result<(), sqlx::Error> {
-        let record = sqlx::query!(
-            r#"SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL"#,
-            task_id
-        )
-        .fetch_optional(pool)
-        .await?;
+        let record = sqlx::query("SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL")
+            .bind(task_id)
+            .fetch_optional(pool)
+            .await?;
 
         let mut collaborators: Vec<TaskCollaborator> = match record {
             Some(rec) => rec
-                .collaborators
+                .get::<Option<String>, _>("collaborators")
                 .as_deref()
                 .and_then(|json| serde_json::from_str(json).ok())
                 .unwrap_or_default(),
@@ -896,13 +798,11 @@ ORDER BY t.created_at DESC"#,
         let collaborators_json = serde_json::to_string(&collaborators)
             .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
 
-        sqlx::query!(
-            "UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
-            task_id,
-            collaborators_json
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1")
+            .bind(task_id)
+            .bind(&collaborators_json)
+            .execute(pool)
+            .await?;
 
         Ok(())
     }
@@ -914,45 +814,14 @@ ORDER BY t.created_at DESC"#,
     ) -> Result<Vec<Self>, sqlx::Error> {
         // SQLite JSON: search for watcher entries in collaborators array
         let pattern = format!("%\"actor_id\":\"{}\"%\"actor_type\":\"watcher\"%", user_id);
-        sqlx::query_as!(
-            Task,
-            r#"SELECT
-                id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
-                pod_id as "pod_id: Uuid",
-                board_id as "board_id: Uuid",
-                title as "title!",
-                description,
-                status as "status!: TaskStatus",
-                parent_task_attempt as "parent_task_attempt: Uuid",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                priority as "priority!: Priority",
-                assignee_id,
-                assignee_type,
-                assigned_agent,
-                agent_id as "agent_id: Uuid",
-                assigned_mcps,
-                created_by as "created_by!",
-                requires_approval as "requires_approval!: bool",
-                approval_status as "approval_status: ApprovalStatus",
-                parent_task_id as "parent_task_id: Uuid",
-                tags,
-                due_date as "due_date: DateTime<Utc>",
-                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
-                scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot,
-                completion_criteria,
-                output_format
-               FROM tasks
-               WHERE collaborators LIKE $1
-               AND deleted_at IS NULL
-               ORDER BY updated_at DESC"#,
-            pattern,
-        )
-        .fetch_all(pool)
-        .await
+        let sql = format!(
+            "SELECT {} FROM tasks WHERE collaborators LIKE $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
+            TASK_SELECT_SQL
+        );
+        sqlx::query_as::<_, Task>(&sql)
+            .bind(&pattern)
+            .fetch_all(pool)
+            .await
     }
 
     /// Find all tasks assigned to a specific user across all projects
@@ -960,37 +829,8 @@ ORDER BY t.created_at DESC"#,
         pool: &SqlitePool,
         assignee_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Task,
-            r#"SELECT
-                id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
-                pod_id as "pod_id: Uuid",
-                board_id as "board_id: Uuid",
-                title as "title!",
-                description,
-                status as "status!: TaskStatus",
-                parent_task_attempt as "parent_task_attempt: Uuid",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                priority as "priority!: Priority",
-                assignee_id,
-                assignee_type,
-                assigned_agent,
-                agent_id as "agent_id: Uuid",
-                assigned_mcps,
-                created_by as "created_by!",
-                requires_approval as "requires_approval!: bool",
-                approval_status as "approval_status: ApprovalStatus",
-                parent_task_id as "parent_task_id: Uuid",
-                tags,
-                due_date as "due_date: DateTime<Utc>",
-                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
-                scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot,
-                completion_criteria,
-                output_format
+        let sql = format!(
+            r#"SELECT {}
                FROM tasks
                WHERE assignee_id = $1
                AND status != 'completed'
@@ -1005,54 +845,25 @@ ORDER BY t.created_at DESC"#,
                  END,
                  due_date ASC NULLS LAST,
                  created_at DESC"#,
-            assignee_id,
-        )
-        .fetch_all(pool)
-        .await
+            TASK_SELECT_SQL
+        );
+        sqlx::query_as::<_, Task>(&sql)
+            .bind(assignee_id)
+            .fetch_all(pool)
+            .await
     }
 
     pub async fn find_by_creator(
         pool: &SqlitePool,
         created_by: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Task,
-            r#"SELECT
-                id as "id!: Uuid",
-                project_id as "project_id!: Uuid",
-                pod_id as "pod_id: Uuid",
-                board_id as "board_id: Uuid",
-                title as "title!",
-                description,
-                status as "status!: TaskStatus",
-                parent_task_attempt as "parent_task_attempt: Uuid",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                priority as "priority!: Priority",
-                assignee_id,
-                assignee_type,
-                assigned_agent,
-                agent_id as "agent_id: Uuid",
-                assigned_mcps,
-                created_by as "created_by!",
-                requires_approval as "requires_approval!: bool",
-                approval_status as "approval_status: ApprovalStatus",
-                parent_task_id as "parent_task_id: Uuid",
-                tags,
-                due_date as "due_date: DateTime<Utc>",
-                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
-                scheduled_start as "scheduled_start: DateTime<Utc>",
-                scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot,
-                completion_criteria,
-                output_format
-               FROM tasks
-               WHERE created_by = $1
-               AND deleted_at IS NULL
-               ORDER BY updated_at DESC"#,
-            created_by,
-        )
-        .fetch_all(pool)
-        .await
+        let sql = format!(
+            "SELECT {} FROM tasks WHERE created_by = $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
+            TASK_SELECT_SQL
+        );
+        sqlx::query_as::<_, Task>(&sql)
+            .bind(created_by)
+            .fetch_all(pool)
+            .await
     }
 }

@@ -85,6 +85,7 @@ pub async fn submit_feedback(
     ];
 
     let task_id = Uuid::new_v4();
+    let task_id_str = task_id.to_string();
     let create_task = CreateTask {
         project_id: BUGREPORTS_PROJECT_ID,
         pod_id: None,
@@ -112,7 +113,7 @@ pub async fn submit_feedback(
         output_format: None,
     };
 
-    Task::create(pool, &create_task, task_id)
+    Task::create(pool, &create_task, &task_id_str)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create feedback task: {}", e)))?;
 

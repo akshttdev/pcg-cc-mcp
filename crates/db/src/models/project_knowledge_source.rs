@@ -228,7 +228,7 @@ impl ProjectKnowledgeSource {
     /// Returns a map of project_id_hex -> ProjectHealthSummary
     pub async fn get_health_batch(
         pool: &SqlitePool,
-        project_ids: &[Vec<u8>],
+        project_ids: &[String],
     ) -> Result<std::collections::HashMap<String, ProjectHealthSummary>, sqlx::Error> {
         if project_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
@@ -238,7 +238,7 @@ impl ProjectKnowledgeSource {
         let placeholders: Vec<String> = project_ids.iter().map(|_| "?".to_string()).collect();
         let in_clause = placeholders.join(",");
 
-        // Query topology issues counts per project (topology_issues.project_id is TEXT = hex of BLOB)
+        // Query topology issues counts per project
         let issues_query = format!(
             r#"SELECT
                 project_id as pid,
@@ -247,7 +247,7 @@ impl ProjectKnowledgeSource {
                 CAST(SUM(CASE WHEN severity = 'warning' THEN 1 ELSE 0 END) AS INTEGER) as warning_count
             FROM topology_issues
             WHERE resolved_at IS NULL
-                AND project_id IN (SELECT hex(id) FROM projects WHERE id IN ({in_clause}))
+                AND project_id IN ({in_clause})
             GROUP BY project_id"#,
         );
 
@@ -265,12 +265,12 @@ impl ProjectKnowledgeSource {
         }
         let issue_rows = issues_q.fetch_all(pool).await.unwrap_or_default();
 
-        // Build issue map keyed by hex project_id
+        // Build issue map keyed by project_id
         let mut issue_map: std::collections::HashMap<String, (i64, i64, i64)> =
             std::collections::HashMap::new();
         for row in &issue_rows {
             issue_map.insert(
-                row.pid.to_uppercase(),
+                row.pid.clone(),
                 (row.total, row.critical_count, row.warning_count),
             );
         }
@@ -294,7 +294,7 @@ impl ProjectKnowledgeSource {
             std::collections::HashMap::new();
         for row in &kc_rows {
             kc_map.insert(
-                hex::encode(row.project_id.as_bytes()).to_uppercase(),
+                row.project_id.to_string(),
                 row.knowledge_completeness,
             );
         }
@@ -302,7 +302,7 @@ impl ProjectKnowledgeSource {
         // Query last activity timestamps
         let activity_query = format!(
             r#"SELECT
-                hex(t.project_id) as pid,
+                t.project_id as pid,
                 MAX(ta.created_at) as last_at
             FROM task_attempts ta
             JOIN tasks t ON t.id = ta.task_id
@@ -326,19 +326,17 @@ impl ProjectKnowledgeSource {
             std::collections::HashMap::new();
         for row in &act_rows {
             if let Some(ref ts) = row.last_at {
-                act_map.insert(row.pid.to_uppercase(), ts.clone());
+                act_map.insert(row.pid.clone(), ts.clone());
             }
         }
 
         // Combine into ProjectHealthSummary for each project
         let mut result = std::collections::HashMap::new();
-        for pid_bytes in project_ids {
-            let hex_id = hex::encode(pid_bytes).to_uppercase();
-
+        for pid in project_ids {
             let (total_issues, critical, warning) =
-                issue_map.get(&hex_id).copied().unwrap_or((0, 0, 0));
-            let kc = kc_map.get(&hex_id).copied().unwrap_or(0.0);
-            let last_activity = act_map.get(&hex_id).cloned();
+                issue_map.get(pid).copied().unwrap_or((0, 0, 0));
+            let kc = kc_map.get(pid).copied().unwrap_or(0.0);
+            let last_activity = act_map.get(pid).cloned();
 
             let health_status = if critical > 0 {
                 "critical".to_string()
@@ -350,14 +348,10 @@ impl ProjectKnowledgeSource {
                 "healthy".to_string()
             };
 
-            let uuid_str = uuid::Uuid::from_slice(pid_bytes)
-                .map(|u| u.to_string())
-                .unwrap_or_else(|_| hex_id.clone());
-
             result.insert(
-                uuid_str.clone(),
+                pid.clone(),
                 ProjectHealthSummary {
-                    project_id: uuid_str,
+                    project_id: pid.clone(),
                     health_status,
                     active_issues_count: total_issues,
                     critical_issues: critical,

@@ -201,7 +201,7 @@ impl LocalContainerService {
 
     /// Finalize task execution by updating status to InReview and sending notifications
     async fn finalize_task(db: &DBService, config: &Arc<RwLock<Config>>, ctx: &ExecutionContext) {
-        if let Err(e) = Task::update_status(&db.pool, ctx.task.id, TaskStatus::InReview).await {
+        if let Err(e) = Task::update_status(&db.pool, &ctx.task.id, TaskStatus::InReview).await {
             tracing::error!("Failed to update task status to InReview: {e}");
         }
         let notify_cfg = config.read().await.notifications.clone();
@@ -596,7 +596,7 @@ impl LocalContainerService {
                     if let Err(e) = ActivityLog::create(
                         &db.pool,
                         &CreateActivityLog {
-                            task_id: ctx.task.id,
+                            task_id: Uuid::parse_str(&ctx.task.id).unwrap(),
                             actor_id: ctx.task_attempt.executor.clone(),
                             actor_type: ActorType::Agent,
                             action: "execution_completed".to_string(),
@@ -620,7 +620,7 @@ impl LocalContainerService {
                     // Update task collaborators
                     if let Err(e) = Task::update_collaborator(
                         &db.pool,
-                        ctx.task.id,
+                        &ctx.task.id,
                         &ctx.task_attempt.executor,
                         "agent",
                         completion_status,
@@ -1138,7 +1138,7 @@ impl ContainerService for LocalContainerService {
         // Copy task images from cache to worktree
         if let Err(e) = self
             .image_service
-            .copy_images_by_task_to_worktree(&worktree_path, task.id)
+            .copy_images_by_task_to_worktree(&worktree_path, Uuid::parse_str(&task.id).unwrap())
             .await
         {
             tracing::warn!("Failed to copy task images to worktree: {}", e);
@@ -1163,7 +1163,7 @@ impl ContainerService for LocalContainerService {
             .parent_task(&self.db.pool)
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
-        let git_repo_path = match Project::find_by_id(&self.db.pool, task.project_id).await {
+        let git_repo_path = match Project::find_by_id(&self.db.pool, &task.project_id).await {
             Ok(Some(project)) => Some(project.git_repo_path.clone()),
             Ok(None) => None,
             Err(e) => {
@@ -1290,7 +1290,7 @@ impl ContainerService for LocalContainerService {
         // Update task collaborators
         if let Err(e) = Task::update_collaborator(
             &self.db.pool,
-            task_attempt.task_id,
+            &task_attempt.task_id.to_string(),
             &task_attempt.executor,
             "agent",
             "execution_started",
@@ -1357,7 +1357,7 @@ impl ContainerService for LocalContainerService {
                 ExecutionProcessRunReason::DevServer
             )
             && let Err(e) =
-                Task::update_status(&self.db.pool, ctx.task.id, TaskStatus::InReview).await
+                Task::update_status(&self.db.pool, &ctx.task.id, TaskStatus::InReview).await
         {
             tracing::error!("Failed to update task status to InReview: {e}");
         }
@@ -1714,7 +1714,7 @@ impl LocalContainerService {
         let mut prompt = draft.prompt.clone();
         if let Some(image_ids) = &draft.image_ids {
             // Associate to task
-            let _ = TaskImage::associate_many_dedup(&self.db.pool, ctx.task.id, image_ids).await;
+            let _ = TaskImage::associate_many_dedup(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap(), image_ids).await;
 
             // Copy to worktree and canonicalize
             let worktree_path = std::path::PathBuf::from(&container_ref);
@@ -1836,7 +1836,7 @@ impl LocalContainerService {
         let provider = infer_provider(model);
 
         // Try to find and update the pending zero-amount transaction
-        match VibeTransaction::find_by_task_pending(&self.db.pool, ctx.task.id).await {
+        match VibeTransaction::find_by_task_pending(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap()).await {
             Ok(Some(pending_tx)) => {
                 // Use VibePricingService to calculate cost
                 let pricing_service = VibePricingService::new(self.db.pool.clone());
@@ -1883,11 +1883,11 @@ impl LocalContainerService {
                 // We need a source_id; use the task's project_id as a fallback
                 if let Err(e) = pricing_service.record_llm_usage(
                     db::models::vibe_transaction::VibeSourceType::Project,
-                    ctx.task.project_id,
+                    Uuid::parse_str(&ctx.task.project_id).unwrap(),
                     model,
                     input_tokens,
                     output_tokens,
-                    Some(ctx.task.id),
+                    Some(Uuid::parse_str(&ctx.task.id).unwrap()),
                     Some(ctx.task_attempt.id),
                     Some(ctx.execution_process.id),
                 ).await {
@@ -1907,7 +1907,7 @@ impl LocalContainerService {
         let flow = AgentFlow::create(
             &self.db.pool,
             CreateAgentFlow {
-                task_id: ctx.task.id,
+                task_id: Uuid::parse_str(&ctx.task.id).unwrap(),
                 flow_type: FlowType::Custom,
                 planner_agent_id: None,
                 executor_agent_id: None,
@@ -1967,7 +1967,7 @@ impl LocalContainerService {
             Some(id) => id,
             None => {
                 // Fallback: try to find by task_id
-                match AgentFlow::find_by_task(&self.db.pool, ctx.task.id).await {
+                match AgentFlow::find_by_task(&self.db.pool, Uuid::parse_str(&ctx.task.id).unwrap()).await {
                     Ok(flows) => {
                         if let Some(flow) = flows.into_iter().find(|f| {
                             f.status != db::models::agent_flow::FlowStatus::Completed

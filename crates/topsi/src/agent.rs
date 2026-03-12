@@ -763,7 +763,7 @@ impl TopsiAgent {
                     // Get details for accessible projects
                     context_parts.push("\n## Accessible Projects".to_string());
                     for project_id in ids.iter().take(10) {
-                        if let Ok(Some(project)) = Project::find_by_id(pool, *project_id).await {
+                        if let Ok(Some(project)) = Project::find_by_id(pool, &project_id.to_string()).await {
                             context_parts.push(format!(
                                 "- {} (ID: {}): {}",
                                 project.name,
@@ -775,7 +775,7 @@ impl TopsiAgent {
                 }
                 AccessScope::SingleProject(id) => {
                     context_parts.push(format!("Access Level: Single project access"));
-                    if let Ok(Some(project)) = Project::find_by_id(pool, *id).await {
+                    if let Ok(Some(project)) = Project::find_by_id(pool, &id.to_string()).await {
                         context_parts.push(format!(
                             "\n## Current Project: {} (ID: {})",
                             project.name, project.id
@@ -873,14 +873,14 @@ impl TopsiAgent {
                 // User sees only their projects
                 let mut projects = Vec::new();
                 for id in ids {
-                    if let Ok(Some(p)) = Project::find_by_id(pool, *id).await {
+                    if let Ok(Some(p)) = Project::find_by_id(pool, &id.to_string()).await {
                         projects.push(p);
                     }
                 }
                 projects
             }
             AccessScope::SingleProject(id) => {
-                if let Ok(Some(p)) = Project::find_by_id(pool, *id).await {
+                if let Ok(Some(p)) = Project::find_by_id(pool, &id.to_string()).await {
                     vec![p]
                 } else {
                     vec![]
@@ -936,7 +936,7 @@ impl TopsiAgent {
                     AccessScope::Projects(ids) => {
                         let mut ps = Vec::new();
                         for id in ids {
-                            if let Ok(Some(p)) = Project::find_by_id(pool, *id).await {
+                            if let Ok(Some(p)) = Project::find_by_id(pool, &id.to_string()).await {
                                 ps.push(p);
                             }
                         }
@@ -981,7 +981,7 @@ impl TopsiAgent {
                 // Get tasks based on accessible projects
                 let project_ids: Vec<Uuid> = match scope {
                     AccessScope::Admin => {
-                        Project::find_all(pool).await.unwrap_or_default().iter().map(|p| p.id).collect()
+                        Project::find_all(pool).await.unwrap_or_default().iter().filter_map(|p| Uuid::parse_str(&p.id).ok()).collect()
                     }
                     AccessScope::Projects(ids) => ids.iter().copied().collect(),
                     AccessScope::SingleProject(id) => vec![*id],
@@ -1288,13 +1288,13 @@ impl TopsiAgent {
             parent_project_id: None,
         };
 
-        let project = Project::create(pool, &create_project, project_id)
+        let project = Project::create(pool, &create_project, &project_id.to_string())
             .await
             .map_err(|e| TopsiError::ToolError(format!("Failed to create project: {}", e)))?;
 
         // Ensure default board exists so tasks have somewhere to land
         use db::models::project_board::ProjectBoard;
-        if let Err(e) = ProjectBoard::ensure_default_board(pool, project.id).await {
+        if let Err(e) = ProjectBoard::ensure_default_board(pool, &project.id).await {
             tracing::error!("Failed to create default board for project {}: {}", project.id, e);
         }
 
@@ -1482,7 +1482,7 @@ impl TopsiAgent {
                 let mut projects = Vec::new();
                 for pid_str in project_ids {
                     if let Ok(pid) = uuid::Uuid::parse_str(&pid_str) {
-                        if let Ok(Some(p)) = Project::find_by_id(pool, pid).await {
+                        if let Ok(Some(p)) = Project::find_by_id(pool, &pid.to_string()).await {
                             projects.push(p);
                         }
                     }
@@ -1531,7 +1531,7 @@ impl TopsiAgent {
                 };
 
                 let new_project_id = uuid::Uuid::new_v4();
-                match Project::create(pool, &create_project, new_project_id).await {
+                match Project::create(pool, &create_project, &new_project_id.to_string()).await {
                     Ok(project) => {
                         // Add the creator as project owner in project_members
                         // Parse user_id string to UUID for proper 16-byte blob encoding
@@ -1543,7 +1543,7 @@ impl TopsiAgent {
                                VALUES (?, ?, ?, ?, ?)"#
                         )
                         .bind(member_id.as_bytes().to_vec())
-                        .bind(project.id.as_bytes().to_vec())
+                        .bind(&project.id)
                         .bind(auto_user_uuid.as_bytes().to_vec())
                         .bind("owner")
                         .bind(auto_user_uuid.as_bytes().to_vec())
@@ -1557,7 +1557,7 @@ impl TopsiAgent {
 
                         tracing::info!("Auto-created project '{}' (ID: {}) for task '{}' by user {}",
                             project.name, project.id, task_title, user_context.user_id);
-                        project.id
+                        Uuid::parse_str(&project.id).map_err(|e| TopsiError::ToolError(format!("Invalid project ID: {}", e)))?
                     }
                     Err(e) => {
                         return Err(TopsiError::ToolError(
@@ -1567,7 +1567,7 @@ impl TopsiAgent {
                 }
             } else if projects.len() == 1 {
                 // Only one project - use it automatically
-                projects[0].id
+                Uuid::parse_str(&projects[0].id).map_err(|e| TopsiError::ToolError(format!("Invalid project ID: {}", e)))?
             } else {
                 // Multiple projects - return helpful context for Topsi to decide
                 let project_list: Vec<String> = projects.iter()
@@ -1622,10 +1622,10 @@ impl TopsiAgent {
         use db::models::project_board::ProjectBoard;
 
         // Look up the default board so the task appears on a board in the UI
-        let default_board_id = ProjectBoard::ensure_default_board(pool, project_id)
+        let default_board_id = ProjectBoard::ensure_default_board(pool, &project_id.to_string())
             .await
             .ok()
-            .map(|b| b.id);
+            .and_then(|b| Uuid::parse_str(&b.id).ok());
 
         let create_task = CreateTask {
             project_id,
@@ -1655,7 +1655,7 @@ impl TopsiAgent {
         };
 
         let task_id = uuid::Uuid::new_v4();
-        let task = Task::create(pool, &create_task, task_id)
+        let task = Task::create(pool, &create_task, &task_id.to_string())
             .await
             .map_err(|e| TopsiError::ToolError(format!("Failed to create task: {}", e)))?;
 
@@ -1681,7 +1681,7 @@ impl TopsiAgent {
                     task.id, agent_name.unwrap(), executor_name
                 );
 
-                match bridge.start_task_attempt(task.id, executor_name, &base_branch).await {
+                match bridge.start_task_attempt(task_id, executor_name, &base_branch).await {
                     Ok(result) => {
                         tracing::info!("[TOPSI] Auto-execution started for task {}", task.id);
                         Some(result)
@@ -1793,7 +1793,7 @@ impl TopsiAgent {
 
         // Verify the task exists and user has access
         let task: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
-            .bind(task_id)
+            .bind(task_id_str)
             .fetch_optional(pool)
             .await
             .map_err(|e| TopsiError::DatabaseError(e))?;
@@ -1806,14 +1806,15 @@ impl TopsiAgent {
         match scope {
             AccessScope::Admin => {}
             AccessScope::Projects(ids) => {
-                if !ids.contains(&task.project_id) {
+                let project_uuid = Uuid::parse_str(&task.project_id).map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
+                if !ids.contains(&project_uuid) {
                     return Err(TopsiError::ToolError(
                         "You don't have access to this task's project".to_string(),
                     ));
                 }
             }
             AccessScope::SingleProject(id) => {
-                if *id != task.project_id {
+                if id.to_string() != task.project_id {
                     return Err(TopsiError::ToolError(
                         "You don't have access to this task's project".to_string(),
                     ));
@@ -1827,7 +1828,7 @@ impl TopsiAgent {
         }
 
         // Get the project to determine base branch
-        let project = Project::find_by_id(pool, task.project_id)
+        let project = Project::find_by_id(pool, &task.project_id)
             .await
             .map_err(|e| TopsiError::DatabaseError(e))?
             .ok_or_else(|| {
@@ -1900,7 +1901,7 @@ impl TopsiAgent {
 
         // Fetch the task
         let task: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
-            .bind(task_id)
+            .bind(task_id_str)
             .fetch_optional(pool)
             .await
             .map_err(|e| TopsiError::DatabaseError(e))?;
@@ -2007,7 +2008,7 @@ impl TopsiAgent {
 
         // Fetch the task to verify it exists and check access
         let task: Option<Task> = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
-            .bind(task_id)
+            .bind(task_id_str)
             .fetch_optional(pool)
             .await
             .map_err(|e| TopsiError::DatabaseError(e))?;
@@ -2020,14 +2021,15 @@ impl TopsiAgent {
         match scope {
             AccessScope::Admin => {}
             AccessScope::Projects(ids) => {
-                if !ids.contains(&task.project_id) {
+                let project_uuid = Uuid::parse_str(&task.project_id).map_err(|e| TopsiError::ToolError(format!("Invalid project_id: {}", e)))?;
+                if !ids.contains(&project_uuid) {
                     return Err(TopsiError::ToolError(
                         "You don't have access to this task's project".to_string(),
                     ));
                 }
             }
             AccessScope::SingleProject(id) => {
-                if *id != task.project_id {
+                if id.to_string() != task.project_id {
                     return Err(TopsiError::ToolError(
                         "You don't have access to this task's project".to_string(),
                     ));
@@ -2083,7 +2085,7 @@ impl TopsiAgent {
         for val in &values {
             q = q.bind(val);
         }
-        q = q.bind(task_id);
+        q = q.bind(task_id_str);
 
         q.execute(pool)
             .await
@@ -2134,7 +2136,7 @@ impl TopsiAgent {
                         .await
                         .unwrap_or_default()
                         .iter()
-                        .map(|p| p.id)
+                        .filter_map(|p| Uuid::parse_str(&p.id).ok())
                         .collect()
                 }
                 AccessScope::Projects(ids) => ids.iter().copied().collect(),
@@ -2550,7 +2552,7 @@ impl TopsiAgent {
                         .await
                         .unwrap_or_default()
                         .iter()
-                        .map(|p| p.id)
+                        .filter_map(|p| Uuid::parse_str(&p.id).ok())
                         .collect()
                 }
                 AccessScope::Projects(ids) => ids.iter().copied().collect(),
