@@ -781,7 +781,7 @@ export function ProjectTasks() {
                   title={useEnhancedCards ? 'Switch to classic cards' : 'Switch to enhanced cards'}
                 >
                   <Sparkles className="h-4 w-4" />
-                  {useEnhancedCards ? 'Enhanced' : 'Classic'}
+                  {useEnhancedCards ? 'Enhanced Cards' : 'Classic Cards'}
                 </Button>
                 <TagManager projectId={projectId} />
                 <ViewSwitcher />

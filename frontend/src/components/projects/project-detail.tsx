@@ -1227,9 +1227,24 @@ const brandTagline = useMemo(() => {
                       task{totalTasks === 1 ? '' : 's'}
                     </span>
                   </div>
-                  <Button variant="outline" size="sm" onClick={handleBrandProfileDialogOpen}>
-                    Adjust brand profile
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => navigate(`/projects/${projectId}/tasks`)}
+                    >
+                      <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" />
+                      Tasks
+                      {totalTasks > 0 && (
+                        <Badge variant="secondary" className="ml-1.5 h-5 bg-primary-foreground/20 text-primary-foreground">
+                          {totalTasks}
+                        </Badge>
+                      )}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleBrandProfileDialogOpen}>
+                      Adjust brand profile
+                    </Button>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex items-center gap-4">

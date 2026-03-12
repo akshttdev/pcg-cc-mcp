@@ -15,6 +15,8 @@ import {
   TrendingUp,
   Cpu,
   CircleDollarSign,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type {
@@ -136,6 +138,9 @@ export function EnhancedTaskDetailsPanel({
   className,
 }: EnhancedTaskDetailsPanelProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+  const [compactMode, setCompactMode] = useState<boolean>(() => {
+    try { return localStorage.getItem('orcha:task-detail-compact') === 'true'; } catch { return false; }
+  });
   const [artifacts, setArtifacts] = useState<ExecutionArtifact[]>([]);
   const [artifactsLoading, setArtifactsLoading] = useState(false);
   const [artifactsError, setArtifactsError] = useState<string | null>(null);
@@ -606,54 +611,78 @@ export function EnhancedTaskDetailsPanel({
               <LayoutGrid className="h-4 w-4 mr-2" />
               Overview
             </TabsTrigger>
-            <TabsTrigger
-              value="artifacts"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Artifacts
-              {artifactCount > 0 && (
-                <Badge variant="secondary" className="ml-2 h-5">
-                  {artifactCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger
-              value="workflow"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <Zap className="h-4 w-4 mr-2" />
-              Workflow
-            </TabsTrigger>
-            <TabsTrigger
-              value="activity"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <Clock className="h-4 w-4 mr-2" />
-              Logs
-              {eventCount > 0 && (
-                <Badge variant="secondary" className="ml-2 h-5">
-                  {eventCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger
-              value="vibe"
-              className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
-            >
-              <Coins className="h-4 w-4 mr-2" />
-              Vibe
-              {task.vibe_cost && Number(task.vibe_cost) > 0 ? (
-                <Badge variant="secondary" className="ml-2 h-5">
-                  {Number(task.vibe_cost).toLocaleString()}
-                </Badge>
-              ) : null}
-            </TabsTrigger>
+            {!compactMode && (
+              <TabsTrigger
+                value="artifacts"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Artifacts
+                {artifactCount > 0 && (
+                  <Badge variant="secondary" className="ml-2 h-5">
+                    {artifactCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            )}
+            {!compactMode && (
+              <TabsTrigger
+                value="workflow"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                Workflow
+              </TabsTrigger>
+            )}
+            {!compactMode && (
+              <TabsTrigger
+                value="activity"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              >
+                <Clock className="h-4 w-4 mr-2" />
+                Logs
+                {eventCount > 0 && (
+                  <Badge variant="secondary" className="ml-2 h-5">
+                    {eventCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            )}
+            {!compactMode && (
+              <TabsTrigger
+                value="vibe"
+                className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-4"
+              >
+                <Coins className="h-4 w-4 mr-2" />
+                Vibe
+                {task.vibe_cost && Number(task.vibe_cost) > 0 ? (
+                  <Badge variant="secondary" className="ml-2 h-5">
+                    {Number(task.vibe_cost).toLocaleString()}
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
+            )}
           </TabsList>
 
-          <Button variant="ghost" size="icon" onClick={handleRefresh} className="h-8 w-8">
-            <RefreshCw className={cn('h-4 w-4', (artifactsLoading || workflowLoading) && 'animate-spin')} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                const next = !compactMode;
+                setCompactMode(next);
+                localStorage.setItem('orcha:task-detail-compact', String(next));
+                if (next && activeTab !== 'overview') setActiveTab('overview');
+              }}
+              className="h-8 w-8"
+              title={compactMode ? 'Show all tabs' : 'Compact view'}
+            >
+              {compactMode ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleRefresh} className="h-8 w-8">
+              <RefreshCw className={cn('h-4 w-4', (artifactsLoading || workflowLoading) && 'animate-spin')} />
+            </Button>
+          </div>
         </div>
 
         {/* Overview Tab */}
