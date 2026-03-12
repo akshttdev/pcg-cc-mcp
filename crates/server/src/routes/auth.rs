@@ -219,7 +219,7 @@ async fn login(
 
     // Create response with session cookie
     let cookie = format!(
-        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}; Secure",
         session_id,
         30 * 24 * 60 * 60 // 30 days
     );
@@ -317,7 +317,7 @@ async fn logout(
     }
 
     // Clear cookie
-    let cookie = "session_id=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+    let cookie = "session_id=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure";
 
     Ok((
         [(header::SET_COOKIE, HeaderValue::from_str(cookie).unwrap())],
