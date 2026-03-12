@@ -1,10 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Code2, AlertTriangle } from 'lucide-react';
+import { Code2, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 import { systemSettingsApi } from '@/lib/api';
 
 export function DeveloperSettings() {
   const [vibeBypass, setVibeBypass] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [realtimeDisabled, setRealtimeDisabled] = useState(() => {
+    try {
+      return localStorage.getItem('dev_disable_realtime') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     systemSettingsApi.getAll().then((settings) => {
@@ -21,6 +28,16 @@ export function DeveloperSettings() {
       setVibeBypass(newValue);
     } catch (e) {
       console.error('Failed to update VIBE bypass setting:', e);
+    }
+  };
+
+  const toggleRealtime = () => {
+    const newValue = !realtimeDisabled;
+    try {
+      localStorage.setItem('dev_disable_realtime', String(newValue));
+      setRealtimeDisabled(newValue);
+    } catch (e) {
+      console.error('Failed to update realtime setting:', e);
     }
   };
 
@@ -69,6 +86,42 @@ export function DeveloperSettings() {
             <p className="text-xs text-yellow-600 dark:text-yellow-400">
               VIBE balance checks are currently bypassed. All agent operations will proceed
               without verifying token balances. This setting only works in development mode.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg border p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <label className="text-sm font-medium flex items-center gap-1.5">
+              {realtimeDisabled ? <WifiOff className="h-4 w-4 text-muted-foreground" /> : <Wifi className="h-4 w-4 text-green-500" />}
+              Disable Real-time Events
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Disables WebSocket and SSE connections for real-time execution updates. Useful when Nora is not running.
+            </p>
+          </div>
+          <button
+            onClick={toggleRealtime}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              realtimeDisabled ? 'bg-primary' : 'bg-muted'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                realtimeDisabled ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+
+        {realtimeDisabled && (
+          <div className="flex items-start gap-2 rounded-md bg-blue-500/10 border border-blue-500/20 p-3">
+            <WifiOff className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+            <p className="text-xs text-blue-600 dark:text-blue-400">
+              Real-time events are disabled. WebSocket and SSE connections will not be attempted.
+              Reload the page after toggling for changes to take full effect.
             </p>
           </div>
         )}

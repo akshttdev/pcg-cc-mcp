@@ -2,7 +2,9 @@
 
 **Reviewer:** QA / Full-Stack Architecture Review
 **Method:** Firefox MCP (Playwright) browser-only testing
-**Companion docs:** `2026-03-12-improvement-roadmap.md`, `2026-03-12-sprint-implementation-issues.md`
+**Companion docs:** `2026-03-12--plan--three-sprint-roadmap.md`, `2026-03-12--tracker--sprint1-issues.md`
+
+> **Status Update (2026-03-12 sprint):** Several critical gaps addressed — completion_criteria now persists (migration applied), system workflows seeded, template dialog updated with agent dropdown, MCP carousel → grid. See inline notes.
 
 ---
 
@@ -18,10 +20,11 @@
 | 3 | Help text displayed below fields | **PASS** | "Structured success criteria for agents to self-evaluate completion" / "Describes the expected deliverable format for agent output" |
 | 4 | Simple mode toggle visible | **PASS** | Toggle exists at top of dialog header |
 | 5 | Simple mode hides advanced fields | **BLOCKED** | Toggle is outside viewport when dialog scrolls — cannot click via Playwright. Usability gap. |
-| 6 | Completion criteria persists on task save | **FAIL** | Task model (API response) does not include `completion_criteria` or `output_format` fields. These fields exist in the form but the `Task` DB model/struct has no columns for them. Data is lost on save. |
-| 7 | Task detail view shows completion criteria | **FAIL** | Task detail "Overview" tab shows only Description, Recent Artifacts, Agent Terminal, Recent Activity — no completion criteria or output format displayed. |
+| 6 | Completion criteria persists on task save | ~~**FAIL**~~ **RESOLVED** | Migration `20260323000000` adds these columns. Was not applied to dev DB at QA time. Now applied — data persists correctly. |
+| 7 | Task detail view shows completion criteria | ~~**FAIL**~~ **RESOLVED** | `EnhancedTaskDetailsPanel` compact mode now shows Description, Completion Criteria, Output Format prominently in Overview tab. |
 
-**Critical Gap:** The Task form collects completion_criteria/output_format but the Task backend model has no columns for these fields. The TaskTemplate model has them, but Tasks do not. Data entered in the form is silently discarded.
+~~**Critical Gap:** The Task form collects completion_criteria/output_format but the Task backend model has no columns for these fields.~~
+**RESOLVED:** Migration `20260323000000` was already written but not applied to the dev database. After applying all pending migrations and updating seed DBs, both fields persist and display correctly.
 
 ---
 
@@ -35,7 +38,7 @@
 | 5 | Scaffolded tasks have correct titles | **PASS** | Deployment & Release, Core Feature Implementation, Project Setup & Environment Configuration, Code Review & Refactoring, Test Suite Development |
 | 6 | Scaffolded tasks have correct priorities | **PASS** | 3 High, 2 Medium — matching template definitions |
 | 7 | Scaffolded tasks have descriptions | **PASS** | All tasks have meaningful descriptions |
-| 8 | Scaffolded tasks have completion_criteria | **FAIL** | API response for scaffolded tasks has no completion_criteria field — same root cause as 1A.6 |
+| 8 | Scaffolded tasks have completion_criteria | ~~**FAIL**~~ **RESOLVED** | Same root cause as 1A.6 — migration now applied, scaffolded tasks persist completion_criteria |
 
 ---
 
@@ -44,10 +47,11 @@
 |---|------|--------|-------|
 | 1 | MCP Servers settings page loads | **PASS** | `/settings/mcp` renders correctly |
 | 2 | Popular servers carousel visible | **PASS** | Shows 3 servers: Duck Kanban, Context7, Playwright |
-| 3 | ORCHA Task Server visible in carousel | **FAIL** | Not visible. Only 3 servers shown. Both Previous/Next slide buttons are disabled — no additional items in carousel. |
-| 4 | Carousel scrolling works for 4+ items | **N/A** | Only 3 items present |
+| 3 | ORCHA Task Server visible in carousel | ~~**FAIL**~~ **RESOLVED** | Carousel replaced with CSS grid. All servers from `default_mcp.json` `preconfigured` section now visible. |
+| 4 | Carousel scrolling works for 4+ items | **N/A** | Grid layout shows all items without scrolling |
 
-**Gap:** ORCHA Task Server was added to `default_mcp.json` as a platform server but does not appear in the popular servers carousel. The carousel source and `default_mcp.json` may be decoupled — the carousel is likely hardcoded in the frontend component.
+~~**Gap:** ORCHA Task Server was added to `default_mcp.json` as a platform server but does not appear in the popular servers carousel.~~
+**RESOLVED:** Carousel replaced with responsive CSS grid (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-4`). Servers are sourced from `default_mcp.json` `preconfigured` section dynamically.
 
 ---
 
@@ -104,23 +108,25 @@
 #### 2C. Workflow Trigger System
 | # | Test | Result | Notes |
 |---|------|--------|-------|
-| 1 | Schedule trigger UI exists | **FAIL** | No UI for creating or managing workflow schedule triggers. Automations tab only shows hardcoded automations. |
+| 1 | Schedule trigger UI exists | ~~**FAIL**~~ **RESOLVED** | "Triggers" button added to workflow editor toolbar. Opens `WorkflowTriggersPanel` with schedule interval selector. |
 | 2 | Backend schedule loop running | **NOT TESTABLE** | Backend-only feature, cannot verify via browser |
 
-**Gap:** The schedule trigger system is backend-only. There is no frontend UI to create, view, or manage schedule-based workflow triggers. Users cannot configure `every_5m`, `hourly`, `daily`, etc. intervals through the UI.
+~~**Gap:** The schedule trigger system is backend-only.~~
+**RESOLVED:** Triggers button in workflow editor toolbar opens `WorkflowTriggersPanel` with support for `data_source_created`, `data_source_updated`, and `schedule` trigger types with interval selectors.
 
 ---
 
 #### 2D. System Workflows
 | # | Test | Result | Notes |
 |---|------|--------|-------|
-| 1 | Bug Triage Pipeline workflow visible | **FAIL** | Not in workflow definitions list |
-| 2 | Sprint Planning workflow visible | **FAIL** | Not in workflow definitions list |
-| 3 | Client Onboarding workflow visible | **FAIL** | Not in workflow definitions list |
-| 4 | Content Pipeline workflow visible | **FAIL** | Not in workflow definitions list |
-| 5 | API returns system workflows | **FAIL** | `GET /api/workflows/definitions` returns only 1 workflow (default_analysis) |
+| 1 | Bug Triage Pipeline workflow visible | ~~**FAIL**~~ **RESOLVED** | Migrations applied to dev DB, seed DBs updated |
+| 2 | Sprint Planning workflow visible | ~~**FAIL**~~ **RESOLVED** | Same |
+| 3 | Client Onboarding workflow visible | ~~**FAIL**~~ **RESOLVED** | Same |
+| 4 | Content Pipeline workflow visible | ~~**FAIL**~~ **RESOLVED** | Same |
+| 5 | API returns system workflows | ~~**FAIL**~~ **RESOLVED** | All pending migrations applied; 5 workflows now returned |
 
-**Root Cause:** The `seed_defaults()` function seeds workflows on fresh database initialization. The dev database is copied from `dev_assets_seed/` which doesn't include the new system workflows. The seed function needs to be triggered, or the workflows need to be added to the seed database.
+~~**Root Cause:** The `seed_defaults()` function seeds workflows on fresh database initialization.~~
+**RESOLVED:** All pending migrations (through `20260326000000_system_settings`) applied to dev DB and both seed DBs updated.
 
 ---
 
@@ -146,11 +152,12 @@
 |---|------|--------|-------|
 | 1 | Task template table visible in settings | **PASS** | 3 templates shown: Add Unit Tests, Bug Analysis, Code Refactoring |
 | 2 | Template table shows new columns (priority, etc.) | **FAIL** | Table only shows: Template Name, Title, Description, Actions. No priority, completion_criteria, output_format, assigned_agent, or tags columns. |
-| 3 | Template edit dialog has new fields | **FAIL** | Edit dialog only shows: Template Name, Default Title, Default Description. The 6 new fields are not exposed. |
+| 3 | Template edit dialog has new fields | ~~**FAIL**~~ **RESOLVED** | All 8 fields now exposed: Template Name, Title, Description, Priority (Select), Completion Criteria (Textarea), Output Format (Input), Assigned Agent (Select from API), Tags (Input). |
 | 4 | Backend model supports new fields | **PASS** | `TaskTemplate` struct and migration include all 6 new columns |
 | 5 | API accepts new fields | **PASS** | `CreateTaskTemplate`/`UpdateTaskTemplate` types include new fields (passed as null from frontend) |
 
-**Gap:** The backend fully supports the enhanced task template fields but the frontend (`TaskTemplateEditDialog.tsx`) doesn't render form inputs for them. Users cannot set priority, completion_criteria, output_format, assigned_agent, or tags on templates through the UI.
+~~**Gap:** The backend fully supports the enhanced task template fields but the frontend doesn't render form inputs for them.~~
+**RESOLVED:** `TaskTemplateEditDialog.tsx` now renders all 8 fields including agent dropdown populated from `agentsApi.list()`.
 
 ---
 
@@ -222,11 +229,11 @@
 | 3E | Agent Flow Orchestration | **N/A** — Design only |
 
 ### Priority Fixes Needed
-1. **P0**: Add `completion_criteria` and `output_format` columns to the `tasks` table (migration) and update the Task Rust model + TypeScript types. Without this, Sprint 1A is fundamentally incomplete.
-2. **P1**: Trigger `seed_defaults()` or add new system workflows to the seed database so Sprint 2D workflows are available.
-3. **P1**: Debug why `/api/agents/:id/profile` returns HTML — either recompile backend with new route or fix routing conflict.
-4. **P2**: Add UI fields to `TaskTemplateEditDialog` for priority, completion_criteria, output_format, assigned_agent, tags.
-5. **P2**: Add ORCHA Task Server to the MCP popular servers carousel.
-6. **P2**: Build minimal UI for workflow schedule triggers (create/view/delete).
-7. **P3**: Display completion_criteria and output_format in the task detail view.
-8. **P3**: Add "View Profile" link to agent cards in Settings → Agents.
+1. ~~**P0**: Add `completion_criteria` and `output_format` columns to the `tasks` table~~ — **RESOLVED** (migration already existed, now applied)
+2. ~~**P1**: Trigger `seed_defaults()` or add new system workflows to the seed database~~ — **RESOLVED** (migrations applied, seed DBs updated)
+3. **P1**: Debug why `/api/agents/:id/profile` returns HTML — **STILL OPEN** (verified route is registered in backend; likely needs backend recompile or Vite proxy investigation)
+4. ~~**P2**: Add UI fields to `TaskTemplateEditDialog`~~ — **RESOLVED** (all 8 fields exposed, agent dropdown from API)
+5. ~~**P2**: Add ORCHA Task Server to the MCP popular servers carousel~~ — **RESOLVED** (carousel → grid, all servers visible)
+6. ~~**P2**: Build minimal UI for workflow schedule triggers~~ — **RESOLVED** (Triggers button in editor toolbar)
+7. ~~**P3**: Display completion_criteria and output_format in the task detail view~~ — **RESOLVED** (compact mode in EnhancedTaskDetailsPanel)
+8. **P3**: Add "View Profile" link to agent cards in Settings → Agents — **STILL OPEN**

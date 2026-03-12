@@ -207,6 +207,10 @@ pub async fn create_task(
         }
     }
 
+    // Override created_by with the authenticated user's ID
+    let mut payload = payload;
+    payload.created_by = access_context.user_id.to_string();
+
     let task = Task::create(&deployment.db().pool, &payload, id).await?;
 
     if let Some(image_ids) = &payload.image_ids {
@@ -283,6 +287,9 @@ pub async fn create_task_and_start(
     }
 
     let task_id = Uuid::new_v4();
+    // Override created_by with the authenticated user's ID
+    let mut task_payload = task_payload;
+    task_payload.created_by = access_context.user_id.to_string();
     let task = Task::create(&deployment.db().pool, &task_payload, task_id).await?;
 
     if let Some(image_ids) = &task_payload.image_ids {
@@ -957,12 +964,15 @@ pub async fn get_watched_tasks(
 }
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
-    let task_id_router = Router::new()
-        .route("/", get(get_task).put(update_task).delete(delete_task))
-        .route("/approve", post(approve_task))
-        .route("/request-changes", post(request_changes))
-        .route("/reject", post(reject_task))
-        .route("/watch", post(watch_task).delete(unwatch_task))
+    // Task-ID routes with load_task_middleware — defined as explicit routes
+    // instead of .nest() to avoid Axum 0.8 path parameter shadowing static routes
+    // (/{task_id} via nest was matching /created-by-me, /assigned-to-me etc.)
+    let task_id_routes = Router::new()
+        .route("/{task_id}", get(get_task).put(update_task).delete(delete_task))
+        .route("/{task_id}/approve", post(approve_task))
+        .route("/{task_id}/request-changes", post(request_changes))
+        .route("/{task_id}/reject", post(reject_task))
+        .route("/{task_id}/watch", post(watch_task).delete(unwatch_task))
         .layer(from_fn_with_state(deployment.clone(), load_task_middleware));
 
     let inner = Router::new()
@@ -972,7 +982,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/assigned-to-me", get(get_assigned_to_me))
         .route("/created-by-me", get(get_created_by_me))
         .route("/watched", get(get_watched_tasks))
-        .nest("/{task_id}", task_id_router);
+        .merge(task_id_routes);
 
     // mount under /tasks
     Router::new().nest("/tasks", inner)

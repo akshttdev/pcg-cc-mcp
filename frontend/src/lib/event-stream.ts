@@ -1,5 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { resolveApiUrl } from './api';
+import { isRealtimeDisabled } from '@/hooks/useExecutionEvents';
+
+const MAX_FAILURES = 3;
+const INITIAL_BACKOFF_MS = 2000;
+const MAX_BACKOFF_MS = 30000;
 
 export interface AgentFlowEvent {
   id: string;
@@ -61,6 +66,7 @@ export function useEventStream(options: UseEventStreamOptions = {}): UseEventStr
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failureCountRef = useRef(0);
 
   const clearEvents = useCallback(() => {
     setEvents([]);
@@ -81,8 +87,16 @@ export function useEventStream(options: UseEventStreamOptions = {}): UseEventStr
   }, [onDisconnect]);
 
   const connect = useCallback(() => {
+    // Check if real-time is disabled via dev settings
+    if (isRealtimeDisabled()) return;
+
     // Clean up existing connection
     disconnect();
+
+    if (failureCountRef.current >= MAX_FAILURES) {
+      console.warn('[EventStream] Max failures reached, stopping reconnection attempts');
+      return;
+    }
 
     const url = resolveApiUrl(flowId
       ? `/api/events/flows/${flowId}`
@@ -93,6 +107,7 @@ export function useEventStream(options: UseEventStreamOptions = {}): UseEventStr
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
+        failureCountRef.current = 0;
         setIsConnected(true);
         setError(null);
         onConnect?.();
@@ -126,12 +141,19 @@ export function useEventStream(options: UseEventStreamOptions = {}): UseEventStr
 
         eventSource.close();
         eventSourceRef.current = null;
+        failureCountRef.current += 1;
 
-        // Auto-reconnect
-        if (autoReconnect) {
+        // Auto-reconnect with exponential backoff
+        if (autoReconnect && failureCountRef.current < MAX_FAILURES) {
+          const delay = Math.min(
+            INITIAL_BACKOFF_MS * Math.pow(2, failureCountRef.current),
+            MAX_BACKOFF_MS
+          );
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
-          }, reconnectDelay);
+          }, delay);
+        } else if (failureCountRef.current >= MAX_FAILURES) {
+          console.warn('[EventStream] Max failures reached, entering degraded mode');
         }
       };
     } catch (e) {

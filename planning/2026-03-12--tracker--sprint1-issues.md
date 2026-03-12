@@ -1,6 +1,8 @@
 # Sprint Implementation Issues & Notes — 2026-03-12
 
-**Companion docs:** `2026-03-12-improvement-roadmap.md`, `2026-03-12-dashboard-task-agent-usability-review.md`
+**Companion docs:** `2026-03-12--plan--three-sprint-roadmap.md`, `2026-03-12--review--ui-backend-capability-gaps.md`
+
+> **Status Update (2026-03-12 sprint):** Template UI gap (item 6) and agent profile frontend integration (item 7) partially addressed — template dialog now has all fields including agent dropdown. Agent profile endpoint verified registered but frontend consumption still needed.
 
 ---
 
@@ -137,5 +139,5 @@
 3. **http_request node**: No OAuth/auth token management — headers must be static
 4. **send_notification node**: Logs only — no actual email/in-app delivery (placeholder for future integration)
 5. **ACP MCP loading**: Path resolution depends on server working directory
-6. **Task template UI**: Backend supports new fields but the `TaskTemplateEditDialog` doesn't expose them yet (passes null)
-7. **Agent profile endpoint**: Frontend doesn't consume it yet — needs UI integration in Settings → Agents
+6. ~~**Task template UI**: Backend supports new fields but the `TaskTemplateEditDialog` doesn't expose them yet~~ — **RESOLVED**: All 8 fields now in dialog including agent Select from API
+7. **Agent profile endpoint**: Frontend doesn't consume it yet — needs UI integration in Settings → Agents (route verified registered, endpoint works via curl)

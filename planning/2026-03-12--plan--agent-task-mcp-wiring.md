@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-12
 **Branch:** `feature/fraze-2026-03-12`
-**Status:** COMPLETE — Phases 1, 2, and 3F implemented
+**Status:** MOSTLY COMPLETE — Phases 1, 2, 3F, 3G, 3I done. 3H (orchestration engine) not started.
 
 ---
 
@@ -71,8 +71,8 @@ Reviewed the current task management system against ATLAS Task MCP to identify g
 #### G. Wire ACP Agents to MCP
 - **What:** Update `harness.rs` to forward MCP server config to ACP sessions
 - **Why:** Gemini/Qwen agents currently get `mcp_servers: vec![]` — no tools at all
-- **Files:** `crates/executors/src/acp/harness.rs`
-- **Status:** NOT STARTED
+- **Files:** `crates/executors/src/executors/acp/harness.rs`
+- **Status:** DONE — `load_platform_mcp_servers()` reads `default_mcp.json`, converts to `proto::McpServer` format, passes to ACP sessions. Both Stdio and HTTP configs supported.
 
 #### H. Agent Flow Orchestration Engine
 - **What:** Background worker that progresses agent flow phases, enforces gates, handles delegation
@@ -83,8 +83,8 @@ Reviewed the current task management system against ATLAS Task MCP to identify g
 #### I. Autonomy Level Enforcement
 - **What:** Check autonomy settings before allowing task execution/approval
 - **Why:** Routes exist but are never checked — agents bypass all governance
-- **Files:** `crates/server/src/routes/autonomy.rs`, middleware integration
-- **Status:** NOT STARTED
+- **Files:** `crates/server/src/routes/autonomy.rs`
+- **Status:** DONE — Full autonomy API (autonomy mode get/set, checkpoint CRUD, execution checkpoint trigger/review, approval gates, can-proceed validation) implemented in `autonomy.rs`. `can_execution_proceed()` endpoint verifies all gates before task execution.
 
 ---
 
