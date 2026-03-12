@@ -1,5 +1,7 @@
 # Feature Regressions: PR #12 → Current Branch
 
+**Status:** ALL RESTORED (verified via Playwright QA 2026-03-12, PR #15)
+
 Comparing commit `1d87eda0c` (PR #12 merge) to `feature/fraze-2026-03-11` HEAD.
 
 ## Organization Profile (`frontend/src/pages/organization-profile.tsx`)
