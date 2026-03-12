@@ -6,6 +6,22 @@
 //!
 //! Also wires caller memory: CRM lookup, CallLog creation, AgentConversation
 //! persistence, new-caller onboarding, and VIBE-sponsored first calls.
+//!
+//! # Single-Instance Constraint
+//!
+//! This module uses three process-local `Lazy<Arc<Mutex<HashMap>>>` statics for
+//! in-flight state: `CALL_DB_CONTEXTS`, `ACTIVE_CALL_PHONES`, and `SMS_THREAD_BUFFER`.
+//! These are **not shared across processes**. Running multiple server instances
+//! (e.g. Fly.io scale-out) will cause:
+//!
+//! - SMS thread buffering to split across instances (messages from the same sender
+//!   may land on different nodes, breaking the 8-second debounce window)
+//! - Active call phone lookups to miss cross-instance calls
+//! - Call DB context to be unavailable after a mid-call failover
+//!
+//! **Before scaling to multi-instance**, migrate these maps to a shared store
+//! (Redis, NATS KV, or SQLite WAL with short TTLs). See the deferred item in
+//! `planning/branch-merge-analysis.md` for details.
 
 use std::collections::HashMap;
 use std::sync::Arc;

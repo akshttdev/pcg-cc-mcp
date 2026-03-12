@@ -276,9 +276,9 @@ cd frontend && pnpm tsc --noEmit
 
 2. **~~Migration ordering~~**: RESOLVED — all shared migrations are identical; sloperation-only migrations have no fraze counterpart. 5 duplicate migration pairs (20260314-15 vs 20260318-19) are safe — later ones are no-ops (`IF NOT EXISTS` or commented-out ALTERs), and all are tracked in `_sqlx_migrations`.
 
-3. **`intake.rs` size**: DEFERRED — At 2,102 lines, consider splitting into sub-modules in a follow-up PR.
+3. **~~`intake.rs` size~~**: RESOLVED — Split 2,102-line monolith into 4 sub-modules: `intake/mod.rs` (types, router, org routing), `intake/handlers.rs` (HTTP handlers), `intake/pipeline.rs` (pipeline orchestration, CRM association, knowledge graph), `intake/report.rs` (company research, report generation).
 
-4. **SMS thread buffer**: DEFERRED — Uses global `Mutex<HashMap>` — single-instance only. Document or add Redis coordination when multi-instance deploy is planned.
+4. **~~SMS thread buffer~~**: RESOLVED — Added `# Single-Instance Constraint` doc section to `twilio.rs` header documenting the 3 `Lazy<Arc<Mutex<HashMap>>>` statics, their failure modes under multi-instance, and the migration path (Redis/NATS KV).
 
 5. **~~`RoleRoute` guards~~**: RESOLVED — 14 routes properly guarded with correct `minRole` levels.
 

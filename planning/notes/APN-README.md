@@ -150,6 +150,15 @@ APN enables peer-to-peer communication across devices (desktops, servers, IoT), 
 
 - **Mining**: `CpuMiner::start()` is a no-op. No Stratum protocol, no pool connection, no hashing.
 
+### Next Steps & Priority (as of 2026-03-12)
+
+| Item | Priority | Phase | Location | Notes |
+|------|----------|-------|----------|-------|
+| Bandwidth estimation | **Medium** | 1 | `crates/alpha-protocol-core/src/resources.rs` | Implement `estimate_bandwidth()` using a short iperf-style loopback or NATS round-trip measurement. Needed for accurate resource scoring in economics model. |
+| Real Aptos transfers | **Low** | 5 | `crates/alpha-protocol-core/src/reward_distributor.rs` | Replace `simulate_aptos_transfer()` with real Aptos SDK signing. Blocked on mainnet readiness and token contract deployment. Keep testnet stubs for now. |
+| Mining pool integration | **Low** | 5 | `crates/alpha-protocol-core/src/mining.rs` | Implement Stratum protocol client, pool connection, and hash submission in `CpuMiner::start()`. Not needed until compute marketplace is live. |
+| Wire protocol binary encoding | **Low** | 2 | `crates/alpha-protocol-core/src/wire.rs` | Current JSON serialization works but is inefficient for high-frequency messages. Consider MessagePack or Protobuf for task distribution phase. |
+
 ## Running
 
 ```bash
