@@ -38,6 +38,9 @@ ORCHA_USERNAME = "Sirak"
 SQLX_OFFLINE = "true"
 PCG_SERVER_URL = "http://localhost:3000"
 RUSTC_WRAPPER = "sccache"
+# E2E test defaults — Playwright reads these at runtime
+FRONTEND_PORT = "3000"
+E2E_HEADED = "false"
 # audiopus_sys requires cmake_minimum_required(VERSION 2.x) which CMake 4.x rejects;
 # this tells CMake to allow policies from older cmake versions during the build
 CMAKE_POLICY_VERSION_MINIMUM = "3.5"
