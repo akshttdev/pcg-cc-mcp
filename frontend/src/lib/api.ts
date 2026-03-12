@@ -86,6 +86,9 @@ import {
   AirtablePushTaskRequest,
 } from 'shared/types';
 
+// Extend TaskWithAttemptStatus with archived_at (frontend feature, not yet in DB/backend)
+export type TaskWithArchive = TaskWithAttemptStatus & { archived_at?: string | null };
+
 // CRM Pipeline & Deal Types
 import type {
   CrmPipeline,
@@ -782,9 +785,9 @@ export const tasksApi = {
     const response = await makeRequest('/api/tasks/watched');
     return handleApiResponse<AssignedTask[]>(response);
   },
-  getAll: async (projectId: string): Promise<TaskWithAttemptStatus[]> => {
+  getAll: async (projectId: string): Promise<TaskWithArchive[]> => {
     const response = await makeRequest(`/api/tasks?project_id=${projectId}`);
-    return handleApiResponse<TaskWithAttemptStatus[]>(response);
+    return handleApiResponse<TaskWithArchive[]>(response);
   },
 
   getById: async (taskId: string): Promise<Task> => {

@@ -1,14 +1,14 @@
 import { useCallback, useMemo } from 'react';
 import { useJsonPatchWsStream } from './useJsonPatchWsStream';
-import type { TaskWithAttemptStatus } from 'shared/types';
+import type { TaskWithArchive } from '@/lib/api';
 
 type TasksState = {
-  tasks: Record<string, TaskWithAttemptStatus>;
+  tasks: Record<string, TaskWithArchive>;
 };
 
 interface UseProjectTasksResult {
-  tasks: TaskWithAttemptStatus[];
-  tasksById: Record<string, TaskWithAttemptStatus>;
+  tasks: TaskWithArchive[];
+  tasksById: Record<string, TaskWithArchive>;
   isLoading: boolean;
   isConnected: boolean;
   error: string | null;

@@ -28,10 +28,9 @@ import {
 import { TimeTrackerWidget } from '@/components/time-tracking/TimeTrackerWidget';
 import { AgentFlowBadges } from './AgentFlowBadges';
 import { ExecutionSummaryInline } from './ExecutionSummaryInline';
-import type { TaskWithAttemptStatus } from 'shared/types';
-import type { AgentFlow, UserListItem } from '@/lib/api';
+import type { AgentFlow, UserListItem, TaskWithArchive } from '@/lib/api';
 
-type Task = TaskWithAttemptStatus;
+type Task = TaskWithArchive;
 
 interface TaskCardProps {
   task: Task;
