@@ -1007,4 +1007,49 @@ ORDER BY t.created_at DESC"#,
         .fetch_all(pool)
         .await
     }
+
+    pub async fn find_by_creator(
+        pool: &SqlitePool,
+        created_by: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Task,
+            r#"SELECT
+                id as "id!: Uuid",
+                project_id as "project_id!: Uuid",
+                pod_id as "pod_id: Uuid",
+                board_id as "board_id: Uuid",
+                title as "title!",
+                description,
+                status as "status!: TaskStatus",
+                parent_task_attempt as "parent_task_attempt: Uuid",
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>",
+                priority as "priority!: Priority",
+                assignee_id,
+                assignee_type,
+                assigned_agent,
+                agent_id as "agent_id: Uuid",
+                assigned_mcps,
+                created_by as "created_by!",
+                requires_approval as "requires_approval!: bool",
+                approval_status as "approval_status: ApprovalStatus",
+                parent_task_id as "parent_task_id: Uuid",
+                tags,
+                due_date as "due_date: DateTime<Utc>",
+                NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
+                scheduled_start as "scheduled_start: DateTime<Utc>",
+                scheduled_end as "scheduled_end: DateTime<Utc>",
+                screenshot,
+                completion_criteria,
+                output_format
+               FROM tasks
+               WHERE created_by = $1
+               AND deleted_at IS NULL
+               ORDER BY updated_at DESC"#,
+            created_by,
+        )
+        .fetch_all(pool)
+        .await
+    }
 }
