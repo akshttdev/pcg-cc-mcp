@@ -236,7 +236,10 @@ impl Task {
   t.created_at                    AS "created_at!: DateTime<Utc>",
   t.updated_at                    AS "updated_at!: DateTime<Utc>",
   t.priority                      AS "priority!: Priority",
-  t.assignee_id                   AS "assignee_id: String",
+  CASE WHEN t.assignee_id IS NULL THEN NULL ELSE lower(
+    substr(hex(t.assignee_id),1,8)||'-'||substr(hex(t.assignee_id),9,4)||'-'||
+    substr(hex(t.assignee_id),13,4)||'-'||substr(hex(t.assignee_id),17,4)||'-'||
+    substr(hex(t.assignee_id),21,12)) END AS "assignee_id: String",
   t.assignee_type                 AS "assignee_type: String",
   t.assigned_agent                AS "assigned_agent: String",
   t.agent_id                      AS "agent_id: Uuid",
