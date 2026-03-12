@@ -279,7 +279,8 @@ function OrgSocialSection({
 }) {
   const orgBase = `/organizations/${orgId}`;
   const sp = new URLSearchParams(location.search);
-  const isOnSocial = location.pathname === orgBase && sp.get('tab') === 'social';
+  const socialBase = `${orgBase}/social`;
+  const isOnSocial = location.pathname === socialBase || (location.pathname === orgBase && sp.get('tab') === 'social');
   const [open, setOpen] = useState(isOnSocial);
 
   const socialViews = [
@@ -308,8 +309,8 @@ function OrgSocialSection({
         <div className="pl-4 space-y-0.5 py-0.5">
           {socialViews.map(({ label, sv, icon: Icon, color }) => {
             const to = sv
-              ? `${orgBase}?tab=social&sv=${sv}`
-              : `${orgBase}?tab=social`;
+              ? `${socialBase}?sv=${sv}`
+              : socialBase;
             const isActive = isOnSocial && (sp.get('sv') || '') === sv;
             return (
               <Link
@@ -1053,6 +1054,7 @@ function ClientGroup({
   onToggleProject: (id: string) => void;
   queryClient?: QueryClient;
 }) {
+  const location = useLocation();
   const hasActiveProject = isProjectInTree(client.projects, projectId || '');
   const storageKey = `sidebar:client:${client.id}:expanded`;
   const [expanded, setExpanded] = useState<boolean>(() => {
@@ -1073,34 +1075,45 @@ function ClientGroup({
 
   return (
     <Collapsible open={expanded} onOpenChange={handleSetExpanded}>
-      {/* Entire header row is the collapse trigger — chevron always visible on the left */}
-      <CollapsibleTrigger asChild>
-        <div
-          className={cn(
-            'flex items-center gap-1.5 px-2 py-1.5 rounded-sm cursor-pointer hover:bg-accent/60 hover:text-accent-foreground transition-colors group/client text-xs',
-            hasActiveProject && 'bg-primary/10 text-foreground font-medium'
-          )}
-        >
-          {expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          )}
-          <HealthDot status={client.health_status} />
-          <UserCircle className="h-3.5 w-3.5 text-primary shrink-0" />
-          <span className="truncate flex-1 font-normal">{client.name}</span>
-          <div className="flex items-center gap-1 shrink-0">
-            {client.active_issues_count != null && client.active_issues_count > 0 && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-destructive/10 text-destructive">
-                {client.active_issues_count}
-              </span>
+      {/* Header row: chevron toggles expand/collapse, name navigates to client page */}
+      <div
+        className={cn(
+          'flex items-center gap-1.5 px-2 py-1.5 rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors group/client text-xs',
+          hasActiveProject && 'bg-primary/10 text-foreground font-medium'
+        )}
+      >
+        <CollapsibleTrigger asChild>
+          <button className="shrink-0 p-0 hover:text-foreground" onClick={(e) => e.stopPropagation()}>
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             )}
-            <span className="text-[10px] text-muted-foreground">
-              {countProjects(client.projects)}
+          </button>
+        </CollapsibleTrigger>
+        <HealthDot status={client.health_status} />
+        <UserCircle className="h-3.5 w-3.5 text-primary shrink-0" />
+        <Link
+          to={`/organizations/${organizationId}/clients/${client.id}`}
+          className="truncate flex-1 font-normal hover:underline"
+        >
+          {client.name}
+        </Link>
+        <div className="flex items-center gap-1 shrink-0">
+          {client.active_issues_count != null && client.active_issues_count > 0 && (
+            <span className="text-[9px] px-1 py-0.5 rounded bg-destructive/10 text-destructive">
+              {client.active_issues_count}
             </span>
-          </div>
+          )}
+          <CollapsibleTrigger asChild>
+            <button className="shrink-0 p-0">
+              <span className="text-[10px] text-muted-foreground">
+                {countProjects(client.projects)}
+              </span>
+            </button>
+          </CollapsibleTrigger>
         </div>
-      </CollapsibleTrigger>
+      </div>
       <CollapsibleContent className="pl-4">
         <div className="space-y-0.5 py-0.5">
           <SortableProjectList
@@ -1137,13 +1150,13 @@ function ClientGroup({
               </Link>
             )}
             <Link
-              to={`/organizations/${organizationId}/crm/pipeline`}
+              to={`/organizations/${organizationId}/crm/pipeline?client=${client.id}`}
               className={cn(
                 'flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground',
               )}
             >
               <Package className="h-3 w-3 shrink-0" />
-              <span>Deliverables</span>
+              <span>Pipeline</span>
             </Link>
             <button
               className="flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-sm hover:bg-accent/60 hover:text-accent-foreground transition-colors text-muted-foreground w-full text-left opacity-0 group-hover/client:opacity-100"
@@ -1571,6 +1584,10 @@ export function Sidebar({ className }: SidebarProps) {
 
   // Staging pending count for sidebar badge
   const homeOrgId = user?.home_organization_id || user?.organizations?.[0]?.id;
+  // Badge shows pending staging records needing review (user-level action items).
+  // TODO: As we separate "My Workflows" (user tasks: review staged records, manage personal definitions)
+  // from org-level Intelligence workflows (system automations, pipeline blueprints),
+  // consider splitting this badge or moving org-level staging to Intelligence.
   const { data: stagingPendingCount = 0 } = useQuery({
     queryKey: ['stagingPendingCount', homeOrgId],
     queryFn: async () => {

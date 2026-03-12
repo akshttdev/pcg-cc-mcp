@@ -70,6 +70,7 @@ function buildCategories(
               { label: 'Projects', to: `${o}/projects` },
               { label: 'Integrations', to: `${o}/integrations` },
               { label: 'Brand Guide', to: `${o}/brand-guide` },
+              { label: 'Social', to: `${o}/social` },
             ]
           : [
               { label: 'Organization Overview', note: 'Select an organization first' },
@@ -77,6 +78,7 @@ function buildCategories(
               { label: 'Projects', note: 'Select an organization first' },
               { label: 'Integrations', note: 'Select an organization first' },
               { label: 'Brand Guide', note: 'Select an organization first' },
+              { label: 'Social', note: 'Select an organization first' },
             ]),
         { label: 'Client Detail', note: 'Navigate from organization clients list' },
       ],
@@ -92,6 +94,7 @@ function buildCategories(
         { label: 'Company Profile', note: 'Navigate from Companies list' },
         { label: 'Proposals', to: '/proposals' },
         { label: 'Invoices', to: '/invoices' },
+        { label: 'Business Reports', to: '/business-reports' },
         ...(o
           ? [
               { label: 'Org CRM Overview', to: `${o}/crm` },
@@ -147,9 +150,6 @@ function buildCategories(
       links: [
         { label: 'Social Command', to: '/social-command' },
         { label: 'Discord Voice', to: '/discord' },
-        ...(o
-          ? [{ label: 'Org Social / Experiences', to: `${o}/social` }]
-          : [{ label: 'Org Social / Experiences', note: 'Select an organization first' }]),
       ],
     },
     {

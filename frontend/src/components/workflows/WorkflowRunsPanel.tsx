@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
   Clock,
   Coins,
   Cpu,
+  Database,
   Hash,
   Loader2,
   CheckCircle2,
@@ -21,7 +22,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { workflowsApi } from '@/lib/api';
+import { workflowsApi, dataSourcesApi } from '@/lib/api';
 import type { WorkflowRun } from '@/lib/api';
 import { StagingReviewPanel } from './StagingReviewPanel';
 
@@ -85,6 +86,31 @@ export function WorkflowRunsPanel({
     queryFn: () => workflowsApi.listRecentRuns({ workflow_id: workflowId, organization_id: organizationId }),
     enabled: open,
     refetchInterval: 10000,
+  });
+
+  // Collect unique data_source_ids from runs to batch-resolve names
+  const dataSourceIds = useMemo(
+    () => [...new Set(runs.map(r => r.data_source_id).filter(Boolean))] as string[],
+    [runs],
+  );
+
+  const { data: dataSourceNames = {} } = useQuery({
+    queryKey: ['data-source-names', dataSourceIds],
+    queryFn: async () => {
+      const results: Record<string, string> = {};
+      await Promise.all(
+        dataSourceIds.map(async (id) => {
+          try {
+            const ds = await dataSourcesApi.get(id);
+            results[id] = ds.title;
+          } catch {
+            results[id] = id.slice(0, 8) + '…';
+          }
+        }),
+      );
+      return results;
+    },
+    enabled: open && dataSourceIds.length > 0,
   });
 
   // Aggregate stats
@@ -192,6 +218,12 @@ export function WorkflowRunsPanel({
                             <Clock className="h-3 w-3" />
                             {formatDate(run.started_at)}
                           </span>
+                          {run.data_source_id && dataSourceNames[run.data_source_id] && (
+                            <span className="flex items-center gap-1 truncate max-w-[180px]" title={dataSourceNames[run.data_source_id]}>
+                              <Database className="h-3 w-3" />
+                              {dataSourceNames[run.data_source_id]}
+                            </span>
+                          )}
                           {run.model_used && (
                             <span className="flex items-center gap-1">
                               <Cpu className="h-3 w-3" />

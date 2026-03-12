@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type React from 'react';
-import { useParams, useSearchParams, useLocation, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -108,6 +109,13 @@ import {
   ChevronLeft,
   CalendarRange,
   List,
+  Play,
+  Phone,
+  UserPlus,
+  Link2,
+  Eye,
+  Shield,
+  Copy,
 } from 'lucide-react';
 import {
   organizationsApi,
@@ -122,7 +130,6 @@ import {
   airtableApi,
   githubAuthApi,
   discordApi,
-  pulseApi,
   type DiscordSessionSummary,
   type OrganizationData,
   type ClientData,
@@ -132,7 +139,6 @@ import {
   type SocialAccountRecord,
   type SocialPostRecord,
   type SocialMentionRecord,
-  type PersonOrgContact,
   dataSourcesApi,
   workflowsApi,
   resolveApiUrl,
@@ -144,13 +150,15 @@ import {
   type OrgBrandProfile,
   companiesApi,
   type CompanyRecord,
+  crmApi,
+  type CreateCrmContactRequest,
+  type CrmContactRecord,
 } from '@/lib/api';
 import { useUserSystem } from '@/components/config-provider';
 import { WorkflowEditor as WorkflowEditorComponent } from '@/components/workflows/WorkflowEditor';
 import type { WorkflowDefinition } from '@/lib/api';
 import { CrmPipelineBoard } from '@/components/crm/CrmPipelineBoard';
 
-import { useOrgContacts, type OrgContact } from '@/hooks/useOrgContacts';
 import { LIFECYCLE_STAGE_INFO, type LifecycleStage } from '@/types/crm';
 import type { PipelineType } from '@/types/crm';
 
@@ -641,7 +649,7 @@ export function BrandIdentityCard({ orgId, orgName }: { orgId: string; orgName: 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({
-  orgId: _orgId,
+  orgId,
   orgName: _orgName,
   projectEntries,
   projectCount,
@@ -684,6 +692,13 @@ function OverviewTab({
       staleTime: 60_000,
       enabled: projectEntries.length > 0,
     })),
+  });
+
+  // Fetch recent workflow runs for the organization
+  const { data: recentWorkflowRuns = [] } = useQuery({
+    queryKey: ['workflow-runs', orgId],
+    queryFn: () => workflowsApi.listRecentRuns({ organization_id: orgId, limit: 10 }),
+    staleTime: 60_000,
   });
 
   const recentActivities = useMemo(() => {
@@ -748,25 +763,42 @@ function OverviewTab({
         </Card>
       </div>
 
-      {/* Recent activity - aggregated across all projects
-         TODO: Unify activity data sources. Currently this uses crmActivitiesApi.listActivities()
-         which only returns CRM-specific activity (deal/contact/pipeline events). The notification
-         center (NotificationCenter.tsx) uses GET /api/notifications which returns task-level
-         ActivityLog entries. To show a complete picture here, we should:
-         1. Create a unified server endpoint that merges both CRM activities and task ActivityLog
-         2. Or query both APIs client-side and merge/sort by timestamp
-         3. Consider adding deal creation/update events to the ActivityLog table on the server
-         Related: NotificationCenter.tsx, crates/server/src/routes/notifications.rs */}
+      {/* Quick links */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        {[
+          { label: 'Pipelines', icon: Target, path: 'crm/pipeline', color: 'text-amber-500', summary: `${totalDeals} deals · ${formatCurrency(totalDealValue)}` },
+          { label: 'Contacts', icon: Contact2, path: 'crm/contacts', color: 'text-blue-500', summary: `${contactCount} contacts` },
+          { label: 'Projects', icon: FolderOpen, path: 'projects', color: 'text-emerald-500', summary: `${projectCount} active` },
+          { label: 'Intelligence', icon: Brain, path: 'intelligence', color: 'text-orange-500', summary: 'Data sources & workflows' },
+          { label: 'Members', icon: Users, path: 'members', color: 'text-purple-500', summary: 'Team & roles' },
+          { label: 'Integrations', icon: Plug, path: 'integrations', color: 'text-indigo-500', summary: 'Connected services' },
+        ].map(({ label, icon: Icon, path, color, summary }) => (
+          <Link
+            key={path}
+            to={`/organizations/${orgId}/${path}`}
+            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group cursor-pointer"
+          >
+            <Icon className={`h-5 w-5 ${color} group-hover:scale-110 transition-transform`} />
+            <div className="min-w-0">
+              <span className="text-sm font-medium block">{label}</span>
+              <span className="text-xs text-muted-foreground">{summary}</span>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+          </Link>
+        ))}
+      </div>
+
+      {/* Recent activity - workflow runs + CRM activities */}
       <Card className="bg-card/80 backdrop-blur-sm border-border/50">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Activity className="h-4 w-4" />
             Recent Activity
           </CardTitle>
-          <CardDescription>Latest CRM activity across all {projectCount} projects</CardDescription>
+          <CardDescription>Latest workflow runs and CRM activity</CardDescription>
         </CardHeader>
         <CardContent>
-          {recentActivities.length === 0 ? (
+          {recentWorkflowRuns.length === 0 && recentActivities.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>No recent activity</p>
@@ -774,6 +806,45 @@ function OverviewTab({
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Workflow runs */}
+              {recentWorkflowRuns.map((run: any) => {
+                const statusColor = run.status === 'completed' ? 'text-green-600' : run.status === 'failed' ? 'text-red-600' : 'text-blue-600';
+                const statusBg = run.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30' : run.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-blue-100 dark:bg-blue-900/30';
+                return (
+                  <div key={run.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
+                    <div className={`h-8 w-8 rounded-full ${statusBg} flex items-center justify-center shrink-0`}>
+                      <Play className={`h-4 w-4 ${statusColor}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px]">workflow run</Badge>
+                        <Badge variant="secondary" className={`text-[10px] ${statusColor}`}>
+                          {run.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm mt-1 font-medium">{run.workflow_name}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        {run.total_records_staged > 0 && (
+                          <span>{run.total_records_staged} staged</span>
+                        )}
+                        {run.total_records_committed > 0 && (
+                          <span className="text-green-600">{run.total_records_committed} committed</span>
+                        )}
+                        {run.total_duplicates_found > 0 && (
+                          <span className="text-amber-600">{run.total_duplicates_found} duplicates</span>
+                        )}
+                        {run.model_used && (
+                          <span>{run.model_used}</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        {formatDate(run.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* CRM activities */}
               {recentActivities.map((activity) => (
                 <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
                   <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -856,16 +927,73 @@ function PipelinesTab({ orgId, defaultPipeline }: { orgId: string; defaultPipeli
 
 function ContactsTab({ orgId }: { orgId: string }) {
   const [crmView, setCrmView] = useState<'contacts' | 'companies'>('contacts');
-  const { contacts, isLoading } = useOrgContacts(orgId);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [showAddCompany, setShowAddCompany] = useState(false);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [contactForm, setContactForm] = useState({ first_name: '', last_name: '', email: '', phone: '', company_name: '', job_title: '', lifecycle_stage: 'lead' });
+  const [companyForm, setCompanyForm] = useState({ name: '', website: '', industry: '' });
+  const queryClient = useQueryClient();
 
-  const { data: personContacts = [] } = useQuery<PersonOrgContact[]>({
-    queryKey: ['org-person-contacts', orgId],
-    queryFn: () => organizationsApi.listPersonContacts(orgId),
+  const { data: contacts = [], isLoading } = useQuery({
+    queryKey: ['crm-contacts', orgId],
+    queryFn: () => crmApi.listContacts(orgId),
     enabled: !!orgId,
-    staleTime: 60_000,
+    staleTime: 30_000,
   });
+
+  const selectedContact = useMemo(
+    () => contacts.find((c: CrmContactRecord) => c.id === selectedContactId),
+    [contacts, selectedContactId]
+  );
+
+  const createContactMutation = useMutation({
+    mutationFn: (data: CreateCrmContactRequest) => crmApi.createContact(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['crm-contacts', orgId] });
+      setShowAddContact(false);
+      setContactForm({ first_name: '', last_name: '', email: '', phone: '', company_name: '', job_title: '', lifecycle_stage: 'lead' });
+      toast.success('Contact created');
+    },
+    onError: () => toast.error('Failed to create contact'),
+  });
+
+  const handleCreateContact = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    createContactMutation.mutate({
+      organization_id: orgId,
+      ...contactForm,
+      first_name: contactForm.first_name || undefined,
+      last_name: contactForm.last_name || undefined,
+      email: contactForm.email || undefined,
+      phone: contactForm.phone || undefined,
+      company_name: contactForm.company_name || undefined,
+      job_title: contactForm.job_title || undefined,
+    });
+  }, [contactForm, orgId, createContactMutation]);
+
+  const createCompanyMutation = useMutation({
+    mutationFn: (data: { name: string; website?: string; industry?: string; created_by_org_id?: string }) => companiesApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-companies', orgId] });
+      setShowAddCompany(false);
+      setCompanyForm({ name: '', website: '', industry: '' });
+      toast.success('Company created');
+    },
+    onError: () => toast.error('Failed to create company'),
+  });
+
+  const handleCreateCompany = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    if (!companyForm.name.trim()) return;
+    createCompanyMutation.mutate({
+      name: companyForm.name,
+      website: companyForm.website || undefined,
+      industry: companyForm.industry || undefined,
+      created_by_org_id: orgId,
+    });
+  }, [companyForm, orgId, createCompanyMutation]);
 
   const { data: companies = [], isLoading: companiesLoading } = useQuery<CompanyRecord[]>({
     queryKey: ['org-companies', orgId],
@@ -873,11 +1001,6 @@ function ContactsTab({ orgId }: { orgId: string }) {
     enabled: !!orgId,
     staleTime: 60_000,
   });
-
-  const contextMap = useMemo(
-    () => Object.fromEntries(personContacts.map(pc => [pc.person_id, pc.context])),
-    [personContacts]
-  );
 
   const filteredContacts = useMemo(() => {
     let result = contacts;
@@ -960,7 +1083,101 @@ function ContactsTab({ orgId }: { orgId: string }) {
         {(isLoading || companiesLoading) && (
           <span className="text-xs text-muted-foreground">Loading…</span>
         )}
+        {crmView === 'contacts' ? (
+          <Button size="sm" onClick={() => setShowAddContact(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Contact
+          </Button>
+        ) : (
+          <Button size="sm" onClick={() => setShowAddCompany(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Company
+          </Button>
+        )}
       </div>
+
+      {/* Add Contact Dialog */}
+      <Dialog open={showAddContact} onOpenChange={setShowAddContact}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Contact</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateContact} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>First Name</Label>
+                <Input value={contactForm.first_name} onChange={e => setContactForm(f => ({ ...f, first_name: e.target.value }))} placeholder="Jane" />
+              </div>
+              <div>
+                <Label>Last Name</Label>
+                <Input value={contactForm.last_name} onChange={e => setContactForm(f => ({ ...f, last_name: e.target.value }))} placeholder="Doe" />
+              </div>
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} placeholder="jane@example.com" />
+            </div>
+            <div>
+              <Label>Phone</Label>
+              <Input value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} placeholder="+1 555-0123" />
+            </div>
+            <div>
+              <Label>Company</Label>
+              <Input value={contactForm.company_name} onChange={e => setContactForm(f => ({ ...f, company_name: e.target.value }))} placeholder="Acme Corp" />
+            </div>
+            <div>
+              <Label>Job Title</Label>
+              <Input value={contactForm.job_title} onChange={e => setContactForm(f => ({ ...f, job_title: e.target.value }))} placeholder="CTO" />
+            </div>
+            <div>
+              <Label>Lifecycle Stage</Label>
+              <Select value={contactForm.lifecycle_stage} onValueChange={v => setContactForm(f => ({ ...f, lifecycle_stage: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(LIFECYCLE_STAGE_INFO).map(([key, info]) => (
+                    <SelectItem key={key} value={key}>{info.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowAddContact(false)}>Cancel</Button>
+              <Button type="submit" disabled={createContactMutation.isPending}>
+                {createContactMutation.isPending ? 'Creating...' : 'Create Contact'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Company Dialog */}
+      <Dialog open={showAddCompany} onOpenChange={setShowAddCompany}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Company</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateCompany} className="space-y-3">
+            <div>
+              <Label>Company Name *</Label>
+              <Input value={companyForm.name} onChange={e => setCompanyForm(f => ({ ...f, name: e.target.value }))} placeholder="Acme Corp" />
+            </div>
+            <div>
+              <Label>Website</Label>
+              <Input value={companyForm.website} onChange={e => setCompanyForm(f => ({ ...f, website: e.target.value }))} placeholder="https://acme.com" />
+            </div>
+            <div>
+              <Label>Industry</Label>
+              <Input value={companyForm.industry} onChange={e => setCompanyForm(f => ({ ...f, industry: e.target.value }))} placeholder="Technology" />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowAddCompany(false)}>Cancel</Button>
+              <Button type="submit" disabled={createCompanyMutation.isPending || !companyForm.name.trim()}>
+                {createCompanyMutation.isPending ? 'Creating...' : 'Add Company'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Contacts view */}
       {crmView === 'contacts' && (
@@ -972,7 +1189,7 @@ function ContactsTab({ orgId }: { orgId: string }) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredContacts.map((contact) => (
-              <ContactCard key={contact.id} contact={contact} context={contextMap[contact.id]} />
+              <ContactCard key={contact.id} contact={contact} onClick={() => setSelectedContactId(contact.id)} />
             ))}
           </div>
         )
@@ -1033,52 +1250,63 @@ function ContactsTab({ orgId }: { orgId: string }) {
           </div>
         )
       )}
+
+      {/* Contact Detail Modal */}
+      {selectedContact && (
+        <ContactDetailModal
+          contact={selectedContact}
+          orgId={orgId}
+          open={!!selectedContactId}
+          onClose={() => setSelectedContactId(null)}
+        />
+      )}
     </div>
   );
 }
 
-const CONTEXT_COLORS: Record<string, string> = {
-  client:  'bg-green-100 text-green-700',
-  vendor:  'bg-orange-100 text-orange-700',
-  partner: 'bg-purple-100 text-purple-700',
-  prospect:'bg-blue-100 text-blue-700',
-  contact: 'bg-gray-100 text-gray-600',
-};
+// Preserved for future PersonRecord-based contact intelligence features:
+// const CONTEXT_COLORS: Record<string, string> = {
+//   client:  'bg-green-100 text-green-700',
+//   vendor:  'bg-orange-100 text-orange-700',
+//   partner: 'bg-purple-100 text-purple-700',
+//   prospect:'bg-blue-100 text-blue-700',
+//   contact: 'bg-gray-100 text-gray-600',
+// };
+// const RESEARCH_DEPTH_COLOR: Record<string, string> = {
+//   shallow:  'bg-gray-100 text-gray-600',
+//   moderate: 'bg-yellow-100 text-yellow-700',
+//   deep:     'bg-green-100 text-green-700',
+// };
+// const INTEL_STATUS_DOT: Record<string, string> = {
+//   queued:  'bg-yellow-400',
+//   running: 'bg-blue-400 animate-pulse',
+//   done:    'bg-green-400',
+//   failed:  'bg-red-400',
+// };
 
-const RESEARCH_DEPTH_COLOR: Record<string, string> = {
-  shallow:  'bg-gray-100 text-gray-600',
-  moderate: 'bg-yellow-100 text-yellow-700',
-  deep:     'bg-green-100 text-green-700',
-};
-
-const INTEL_STATUS_DOT: Record<string, string> = {
-  queued:  'bg-yellow-400',
-  running: 'bg-blue-400 animate-pulse',
-  done:    'bg-green-400',
-  failed:  'bg-red-400',
-};
-
-function ContactCard({ contact, context }: { contact: OrgContact; context?: string }) {
+function ContactCard({ contact, onClick }: { contact: CrmContactRecord; onClick?: () => void }) {
   const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
-  const statusDot = contact.intelligence_status && contact.intelligence_status !== 'idle'
-    ? INTEL_STATUS_DOT[contact.intelligence_status]
-    : null;
+
+  // Check if contact was imported via workflow
+  let importedViaWorkflow = false;
+  if (contact.custom_fields) {
+    try {
+      const cf = typeof contact.custom_fields === 'string' ? JSON.parse(contact.custom_fields) : contact.custom_fields;
+      importedViaWorkflow = !!cf.source_workflow_run_id;
+    } catch { /* ignore */ }
+  }
 
   return (
-    <Link
-      to={`/persons/${contact.id}`}
-      className="block p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full text-left p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/30 hover:border-accent/50 transition-all group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            {statusDot && (
-              <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${statusDot}`} />
-            )}
-            <p className="text-sm font-medium truncate group-hover:text-foreground">
-              {contact.full_name || 'Unnamed'}
-            </p>
-          </div>
+          <p className="text-sm font-medium truncate group-hover:text-foreground">
+            {contact.full_name || 'Unnamed'}
+          </p>
           {contact.job_title && (
             <p className="text-xs text-muted-foreground truncate mt-0.5">{contact.job_title}</p>
           )}
@@ -1105,26 +1333,269 @@ function ContactCard({ contact, context }: { contact: OrgContact; context?: stri
             {stageInfo.label}
           </Badge>
         )}
-        {contact.person_type && (
-          <Badge variant="outline" className="text-[10px] capitalize">{contact.person_type}</Badge>
+        {contact.source && (
+          <Badge variant="outline" className="text-[10px] capitalize">{contact.source}</Badge>
         )}
-        {contact.research_depth && (
-          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium capitalize ${RESEARCH_DEPTH_COLOR[contact.research_depth] ?? ''}`}>
-            {contact.research_depth}
-          </span>
-        )}
-        {(contact.research_pass_count ?? 0) > 0 && (
-          <span className="text-[10px] text-muted-foreground">
-            {contact.research_pass_count} pass{contact.research_pass_count === 1 ? '' : 'es'}
-          </span>
-        )}
-        {context && context !== 'contact' && (
-          <span className={`text-[10px] px-1.5 py-0.5 rounded capitalize font-medium ${CONTEXT_COLORS[context] ?? CONTEXT_COLORS.contact}`}>
-            {context}
-          </span>
+        {importedViaWorkflow && (
+          <Badge variant="outline" className="text-[10px] gap-0.5" title="Imported via workflow">
+            <GitBranch className="h-2.5 w-2.5" />
+            Workflow
+          </Badge>
         )}
       </div>
-    </Link>
+    </button>
+  );
+}
+
+// ── Contact Detail Modal ──────────────────────────────────────────────────────
+
+function ContactDetailModal({
+  contact,
+  orgId,
+  open,
+  onClose,
+}: {
+  contact: CrmContactRecord;
+  orgId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({
+    first_name: contact.first_name ?? '',
+    last_name: contact.last_name ?? '',
+    email: contact.email ?? '',
+    phone: contact.phone ?? '',
+    company_name: contact.company_name ?? '',
+    job_title: contact.job_title ?? '',
+    department: contact.department ?? '',
+    linkedin_url: contact.linkedin_url ?? '',
+    website: contact.website ?? '',
+  });
+
+  const stageInfo = LIFECYCLE_STAGE_INFO[contact.lifecycle_stage as LifecycleStage];
+
+  const { data: deals = [] } = useQuery({
+    queryKey: ['contact-deals', contact.id],
+    queryFn: () => crmDealsApi.listDeals({ contact_id: contact.id }),
+    enabled: open,
+    staleTime: 30_000,
+  });
+
+  const { data: activities = [] } = useQuery<CrmActivityRecord[]>({
+    queryKey: ['contact-activities', contact.id],
+    queryFn: () => crmActivitiesApi.listActivities({ organization_id: orgId, contact_id: contact.id }),
+    enabled: open,
+    staleTime: 30_000,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: () => crmApi.updateContact(contact.id, editData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['crm-contacts'] });
+      setIsEditing(false);
+      toast.success('Contact updated');
+    },
+    onError: () => toast.error('Failed to update contact'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => crmApi.deleteContact(contact.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['crm-contacts'] });
+      onClose();
+      toast.success('Contact deleted');
+    },
+    onError: () => toast.error('Failed to delete contact'),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="text-lg">
+              {contact.full_name || `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim() || 'Unnamed Contact'}
+            </DialogTitle>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setIsEditing(!isEditing)}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => {
+                if (confirm('Delete this contact?')) deleteMutation.mutate();
+              }}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {isEditing ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">First Name</Label>
+                <Input value={editData.first_name} onChange={(e) => setEditData(d => ({ ...d, first_name: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Last Name</Label>
+                <Input value={editData.last_name} onChange={(e) => setEditData(d => ({ ...d, last_name: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Email</Label>
+                <Input value={editData.email} onChange={(e) => setEditData(d => ({ ...d, email: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Phone</Label>
+                <Input value={editData.phone} onChange={(e) => setEditData(d => ({ ...d, phone: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Company</Label>
+                <Input value={editData.company_name} onChange={(e) => setEditData(d => ({ ...d, company_name: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Job Title</Label>
+                <Input value={editData.job_title} onChange={(e) => setEditData(d => ({ ...d, job_title: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">Department</Label>
+                <Input value={editData.department} onChange={(e) => setEditData(d => ({ ...d, department: e.target.value }))} />
+              </div>
+              <div>
+                <Label className="text-xs">LinkedIn URL</Label>
+                <Input value={editData.linkedin_url} onChange={(e) => setEditData(d => ({ ...d, linkedin_url: e.target.value }))} />
+              </div>
+              <div className="col-span-2 flex gap-2 justify-end">
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+                <Button size="sm" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                {stageInfo && (
+                  <Badge variant="secondary" style={{ backgroundColor: stageInfo.color + '20', color: stageInfo.color }}>
+                    {stageInfo.label}
+                  </Badge>
+                )}
+                {contact.lead_score > 0 && (
+                  <Badge variant="outline">Score: {contact.lead_score}</Badge>
+                )}
+                {contact.source && (
+                  <Badge variant="outline" className="capitalize">{contact.source}</Badge>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {contact.email && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                    <a href={`mailto:${contact.email}`} className="truncate hover:text-foreground">{contact.email}</a>
+                  </div>
+                )}
+                {contact.phone && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{contact.phone}</span>
+                  </div>
+                )}
+                {contact.company_name && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Building2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{contact.company_name}</span>
+                  </div>
+                )}
+                {contact.job_title && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{contact.job_title}</span>
+                  </div>
+                )}
+                {contact.department && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Users className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{contact.department}</span>
+                  </div>
+                )}
+                {contact.linkedin_url && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Linkedin className="h-3.5 w-3.5 shrink-0" />
+                    <a href={contact.linkedin_url} target="_blank" rel="noreferrer" className="truncate hover:text-foreground">LinkedIn</a>
+                  </div>
+                )}
+                {(contact.city || contact.country) && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{[contact.city, contact.state, contact.country].filter(Boolean).join(', ')}</span>
+                  </div>
+                )}
+                {contact.website && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Globe className="h-3.5 w-3.5 shrink-0" />
+                    <a href={contact.website} target="_blank" rel="noreferrer" className="truncate hover:text-foreground">{contact.website}</a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Deals */}
+          {deals.length > 0 && (
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Deals ({deals.length})</h4>
+              <div className="space-y-1.5">
+                {deals.map((deal: { id: string; name: string; amount?: number | null; currency?: string; stage?: string }) => (
+                  <div key={deal.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm">
+                    <span className="truncate">{deal.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {deal.amount != null && (
+                        <span className="text-xs font-medium">
+                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: deal.currency || 'USD' }).format(deal.amount)}
+                        </span>
+                      )}
+                      {deal.stage && (
+                        <Badge variant="outline" className="text-[10px]">{deal.stage}</Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Activity */}
+          {activities.length > 0 && (
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Recent Activity</h4>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {activities.slice(0, 10).map((activity) => (
+                  <div key={activity.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/30 text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Activity className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="truncate">{activity.subject || activity.activity_type}</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      {new Date(activity.activity_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Metadata */}
+          <div className="text-[10px] text-muted-foreground pt-2 border-t border-border/50 flex items-center justify-between">
+            <span>Created {new Date(contact.created_at).toLocaleDateString()}</span>
+            {contact.last_activity_at && (
+              <span>Last active {new Date(contact.last_activity_at).toLocaleDateString()}</span>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -3382,9 +3853,14 @@ function PulseSection({ projectEntries }: { projectEntries: { id: string; name: 
 }
 
 // ── Intelligence Tab (Social + Knowledge + Pulse combined) ────────────────────
+// Org-level intelligence view: system automations, pipeline blueprints, data sources, artifacts.
+// The "Workflows" sub-view here shows org-scoped automations and blueprints, NOT user-created
+// extraction pipelines (those live in /workflows "My Workflows" page).
+// TODO: Surface org-specific staging records here so users can review CRM imports
+// without switching to the global /workflows page.
 
 function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: string; name: string }[]; orgId: string }) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const location = useLocation();
 
   // Derive view from pathname (sidebar links) or query param (tab clicks)
@@ -3407,14 +3883,20 @@ function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: stri
     { key: 'topology',    label: 'Topology',      icon: Network },
   ];
 
+  const navigate = useNavigate();
+  const VIEW_PATHS: Record<string, string> = {
+    overview: '',
+    datasources: '/data-sources',
+    artifacts: '/artifacts',
+    workflows: '/workflows',
+    pulse: '/pulse',
+    topology: '/topology',
+  };
+
   const setView = (view: string) => {
-    const params = new URLSearchParams(searchParams);
-    if (view === 'overview') {
-      params.delete('view');
-    } else {
-      params.set('view', view);
-    }
-    setSearchParams(params, { replace: true });
+    const basePath = `/organizations/${orgId}/intelligence`;
+    const viewPath = VIEW_PATHS[view] ?? '';
+    navigate(`${basePath}${viewPath}`, { replace: true });
   };
 
   return (
@@ -3437,7 +3919,12 @@ function IntelligenceTab({ projectEntries, orgId }: { projectEntries: { id: stri
       </div>
 
       {viewFromUrl === 'overview'    && <KnowledgeTab orgId={orgId} projectEntries={projectEntries} />}
-      {viewFromUrl === 'datasources' && <DataSourcesIntelView orgId={orgId} projectEntries={projectEntries} />}
+      {viewFromUrl === 'datasources' && (
+        <div className="space-y-6">
+          <DataSourcesIntelView orgId={orgId} projectEntries={projectEntries} />
+          <DataSourcesView orgId={orgId} projectEntries={projectEntries} />
+        </div>
+      )}
       {viewFromUrl === 'artifacts'   && <ArtifactsIntelView projectEntries={projectEntries} />}
       {viewFromUrl === 'workflows'   && <WorkflowsIntelView orgId={orgId} />}
       {viewFromUrl === 'pulse'       && <PulseSection projectEntries={projectEntries} />}
@@ -5522,55 +6009,435 @@ function DevelopmentSection() {
   );
 }
 
+// ── Member Assignments (expandable per-member) ───────────────────────────────
+
+function MemberAssignments({ orgId, userId }: { orgId: string; userId: string }) {
+  const queryClient = useQueryClient();
+  const { data: assignments, isLoading } = useQuery({
+    queryKey: ['member-assignments', orgId, userId],
+    queryFn: () => organizationsApi.getMemberAssignments(orgId, userId),
+  });
+
+  const { data: orgClients = [] } = useQuery<ClientData[]>({
+    queryKey: ['orgClients', orgId],
+    queryFn: () => organizationsApi.getClients(orgId),
+  });
+
+  const [assignType, setAssignType] = useState<string>('');
+  const [assignTargetId, setAssignTargetId] = useState('');
+  const [assignRole, setAssignRole] = useState('editor');
+
+  const { data: orgProjects = [] } = useQuery<any[]>({
+    queryKey: ['org-projects-list', orgId],
+    queryFn: async () => {
+      const res = await fetch(resolveApiUrl(`/api/projects?organization_id=${orgId}`), { credentials: 'include' });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.data || [];
+    },
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: () => organizationsApi.assignMember(orgId, userId, assignType, assignTargetId, assignRole),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
+      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+      setAssignType('');
+      setAssignTargetId('');
+    },
+  });
+
+  const unassignProjectMutation = useMutation({
+    mutationFn: (projectId: string) => organizationsApi.unassignProject(orgId, userId, projectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
+      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+    },
+  });
+
+  const unassignClientMutation = useMutation({
+    mutationFn: (clientId: string) => organizationsApi.unassignClient(orgId, userId, clientId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['member-assignments', orgId, userId] });
+      queryClient.invalidateQueries({ queryKey: ['sidebarTree'] });
+    },
+  });
+
+  if (isLoading) return <div className="text-xs text-muted-foreground py-2">Loading assignments...</div>;
+
+  const projectAssignments = assignments?.projects || [];
+  const clientAssignments = assignments?.clients || [];
+  const taskAssignments = assignments?.tasks || [];
+  const watchedTasks = assignments?.watched_tasks || [];
+
+  return (
+    <div className="pl-11 pb-3 space-y-3">
+      {projectAssignments.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">Projects</p>
+          <div className="flex flex-wrap gap-1">
+            {projectAssignments.map((p: any) => (
+              <Badge key={p.project_id} variant="secondary" className="text-xs gap-1">
+                <FolderOpen className="h-3 w-3" />
+                {p.project_name} ({p.role})
+                <button onClick={() => unassignProjectMutation.mutate(p.project_id)} className="ml-1 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+      {clientAssignments.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">Clients</p>
+          <div className="flex flex-wrap gap-1">
+            {clientAssignments.map((c: any) => (
+              <Badge key={c.client_id} variant="secondary" className="text-xs gap-1">
+                <Briefcase className="h-3 w-3" />
+                {c.client_name} ({c.role})
+                <button onClick={() => unassignClientMutation.mutate(c.client_id)} className="ml-1 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+      {taskAssignments.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">Tasks (assignee)</p>
+          <div className="flex flex-wrap gap-1">
+            {taskAssignments.map((t: any) => (
+              <Badge key={t.task_id} variant="outline" className="text-xs">
+                {t.title} <span className="text-muted-foreground ml-1">({t.project_name})</span>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+      {watchedTasks.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">Tasks (watching)</p>
+          <div className="flex flex-wrap gap-1">
+            {watchedTasks.map((t: any) => (
+              <Badge key={t.task_id} variant="outline" className="text-xs">
+                <Eye className="h-3 w-3 mr-1" />
+                {t.title} <span className="text-muted-foreground ml-1">({t.project_name})</span>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+      {projectAssignments.length === 0 && clientAssignments.length === 0 && taskAssignments.length === 0 && (
+        <p className="text-xs text-muted-foreground">No assignments yet</p>
+      )}
+      <div className="flex items-center gap-2 pt-1">
+        <Select value={assignType} onValueChange={(v) => { setAssignType(v); setAssignTargetId(''); }}>
+          <SelectTrigger className="w-[120px] h-7 text-xs">
+            <SelectValue placeholder="Assign to..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="project">Project</SelectItem>
+            <SelectItem value="client">Client</SelectItem>
+          </SelectContent>
+        </Select>
+        {assignType === 'project' && (
+          <>
+            <Select value={assignTargetId} onValueChange={setAssignTargetId}>
+              <SelectTrigger className="w-[180px] h-7 text-xs">
+                <SelectValue placeholder="Select project..." />
+              </SelectTrigger>
+              <SelectContent>
+                {orgProjects
+                  .filter((p: any) => !projectAssignments.some((a: any) => a.project_id === p.id))
+                  .map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Select value={assignRole} onValueChange={setAssignRole}>
+              <SelectTrigger className="w-[90px] h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="viewer">Viewer</SelectItem>
+                <SelectItem value="editor">Editor</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        )}
+        {assignType === 'client' && (
+          <Select value={assignTargetId} onValueChange={setAssignTargetId}>
+            <SelectTrigger className="w-[180px] h-7 text-xs">
+              <SelectValue placeholder="Select client..." />
+            </SelectTrigger>
+            <SelectContent>
+              {orgClients
+                .filter((c: any) => !clientAssignments.some((a: any) => a.client_id === c.id))
+                .map((c: any) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        )}
+        {assignType && assignTargetId && (
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => assignMutation.mutate()} disabled={assignMutation.isPending}>
+            <Plus className="h-3 w-3 mr-1" />
+            Assign
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Members Tab ───────────────────────────────────────────────────────────────
 
 function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
-  const { data: members = [] } = useQuery<OrgMember[]>({
+  const queryClient = useQueryClient();
+  const { data: members = [], isLoading } = useQuery<OrgMember[]>({
     queryKey: ['org-members', orgId],
     queryFn: () => organizationsApi.getMembers(orgId),
     enabled: !!orgId,
   });
 
+  const { data: allUsers = [] } = useQuery<any[]>({
+    queryKey: ['all-users'],
+    queryFn: async () => {
+      const res = await fetch(resolveApiUrl('/api/users'), { credentials: 'include' });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.data || [];
+    },
+  });
+
+  const [expandedMember, setExpandedMember] = useState<string | null>(null);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [addUserId, setAddUserId] = useState('');
+  const [addRole, setAddRole] = useState('member');
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [inviteRole, setInviteRole] = useState('member');
+  const [inviteLink, setInviteLink] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const availableUsers = allUsers.filter(
+    (u: any) => !members.some((m) => m.user_id === u.id)
+  );
+
+  const addMemberMutation = useMutation({
+    mutationFn: () => organizationsApi.addMember(orgId, addUserId, addRole),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
+      setAddUserId('');
+      setAddRole('member');
+      setShowAddMember(false);
+      toast.success('Member added');
+    },
+    onError: () => toast.error('Failed to add member'),
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (userId: string) => organizationsApi.removeMember(orgId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
+      toast.success('Member removed');
+    },
+    onError: () => toast.error('Failed to remove member'),
+  });
+
+  const changeRoleMutation = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      organizationsApi.changeMemberRole(orgId, userId, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgId] });
+      toast.success('Role updated');
+    },
+    onError: () => toast.error('Failed to update role'),
+  });
+
+  const createInviteMutation = useMutation({
+    mutationFn: () => organizationsApi.createInvitation(orgId, inviteRole),
+    onSuccess: (data: any) => {
+      setInviteLink(data.invite_url || '');
+    },
+    onError: () => toast.error('Failed to create invite'),
+  });
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <Card className="bg-card/80 backdrop-blur-sm border-border/50">
       <CardHeader>
-        <CardTitle>Team Members</CardTitle>
-        <CardDescription>People with access to {orgName}</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Team Members</CardTitle>
+            <CardDescription>Manage who has access to {orgName}</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => { setShowInviteDialog(true); setInviteLink(''); }}>
+              <Link2 className="h-4 w-4 mr-2" />
+              Invite Link
+            </Button>
+            <Button size="sm" onClick={() => setShowAddMember(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Member
+            </Button>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent>
-        {members.length === 0 ? (
+      <CardContent className="space-y-3">
+        {showAddMember && (
+          <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+            <Select value={addUserId} onValueChange={setAddUserId}>
+              <SelectTrigger className="flex-1">
+                <SelectValue placeholder="Select user..." />
+              </SelectTrigger>
+              <SelectContent>
+                {availableUsers.map((u: any) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.full_name || u.username} <span className="text-muted-foreground ml-1">@{u.username}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={addRole} onValueChange={setAddRole}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="viewer">Viewer</SelectItem>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" onClick={() => addMemberMutation.mutate()} disabled={!addUserId || addMemberMutation.isPending}>
+              Add
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowAddMember(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Loader2 className="h-5 w-5 mx-auto mb-2 animate-spin" />
+            Loading members...
+          </div>
+        ) : members.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p>No members found</p>
+            <p>No members yet. Add members or send an invite link.</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {members.map((m: OrgMember) => (
-              <div key={m.id} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
-                    {(m.user?.full_name || m.user?.username || '?')[0].toUpperCase()}
+          <div className="space-y-1">
+            {members.map((m: OrgMember) => {
+              const isExpanded = expandedMember === m.user_id;
+              const displayName = m.user?.full_name || m.user?.username || m.user_id;
+              return (
+                <div key={m.id} className="border rounded-lg">
+                  <div
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50"
+                    onClick={() => setExpandedMember(isExpanded ? null : m.user_id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium">
+                        {displayName[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{displayName}</p>
+                        {m.user?.email && (
+                          <p className="text-xs text-muted-foreground">{m.user.email}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        value={m.role}
+                        onValueChange={(role) => changeRoleMutation.mutate({ userId: m.user_id, role })}
+                      >
+                        <SelectTrigger className="w-[110px] h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="viewer"><div className="flex items-center gap-1"><Eye className="h-3 w-3" /> Viewer</div></SelectItem>
+                          <SelectItem value="member"><div className="flex items-center gap-1"><Users className="h-3 w-3" /> Member</div></SelectItem>
+                          <SelectItem value="admin"><div className="flex items-center gap-1"><Shield className="h-3 w-3" /> Admin</div></SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <span className="text-xs text-muted-foreground hidden sm:inline">
+                        {formatDate(m.joined_at)}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        onClick={() => removeMemberMutation.mutate(m.user_id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">
-                      {m.user?.full_name || m.user?.username || m.user_id}
-                    </p>
-                    {m.user?.email && (
-                      <p className="text-xs text-muted-foreground">{m.user.email}</p>
-                    )}
-                  </div>
+                  {isExpanded && (
+                    <MemberAssignments orgId={orgId} userId={m.user_id} />
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="capitalize">{m.role}</Badge>
-                  <span className="text-xs text-muted-foreground">
-                    Since {formatDate(m.joined_at)}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>
+
+      {/* Invite Link Dialog */}
+      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Invite Link</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Role for new members</Label>
+              <Select value={inviteRole} onValueChange={setInviteRole}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                  <SelectItem value="member">Member</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {!inviteLink ? (
+              <Button onClick={() => createInviteMutation.mutate()} disabled={createInviteMutation.isPending} className="w-full">
+                {createInviteMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Link2 className="h-4 w-4 mr-2" />}
+                Generate Link
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Input value={inviteLink} readOnly className="text-xs" />
+                  <Button size="sm" variant="outline" onClick={handleCopyLink}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                {copied && <p className="text-xs text-green-600">Copied to clipboard!</p>}
+                <p className="text-xs text-muted-foreground">This link expires in 7 days.</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInviteDialog(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -5580,6 +6447,7 @@ function MembersTab({ orgId, orgName }: { orgId: string; orgName: string }) {
 export function OrganizationProfilePage({ defaultTab, defaultPipeline }: OrganizationProfilePageProps = {}) {
   const { orgId } = useParams<{ orgId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const tabFromUrl = searchParams.get('tab') || defaultTab || 'overview';
   const pipelineFromUrl = searchParams.get('pipeline') || defaultPipeline;
@@ -5587,13 +6455,26 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
   // viewFromUrl kept for potential future deep-link use
   const _viewFromUrl = searchParams.get('view'); void _viewFromUrl;
 
+  const TAB_PATHS: Record<string, string> = {
+    overview: '',
+    pipelines: '/crm/pipeline',
+    contacts: '/crm/contacts',
+    projects: '/projects',
+    social: '/social',
+    intelligence: '/intelligence',
+    members: '/members',
+    integrations: '/integrations',
+  };
+
   const setTab = (tab: string) => {
-    const params = new URLSearchParams(searchParams);
-    params.set('tab', tab);
-    if (tab !== 'pipelines') params.delete('pipeline');
-    if (tab !== 'projects') params.delete('client');
-    if (tab !== 'intelligence') params.delete('view');
-    setSearchParams(params, { replace: true });
+    const basePath = `/organizations/${orgId}`;
+    const tabPath = TAB_PATHS[tab] ?? '';
+    const params = new URLSearchParams();
+    // Carry over relevant query params
+    if (tab === 'pipelines' && pipelineFromUrl) params.set('pipeline', pipelineFromUrl);
+    if (tab === 'projects' && clientFilter) params.set('client', clientFilter);
+    const qs = params.toString();
+    navigate(`${basePath}${tabPath}${qs ? `?${qs}` : ''}`, { replace: true });
   };
 
   const clearClientFilter = () => {
@@ -5633,7 +6514,12 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
     staleTime: 60_000,
   });
 
-  const { contacts } = useOrgContacts(orgId);
+  const { data: crmContacts = [] } = useQuery<CrmContactRecord[]>({
+    queryKey: ['crm-contacts', orgId],
+    queryFn: () => crmApi.listContacts(orgId!),
+    enabled: !!orgId,
+    staleTime: 30_000,
+  });
 
   const qc = useQueryClient();
   const { data: brandProfile } = useQuery<OrgBrandProfile | null>({
@@ -5983,7 +6869,7 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
                 memberCount={members.length}
                 totalDealValue={totalDealValue}
                 totalDeals={orgDeals.length}
-                contactCount={contacts.length}
+                contactCount={crmContacts.length}
               />
             </TabsContent>
 

@@ -465,7 +465,7 @@ export function StagingReviewContent({
               <div key={key} className="flex items-center gap-2">
                 <Label className="text-[10px] text-muted-foreground w-20 shrink-0 text-right">{key}</Label>
                 <Input
-                  value={typeof value === 'string' ? value : JSON.stringify(value) || ''}
+                  value={value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value)}
                   onChange={(e) => handleEditField(key, e.target.value)}
                   className="h-6 text-xs"
                 />
@@ -731,7 +731,7 @@ export function StagingReviewContent({
                     {/* Key detail fields inline */}
                     <div className="flex items-center gap-3 min-w-0 overflow-hidden">
                       {detailFields.map(([key, value]) => {
-                        const dv = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                        const dv = value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
                         return (
                           <span key={key} className="text-[10px] text-muted-foreground truncate">
                             <span className="opacity-60">{key}:</span> {dv}
@@ -764,7 +764,7 @@ export function StagingReviewContent({
                     <div className="border-b bg-muted/20 px-4 py-3" onClick={handleStopPropagation}>
                       <div className="grid grid-cols-[1fr_1fr] lg:grid-cols-[1fr_1fr_1fr] gap-x-6 gap-y-2">
                         {allFields.map(([key, value]) => {
-                          const dv = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+                          const dv = value == null ? '' : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
                           const isLong = dv.length > 80;
                           const fd = schemaFields[key];
                           return (
