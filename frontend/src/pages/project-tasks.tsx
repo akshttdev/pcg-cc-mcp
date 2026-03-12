@@ -53,7 +53,8 @@ import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { SortMenu } from '@/components/tasks/SortMenu';
 import { EnhancedTaskDetailsPanel } from '@/components/tasks';
 import { ProjectOverview } from '@/components/projects/ProjectOverview';
-import type { TaskWithAttemptStatus, Project } from 'shared/types';
+import type { Project } from 'shared/types';
+import type { TaskWithArchive } from '@/lib/api';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
 import { useProjectAccess } from '@/hooks/useProjectAccess';
@@ -63,7 +64,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import NiceModal from '@ebay/nice-modal-react';
 import { useHotkeysContext } from 'react-hotkeys-hook';
 
-type Task = TaskWithAttemptStatus;
+type Task = TaskWithArchive;
 
 export function ProjectTasks() {
   const { t } = useTranslation(['tasks', 'common']);

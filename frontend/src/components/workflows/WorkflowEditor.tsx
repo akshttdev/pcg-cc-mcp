@@ -43,9 +43,10 @@ import {
   ChevronRight,
   AlertTriangle,
   List,
+  Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { workflowsApi, crmPipelinesApi } from '@/lib/api';
+import { workflowsApi, crmPipelinesApi, DATA_TYPE_OPTIONS } from '@/lib/api';
 import type {
   WorkflowNode,
   WorkflowConnection,
@@ -66,6 +67,16 @@ interface NodeTypeDefinition {
 }
 
 export const NODE_TYPES: NodeTypeDefinition[] = [
+  {
+    type: 'data_source',
+    label: 'Data Source',
+    description: 'Marks this workflow as data-source-driven (source selected at run time)',
+    icon: Database,
+    color: 'bg-slate-600',
+    defaultParameters: {
+      accepted_types: '', // optional: comma-separated data types this workflow can process
+    },
+  },
   {
     type: 'llm_extract',
     label: 'LLM Extract',
@@ -1376,6 +1387,13 @@ function NodeConfigPanel({
               Parameters
             </Label>
 
+            {node.type === 'data_source' && (
+              <DataSourceNodeConfig
+                acceptedTypes={node.parameters.accepted_types || ''}
+                onUpdateAcceptedTypes={(v) => onUpdateParameter('accepted_types', v)}
+              />
+            )}
+
             {isLLMNode && (
               <div className="space-y-3">
                 {/* Model selection */}
@@ -1783,6 +1801,46 @@ function OutputNodeConfig({
       <div className="rounded-md border border-dashed border-muted-foreground/30 p-2.5 bg-muted/20">
         <p className="text-[10px] text-muted-foreground">
           Connect an LLM node as input. The schema for the target type will be automatically injected into the upstream LLM prompt.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Data Source Node Config ────────────────────────────────────────────────────
+
+function DataSourceNodeConfig({ acceptedTypes, onUpdateAcceptedTypes }: {
+  acceptedTypes: string;
+  onUpdateAcceptedTypes: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border border-dashed border-muted-foreground/30 p-2.5 bg-muted/20">
+        <p className="text-[10px] text-muted-foreground">
+          This node marks the workflow as data-source-driven. The data source will be selected at run time.
+          Workflows with this node will appear in the Data Library's "Run Workflow" action.
+        </p>
+      </div>
+      <div>
+        <Label className="text-xs">Accepted Data Type</Label>
+        <Select
+          value={acceptedTypes || '__any__'}
+          onValueChange={(v) => onUpdateAcceptedTypes(v === '__any__' ? '' : v)}
+        >
+          <SelectTrigger className="h-8 text-sm mt-1">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__any__">Any data source</SelectItem>
+            {DATA_TYPE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Filter which data source types this workflow can process.
         </p>
       </div>
     </div>

@@ -427,18 +427,24 @@ fn extract_company_names_from_text(text: &str) -> Vec<String> {
     }
 
     // Look for "CEO of CompanyName", "VP at CompanyName", "works at CompanyName", etc.
-    let at_of_re = Regex::new(r"(?:at|of|from|with)\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})").unwrap();
-    for cap in at_of_re.captures_iter(text) {
+    // Only match "at CompanyName" (not "of") to avoid picking up job title fragments like "of Business Development"
+    let at_re = Regex::new(r"\bat\s+([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4})").unwrap();
+    for cap in at_re.captures_iter(text) {
         if let Some(m) = cap.get(1) {
             let candidate = m.as_str().trim().to_string();
-            // Filter out common false positives
+            // Filter out common false positives (people names are handled by contact extraction)
             let false_positives = ["The", "This", "That", "These", "Those", "Our", "Your",
                                    "His", "Her", "Its", "My", "January", "February", "March",
                                    "April", "May", "June", "July", "August", "September",
                                    "October", "November", "December", "Monday", "Tuesday",
-                                   "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+                                   "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+                                   // Job title/department words that aren't company names
+                                   "Business", "Product", "Engineering", "Marketing", "Sales",
+                                   "Operations", "Human", "Finance", "Legal", "Research"];
             let first_word = candidate.split_whitespace().next().unwrap_or("");
-            if !false_positives.contains(&first_word) && candidate.len() >= 3
+            let word_count = candidate.split_whitespace().count();
+            // Require at least 2 words for "at X" companies (single words too ambiguous)
+            if word_count >= 2 && !false_positives.contains(&first_word) && candidate.len() >= 3
                 && !companies.contains(&candidate) && companies.len() < 10
             {
                 companies.push(candidate);
@@ -574,14 +580,15 @@ fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
             let name = cap[1].trim().to_string();
             let role_str = cap[2].trim().to_string();
             let email = cap[3].trim().to_string();
-            // Parse "CEO of CompanyName" or "VP Engineering at CompanyName"
+            // Parse "VP of Business Development at CompanyName" or "CEO of CompanyName"
+            // Prefer splitting at " at " (last occurrence) since it typically separates role from company
             let (role, company) = {
                 let role_lower = role_str.to_lowercase();
-                if let Some(pos) = role_lower.find(" of ") {
+                if let Some(pos) = role_lower.rfind(" at ") {
                     let r = role_str[..pos].trim().to_string();
                     let c = role_str[pos+4..].trim().to_string();
                     (Some(r), if c.is_empty() { None } else { Some(c) })
-                } else if let Some(pos) = role_lower.find(" at ") {
+                } else if let Some(pos) = role_lower.find(" of ") {
                     let r = role_str[..pos].trim().to_string();
                     let c = role_str[pos+4..].trim().to_string();
                     (Some(r), if c.is_empty() { None } else { Some(c) })
@@ -625,13 +632,14 @@ fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
                         }
                         let role_part = clean[comma_pos+1..].trim();
                         if !role_part.is_empty() {
-                            // Parse "CEO of CompanyName" or "VP at CompanyName"
+                            // Parse "VP of Business Development at CompanyName" or "CEO of CompanyName"
+                            // Prefer " at " (last occurrence) over " of " since it typically separates role from company
                             let role_lower = role_part.to_lowercase();
-                            if let Some(pos) = role_lower.find(" of ") {
+                            if let Some(pos) = role_lower.rfind(" at ") {
                                 found_role = Some(role_part[..pos].trim().to_string());
                                 let c = role_part[pos+4..].trim().to_string();
                                 if !c.is_empty() { found_company = Some(c); }
-                            } else if let Some(pos) = role_lower.find(" at ") {
+                            } else if let Some(pos) = role_lower.find(" of ") {
                                 found_role = Some(role_part[..pos].trim().to_string());
                                 let c = role_part[pos+4..].trim().to_string();
                                 if !c.is_empty() { found_company = Some(c); }
@@ -685,15 +693,137 @@ fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous
         _ => {
             // For custom workflows, use output_schema to pick the right mock
             let schema_lower = output_schema.to_lowercase();
-            if schema_lower.contains("compan") { "extract_companies".to_string() }
-            else if schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people") { "extract_contacts".to_string() }
-            else if schema_lower.contains("deal") { "identify_deals".to_string() }
+            let has_companies = schema_lower.contains("compan");
+            let has_contacts = schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people");
+            let has_deals = schema_lower.contains("deal") || schema_lower.contains("opportunit");
+            let multi_type_count = [has_companies, has_contacts, has_deals].iter().filter(|&&b| b).count();
 
-            else if schema_lower.contains("opportunit") || node_type == "llm_analyze" { "identify_opportunities".to_string() }
+            if multi_type_count >= 2 {
+                // Multi-schema: generate combined output for all requested types
+                "multi_extract".to_string()
+            } else if has_companies { "extract_companies".to_string() }
+            else if has_contacts { "extract_contacts".to_string() }
+            else if has_deals { "identify_deals".to_string() }
+            else if node_type == "llm_analyze" { "identify_opportunities".to_string() }
             else { step_id.to_string() }
         }
     };
     match key.as_str() {
+        "multi_extract" => {
+            // Combined extraction: produce contacts, companies, and deals in one JSON object
+            let schema_lower = output_schema.to_lowercase();
+            let mut result = serde_json::Map::new();
+            // Extract contacts first so we can filter person names from companies
+            let contacts_extracted = extract_contacts_from_text(content);
+            let contact_names: Vec<String> = contacts_extracted.iter().map(|c| c.name.to_lowercase()).collect();
+
+            if schema_lower.contains("compan") {
+                let extracted = extract_company_names_from_text(content);
+                // Filter out entries that match known contact names (person != company)
+                let companies: Vec<Value> = extracted.iter()
+                    .filter(|name| !contact_names.contains(&name.to_lowercase()))
+                    .enumerate().map(|(i, name)| {
+                    let rel = match i % 3 { 0 => "potential_client", 1 => "partner", _ => "vendor" };
+                    json!({
+                        "name": name,
+                        "description": "Extracted from source content",
+                        "relationship": rel,
+                        "context": format!("Company '{}' mentioned in document", name),
+                    })
+                }).collect();
+                result.insert("companies".to_string(), json!(companies));
+            }
+
+            if schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people") {
+                let extracted = extract_contacts_from_text(content);
+                let contacts: Vec<Value> = extracted.iter().map(|c| {
+                    let (first_name, last_name) = {
+                        let parts: Vec<&str> = c.name.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            (parts[0].to_string(), parts[1..].join(" "))
+                        } else {
+                            (c.name.clone(), String::new())
+                        }
+                    };
+                    json!({
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "name": c.name,
+                        "job_title": c.role,
+                        "email": c.email,
+                        "phone": c.phone,
+                        "company_name": c.company,
+                    })
+                }).collect();
+                result.insert("contacts".to_string(), json!(contacts));
+            }
+
+            if schema_lower.contains("deal") || schema_lower.contains("opportunit") {
+                let amounts = extract_dollar_amounts_from_text(content);
+                let contacts_extracted = extract_contacts_from_text(content);
+
+                let deals: Vec<Value> = if amounts.is_empty() && !contacts_extracted.is_empty() {
+                    let c = &contacts_extracted[0];
+                    let company = c.company.clone().unwrap_or_default();
+                    vec![json!({
+                        "name": format!("Opportunity with {}", if company.is_empty() { c.name.clone() } else { company }),
+                        "description": format!("Potential opportunity identified with {}", c.name),
+                        "amount": null,
+                        "currency": "USD",
+                        "deal_type": "project",
+                    })]
+                } else {
+                    amounts.iter().enumerate().map(|(i, (amount, context_line))| {
+                        let amount_num: Option<f64> = {
+                            let cleaned: String = amount.chars()
+                                .filter(|c| c.is_ascii_digit() || *c == '.')
+                                .collect();
+                            let multiplier = if amount.contains('K') || amount.contains('k') { 1_000.0 }
+                                else if amount.contains('M') || amount.contains('m') { 1_000_000.0 }
+                                else { 1.0 };
+                            cleaned.parse::<f64>().ok().map(|v| v * multiplier)
+                        };
+                        // Associate each deal with the nearest contact by matching context line
+                        let associated_contact = contacts_extracted.iter().find(|c| {
+                            let ctx_lower = context_line.to_lowercase();
+                            if let Some(ref name) = Some(&c.name) {
+                                ctx_lower.contains(&name.to_lowercase())
+                            } else {
+                                false
+                            }
+                        }).or(contacts_extracted.get(i));
+                        let company = associated_contact.and_then(|c| c.company.clone()).unwrap_or_default();
+                        let deal_name = if !company.is_empty() {
+                            format!("Deal with {}", company)
+                        } else if let Some(c) = associated_contact {
+                            format!("Deal with {}", c.name)
+                        } else {
+                            format!("Deal #{}", i + 1)
+                        };
+                        let contact_name = associated_contact.map(|c| c.name.clone());
+                        let contact_email = associated_contact.and_then(|c| c.email.clone());
+                        // Truncate description to a clean summary
+                        let desc = if context_line.len() > 200 {
+                            format!("{}...", &context_line[..200])
+                        } else {
+                            context_line.clone()
+                        };
+                        json!({
+                            "name": deal_name,
+                            "description": desc,
+                            "amount": amount_num,
+                            "currency": "USD",
+                            "contact_name": contact_name,
+                            "contact_email": contact_email,
+                            "deal_type": "project",
+                        })
+                    }).collect()
+                };
+                result.insert("deals".to_string(), json!(deals));
+            }
+
+            Value::Object(result).to_string()
+        }
         "extract_companies" => {
             let extracted = extract_company_names_from_text(content);
             if extracted.is_empty() {
