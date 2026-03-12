@@ -72,6 +72,10 @@ pub struct Task {
     /// Base64 encoded screenshot image for bug reports
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub screenshot: Option<String>,
+    /// Structured success criteria for agent self-evaluation
+    pub completion_criteria: Option<String>,
+    /// Expected deliverable format (e.g. "markdown report", "code PR", "JSON API response")
+    pub output_format: Option<String>,
 }
 
 /// Brief execution summary for task card display
@@ -169,6 +173,10 @@ pub struct CreateTask {
     pub scheduled_end: Option<DateTime<Utc>>,
     /// Base64 encoded screenshot image for bug reports
     pub screenshot: Option<String>,
+    /// Structured success criteria for agent self-evaluation
+    pub completion_criteria: Option<String>,
+    /// Expected deliverable format (e.g. "markdown report", "code PR", "JSON API response")
+    pub output_format: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -200,15 +208,25 @@ pub struct UpdateTask {
     pub custom_properties: Option<Option<Value>>,
     pub scheduled_start: Option<Option<DateTime<Utc>>>,
     pub scheduled_end: Option<Option<DateTime<Utc>>>,
+    /// Structured success criteria for agent self-evaluation
+    pub completion_criteria: Option<String>,
+    /// Expected deliverable format
+    pub output_format: Option<String>,
 }
 
 impl Task {
     pub fn to_prompt(&self) -> String {
+        let mut parts = vec![format!("Title: {}", &self.title)];
         if let Some(description) = &self.description {
-            format!("Title: {}\n\nDescription:{}", &self.title, description)
-        } else {
-            self.title.clone()
+            parts.push(format!("Description: {}", description));
         }
+        if let Some(criteria) = &self.completion_criteria {
+            parts.push(format!("Completion Criteria: {}", criteria));
+        }
+        if let Some(fmt) = &self.output_format {
+            parts.push(format!("Output Format: {}", fmt));
+        }
+        parts.join("\n\n")
     }
 
     fn serialize_json_array(arr: &Option<Vec<String>>) -> Option<String> {
@@ -283,6 +301,8 @@ impl Task {
 
   t.collaborators                   AS "collaborators: String",
   t.screenshot                      AS "screenshot: String",
+  t.completion_criteria              AS "completion_criteria: String",
+  t.output_format                    AS "output_format: String",
 
   COALESCE(( SELECT SUM(vt.amount_vibe)
       FROM vibe_transactions vt
@@ -334,6 +354,8 @@ ORDER BY t.created_at DESC"#,
                     scheduled_start: rec.scheduled_start,
                     scheduled_end: rec.scheduled_end,
                     screenshot: rec.screenshot,
+                    completion_criteria: rec.completion_criteria,
+                    output_format: rec.output_format,
                 },
                 has_in_progress_attempt: rec.has_in_progress_attempt != 0,
                 has_merged_attempt: false, // TODO use merges table
@@ -380,7 +402,9 @@ ORDER BY t.created_at DESC"#,
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
                 scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot
+                screenshot,
+                completion_criteria,
+                output_format
                FROM tasks
                WHERE id = $1 AND deleted_at IS NULL"#,
             id
@@ -418,7 +442,9 @@ ORDER BY t.created_at DESC"#,
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
                 scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot
+                screenshot,
+                completion_criteria,
+                output_format
                FROM tasks
                WHERE rowid = $1 AND deleted_at IS NULL"#,
             rowid
@@ -460,7 +486,9 @@ ORDER BY t.created_at DESC"#,
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
                 scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot
+                screenshot,
+                completion_criteria,
+                output_format
                FROM tasks
                WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL"#,
             id,
@@ -493,9 +521,10 @@ ORDER BY t.created_at DESC"#,
                 id, project_id, pod_id, board_id, title, description, status, parent_task_attempt,
                 priority, assignee_id, assignee_type, assigned_agent, agent_id, assigned_mcps, created_by,
                 requires_approval, parent_task_id, tags, due_date,
-                custom_properties, scheduled_start, scheduled_end, screenshot
+                custom_properties, scheduled_start, scheduled_end, screenshot,
+                completion_criteria, output_format
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
                RETURNING
                 id as "id!: Uuid",
                 project_id as "project_id!: Uuid",
@@ -522,7 +551,9 @@ ORDER BY t.created_at DESC"#,
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
                 scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot"#,
+                screenshot,
+                completion_criteria,
+                output_format"#,
             task_id,
             data.project_id,
             data.pod_id,
@@ -545,7 +576,9 @@ ORDER BY t.created_at DESC"#,
             custom_properties,
             data.scheduled_start,
             data.scheduled_end,
-            data.screenshot
+            data.screenshot,
+            data.completion_criteria,
+            data.output_format
         )
         .fetch_one(pool)
         .await
@@ -574,6 +607,8 @@ ORDER BY t.created_at DESC"#,
         custom_properties: Option<Json<Value>>,
         scheduled_start: Option<DateTime<Utc>>,
         scheduled_end: Option<DateTime<Utc>>,
+        completion_criteria: Option<String>,
+        output_format: Option<String>,
     ) -> Result<Self, sqlx::Error> {
         sqlx::query_as!(
             Task,
@@ -588,6 +623,8 @@ ORDER BY t.created_at DESC"#,
                    custom_properties = $19,
                    scheduled_start = $20,
                    scheduled_end = $21,
+                   completion_criteria = $22,
+                   output_format = $23,
                    updated_at = datetime('now', 'subsec')
                WHERE id = $1 AND project_id = $2 AND deleted_at IS NULL
                RETURNING
@@ -616,7 +653,9 @@ ORDER BY t.created_at DESC"#,
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
                 scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot"#,
+                screenshot,
+                completion_criteria,
+                output_format"#,
             id,
             project_id,
             title,
@@ -637,7 +676,9 @@ ORDER BY t.created_at DESC"#,
             due_date,
             custom_properties,
             scheduled_start,
-            scheduled_end
+            scheduled_end,
+            completion_criteria,
+            output_format
         )
         .fetch_one(pool)
         .await
@@ -771,7 +812,9 @@ ORDER BY t.created_at DESC"#,
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
                 scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot
+                screenshot,
+                completion_criteria,
+                output_format
                FROM tasks
                WHERE parent_task_attempt = $1 AND deleted_at IS NULL
                ORDER BY created_at DESC"#,
@@ -896,7 +939,9 @@ ORDER BY t.created_at DESC"#,
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
                 scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot
+                screenshot,
+                completion_criteria,
+                output_format
                FROM tasks
                WHERE collaborators LIKE $1
                AND deleted_at IS NULL
@@ -940,7 +985,9 @@ ORDER BY t.created_at DESC"#,
                 NULLIF(custom_properties, '') as "custom_properties: Json<Value>",
                 scheduled_start as "scheduled_start: DateTime<Utc>",
                 scheduled_end as "scheduled_end: DateTime<Utc>",
-                screenshot
+                screenshot,
+                completion_criteria,
+                output_format
                FROM tasks
                WHERE assignee_id = $1
                AND status != 'completed'
