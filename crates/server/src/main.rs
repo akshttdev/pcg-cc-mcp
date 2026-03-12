@@ -287,6 +287,9 @@ async fn main() -> Result<(), VibeKanbanError> {
     // Spawn CRM workflow automations (runs hourly)
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
 
+    // Spawn workflow schedule trigger loop (checks every 5 minutes)
+    routes::data_source_workflows::spawn_workflow_schedule_loop(deployment.db().pool.clone());
+
     // Spawn OSS Library Listener (polls GitHub releases hourly)
     routes::oss_listener_bg::spawn_oss_listener(deployment.db().pool.clone());
 

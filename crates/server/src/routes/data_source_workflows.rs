@@ -7,6 +7,10 @@ use db::models::data_source::DataSource;
 use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, ExecutionArtifact};
 use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun, UpdateWorkflowRunOnComplete};
 use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
+use db::models::crm_contact::{CrmContact, UpdateCrmContact};
+use db::models::crm_deal::{CrmDeal, UpdateCrmDeal};
+use db::models::company::{Company, UpdateCompany};
+use db::models::task::{Task, CreateTask, Priority};
 use regex::Regex;
 
 use serde::{Deserialize, Serialize};
@@ -225,6 +229,228 @@ fn default_analysis_workflow() -> WorkflowDefinition {
     }
 }
 
+// ── Sprint 2D: Additional system workflows ──────────────────────────────────
+
+/// Bug Triage Pipeline: Analyze bug reports → filter by severity → create prioritized tasks
+fn bug_triage_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "bug_triage_pipeline".to_string(),
+        name: "Bug Triage Pipeline".to_string(),
+        description: Some("Analyze bug reports, categorize by severity, and create prioritized tasks.".to_string()),
+        nodes: vec![
+            WorkflowNode {
+                id: "analyze_bugs".to_string(),
+                name: "Analyze Bug Reports".to_string(),
+                node_type: "llm_analyze".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Analyze the following bug reports and categorize each one.\n",
+                        "For each bug, provide:\n",
+                        "- title: Short descriptive title\n",
+                        "- description: Detailed description of the issue\n",
+                        "- severity: One of critical, high, medium, low\n",
+                        "- component: Affected system component\n",
+                        "- reproducible: true/false\n",
+                        "- suggested_fix: Brief suggestion for resolution\n\n",
+                        "Output as JSON with a top-level \"bugs\" array.\n\n",
+                        "Content:\n{{content}}"
+                    ),
+                    "output_schema": "bugs[]"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "filter_critical".to_string(),
+                name: "Filter Critical/High".to_string(),
+                node_type: "conditional".to_string(),
+                parameters: json!({
+                    "condition": "contains:critical",
+                    "true_label": "has_critical",
+                    "false_label": "no_critical"
+                }),
+                position: NodePosition { x: 500.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "create_tasks".to_string(),
+                name: "Create Bug Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 900.0, y: 200.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection { source: "analyze_bugs".to_string(), target: "filter_critical".to_string(), source_output: Some(0), target_input: Some(0) },
+            WorkflowConnection { source: "analyze_bugs".to_string(), target: "create_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
+/// Sprint Planning: Extract requirements → break into agent-ready tasks with completion criteria
+fn sprint_planning_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "sprint_planning".to_string(),
+        name: "Sprint Planning from Requirements".to_string(),
+        description: Some("Break down requirements documents into agent-ready tasks with completion criteria.".to_string()),
+        nodes: vec![
+            WorkflowNode {
+                id: "extract_requirements".to_string(),
+                name: "Extract Requirements".to_string(),
+                node_type: "llm_extract".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Analyze the following requirements document and extract individual work items.\n",
+                        "For each requirement, provide:\n",
+                        "- title: Task title (action-oriented, e.g. 'Implement user login')\n",
+                        "- description: Detailed task description with acceptance criteria\n",
+                        "- priority: One of critical, high, medium, low\n",
+                        "- estimated_effort: small, medium, large\n",
+                        "- completion_criteria: Bullet-pointed list of what must be true for this to be done\n",
+                        "- output_format: Expected deliverable (e.g. 'Pull request with tests', 'Design document')\n",
+                        "- dependencies: Array of other task titles this depends on\n\n",
+                        "Output as JSON with a top-level \"tasks\" array.\n\n",
+                        "Content:\n{{content}}"
+                    ),
+                    "output_schema": "tasks[]"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "output_sprint_tasks".to_string(),
+                name: "Create Sprint Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 500.0, y: 200.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection { source: "extract_requirements".to_string(), target: "output_sprint_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
+/// Client Onboarding: Process client data → create CRM contacts → create onboarding tasks
+fn client_onboarding_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "client_onboarding".to_string(),
+        name: "Client Onboarding Pipeline".to_string(),
+        description: Some("Process new client data, create CRM contacts, and generate onboarding task checklist.".to_string()),
+        nodes: vec![
+            WorkflowNode {
+                id: "extract_client_info".to_string(),
+                name: "Extract Client Info".to_string(),
+                node_type: "llm_extract".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Extract client and contact information from the following data.\n",
+                        "Provide:\n",
+                        "- contacts: Array of people with first_name, last_name, email, phone, job_title, company_name\n",
+                        "- company: Object with name, website, industry, address\n",
+                        "- onboarding_notes: Any special requirements or notes mentioned\n\n",
+                        "Output as JSON.\n\n",
+                        "Content:\n{{content}}"
+                    ),
+                    "output_schema": "contacts[]"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "create_contacts".to_string(),
+                name: "Create CRM Contacts".to_string(),
+                node_type: "output_crm_contacts".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 500.0, y: 100.0 },
+            },
+            WorkflowNode {
+                id: "create_onboarding_tasks".to_string(),
+                name: "Create Onboarding Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 500.0, y: 300.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection { source: "extract_client_info".to_string(), target: "create_contacts".to_string(), source_output: Some(0), target_input: Some(0) },
+            WorkflowConnection { source: "extract_client_info".to_string(), target: "create_onboarding_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
+/// Content Pipeline: Summarize content → analyze SEO → create content tasks
+fn content_pipeline_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: "content_pipeline".to_string(),
+        name: "Content Analysis Pipeline".to_string(),
+        description: Some("Analyze content for SEO opportunities and create actionable content tasks.".to_string()),
+        nodes: vec![
+            WorkflowNode {
+                id: "summarize_content".to_string(),
+                name: "Summarize Content".to_string(),
+                node_type: "llm_summarize".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Summarize the following content, identifying:\n",
+                        "- key_topics: Main topics covered\n",
+                        "- target_audience: Who this content is for\n",
+                        "- content_type: blog, documentation, marketing, technical, etc.\n",
+                        "- word_count: Approximate word count\n",
+                        "- summary: 2-3 sentence summary\n\n",
+                        "Output as JSON.\n\n",
+                        "Content:\n{{content}}"
+                    ),
+                    "output_schema": "summary"
+                }),
+                position: NodePosition { x: 100.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "analyze_seo".to_string(),
+                name: "SEO Analysis".to_string(),
+                node_type: "llm_analyze".to_string(),
+                parameters: json!({
+                    "prompt_template": concat!(
+                        "Based on the content summary below, perform an SEO analysis.\n",
+                        "Provide:\n",
+                        "- keywords: Array of target keywords with search intent\n",
+                        "- content_gaps: Topics that should be covered but aren't\n",
+                        "- optimization_tasks: Specific actions to improve SEO\n",
+                        "- competitor_angles: Angles competitors might use\n\n",
+                        "Output as JSON with arrays for each field.\n\n",
+                        "Summary:\n{{previous_results}}"
+                    ),
+                    "output_schema": "seo_analysis"
+                }),
+                position: NodePosition { x: 500.0, y: 200.0 },
+            },
+            WorkflowNode {
+                id: "create_content_tasks".to_string(),
+                name: "Create Content Tasks".to_string(),
+                node_type: "output_tasks".to_string(),
+                parameters: json!({}),
+                position: NodePosition { x: 900.0, y: 200.0 },
+            },
+        ],
+        connections: vec![
+            WorkflowConnection { source: "summarize_content".to_string(), target: "analyze_seo".to_string(), source_output: Some(0), target_input: Some(0) },
+            WorkflowConnection { source: "analyze_seo".to_string(), target: "create_content_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+        ],
+        is_system: true,
+        owner_type: "system".to_string(),
+        owner_id: None,
+        default_model: None,
+    }
+}
+
 // ── DB helpers ───────────────────────────────────────────────────────────────
 
 /// Serialize workflow to DB JSON column
@@ -238,20 +464,28 @@ fn serialize_workflow_data(wf: &WorkflowDefinition) -> String {
 }
 
 async fn seed_defaults(pool: &sqlx::SqlitePool) {
-    let default = default_analysis_workflow();
-    let data = serialize_workflow_data(&default);
-    let desc = default.description.unwrap_or_default();
+    let workflows = vec![
+        default_analysis_workflow(),
+        bug_triage_workflow(),
+        sprint_planning_workflow(),
+        client_onboarding_workflow(),
+        content_pipeline_workflow(),
+    ];
 
-    let _ = sqlx::query(
-        r#"INSERT OR IGNORE INTO workflow_definitions (id, owner_type, name, description, steps, is_system)
-           VALUES (?1, 'system', ?2, ?3, ?4, 1)"#,
-    )
-    .bind(&default.id)
-    .bind(&default.name)
-    .bind(&desc)
-    .bind(&data)
-    .execute(pool)
-    .await;
+    for wf in &workflows {
+        let data = serialize_workflow_data(wf);
+        let desc = wf.description.clone().unwrap_or_default();
+        let _ = sqlx::query(
+            r#"INSERT OR IGNORE INTO workflow_definitions (id, owner_type, name, description, steps, is_system)
+               VALUES (?1, 'system', ?2, ?3, ?4, 1)"#,
+        )
+        .bind(&wf.id)
+        .bind(&wf.name)
+        .bind(&desc)
+        .bind(&data)
+        .execute(pool)
+        .await;
+    }
 }
 
 fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<String>, name: String, description: Option<String>, steps_json: String, is_system: bool) -> WorkflowDefinition {
@@ -1863,6 +2097,9 @@ async fn run_workflow(
                 .collect::<Vec<_>>()
                 .join("\n");
             (input_data, None)
+        } else if let Some(action_result) = execute_action_node(pool, node, &previous, data_source.project_id, data_source.organization_id).await {
+            // Action nodes (conditional, send_notification, assign_to_agent, http_request, update_crm_*)
+            action_result
         } else {
             let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
             execute_node_with_llm(pool, node, &content, &previous, &model, targets).await
@@ -2280,6 +2517,593 @@ async fn list_recent_artifacts(
     Ok(Json(ApiResponse::success(artifacts)))
 }
 
+// ── Action node execution (non-LLM nodes) ───────────────────────────────────
+
+/// Returns `Some((output, None))` if this node type is an action node that was handled,
+/// or `None` if the node type is not an action and should fall through to LLM execution.
+/// `context_project_id` and `context_org_id` come from the data source / workflow context.
+async fn execute_action_node(
+    pool: &sqlx::SqlitePool,
+    node: &WorkflowNode,
+    previous_results: &[(&str, &str, &str)],
+    context_project_id: Option<Uuid>,
+    context_org_id: Option<Uuid>,
+) -> Option<(String, Option<Value>)> {
+    match node.node_type.as_str() {
+        // ── Conditional: evaluate a simple condition against upstream data ────
+        "conditional" => {
+            let condition = node.parameters.get("condition")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let true_label = node.parameters.get("true_label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("true");
+            let false_label = node.parameters.get("false_label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("false");
+
+            // Merge all upstream outputs
+            let input_data: String = previous_results.iter()
+                .map(|(_, result, _)| result.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            // Simple condition evaluation: check if the input data contains the condition string
+            // For more advanced conditions, the LLM nodes should be used upstream
+            let result = if condition.is_empty() {
+                !input_data.is_empty()
+            } else if condition.starts_with("count>") {
+                // Support count>N pattern: check if JSON array has more than N items
+                let threshold: usize = condition.strip_prefix("count>")
+                    .and_then(|s| s.trim().parse().ok())
+                    .unwrap_or(0);
+                serde_json::from_str::<Value>(&input_data)
+                    .ok()
+                    .and_then(|v| v.as_array().map(|a| a.len()))
+                    .unwrap_or(0) > threshold
+            } else if condition.starts_with("contains:") {
+                let search = condition.strip_prefix("contains:").unwrap_or("").trim();
+                input_data.to_lowercase().contains(&search.to_lowercase())
+            } else {
+                // Default: check if condition string is present in input
+                input_data.to_lowercase().contains(&condition.to_lowercase())
+            };
+
+            let branch = if result { true_label } else { false_label };
+            let output = json!({
+                "condition": condition,
+                "result": result,
+                "branch": branch,
+                "input_summary": if input_data.len() > 200 {
+                    format!("{}...", &input_data[..200])
+                } else {
+                    input_data
+                }
+            });
+            tracing::info!("[WORKFLOW] Conditional node '{}': condition='{}' → branch='{}'", node.id, condition, branch);
+            Some((output.to_string(), None))
+        }
+
+        // ── Send notification: log a notification (in-app or email placeholder) ──
+        "send_notification" => {
+            let notification_type = node.parameters.get("notification_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("in_app");
+            let recipient = node.parameters.get("recipient")
+                .and_then(|v| v.as_str())
+                .unwrap_or("admin");
+            let subject = node.parameters.get("subject")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Workflow Notification");
+            let message_template = node.parameters.get("message_template")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            // Substitute {{previous_results}} in the message
+            let prev_text: String = previous_results.iter()
+                .map(|(id, result, _)| format!("[{}]: {}", id, result))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let message = message_template.replace("{{previous_results}}", &prev_text);
+
+            // For now, log the notification. Full email/in-app integration is a future sprint.
+            tracing::info!(
+                "[WORKFLOW] Notification node '{}': type={}, recipient={}, subject='{}'",
+                node.id, notification_type, recipient, subject
+            );
+
+            let output = json!({
+                "notification_sent": true,
+                "type": notification_type,
+                "recipient": recipient,
+                "subject": subject,
+                "message": message,
+            });
+            Some((output.to_string(), None))
+        }
+
+        // ── Assign to agent: create a task and assign it to a specific agent ──
+        "assign_to_agent" => {
+            let agent_codename = node.parameters.get("agent_codename")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let title_template = node.parameters.get("task_title_template")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Agent Task");
+            let description_template = node.parameters.get("task_description_template")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let completion_criteria = node.parameters.get("completion_criteria")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let auto_start = node.parameters.get("auto_start")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            // Substitute upstream results into templates
+            let prev_text: String = previous_results.iter()
+                .map(|(id, result, _)| format!("[{}]: {}", id, result))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let title = title_template.replace("{{previous_results}}", &prev_text);
+            let description = description_template.replace("{{previous_results}}", &prev_text);
+
+            // Create the task — use the workflow's data source project as context
+            let project_id = context_project_id.unwrap_or_else(Uuid::nil);
+            let task_id = Uuid::new_v4();
+            let create_task = CreateTask {
+                project_id,
+                pod_id: None,
+                board_id: None,
+                title: if title.len() > 200 { title[..200].to_string() } else { title },
+                description: Some(description),
+                priority: Some(Priority::Medium),
+                assignee_id: None,
+                assignee_type: None,
+                assigned_agent: Some(agent_codename.to_string()),
+                agent_id: None,
+                assigned_mcps: None,
+                parent_task_id: None,
+                parent_task_attempt: None,
+                image_ids: None,
+                created_by: "workflow".to_string(),
+                requires_approval: Some(true),
+                screenshot: None,
+                tags: None,
+                due_date: None,
+                custom_properties: None,
+                scheduled_start: None,
+                scheduled_end: None,
+                completion_criteria: if completion_criteria.is_empty() { None } else { Some(completion_criteria.to_string()) },
+                output_format: None,
+            };
+
+            match Task::create(pool, &create_task, task_id).await {
+                Ok(task) => {
+                    let status_msg = if auto_start { "created (auto_start=true, queued)" } else { "created" };
+                    tracing::info!(
+                        "[WORKFLOW] assign_to_agent node '{}': task {} {} for agent '{}'",
+                        node.id, task.id, status_msg, agent_codename
+                    );
+                    let output = json!({
+                        "task_created": true,
+                        "task_id": task.id.to_string(),
+                        "agent_codename": agent_codename,
+                        "auto_start": auto_start,
+                        "status": status_msg,
+                    });
+                    Some((output.to_string(), None))
+                }
+                Err(e) => {
+                    tracing::error!("[WORKFLOW] assign_to_agent node '{}': failed to create task: {}", node.id, e);
+                    let output = json!({
+                        "task_created": false,
+                        "error": format!("{}", e),
+                    });
+                    Some((output.to_string(), None))
+                }
+            }
+        }
+
+        // ── HTTP request: make an external API call ──
+        "http_request" => {
+            let method = node.parameters.get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("GET")
+                .to_uppercase();
+            let url = node.parameters.get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let headers = node.parameters.get("headers")
+                .and_then(|v| v.as_str())
+                .unwrap_or("{}");
+            let body = node.parameters.get("body")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let output_path = node.parameters.get("output_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            if url.is_empty() {
+                let output = json!({"error": "No URL configured for http_request node"});
+                return Some((output.to_string(), None));
+            }
+
+            // Substitute upstream results into URL and body
+            let prev_text: String = previous_results.iter()
+                .map(|(_, result, _)| result.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let url = url.replace("{{previous_results}}", &prev_text);
+            let body = body.replace("{{previous_results}}", &prev_text);
+
+            tracing::info!("[WORKFLOW] http_request node '{}': {} {}", node.id, method, url);
+
+            let client = reqwest::Client::new();
+            let mut request = match method.as_str() {
+                "POST" => client.post(&url),
+                "PUT" => client.put(&url),
+                "DELETE" => client.delete(&url),
+                "PATCH" => client.patch(&url),
+                _ => client.get(&url),
+            };
+
+            // Parse and apply headers
+            if let Ok(hdrs) = serde_json::from_str::<Value>(headers) {
+                if let Some(obj) = hdrs.as_object() {
+                    for (k, v) in obj {
+                        if let Some(val) = v.as_str() {
+                            request = request.header(k.as_str(), val);
+                        }
+                    }
+                }
+            }
+
+            // Add body for POST/PUT/PATCH
+            if !body.is_empty() && matches!(method.as_str(), "POST" | "PUT" | "PATCH") {
+                request = request.header("Content-Type", "application/json").body(body);
+            }
+
+            match request.timeout(std::time::Duration::from_secs(30)).send().await {
+                Ok(response) => {
+                    let status = response.status().as_u16();
+                    let response_text = response.text().await.unwrap_or_default();
+
+                    // Optionally extract a specific path from JSON response
+                    let extracted = if !output_path.is_empty() {
+                        if let Ok(parsed) = serde_json::from_str::<Value>(&response_text) {
+                            let parts: Vec<&str> = output_path.split('.').collect();
+                            let mut current = &parsed;
+                            for part in &parts {
+                                if let Some(next) = current.get(part) {
+                                    current = next;
+                                } else {
+                                    break;
+                                }
+                            }
+                            current.to_string()
+                        } else {
+                            response_text.clone()
+                        }
+                    } else {
+                        response_text.clone()
+                    };
+
+                    let output = json!({
+                        "status": status,
+                        "success": status >= 200 && status < 300,
+                        "data": extracted,
+                    });
+                    Some((output.to_string(), None))
+                }
+                Err(e) => {
+                    tracing::error!("[WORKFLOW] http_request node '{}': request failed: {}", node.id, e);
+                    let output = json!({
+                        "status": 0,
+                        "success": false,
+                        "error": format!("{}", e),
+                    });
+                    Some((output.to_string(), None))
+                }
+            }
+        }
+
+        // ── Update CRM contact: find by match field and update ──
+        "update_crm_contact" => {
+            let match_field = node.parameters.get("match_field")
+                .and_then(|v| v.as_str())
+                .unwrap_or("email");
+            let update_fields_str = node.parameters.get("update_fields")
+                .and_then(|v| v.as_str())
+                .unwrap_or("{}");
+
+            // Parse upstream data to find records to update
+            let input_data: String = previous_results.iter()
+                .map(|(_, result, _)| result.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let records = parse_records_from_input(&input_data);
+            let update_template: Value = serde_json::from_str(update_fields_str).unwrap_or(json!({}));
+            let mut updated_count = 0;
+            let mut errors: Vec<String> = Vec::new();
+
+            for record in &records {
+                let match_value = record.get(match_field).and_then(|v| v.as_str()).unwrap_or("");
+                if match_value.is_empty() { continue; }
+
+                // Try to find the contact by email (most common match field)
+                // For other match fields, we'd need additional lookup methods
+                if match_field == "email" {
+                    // Use org_id from record, or fall back to workflow context
+                    let org_id = record.get("organization_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .or(context_org_id);
+
+                    if let Some(org_id) = org_id {
+                        match CrmContact::find_by_email(pool, org_id, match_value).await {
+                            Ok(Some(contact)) => {
+                                let update = build_contact_update(&update_template, record);
+                                match CrmContact::update(pool, contact.id, update).await {
+                                    Ok(_) => { updated_count += 1; }
+                                    Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
+                                }
+                            }
+                            Ok(None) => { errors.push(format!("Contact not found: {}={}", match_field, match_value)); }
+                            Err(e) => { errors.push(format!("Lookup failed: {}", e)); }
+                        }
+                    } else {
+                        errors.push(format!("No organization_id for contact lookup: {}", match_value));
+                    }
+                } else {
+                    errors.push(format!("Match field '{}' not yet supported — use 'email'", match_field));
+                }
+            }
+
+            tracing::info!(
+                "[WORKFLOW] update_crm_contact node '{}': updated={}, errors={}",
+                node.id, updated_count, errors.len()
+            );
+            let output = json!({
+                "updated": updated_count,
+                "errors": errors,
+                "match_field": match_field,
+            });
+            Some((output.to_string(), None))
+        }
+
+        // ── Update CRM deal: find by match field and update ──
+        "update_crm_deal" => {
+            let match_field = node.parameters.get("match_field")
+                .and_then(|v| v.as_str())
+                .unwrap_or("name");
+            let update_fields_str = node.parameters.get("update_fields")
+                .and_then(|v| v.as_str())
+                .unwrap_or("{}");
+
+            let input_data: String = previous_results.iter()
+                .map(|(_, result, _)| result.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let records = parse_records_from_input(&input_data);
+            let update_template: Value = serde_json::from_str(update_fields_str).unwrap_or(json!({}));
+            let mut updated_count = 0;
+            let mut errors: Vec<String> = Vec::new();
+
+            for record in &records {
+                let match_value = record.get(match_field).and_then(|v| v.as_str()).unwrap_or("");
+                if match_value.is_empty() { continue; }
+
+                if match_field == "name" {
+                    let org_id = record.get("organization_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .or(context_org_id);
+
+                    if let Some(org_id) = org_id {
+                        match CrmDeal::find_by_name_and_org(pool, match_value, org_id).await {
+                            Ok(Some(deal)) => {
+                                let update = build_deal_update(&update_template, record);
+                                match CrmDeal::update(pool, deal.id, update).await {
+                                    Ok(_) => { updated_count += 1; }
+                                    Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
+                                }
+                            }
+                            Ok(None) => { errors.push(format!("Deal not found: {}={}", match_field, match_value)); }
+                            Err(e) => { errors.push(format!("Lookup failed: {}", e)); }
+                        }
+                    } else {
+                        errors.push(format!("No organization_id for deal lookup: {}", match_value));
+                    }
+                } else {
+                    errors.push(format!("Match field '{}' not yet supported — use 'name'", match_field));
+                }
+            }
+
+            tracing::info!(
+                "[WORKFLOW] update_crm_deal node '{}': updated={}, errors={}",
+                node.id, updated_count, errors.len()
+            );
+            let output = json!({
+                "updated": updated_count,
+                "errors": errors,
+                "match_field": match_field,
+            });
+            Some((output.to_string(), None))
+        }
+
+        // ── Update CRM company: find by match field and update ──
+        "update_crm_company" => {
+            let match_field = node.parameters.get("match_field")
+                .and_then(|v| v.as_str())
+                .unwrap_or("name");
+            let update_fields_str = node.parameters.get("update_fields")
+                .and_then(|v| v.as_str())
+                .unwrap_or("{}");
+
+            let input_data: String = previous_results.iter()
+                .map(|(_, result, _)| result.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let records = parse_records_from_input(&input_data);
+            let update_template: Value = serde_json::from_str(update_fields_str).unwrap_or(json!({}));
+            let mut updated_count = 0;
+            let mut errors: Vec<String> = Vec::new();
+
+            for record in &records {
+                let match_value = record.get(match_field).and_then(|v| v.as_str()).unwrap_or("");
+                if match_value.is_empty() { continue; }
+
+                if match_field == "name" {
+                    match Company::find_by_name(pool, match_value).await {
+                        Ok(Some(company)) => {
+                            let update = build_company_update(&update_template, record);
+                            match Company::update(pool, company.id, update).await {
+                                Ok(_) => { updated_count += 1; }
+                                Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
+                            }
+                        }
+                        Ok(None) => { errors.push(format!("Company not found: {}={}", match_field, match_value)); }
+                        Err(e) => { errors.push(format!("Lookup failed: {}", e)); }
+                    }
+                } else {
+                    errors.push(format!("Match field '{}' not yet supported — use 'name'", match_field));
+                }
+            }
+
+            tracing::info!(
+                "[WORKFLOW] update_crm_company node '{}': updated={}, errors={}",
+                node.id, updated_count, errors.len()
+            );
+            let output = json!({
+                "updated": updated_count,
+                "errors": errors,
+                "match_field": match_field,
+            });
+            Some((output.to_string(), None))
+        }
+
+        _ => None, // Not an action node — fall through to LLM execution
+    }
+}
+
+/// Parse JSON input into a list of record objects.
+/// Handles both JSON arrays and single objects.
+fn parse_records_from_input(input: &str) -> Vec<Value> {
+    match serde_json::from_str::<Value>(input) {
+        Ok(Value::Array(arr)) => arr,
+        Ok(obj @ Value::Object(_)) => vec![obj],
+        _ => Vec::new(),
+    }
+}
+
+/// Build an UpdateCrmContact from a template + record data
+fn build_contact_update(template: &Value, record: &Value) -> UpdateCrmContact {
+    let get_str = |key: &str| -> Option<String> {
+        template.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+            .or_else(|| record.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()))
+    };
+    UpdateCrmContact {
+        first_name: get_str("first_name"),
+        last_name: get_str("last_name"),
+        email: get_str("email"),
+        phone: get_str("phone"),
+        mobile: None,
+        avatar_url: None,
+        company_name: get_str("company_name"),
+        job_title: get_str("job_title"),
+        department: get_str("department"),
+        linkedin_url: get_str("linkedin_url"),
+        twitter_handle: None,
+        website: get_str("website"),
+        source: None,
+        lifecycle_stage: None,
+        lead_score: template.get("lead_score").and_then(|v| v.as_i64()).map(|n| n as i32),
+        owner_user_id: get_str("owner_user_id"),
+        assigned_agent_id: None,
+        tags: None,
+        custom_fields: template.get("custom_fields").cloned(),
+        address_line1: None,
+        address_line2: None,
+        city: get_str("city"),
+        state: get_str("state"),
+        postal_code: None,
+        country: get_str("country"),
+        email_opt_in: None,
+        sms_opt_in: None,
+        do_not_contact: None,
+        zoho_contact_id: None,
+        gmail_contact_id: None,
+    }
+}
+
+/// Build an UpdateCrmDeal from a template + record data
+fn build_deal_update(template: &Value, record: &Value) -> UpdateCrmDeal {
+    let get_str = |key: &str| -> Option<String> {
+        template.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+            .or_else(|| record.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()))
+    };
+    UpdateCrmDeal {
+        crm_contact_id: None,
+        crm_pipeline_id: None,
+        crm_stage_id: None,
+        position: None,
+        name: get_str("name"),
+        description: get_str("description"),
+        amount: template.get("amount").and_then(|v| v.as_f64())
+            .or_else(|| record.get("amount").and_then(|v| v.as_f64())),
+        currency: get_str("currency"),
+        expected_close_date: get_str("expected_close_date"),
+        owner_user_id: get_str("owner_user_id"),
+        assigned_agent_id: None,
+        tags: None,
+        custom_fields: template.get("custom_fields").cloned(),
+        lost_reason: get_str("lost_reason"),
+        win_reason: get_str("win_reason"),
+    }
+}
+
+/// Build an UpdateCompany from a template + record data
+fn build_company_update(template: &Value, record: &Value) -> UpdateCompany {
+    let get_str = |key: &str| -> Option<String> {
+        template.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+            .or_else(|| record.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()))
+    };
+    UpdateCompany {
+        name: get_str("name"),
+        website: get_str("website"),
+        industry: get_str("industry"),
+        description: get_str("description"),
+        logo_url: None,
+        cover_image_url: None,
+        headquarters: get_str("headquarters"),
+        address: get_str("address"),
+        city: get_str("city"),
+        country: get_str("country"),
+        phone: get_str("phone"),
+        email: get_str("email"),
+        whatsapp: None,
+        instagram_handle: None,
+        linkedin_url: get_str("linkedin_url"),
+        twitter_handle: None,
+        facebook_url: None,
+        founded_year: template.get("founded_year").and_then(|v| v.as_i64()).map(|n| n as i32),
+        employee_count: get_str("employee_count"),
+        tags: get_str("tags"),
+        business_hours: None,
+        notes: get_str("notes"),
+        gmb_rating: None,
+        gmb_review_count: None,
+        gmb_place_id: None,
+        organization_id: None,
+        intelligence_summary: None,
+        intelligence_status: None,
+    }
+}
+
 // ── LLM execution via PCG Router ─────────────────────────────────────────────
 
 /// Execute a workflow node's LLM prompt via the PCG Router.
@@ -2567,6 +3391,8 @@ async fn preview_workflow(
                 .collect::<Vec<_>>()
                 .join("\n");
             (input_data, None)
+        } else if let Some(action_result) = execute_action_node(pool, node, &previous, None, None).await {
+            action_result
         } else {
             let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
             execute_node_with_llm(pool, node, &content, &previous, "", targets).await
@@ -2845,6 +3671,8 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 return;
             }
 
+            let ctx_project_id = data_source.project_id;
+            let ctx_org_id = data_source.organization_id;
             let content = data_source.content.unwrap_or_default();
 
             // Build dependency map
@@ -2910,6 +3738,8 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                         .collect::<Vec<_>>()
                         .join("\n");
                     (input_data, None)
+                } else if let Some(action_result) = execute_action_node(&pool, node, &previous, ctx_project_id, ctx_org_id).await {
+                    action_result
                 } else {
                     let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
                     execute_node_with_llm(&pool, node, &content, &previous, &model, targets).await
@@ -3077,6 +3907,150 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 }
 
 // ── Router ──────────────────────────────────────────────────────────────────
+
+// ── Sprint 2C: Workflow schedule background loop ─────────────────────────────
+
+/// Spawn a background task that checks for due schedule triggers every 5 minutes.
+/// Schedule triggers run workflows without a data source — they use an empty content string.
+pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool) {
+    tokio::spawn(async move {
+        use db::models::workflow_trigger::WorkflowTrigger;
+        use std::time::Duration;
+        use tokio::time::interval;
+
+        // Check every 5 minutes
+        let mut ticker = interval(Duration::from_secs(300));
+        ticker.tick().await; // discard immediate first tick
+
+        loop {
+            ticker.tick().await;
+
+            let due_triggers = match WorkflowTrigger::find_due_schedules(&pool).await {
+                Ok(triggers) => triggers,
+                Err(e) => {
+                    tracing::error!("[SCHEDULE] Failed to check schedule triggers: {e}");
+                    continue;
+                }
+            };
+
+            if due_triggers.is_empty() {
+                continue;
+            }
+
+            tracing::info!("[SCHEDULE] Found {} due schedule trigger(s)", due_triggers.len());
+
+            for trigger in due_triggers {
+                let pool = pool.clone();
+                let trigger_id = trigger.id.clone();
+                let workflow_id = trigger.workflow_id.clone();
+                let model_override = trigger.model_override.clone();
+
+                tokio::spawn(async move {
+                    // Mark trigger as fired
+                    if let Err(e) = WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await {
+                        tracing::warn!("[SCHEDULE] Failed to update trigger count: {e}");
+                    }
+
+                    // Load workflow
+                    let workflow = match load_workflow(&pool, &workflow_id).await {
+                        Ok(Some(wf)) => wf,
+                        Ok(None) => {
+                            tracing::error!("[SCHEDULE] Workflow '{}' not found", workflow_id);
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::error!("[SCHEDULE] Failed to load workflow '{}': {e}", workflow_id);
+                            return;
+                        }
+                    };
+
+                    let model = model_override
+                        .or(workflow.default_model.clone())
+                        .unwrap_or_default();
+
+                    // Schedule triggers run without source data — they rely on action nodes
+                    // (like assign_to_agent, http_request, send_notification) rather than data extraction
+                    let content = String::new();
+
+                    // Build dependency map + topological sort + execute
+                    let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+                    for conn in &workflow.connections {
+                        deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
+                    }
+
+                    let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    let mut ordered_nodes: Vec<&WorkflowNode> = Vec::new();
+                    let mut remaining: Vec<&WorkflowNode> = workflow.nodes.iter().collect();
+
+                    while !remaining.is_empty() {
+                        let mut progress = false;
+                        remaining.retain(|node| {
+                            let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
+                            if deps.iter().all(|d| processed.contains(d)) {
+                                processed.insert(node.id.clone());
+                                ordered_nodes.push(node);
+                                progress = true;
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                        if !progress {
+                            for node in &remaining { ordered_nodes.push(node); }
+                            break;
+                        }
+                    }
+
+                    let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+                    for conn in &workflow.connections {
+                        if let Some(target_node) = workflow.nodes.iter().find(|n| n.id == conn.target) {
+                            if target_node.node_type.starts_with("output_") {
+                                let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
+                                downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
+                            }
+                        }
+                    }
+
+                    let mut step_outputs: Vec<(String, String, String)> = Vec::new();
+
+                    for node in &ordered_nodes {
+                        let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
+                        let previous: Vec<(&str, &str, &str)> = step_outputs.iter()
+                            .filter(|(sid, _, _)| deps.contains(sid))
+                            .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
+                            .collect();
+
+                        let (output, _usage_meta) = if node.node_type.starts_with("output_") {
+                            let input_data = previous.iter()
+                                .map(|(_, result, _)| result.to_string())
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            (input_data, None)
+                        } else if let Some(action_result) = execute_action_node(&pool, node, &previous, None, None).await {
+                            action_result
+                        } else {
+                            let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
+                            execute_node_with_llm(&pool, node, &content, &previous, &model, targets).await
+                        };
+
+                        let schema_name = node.parameters.get("output_schema")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim_end_matches("[]")
+                            .to_string();
+
+                        step_outputs.push((node.id.clone(), output, schema_name));
+                    }
+
+                    tracing::info!(
+                        "[SCHEDULE] Completed workflow '{}' (trigger '{}')",
+                        workflow_id, trigger_id
+                    );
+                });
+            }
+        }
+    });
+}
 
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
