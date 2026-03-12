@@ -19,7 +19,9 @@
 //!   SOVEREIGN_STORAGE_NATS_URL     - NATS relay URL
 
 use anyhow::{Context, Result};
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time;
@@ -303,7 +305,17 @@ impl SovereignStorageService {
         let db_path_for_peer = self.config.db_path.clone();
         tokio::spawn(async move {
             while let Some(msg) = peer_sub.next().await {
-                match serde_json::from_slice::<SyncPayload>(&msg.payload) {
+                // Decompress gzip payload (with raw JSON fallback for older nodes)
+                let raw_bytes: Vec<u8> = {
+                    let mut dec = GzDecoder::new(&msg.payload[..]);
+                    let mut buf = Vec::new();
+                    if dec.read_to_end(&mut buf).is_ok() && !buf.is_empty() {
+                        buf
+                    } else {
+                        msg.payload.to_vec()
+                    }
+                };
+                match serde_json::from_slice::<SyncPayload>(&raw_bytes) {
                     Ok(payload) => {
                         // Note: we intentionally do NOT skip messages where from_device
                         // == our own device_id. When two nodes share the same device_id
@@ -427,8 +439,17 @@ impl SovereignStorageService {
 
         // Build snapshot from local DB
         let snapshot = self.build_snapshot(&now).await?;
-        let payload = serde_json::to_vec(&snapshot)?;
+        let raw = serde_json::to_vec(&snapshot)?;
+        let raw_size = raw.len();
+
+        // Gzip-compress to stay under NATS 1MB max_payload
+        let payload = {
+            let mut enc = GzEncoder::new(Vec::new(), Compression::fast());
+            enc.write_all(&raw).context("gzip encode failed")?;
+            enc.finish().context("gzip finish failed")?
+        };
         let payload_size = payload.len();
+        tracing::debug!("[SOVEREIGN_SYNC] Payload: {}KB raw → {}KB gzip", raw_size/1024, payload_size/1024);
 
         // Publish to Pythia's sync channel: apn.storage.sync.{provider_id}
         let sync_subject =
@@ -436,7 +457,7 @@ impl SovereignStorageService {
         client
             .publish(sync_subject.clone(), payload.into())
             .await
-            .context("Failed to publish sync data")?;
+            .map_err(|e| anyhow::anyhow!("Failed to publish sync data ({}B raw / {}B gz): {:?}", raw_size, payload_size, e))?;
 
         self.last_sync = Some(now);
         tracing::info!(

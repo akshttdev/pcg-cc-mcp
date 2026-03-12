@@ -25,6 +25,16 @@ use utils::response::ApiResponse;
 
 use crate::{DeploymentImpl, error::ApiError};
 
+/// Returns true if the server is running in a context where Secure cookies are appropriate.
+fn is_secure_context() -> bool {
+    let host = std::env::var("HOST").unwrap_or_default();
+    let env = std::env::var("RUST_ENV").unwrap_or_default();
+    if env == "development" {
+        return false;
+    }
+    !matches!(host.as_str(), "localhost" | "127.0.0.1" | "0.0.0.0" | "")
+}
+
 // Import SQLite auth handlers
 mod auth_sqlite;
 // Import external auth handlers (for federated SSO)
@@ -219,8 +229,9 @@ async fn login(
 
     // Create response with session cookie
     let cookie = format!(
-        "session_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+        "session_id={}; Path=/; HttpOnly; SameSite=Lax{}; Max-Age={}",
         session_id,
+        if is_secure_context() { "; Secure" } else { "" },
         30 * 24 * 60 * 60 // 30 days
     );
 
@@ -317,7 +328,8 @@ async fn logout(
     }
 
     // Clear cookie
-    let cookie = "session_id=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+    let secure_flag = if is_secure_context() { "; Secure" } else { "" };
+    let cookie = format!("session_id=; Path=/; HttpOnly; SameSite=Lax{secure_flag}; Max-Age=0");
 
     Ok((
         [(header::SET_COOKIE, HeaderValue::from_str(cookie).unwrap())],

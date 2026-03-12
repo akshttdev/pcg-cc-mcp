@@ -564,6 +564,30 @@ impl CrmDeal {
 
     /// Get Kanban board data for a pipeline
     /// Look up the business_report id for a given person (latest report)
+    pub async fn report_id_for_person_pub(pool: &SqlitePool, person_id: Uuid) -> Option<Uuid> {
+        Self::report_id_for_person(pool, person_id).await
+    }
+
+    pub async fn fetch_project_stats_pub(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> (Option<String>, i64, i64, i64) {
+        Self::fetch_project_stats(pool, project_id).await
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub async fn fetch_intel_data_pub(
+        pool: &SqlitePool,
+        deal_id: Uuid,
+        person_id: Option<Uuid>,
+    ) -> (
+        Option<String>, Option<String>, Option<f64>, Option<i64>,
+        Option<String>, Option<String>,
+        Option<Uuid>, Option<String>, Option<String>,
+    ) {
+        Self::fetch_intel_data(pool, deal_id, person_id).await
+    }
+
     async fn report_id_for_person(pool: &SqlitePool, person_id: Uuid) -> Option<Uuid> {
         #[derive(sqlx::FromRow)]
         struct Row { id: Uuid }
