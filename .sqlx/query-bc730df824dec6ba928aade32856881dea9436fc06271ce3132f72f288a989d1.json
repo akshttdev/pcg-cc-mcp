@@ -1,0 +1,128 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO execution_summaries (\n                id, task_attempt_id, execution_process_id,\n                files_modified, files_created, files_deleted,\n                commands_run, commands_failed, tools_used,\n                completion_status, blocker_summary, error_summary,\n                execution_time_ms, workflow_tags,\n                created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n            RETURNING\n                id as \"id!: Uuid\",\n                task_attempt_id as \"task_attempt_id!: Uuid\",\n                execution_process_id as \"execution_process_id: Uuid\",\n                files_modified as \"files_modified!: i32\",\n                files_created as \"files_created!: i32\",\n                files_deleted as \"files_deleted!: i32\",\n                commands_run as \"commands_run!: i32\",\n                commands_failed as \"commands_failed!: i32\",\n                tools_used,\n                completion_status as \"completion_status!: CompletionStatus\",\n                blocker_summary,\n                error_summary,\n                execution_time_ms as \"execution_time_ms!: i64\",\n                human_rating as \"human_rating: i32\",\n                human_notes,\n                is_reference_example as \"is_reference_example!: bool\",\n                workflow_tags,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "task_attempt_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "execution_process_id: Uuid",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "files_modified!: i32",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "files_created!: i32",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "files_deleted!: i32",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "commands_run!: i32",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "commands_failed!: i32",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "tools_used",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "completion_status!: CompletionStatus",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "blocker_summary",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_summary",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "execution_time_ms!: i64",
+        "ordinal": 12,
+        "type_info": "Integer"
+      },
+      {
+        "name": "human_rating: i32",
+        "ordinal": 13,
+        "type_info": "Integer"
+      },
+      {
+        "name": "human_notes",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_reference_example!: bool",
+        "ordinal": 15,
+        "type_info": "Bool"
+      },
+      {
+        "name": "workflow_tags",
+        "ordinal": 16,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 17,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 18,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 16
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "bc730df824dec6ba928aade32856881dea9436fc06271ce3132f72f288a989d1"
+}

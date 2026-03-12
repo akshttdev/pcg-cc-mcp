@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE agents SET\n                    tasks_failed = COALESCE(tasks_failed, 0) + 1,\n                    total_execution_time_ms = COALESCE(total_execution_time_ms, 0) + $2,\n                    updated_at = datetime('now', 'subsec')\n                WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "71f06e50cc4ac74596c8d5f25384c8e0c18e577fb5e15aaeaaaf3079384399b4"
+}

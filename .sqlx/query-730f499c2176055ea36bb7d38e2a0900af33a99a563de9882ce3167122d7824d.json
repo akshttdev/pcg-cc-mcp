@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE agents SET\n                    tasks_completed = COALESCE(tasks_completed, 0) + 1,\n                    total_execution_time_ms = COALESCE(total_execution_time_ms, 0) + $2,\n                    average_rating = CASE\n                        WHEN $3 IS NOT NULL THEN\n                            (COALESCE(average_rating, 0) * COALESCE(tasks_completed, 0) + $3) / (COALESCE(tasks_completed, 0) + 1)\n                        ELSE average_rating\n                    END,\n                    updated_at = datetime('now', 'subsec')\n                WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "730f499c2176055ea36bb7d38e2a0900af33a99a563de9882ce3167122d7824d"
+}

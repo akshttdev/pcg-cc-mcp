@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO task_comments (id, task_id, author_id, author_type, content, comment_type, parent_comment_id, mentions, metadata)\n               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n               RETURNING\n                id as \"id!: Uuid\",\n                task_id as \"task_id!: Uuid\",\n                author_id,\n                author_type as \"author_type!: AuthorType\",\n                content,\n                comment_type as \"comment_type!: CommentType\",\n                parent_comment_id as \"parent_comment_id: Uuid\",\n                mentions,\n                metadata,\n                created_at as \"created_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "task_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "author_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "author_type!: AuthorType",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "content",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "comment_type!: CommentType",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_comment_id: Uuid",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "mentions",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "9483d31079a5524126024785cbc86d3fbf76afc1988d9902291e96f9db861fd7"
+}

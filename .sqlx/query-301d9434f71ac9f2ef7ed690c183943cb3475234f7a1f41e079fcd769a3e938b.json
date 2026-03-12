@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM cms_site_settings WHERE site_id = $1 AND setting_key = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "301d9434f71ac9f2ef7ed690c183943cb3475234f7a1f41e079fcd769a3e938b"
+}

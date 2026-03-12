@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE peer_nodes\n            SET is_banned = 1,\n                ban_reason = ?,\n                updated_at = datetime('now', 'subsec')\n            WHERE node_id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "968756be578ff0ae041ac489af2e836dad358e1fad38f2b60ebfc712674d6f30"
+}

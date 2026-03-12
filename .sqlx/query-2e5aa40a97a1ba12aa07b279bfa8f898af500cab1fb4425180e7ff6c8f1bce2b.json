@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE agent_wallets\n               SET vibe_spent_amount = COALESCE(vibe_spent_amount, 0) + ?,\n                   updated_at = datetime('now', 'subsec')\n             WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "2e5aa40a97a1ba12aa07b279bfa8f898af500cab1fb4425180e7ff6c8f1bce2b"
+}
