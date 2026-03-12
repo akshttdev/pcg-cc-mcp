@@ -359,7 +359,7 @@ export function McpSettings() {
 
                     <div className="relative overflow-hidden rounded-xl border bg-background">
                       <Carousel className="w-full px-4 py-3">
-                        <CarouselContent className="gap-3 justify-center">
+                        <CarouselContent className="gap-3">
                           {Object.entries(servers).map(([key]) => {
                             const metaObj = getMetaFor(key) as {
                               name?: string;
@@ -377,7 +377,7 @@ export function McpSettings() {
                             return (
                               <CarouselItem
                                 key={name}
-                                className="sm:basis-1/3 lg:basis-1/4"
+                                className="basis-1/2 sm:basis-1/3 lg:basis-1/4"
                               >
                                 <button
                                   type="button"
