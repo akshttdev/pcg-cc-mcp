@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
-import { templatesApi } from '@/lib/api';
+import { templatesApi, agentsApi } from '@/lib/api';
+import type { AgentWithParsedFields } from 'shared/types';
 import type {
   TaskTemplate,
   CreateTaskTemplate,
@@ -52,6 +53,11 @@ export const TaskTemplateEditDialog =
       });
       const [saving, setSaving] = useState(false);
       const [error, setError] = useState<string | null>(null);
+      const [agents, setAgents] = useState<AgentWithParsedFields[]>([]);
+
+      useEffect(() => {
+        agentsApi.list().then(setAgents).catch(() => {});
+      }, []);
 
       const isEditMode = Boolean(template);
 
@@ -251,15 +257,28 @@ export const TaskTemplateEditDialog =
                   <Label htmlFor="template-assigned-agent">
                     Assigned Agent
                   </Label>
-                  <Input
-                    id="template-assigned-agent"
+                  <Select
                     value={formData.assigned_agent}
-                    onChange={(e) =>
-                      setFormData({ ...formData, assigned_agent: e.target.value })
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, assigned_agent: value === '__none__' ? '' : value })
                     }
-                    placeholder="e.g., Nora, Maci, Editron"
                     disabled={saving}
-                  />
+                  >
+                    <SelectTrigger id="template-assigned-agent">
+                      <SelectValue placeholder="Select an agent" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {agents.map((agent) => (
+                        <SelectItem key={agent.id} value={agent.short_name}>
+                          <span>{agent.short_name}</span>
+                          {agent.designation && (
+                            <span className="text-muted-foreground ml-1">({agent.designation})</span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>

@@ -52,6 +52,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { WorkflowTriggersPanel } from './WorkflowTriggersPanel';
 import { workflowsApi, crmPipelinesApi, DATA_TYPE_OPTIONS } from '@/lib/api';
 import type {
   WorkflowNode,
@@ -523,6 +524,7 @@ export function WorkflowEditor({
   }, [previewResults]);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [triggersOpen, setTriggersOpen] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const [metadataExpanded, setMetadataExpanded] = useState(isNew);
   const [pendingDeleteNodeId, setPendingDeleteNodeId] = useState<string | null>(null);
@@ -609,6 +611,17 @@ export function WorkflowEditor({
             >
               <Eye className="h-3.5 w-3.5" />
               {isPreviewing ? 'Running...' : 'Preview'}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setTriggersOpen(true)}
+              disabled={isNew}
+              className="gap-1.5"
+              title={isNew ? 'Save workflow first to manage triggers' : 'Manage triggers'}
+            >
+              <Bell className="h-3.5 w-3.5" />
+              Triggers
             </Button>
             <Button
               size="sm"
@@ -1042,6 +1055,14 @@ export function WorkflowEditor({
         </DialogContent>
       </Dialog>
 
+      {!isNew && (
+        <WorkflowTriggersPanel
+          open={triggersOpen}
+          onOpenChange={setTriggersOpen}
+          workflowId={id}
+          workflowName={name}
+        />
+      )}
     </Dialog>
   );
 }

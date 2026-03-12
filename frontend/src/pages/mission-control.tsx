@@ -192,10 +192,24 @@ export default function MissionControlPage() {
                 </>
               ) : dashboard?.active_executions.length === 0 ? (
                 <Card className="border-dashed">
-                  <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                    <Bot className="h-6 w-6 mx-auto mb-2 opacity-40" />
-                    <p>No active executions</p>
-                    <p className="text-xs mt-1">Agent runs will appear here in real time.</p>
+                  <CardContent className="py-8 text-center text-sm space-y-3">
+                    <Bot className="h-8 w-8 mx-auto opacity-40" />
+                    <div>
+                      <p className="font-medium">No Active Executions</p>
+                      <p className="text-xs text-muted-foreground mt-1">Get started with the agent automation loop:</p>
+                    </div>
+                    <ol className="text-xs text-muted-foreground space-y-1 text-left max-w-[200px] mx-auto">
+                      <li>1. Create a task in a project</li>
+                      <li>2. Assign an agent to the task</li>
+                      <li>3. Send a message to trigger execution</li>
+                    </ol>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.location.href = '/projects'}
+                    >
+                      Go to Projects
+                    </Button>
                   </CardContent>
                 </Card>
               ) : (
