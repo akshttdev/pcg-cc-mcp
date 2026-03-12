@@ -94,6 +94,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null);
     const [quickstartExpanded, setQuickstartExpanded] =
       useState<boolean>(false);
+    const [completionCriteria, setCompletionCriteria] = useState('');
+    const [outputFormat, setOutputFormat] = useState('');
     const [simpleMode, setSimpleMode] = useState<boolean>(
       () => localStorage.getItem('pcg-task-simple-mode') === 'true'
     );
@@ -332,6 +334,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
           }
         });
         setRequiresApproval(task.requires_approval);
+        setCompletionCriteria(task.completion_criteria || '');
+        setOutputFormat(task.output_format || '');
         setDueDate(task.due_date ? task.due_date.slice(0, 10) : '');
         setSelectedBoardId(task.board_id || null);
 
@@ -374,6 +378,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
           }
         });
         setRequiresApproval(initialTask.requires_approval);
+        setCompletionCriteria(initialTask.completion_criteria || '');
+        setOutputFormat(initialTask.output_format || '');
         setDueDate(initialTask.due_date ? initialTask.due_date.slice(0, 10) : '');
         setSelectedTemplate('');
         setImages([]);
@@ -390,6 +396,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
         setAssignedMcpsInput('');
         setTagsInput('');
         setRequiresApproval(false);
+        setCompletionCriteria('');
+        setOutputFormat('');
         setDueDate('');
         setSelectedTemplate('');
         setSelectedBoardId(initialBoardId ?? null);
@@ -404,6 +412,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
         setAssignedMcpsInput('');
         setTagsInput('');
         setRequiresApproval(false);
+        setCompletionCriteria('');
+        setOutputFormat('');
         setDueDate('');
         setSelectedTemplate('');
         setImages([]);
@@ -594,6 +604,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
             parent_task_id: task.parent_task_id,
             tags: tags.length ? tags : null,
             due_date: dueDateIso,
+            completion_criteria: completionCriteria || null,
+            output_format: outputFormat || null,
           },
         });
       } else {
@@ -620,6 +632,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
           custom_properties: null,
           scheduled_start: null,
           scheduled_end: null,
+          completion_criteria: completionCriteria || null,
+          output_format: outputFormat || null,
         });
       }
     }, [
@@ -640,6 +654,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
       assigneeId,
       assignedAgent,
       requiresApproval,
+      completionCriteria,
+      outputFormat,
       dueDate,
       createdByFallback,
       selectedBoardId,
@@ -709,6 +725,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
           custom_properties: null,
           scheduled_start: null,
           scheduled_end: null,
+          completion_criteria: completionCriteria || null,
+          output_format: outputFormat || null,
         },
         executor_profile_id: finalExecutorProfile,
         base_branch: selectedBranch,
@@ -942,6 +960,38 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                       rows={2}
                       disabled={isSubmitting || isSubmittingAndStart}
                     />
+                  </div>
+                </div>
+              )}
+
+              {!simpleMode && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Completion Criteria</Label>
+                    <Textarea
+                      value={completionCriteria}
+                      onChange={(e) => setCompletionCriteria(e.target.value)}
+                      placeholder="What must be true for this task to be considered done? e.g., All tests pass, PR approved, deployed to staging"
+                      rows={3}
+                      disabled={isSubmitting || isSubmittingAndStart}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Structured success criteria for agents to self-evaluate completion.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Output Format</Label>
+                    <Textarea
+                      value={outputFormat}
+                      onChange={(e) => setOutputFormat(e.target.value)}
+                      placeholder="Expected deliverable format. e.g., Pull request with tests, JSON report, Markdown document"
+                      rows={3}
+                      disabled={isSubmitting || isSubmittingAndStart}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Describes the expected deliverable format for agent output.
+                    </p>
                   </div>
                 </div>
               )}
