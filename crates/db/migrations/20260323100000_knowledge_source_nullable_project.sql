@@ -30,7 +30,14 @@ CREATE TABLE project_knowledge_sources_new (
     UNIQUE(project_id, source_type, source_id)
 );
 
-INSERT INTO project_knowledge_sources_new SELECT * FROM project_knowledge_sources;
+INSERT INTO project_knowledge_sources_new
+    (id, project_id, source_type, source_id, source_title, source_summary,
+     coverage_score, is_active, is_stale, auto_registered,
+     last_refreshed_at, created_at, updated_at, owner_type, owner_id)
+SELECT id, project_id, source_type, source_id, source_title, source_summary,
+       coverage_score, is_active, is_stale, auto_registered,
+       last_refreshed_at, created_at, updated_at, 'project', NULL
+FROM project_knowledge_sources;
 DROP TABLE project_knowledge_sources;
 ALTER TABLE project_knowledge_sources_new RENAME TO project_knowledge_sources;
 
