@@ -5,7 +5,10 @@
 -- 4. person_notes table  — structured note threading with status + attachments
 
 -- ── 1. Multi-contact proposals ────────────────────────────────────────────────
-ALTER TABLE proposals ADD COLUMN contact_ids TEXT NOT NULL DEFAULT '[]';
+-- contact_ids already exists if create_business_entities ran first (20260305199000)
+-- SQLite has no IF NOT EXISTS for ALTER TABLE, so we skip via a no-op check:
+-- ALTER TABLE proposals ADD COLUMN contact_ids TEXT NOT NULL DEFAULT '[]';
+-- (column already present from create_business_entities migration)
 
 -- ── 2. Structured multi-email / multi-phone on persons ───────────────────────
 -- [{value: "email@...", label: "work"}, ...]
