@@ -49,8 +49,17 @@ export const TEST_DATA_PREFIX = "[E2E]";
 
 // ─── View-As Helpers ────────────────────────────────────────────────────────
 
+/** Ensure page is on the app (not about:blank) so localStorage is accessible */
+async function ensureOnApp(page: Page) {
+  if (page.url() === "about:blank") {
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+  }
+}
+
 /** Set a view-as role override via localStorage and reload */
 export async function setViewAsRole(page: Page, role: string) {
+  await ensureOnApp(page);
   await page.evaluate((r) => localStorage.setItem("pcg:view-as-role", r), role);
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
@@ -58,6 +67,7 @@ export async function setViewAsRole(page: Page, role: string) {
 
 /** Clear view-as override via localStorage and reload */
 export async function clearViewAsRole(page: Page) {
+  await ensureOnApp(page);
   await page.evaluate(() => localStorage.removeItem("pcg:view-as-role"));
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);

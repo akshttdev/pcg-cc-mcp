@@ -1,8 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { login, setViewAsRole, clearViewAsRole, getViewAsRole, settingsTab } from "./helpers";
+import { setViewAsRole, clearViewAsRole, getViewAsRole, settingsTab } from "./helpers";
 
 /**
  * ORCHA Dashboard — RBAC & View-As E2E Tests
+ *
+ * Auth is handled once by auth.setup.ts — all tests receive storageState.
  *
  * Tests the role-based access control system:
  *   1. Sidebar user card & view-as popover
@@ -18,7 +20,8 @@ import { login, setViewAsRole, clearViewAsRole, getViewAsRole, settingsTab } fro
 
 test.describe("Sidebar User Card", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test("user card shows name and role in sidebar", async ({ page }) => {
@@ -55,7 +58,8 @@ test.describe("Sidebar User Card", () => {
 
 test.describe("View-As Banner", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test.afterEach(async ({ page }) => {
@@ -93,7 +97,8 @@ test.describe("View-As Banner", () => {
 
 test.describe("Sidebar Visibility by Role", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test.afterEach(async ({ page }) => {
@@ -146,7 +151,8 @@ test.describe("View-As Persistence", () => {
   });
 
   test("view-as role persists across page reload", async ({ page }) => {
-    await login(page);
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
     await setViewAsRole(page, "org_editor");
 
     await expect(page.getByTestId("view-as-banner")).toBeVisible({ timeout: 3_000 });
@@ -163,9 +169,6 @@ test.describe("View-As Persistence", () => {
 // ─── Settings Scope Tabs ────────────────────────────────────────────────────
 
 test.describe("Settings Scope Tabs", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-  });
 
   test.afterEach(async ({ page }) => {
     await clearViewAsRole(page);
@@ -268,7 +271,8 @@ test.describe("Mobile Navbar Avatar", () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test.afterEach(async ({ page }) => {
@@ -292,7 +296,8 @@ test.describe("Mobile Navbar Avatar", () => {
 
 test.describe("Desktop hides mobile avatar", () => {
   test("avatar button not visible on desktop", async ({ page }) => {
-    await login(page);
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
     const avatar = page.locator('button[aria-label="User menu"]');
     await expect(avatar).not.toBeVisible();
   });
@@ -302,7 +307,8 @@ test.describe("Desktop hides mobile avatar", () => {
 
 test.describe("View-As Edge Cases", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test.afterEach(async ({ page }) => {
