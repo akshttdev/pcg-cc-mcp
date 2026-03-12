@@ -517,6 +517,14 @@ pub async fn update_task(
         .scheduled_end
         .clone()
         .unwrap_or(existing_task.scheduled_end);
+    let completion_criteria = payload
+        .completion_criteria
+        .clone()
+        .or(existing_task.completion_criteria.clone());
+    let output_format = payload
+        .output_format
+        .clone()
+        .or(existing_task.output_format.clone());
 
     let task = Task::update(
         &deployment.db().pool,
@@ -541,6 +549,8 @@ pub async fn update_task(
         custom_properties,
         scheduled_start,
         scheduled_end,
+        completion_criteria,
+        output_format,
     )
     .await?;
 
@@ -668,6 +678,8 @@ pub async fn approve_task(
         task.custom_properties.clone(),
         task.scheduled_start,
         task.scheduled_end,
+        task.completion_criteria.clone(),
+        task.output_format.clone(),
     )
     .await?;
 
@@ -703,6 +715,8 @@ pub async fn request_changes(
         task.custom_properties.clone(),
         task.scheduled_start,
         task.scheduled_end,
+        task.completion_criteria.clone(),
+        task.output_format.clone(),
     )
     .await?;
 
@@ -800,6 +814,8 @@ pub async fn reject_task(
         task.custom_properties.clone(),
         task.scheduled_start,
         task.scheduled_end,
+        task.completion_criteria.clone(),
+        task.output_format.clone(),
     )
     .await?;
 

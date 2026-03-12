@@ -195,6 +195,8 @@ async fn convert_deal(
                 scheduled_start: None,
                 scheduled_end: None,
                 screenshot: None,
+                completion_criteria: None,
+                output_format: None,
             };
 
             Task::create(pool, &create_task, task_id)

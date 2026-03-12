@@ -560,6 +560,8 @@ async fn import_records_from_table(
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
         };
 
         let task = match Task::create(pool, &create_task, task_id).await {
