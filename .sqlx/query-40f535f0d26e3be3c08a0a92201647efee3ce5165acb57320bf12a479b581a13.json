@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO media_batches (\n                id, project_id, reference_name, source_url, storage_tier,\n                checksum_required, status, file_count, total_size_bytes,\n                last_error, metadata, created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n            ON CONFLICT(id) DO UPDATE SET\n                project_id=excluded.project_id,\n                reference_name=excluded.reference_name,\n                source_url=excluded.source_url,\n                storage_tier=excluded.storage_tier,\n                checksum_required=excluded.checksum_required,\n                status=excluded.status,\n                file_count=excluded.file_count,\n                total_size_bytes=excluded.total_size_bytes,\n                last_error=excluded.last_error,\n                metadata=excluded.metadata,\n                updated_at=excluded.updated_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 13
+    },
+    "nullable": []
+  },
+  "hash": "40f535f0d26e3be3c08a0a92201647efee3ce5165acb57320bf12a479b581a13"
+}

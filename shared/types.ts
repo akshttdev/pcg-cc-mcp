@@ -118,11 +118,11 @@ export enum BaseCodingAgent { CLAUDE_CODE = "CLAUDE_CODE", AMP = "AMP", GEMINI =
 
 export type CodingAgent = { "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "GEMINI": Gemini } | { "CODEX": Codex } | { "DUCK": Duck } | { "OPENCODE": Opencode } | { "CURSOR": Cursor } | { "QWEN_CODE": QwenCode };
 
-export type TaskTemplate = { id: string, project_id: string | null, title: string, description: string | null, template_name: string, created_at: string, updated_at: string, };
+export type TaskTemplate = { id: string, project_id: string | null, title: string, description: string | null, template_name: string, priority: string | null, completion_criteria: string | null, output_format: string | null, assigned_agent: string | null, tags: string | null, organization_id: string | null, created_at: string, updated_at: string, };
 
-export type CreateTaskTemplate = { project_id: string | null, title: string, description: string | null, template_name: string, };
+export type CreateTaskTemplate = { project_id: string | null, title: string, description: string | null, template_name: string, priority: string | null, completion_criteria: string | null, output_format: string | null, assigned_agent: string | null, tags: Array<string> | null, organization_id: string | null, };
 
-export type UpdateTaskTemplate = { title: string | null, description: string | null, template_name: string | null, };
+export type UpdateTaskTemplate = { title: string | null, description: string | null, template_name: string | null, priority: string | null, completion_criteria: string | null, output_format: string | null, assigned_agent: string | null, tags: Array<string> | null, };
 
 export type TaskStatus = "todo" | "inprogress" | "inreview" | "done" | "cancelled";
 
@@ -134,7 +134,15 @@ export type Task = { id: string, project_id: string, pod_id: string | null, boar
 /**
  * Base64 encoded screenshot image for bug reports
  */
-screenshot?: string | null, };
+screenshot?: string | null, 
+/**
+ * Structured success criteria for agent self-evaluation
+ */
+completion_criteria: string | null, 
+/**
+ * Expected deliverable format (e.g. "markdown report", "code PR", "JSON API response")
+ */
+output_format: string | null, };
 
 export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, has_merged_attempt: boolean, last_attempt_failed: boolean, executor: string, 
 /**
@@ -156,7 +164,15 @@ vibe_model: string | null, id: string, project_id: string, pod_id: string | null
 /**
  * Base64 encoded screenshot image for bug reports
  */
-screenshot?: string | null, };
+screenshot?: string | null, 
+/**
+ * Structured success criteria for agent self-evaluation
+ */
+completion_criteria: string | null, 
+/**
+ * Expected deliverable format (e.g. "markdown report", "code PR", "JSON API response")
+ */
+output_format: string | null, };
 
 export type TaskRelationships = { parent_task: Task | null, current_attempt: TaskAttempt, children: Array<Task>, };
 
@@ -164,9 +180,25 @@ export type CreateTask = { project_id: string, pod_id?: string, board_id?: strin
 /**
  * Base64 encoded screenshot image for bug reports
  */
-screenshot: string | null, };
+screenshot: string | null, 
+/**
+ * Structured success criteria for agent self-evaluation
+ */
+completion_criteria: string | null, 
+/**
+ * Expected deliverable format (e.g. "markdown report", "code PR", "JSON API response")
+ */
+output_format: string | null, };
 
-export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_task_attempt: string | null, image_ids: Array<string> | null, pod_id?: string | null, board_id?: string | null, priority: Priority | null, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null | null, assigned_mcps: Array<string> | null, requires_approval: boolean | null, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null | null, scheduled_end: string | null | null, };
+export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_task_attempt: string | null, image_ids: Array<string> | null, pod_id?: string | null, board_id?: string | null, priority: Priority | null, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null | null, assigned_mcps: Array<string> | null, requires_approval: boolean | null, approval_status: ApprovalStatus | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null | null, scheduled_end: string | null | null, 
+/**
+ * Structured success criteria for agent self-evaluation
+ */
+completion_criteria: string | null, 
+/**
+ * Expected deliverable format
+ */
+output_format: string | null, };
 
 export type CustomFieldType = "text" | "number" | "date" | "url" | "checkbox" | "select" | "multi_select" | "formula" | "relationship" | "user" | "file" | "auto_increment";
 

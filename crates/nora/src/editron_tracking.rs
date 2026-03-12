@@ -230,6 +230,8 @@ pub async fn find_or_create_task(
         scheduled_start: None,
         scheduled_end: None,
         screenshot: None,
+        completion_criteria: None,
+        output_format: None,
     };
 
     match Task::create(pool, &create, task_id).await {

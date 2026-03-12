@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO agent_wallets (\n                id,\n                profile_key,\n                display_name,\n                budget_limit,\n                spent_amount\n            ) VALUES (?, ?, ?, ?, 0)\n            ON CONFLICT(profile_key) DO UPDATE SET\n                display_name = excluded.display_name,\n                budget_limit = excluded.budget_limit,\n                updated_at = datetime('now', 'subsec')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "7a187ef0debafba3d5ff1b1c1d459ca521239d3a16b73df7fdf1423b05caccf1"
+}

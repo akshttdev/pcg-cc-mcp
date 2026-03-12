@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE email_accounts SET access_token = ? WHERE email_address = 'nora@powerclubglobal.com'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "6bcf04885345258136e1739cf2c1e83eb18771c93f2329be3e777c41fa2ffbb7"
+}

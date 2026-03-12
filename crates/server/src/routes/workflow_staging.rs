@@ -794,6 +794,8 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         scheduled_start: None,
         scheduled_end: None,
         screenshot: None,
+        completion_criteria: None,
+        output_format: None,
     };
 
     let task = Task::create(pool, &create, task_id).await.map_err(|e| e.to_string())?;

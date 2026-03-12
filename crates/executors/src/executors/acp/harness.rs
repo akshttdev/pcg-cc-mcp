@@ -16,6 +16,91 @@ use workspace_utils::shell::get_shell_command;
 use super::{AcpClient, SessionManager};
 use crate::executors::{ExecutorError, SpawnedChild, acp::AcpEvent};
 
+/// Load MCP servers from `default_mcp.json` and convert to ACP `McpServer` format.
+/// This gives ACP-based agents (Gemini, Qwen) access to the same MCP tools as Claude.
+fn load_platform_mcp_servers() -> Vec<proto::McpServer> {
+    // Try to find default_mcp.json relative to the executable or known paths
+    let config_paths = vec![
+        PathBuf::from("crates/executors/default_mcp.json"),
+        PathBuf::from("default_mcp.json"),
+        // Also check relative to current exe
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("default_mcp.json")))
+            .unwrap_or_default(),
+    ];
+
+    for path in &config_paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
+                let mut servers = Vec::new();
+                if let Some(obj) = config.as_object() {
+                    for (key, value) in obj {
+                        // Skip the "meta" section
+                        if key == "meta" { continue; }
+
+                        // Check if it's an HTTP-type server
+                        if value.get("type").and_then(|t| t.as_str()) == Some("http") {
+                            if let Some(url) = value.get("url").and_then(|u| u.as_str()) {
+                                let headers = value.get("headers")
+                                    .and_then(|h| h.as_object())
+                                    .map(|h| h.iter().filter_map(|(k, v)| {
+                                        v.as_str().map(|val| proto::HttpHeader {
+                                            name: k.clone(),
+                                            value: val.to_string(),
+                                            meta: None,
+                                        })
+                                    }).collect::<Vec<_>>())
+                                    .unwrap_or_default();
+
+                                servers.push(proto::McpServer::Http {
+                                    name: key.clone(),
+                                    url: url.to_string(),
+                                    headers,
+                                });
+                            }
+                            continue;
+                        }
+
+                        // Stdio server
+                        if let Some(command) = value.get("command").and_then(|c| c.as_str()) {
+                            let args = value.get("args")
+                                .and_then(|a| a.as_array())
+                                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                                .unwrap_or_default();
+
+                            let env = value.get("env")
+                                .and_then(|e| e.as_object())
+                                .map(|e| e.iter().filter_map(|(k, v)| {
+                                    v.as_str().map(|val| proto::EnvVariable {
+                                        name: k.clone(),
+                                        value: val.to_string(),
+                                        meta: None,
+                                    })
+                                }).collect::<Vec<_>>())
+                                .unwrap_or_default();
+
+                            servers.push(proto::McpServer::Stdio {
+                                name: key.clone(),
+                                command: PathBuf::from(command),
+                                args,
+                                env,
+                            });
+                        }
+                    }
+                }
+                if !servers.is_empty() {
+                    tracing::info!("[ACP] Loaded {} platform MCP server(s) from {:?}", servers.len(), path);
+                    return servers;
+                }
+            }
+        }
+    }
+
+    tracing::debug!("[ACP] No platform MCP servers loaded (default_mcp.json not found)");
+    Vec::new()
+}
+
 /// Reusable harness for ACP-based conns (Gemini, Qwen, etc.)
 pub struct AcpAgentHarness {
     session_namespace: String,
@@ -240,6 +325,9 @@ impl AcpAgentHarness {
                             })
                             .await;
 
+                        // Load platform MCP servers from default_mcp.json
+                        let platform_mcp_servers = load_platform_mcp_servers();
+
                         // Handle session creation/forking
                         let (acp_session_id, display_session_id, prompt_to_send) =
                             if let Some(existing) = existing_session {
@@ -253,7 +341,7 @@ impl AcpAgentHarness {
 
                                 match conn
                                     .new_session(proto::NewSessionRequest {
-                                        mcp_servers: vec![],
+                                        mcp_servers: platform_mcp_servers.clone(),
                                         cwd: cwd.clone(),
                                         meta,
                                     })
@@ -274,7 +362,7 @@ impl AcpAgentHarness {
                                 // New session
                                 match conn
                                     .new_session(proto::NewSessionRequest {
-                                        mcp_servers: vec![],
+                                        mcp_servers: platform_mcp_servers,
                                         cwd: cwd.clone(),
                                         meta: None,
                                     })

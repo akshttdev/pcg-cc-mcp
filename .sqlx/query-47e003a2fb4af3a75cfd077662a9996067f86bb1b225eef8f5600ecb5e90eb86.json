@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO airtable_bases (\n                id, project_id, airtable_base_id, airtable_base_name,\n                default_table_id, created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "47e003a2fb4af3a75cfd077662a9996067f86bb1b225eef8f5600ecb5e90eb86"
+}

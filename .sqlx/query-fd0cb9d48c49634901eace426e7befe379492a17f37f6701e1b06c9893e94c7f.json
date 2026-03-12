@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dropbox_sources SET cursor = ?, last_processed_at = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "fd0cb9d48c49634901eace426e7befe379492a17f37f6701e1b06c9893e94c7f"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE agent_wallets\n               SET vibe_budget_limit = ?,\n                   updated_at = datetime('now', 'subsec')\n             WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f4033ec89cdad0350aff86ceaa8fefaf22fb0a29d289a1ba253e0e3675ca97f6"
+}

@@ -108,6 +108,8 @@ pub async fn submit_feedback(
         scheduled_start: None,
         scheduled_end: None,
         screenshot: req.screenshot.clone(),
+        completion_criteria: None,
+        output_format: None,
     };
 
     Task::create(pool, &create_task, task_id)

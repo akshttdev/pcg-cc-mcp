@@ -581,6 +581,8 @@ impl ConferenceWorkflowEngine {
                             scheduled_start: publish_due,
                             scheduled_end: review_due,
                             screenshot: None,
+                            completion_criteria: None,
+                            output_format: None,
                         },
                         Uuid::new_v4(),
                     )
@@ -671,6 +673,8 @@ impl ConferenceWorkflowEngine {
                             scheduled_start: publish_due,
                             scheduled_end: None,
                             screenshot: None,
+                            completion_criteria: None,
+                            output_format: None,
                         },
                         Uuid::new_v4(),
                     )
@@ -778,6 +782,8 @@ impl ConferenceWorkflowEngine {
                             scheduled_start: publish_due,
                             scheduled_end: None,
                             screenshot: None,
+                            completion_criteria: None,
+                            output_format: None,
                         },
                         Uuid::new_v4(),
                     )

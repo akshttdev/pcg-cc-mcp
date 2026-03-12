@@ -1,0 +1,104 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!: Uuid\", account_id, label, source_url, project_id as \"project_id?: Uuid\", storage_tier, checksum_required, reference_name_template, ingest_strategy, access_token, cursor, last_processed_at as \"last_processed_at?: DateTime<Utc>\", auto_ingest, created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\" FROM dropbox_sources ORDER BY created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "label",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "source_url",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_id?: Uuid",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "storage_tier",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "checksum_required",
+        "ordinal": 6,
+        "type_info": "Bool"
+      },
+      {
+        "name": "reference_name_template",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "ingest_strategy",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "access_token",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "cursor",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_processed_at?: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "auto_ingest",
+        "ordinal": 12,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 14,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c1359a7825786b495517ec5ba1f78e9a2f1ddc2ae1f5d3ca890615f95387a13f"
+}

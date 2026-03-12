@@ -41,6 +41,16 @@ import type {
 const TRIGGER_TYPE_OPTIONS = [
   { value: 'data_source_created', label: 'Data Source Created' },
   { value: 'data_source_updated', label: 'Data Source Updated' },
+  { value: 'schedule' as const, label: 'Schedule (Recurring)' },
+] as const;
+
+const SCHEDULE_INTERVAL_OPTIONS = [
+  { value: 'every_5m', label: 'Every 5 minutes' },
+  { value: 'every_15m', label: 'Every 15 minutes' },
+  { value: 'every_30m', label: 'Every 30 minutes' },
+  { value: 'hourly', label: 'Hourly' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
 ] as const;
 
 interface WorkflowTriggersPanelProps {
@@ -68,6 +78,7 @@ export function WorkflowTriggersPanel({
   const [newTags, setNewTags] = useState('');
   const [newModelOverride, setNewModelOverride] = useState('');
   const [newAutoApprove, setNewAutoApprove] = useState(false);
+  const [newScheduleInterval, setNewScheduleInterval] = useState('hourly');
 
   const { data: triggers = [], isLoading } = useQuery({
     queryKey: ['workflowTriggers', workflowId],
@@ -114,17 +125,19 @@ export function WorkflowTriggersPanel({
     setNewTags('');
     setNewModelOverride('');
     setNewAutoApprove(false);
+    setNewScheduleInterval('hourly');
   }
 
   function handleCreate() {
+    const isSchedule = newTriggerType === 'schedule';
     const data: CreateWorkflowTrigger = {
       workflow_id: workflowId,
       name: newName,
       trigger_type: newTriggerType,
-      filter_data_source_types: newDataSourceTypes.length > 0 ? newDataSourceTypes : undefined,
+      filter_data_source_types: isSchedule ? undefined : (newDataSourceTypes.length > 0 ? newDataSourceTypes : undefined),
       filter_organization_id: newOrgId || undefined,
       filter_project_id: newProjectId || undefined,
-      filter_tags: newTags ? newTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined,
+      filter_tags: isSchedule ? [JSON.stringify({ interval: newScheduleInterval })] : (newTags ? newTags.split(',').map((t) => t.trim()).filter(Boolean) : undefined),
       model_override: newModelOverride || undefined,
       auto_approve: newAutoApprove,
     };
@@ -135,6 +148,22 @@ export function WorkflowTriggersPanel({
     setNewDataSourceTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
     );
+  }
+
+  function parseScheduleInterval(filterTags: string | null): string | null {
+    if (!filterTags) return null;
+    try {
+      const tags = JSON.parse(filterTags);
+      if (Array.isArray(tags)) {
+        for (const tag of tags) {
+          try {
+            const parsed = typeof tag === 'string' ? JSON.parse(tag) : tag;
+            if (parsed?.interval) return parsed.interval;
+          } catch { /* not JSON */ }
+        }
+      }
+    } catch { /* ignore */ }
+    return null;
   }
 
   function parseDsTypes(jsonStr: string | null): string[] {
@@ -200,6 +229,9 @@ export function WorkflowTriggersPanel({
               {/* Existing triggers */}
               {triggers.map((trigger) => {
                 const dsTypes = parseDsTypes(trigger.filter_data_source_types);
+                const scheduleInterval = trigger.trigger_type === 'schedule'
+                  ? parseScheduleInterval(trigger.filter_tags)
+                  : null;
                 return (
                   <div
                     key={trigger.id}
@@ -244,6 +276,11 @@ export function WorkflowTriggersPanel({
 
                     {/* Filter summary */}
                     <div className="mt-2 flex flex-wrap gap-1.5">
+                      {scheduleInterval && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          {SCHEDULE_INTERVAL_OPTIONS.find((o) => o.value === scheduleInterval)?.label || scheduleInterval}
+                        </Badge>
+                      )}
                       {dsTypes.length > 0 ? (
                         dsTypes.map((t) => (
                           <Badge key={t} variant="secondary" className="text-[10px]">
@@ -321,29 +358,50 @@ export function WorkflowTriggersPanel({
                     </Select>
                   </div>
 
-                  <div>
-                    <Label className="text-xs">
-                      Data Source Types{' '}
-                      <span className="text-muted-foreground">(leave empty for all)</span>
-                    </Label>
-                    <div className="flex flex-wrap gap-2 mt-1.5">
-                      {DATA_TYPE_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => toggleDataSourceType(opt.value)}
-                          className={cn(
-                            'px-2.5 py-1 rounded-md text-xs border transition-colors',
-                            newDataSourceTypes.includes(opt.value)
-                              ? 'bg-primary text-primary-foreground border-primary'
-                              : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/50'
-                          )}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+                  {newTriggerType === 'schedule' ? (
+                    <div>
+                      <Label className="text-xs">Schedule Interval</Label>
+                      <Select value={newScheduleInterval} onValueChange={setNewScheduleInterval}>
+                        <SelectTrigger className="h-8 text-sm mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SCHEDULE_INTERVAL_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Schedule triggers run without a data source, relying on action nodes.
+                      </p>
                     </div>
-                  </div>
+                  ) : (
+                    <div>
+                      <Label className="text-xs">
+                        Data Source Types{' '}
+                        <span className="text-muted-foreground">(leave empty for all)</span>
+                      </Label>
+                      <div className="flex flex-wrap gap-2 mt-1.5">
+                        {DATA_TYPE_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => toggleDataSourceType(opt.value)}
+                            className={cn(
+                              'px-2.5 py-1 rounded-md text-xs border transition-colors',
+                              newDataSourceTypes.includes(opt.value)
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/50'
+                            )}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>

@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                task_id as \"task_id!: Uuid\",\n                airtable_record_id,\n                airtable_base_id,\n                airtable_table_id,\n                origin,\n                sync_status,\n                last_sync_error,\n                airtable_record_url,\n                last_synced_at as \"last_synced_at?: DateTime<Utc>\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            FROM airtable_record_links\n            WHERE origin = 'airtable' AND sync_status = 'pending_push'\n            ORDER BY created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "task_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "airtable_record_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "airtable_base_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "airtable_table_id",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "origin",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "sync_status",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_sync_error",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "airtable_record_url",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_synced_at?: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "71c47a816d1106045f72505e7176b970ab1c0d0ba28a78c00f06143ae6f1e16e"
+}

@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO project_brand_profiles (\n                id, project_id, tagline, industry, primary_color, secondary_color,\n                brand_voice, target_audience, logo_asset_id, guidelines_asset_id\n            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n            ON CONFLICT(project_id) DO UPDATE SET\n                tagline = COALESCE(excluded.tagline, project_brand_profiles.tagline),\n                industry = COALESCE(excluded.industry, project_brand_profiles.industry),\n                primary_color = excluded.primary_color,\n                secondary_color = excluded.secondary_color,\n                brand_voice = COALESCE(excluded.brand_voice, project_brand_profiles.brand_voice),\n                target_audience = COALESCE(excluded.target_audience, project_brand_profiles.target_audience),\n                logo_asset_id = COALESCE(excluded.logo_asset_id, project_brand_profiles.logo_asset_id),\n                guidelines_asset_id = COALESCE(excluded.guidelines_asset_id, project_brand_profiles.guidelines_asset_id),\n                updated_at = datetime('now', 'subsec')\n            RETURNING\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                tagline,\n                industry,\n                primary_color as \"primary_color!: String\",\n                secondary_color as \"secondary_color!: String\",\n                brand_voice,\n                target_audience,\n                logo_asset_id as \"logo_asset_id?: Uuid\",\n                guidelines_asset_id as \"guidelines_asset_id?: Uuid\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "tagline",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "industry",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "primary_color!: String",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "secondary_color!: String",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "brand_voice",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "target_audience",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "logo_asset_id?: Uuid",
+        "ordinal": 8,
+        "type_info": "Blob"
+      },
+      {
+        "name": "guidelines_asset_id?: Uuid",
+        "ordinal": 9,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 10
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "13717dbd1d8c5cfb5976fbf273aa76bc6d941e04b8173f1742261ccec06a49f0"
+}

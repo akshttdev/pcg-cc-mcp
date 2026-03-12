@@ -40,6 +40,7 @@ pub fn routes() -> Router<DeploymentImpl> {
         .route("/agents/active", get(list_active_agents))
         .route("/agents/seed", post(seed_agents))
         .route("/agents/{id}", get(get_agent).put(update_agent).delete(delete_agent))
+        .route("/agents/{id}/profile", get(get_agent_profile))
         .route("/agents/by-name/{name}", get(get_agent_by_name))
         .route("/agents/{id}/wallet", put(assign_wallet))
         .route("/agents/{id}/status", put(update_status))
@@ -320,4 +321,97 @@ async fn update_status(
 
     let parsed: AgentWithParsedFields = agent.into();
     Ok(Json(parsed))
+}
+
+/// GET /api/agents/:id/profile — Agent capability profile with execution stats
+async fn get_agent_profile(
+    Path(id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let pool = &deployment.db().pool;
+
+    let agent = Agent::find_by_id(pool, id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
+
+    let parsed: AgentWithParsedFields = agent.into();
+
+    // Query execution stats from task_attempts
+    let agent_name = &parsed.short_name;
+
+    #[derive(sqlx::FromRow)]
+    struct Stats {
+        total: i64,
+        completed: i64,
+        failed: i64,
+        in_progress: i64,
+    }
+
+    let stats = sqlx::query_as::<_, Stats>(
+        r#"SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+            SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress
+        FROM task_attempts
+        WHERE agent_name = ?1"#,
+    )
+    .bind(agent_name)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let (total, completed, failed, in_progress) = stats
+        .map(|s| (s.total, s.completed, s.failed, s.in_progress))
+        .unwrap_or((0, 0, 0, 0));
+
+    let success_rate = if total > 0 {
+        (completed as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    // Get recent task attempt history
+    #[derive(sqlx::FromRow, serde::Serialize)]
+    struct RecentAttempt {
+        id: Uuid,
+        task_id: Uuid,
+        status: String,
+        created_at: String,
+    }
+
+    let recent = sqlx::query_as::<_, RecentAttempt>(
+        r#"SELECT id, task_id, status, created_at
+        FROM task_attempts
+        WHERE agent_name = ?1
+        ORDER BY created_at DESC
+        LIMIT 10"#,
+    )
+    .bind(agent_name)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    // Load platform MCP servers available to this agent
+    let mcp_tools: Vec<String> = if let Some(tools) = &parsed.tools {
+        tools.iter().map(|t| t.to_string()).collect()
+    } else {
+        vec![]
+    };
+
+    Ok(Json(serde_json::json!({
+        "agent": parsed,
+        "execution_stats": {
+            "total_attempts": total,
+            "completed": completed,
+            "failed": failed,
+            "in_progress": in_progress,
+            "success_rate": format!("{:.1}%", success_rate),
+        },
+        "recent_attempts": recent,
+        "mcp_tools": mcp_tools,
+        "platform_mcp_servers": ["orcha_task_server", "duck_kanban", "context7", "playwright"],
+    })))
 }

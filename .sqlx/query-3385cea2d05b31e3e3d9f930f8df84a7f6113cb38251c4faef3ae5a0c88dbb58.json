@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE airtable_record_links SET airtable_table_id = ?, updated_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "3385cea2d05b31e3e3d9f930f8df84a7f6113cb38251c4faef3ae5a0c88dbb58"
+}

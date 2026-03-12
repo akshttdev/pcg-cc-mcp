@@ -174,6 +174,8 @@ impl TaskExecutor {
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
         };
 
         let task = Task::create(&self.pool, &create_task, task_id)
@@ -604,6 +606,8 @@ impl TaskExecutor {
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
         };
 
         let task = Task::create(&self.pool, &create_task, task_id)
@@ -675,6 +679,8 @@ impl TaskExecutor {
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
         };
 
         let task = Task::create(&self.pool, &create_task, task_id)
@@ -888,6 +894,8 @@ impl TaskCreator for TaskExecutor {
             scheduled_start: None,
             scheduled_end: None,
             screenshot: None,
+            completion_criteria: None,
+            output_format: None,
         };
 
         Task::create(&self.pool, &create_task, task_id)

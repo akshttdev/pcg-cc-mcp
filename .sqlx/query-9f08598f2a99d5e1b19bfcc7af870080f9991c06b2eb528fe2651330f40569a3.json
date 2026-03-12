@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE execution_summaries SET\n                human_rating = COALESCE(?, human_rating),\n                human_notes = COALESCE(?, human_notes),\n                is_reference_example = COALESCE(?, is_reference_example),\n                updated_at = ?\n            WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "9f08598f2a99d5e1b19bfcc7af870080f9991c06b2eb528fe2651330f40569a3"
+}

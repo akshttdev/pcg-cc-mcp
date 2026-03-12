@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT access_token, refresh_token FROM email_accounts WHERE email_address = 'nora@powerclubglobal.com' LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "access_token",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "refresh_token",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "47456d2685fd0cbc101a73d58f629191a528cd4d3fd2a8992f54580734898c62"
+}

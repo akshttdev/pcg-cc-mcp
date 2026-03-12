@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE reward_batches\n            SET status = 'submitted',\n                aptos_tx_hash = $2,\n                submitted_at = datetime('now', 'subsec'),\n                updated_at = datetime('now', 'subsec')\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "b0f91ec2d815e15c08dd6b241a03916563602b614e8502ea28a7647fa45380b0"
+}

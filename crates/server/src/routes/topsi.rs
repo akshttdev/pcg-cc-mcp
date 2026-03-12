@@ -783,18 +783,20 @@ pub async fn chat_with_topsi(
     };
 
     // VIBE Balance Check — uses real deposit ledger
-    if let Some(project_id) = billing_project_id {
-        let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
-        let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
-        let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
-            .await
-            .map(|s| s.total_vibe)
-            .unwrap_or(0);
-        let balance = total_deposited - total_withdrawn - total_spent;
-        if balance <= 0 {
-            return Err(ApiError::PaymentRequired(
-                "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
-            ));
+    if !crate::helpers::vibe_check::is_vibe_bypass_active(&pool).await {
+        if let Some(project_id) = billing_project_id {
+            let total_deposited = VibeDeposit::total_deposited(&pool, project_id).await.unwrap_or(0);
+            let total_withdrawn = VibeWithdrawal::total_withdrawn(&pool, project_id).await.unwrap_or(0);
+            let total_spent = VibeTransaction::sum_by_source(&pool, VibeSourceType::Project, project_id, None)
+                .await
+                .map(|s| s.total_vibe)
+                .unwrap_or(0);
+            let balance = total_deposited - total_withdrawn - total_spent;
+            if balance <= 0 {
+                return Err(ApiError::PaymentRequired(
+                    "Insufficient VIBE balance. Deposit VIBE tokens to your project to continue.".into(),
+                ));
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2, Key } from 'lucide-react';
+import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2, Key, Code2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
@@ -104,6 +104,13 @@ const settingsNavigation: SettingsNavItem[] = [
     description: 'System health and performance metrics',
     absolutePath: '/pulse',
   },
+  ...(import.meta.env.MODE === 'development' ? [{
+    path: 'developer',
+    icon: Code2,
+    label: 'Developer',
+    description: 'Development-only tools and bypasses',
+    adminOnly: true,
+  }] : []),
 ];
 
 export function SettingsLayout() {

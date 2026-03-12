@@ -15,13 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from '@/components/ui/carousel';
+// Grid replaced Carousel for MCP server display
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { JSONEditor } from '@/components/ui/json-editor';
@@ -357,9 +351,7 @@ export function McpSettings() {
                       {t('settings.mcp.labels.serverHelper')}
                     </p>
 
-                    <div className="relative overflow-hidden rounded-xl border bg-background">
-                      <Carousel className="w-full px-4 py-3">
-                        <CarouselContent className="gap-3 justify-center">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                           {Object.entries(servers).map(([key]) => {
                             const metaObj = getMetaFor(key) as {
                               name?: string;
@@ -375,11 +367,8 @@ export function McpSettings() {
                               : null;
 
                             return (
-                              <CarouselItem
-                                key={name}
-                                className="sm:basis-1/3 lg:basis-1/4"
-                              >
                                 <button
+                                  key={name}
                                   type="button"
                                   onClick={() => addServer(key)}
                                   aria-label={`Add ${name} to config`}
@@ -414,14 +403,8 @@ export function McpSettings() {
                                     </CardContent>
                                   </Card>
                                 </button>
-                              </CarouselItem>
                             );
                           })}
-                        </CarouselContent>
-
-                        <CarouselPrevious className="left-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full border bg-background/80 shadow-sm backdrop-blur hover:bg-background" />
-                        <CarouselNext className="right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full border bg-background/80 shadow-sm backdrop-blur hover:bg-background" />
-                      </Carousel>
                     </div>
                   </div>
                 )}

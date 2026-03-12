@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO airtable_record_links (\n                id, task_id, airtable_record_id, airtable_base_id, airtable_table_id,\n                origin, sync_status, airtable_record_url, last_synced_at, created_at, updated_at\n            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": []
+  },
+  "hash": "bac7f8e0b6d97d60d09a6d42eca9b0dee4946aa8e615ec64d7ceb0f7ed8638d4"
+}

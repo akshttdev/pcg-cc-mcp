@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE peer_nodes\n            SET is_active = 0\n            WHERE is_active = 1\n            AND last_heartbeat_at < datetime('now', '-5 minutes')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "8a027c3fa29108d354c1ed268cbbff42eaf09cd7c350843f3330eca556ec3591"
+}

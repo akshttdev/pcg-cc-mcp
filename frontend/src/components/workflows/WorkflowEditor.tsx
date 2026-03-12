@@ -44,8 +44,15 @@ import {
   AlertTriangle,
   List,
   Database,
+  GitBranch,
+  Bell,
+  Bot,
+  Globe,
+  PenSquare,
+  RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { WorkflowTriggersPanel } from './WorkflowTriggersPanel';
 import { workflowsApi, crmPipelinesApi, DATA_TYPE_OPTIONS } from '@/lib/api';
 import type {
   WorkflowNode,
@@ -182,6 +189,95 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     defaultParameters: {
       target_type: 'task',
       on_duplicate: 'skip',
+    },
+  },
+  // --- Control Flow ---
+  {
+    type: 'conditional',
+    label: 'Conditional',
+    description: 'Branch execution based on a condition (routes to different downstream nodes)',
+    icon: GitBranch,
+    color: 'bg-yellow-600',
+    defaultParameters: {
+      condition: '',
+      true_label: 'Yes',
+      false_label: 'No',
+    },
+  },
+  // --- Action Nodes ---
+  {
+    type: 'send_notification',
+    label: 'Send Notification',
+    description: 'Send an in-app notification or email alert',
+    icon: Bell,
+    color: 'bg-pink-500',
+    defaultParameters: {
+      notification_type: 'in_app',
+      recipient: '',
+      subject: '',
+      message_template: '',
+    },
+  },
+  {
+    type: 'assign_to_agent',
+    label: 'Assign to Agent',
+    description: 'Create a task and assign it to an AI agent for autonomous execution',
+    icon: Bot,
+    color: 'bg-indigo-600',
+    defaultParameters: {
+      agent_codename: '',
+      task_title_template: '',
+      task_description_template: '',
+      completion_criteria: '',
+      auto_start: true,
+    },
+  },
+  {
+    type: 'http_request',
+    label: 'HTTP Request',
+    description: 'Make an external API call and use the response downstream',
+    icon: Globe,
+    color: 'bg-sky-500',
+    defaultParameters: {
+      method: 'GET',
+      url: '',
+      headers: '{}',
+      body: '',
+      output_path: '', // JSONPath to extract from response
+    },
+  },
+  // --- CRM Action Nodes ---
+  {
+    type: 'update_crm_contact',
+    label: 'Update CRM Contact',
+    description: 'Update fields on existing CRM contacts (e.g., lifecycle stage, tags)',
+    icon: PenSquare,
+    color: 'bg-cyan-600',
+    defaultParameters: {
+      match_field: 'email',
+      update_fields: '{}',
+    },
+  },
+  {
+    type: 'update_crm_deal',
+    label: 'Update CRM Deal',
+    description: 'Update deal stage, value, or other fields on existing deals',
+    icon: RefreshCw,
+    color: 'bg-cyan-600',
+    defaultParameters: {
+      match_field: 'name',
+      update_fields: '{}',
+    },
+  },
+  {
+    type: 'update_crm_company',
+    label: 'Update Company',
+    description: 'Update fields on existing company records (e.g., relationship, industry)',
+    icon: Building2,
+    color: 'bg-cyan-600',
+    defaultParameters: {
+      match_field: 'name',
+      update_fields: '{}',
     },
   },
 ];
@@ -428,6 +524,7 @@ export function WorkflowEditor({
   }, [previewResults]);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [triggersOpen, setTriggersOpen] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const [metadataExpanded, setMetadataExpanded] = useState(isNew);
   const [pendingDeleteNodeId, setPendingDeleteNodeId] = useState<string | null>(null);
@@ -514,6 +611,17 @@ export function WorkflowEditor({
             >
               <Eye className="h-3.5 w-3.5" />
               {isPreviewing ? 'Running...' : 'Preview'}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setTriggersOpen(true)}
+              disabled={isNew}
+              className="gap-1.5"
+              title={isNew ? 'Save workflow first to manage triggers' : 'Manage triggers'}
+            >
+              <Bell className="h-3.5 w-3.5" />
+              Triggers
             </Button>
             <Button
               size="sm"
@@ -947,6 +1055,14 @@ export function WorkflowEditor({
         </DialogContent>
       </Dialog>
 
+      {!isNew && (
+        <WorkflowTriggersPanel
+          open={triggersOpen}
+          onOpenChange={setTriggersOpen}
+          workflowId={id}
+          workflowName={name}
+        />
+      )}
     </Dialog>
   );
 }
@@ -1120,8 +1236,12 @@ function NodePicker({
   onSelect: (type: string) => void;
   onClose: () => void;
 }) {
-  const processingNodes = NODE_TYPES.filter(nt => !nt.type.startsWith('output_'));
+  const sourceNodes = NODE_TYPES.filter(nt => nt.type === 'data_source');
+  const llmNodes = NODE_TYPES.filter(nt => nt.type.startsWith('llm_'));
+  const transformNodes = NODE_TYPES.filter(nt => ['transform', 'filter', 'merge', 'conditional'].includes(nt.type));
+  const actionNodes = NODE_TYPES.filter(nt => ['send_notification', 'assign_to_agent', 'http_request', 'update_crm_contact', 'update_crm_deal', 'update_crm_company'].includes(nt.type));
   const outputNodes = NODE_TYPES.filter(nt => nt.type.startsWith('output_'));
+  const processingNodes = [...sourceNodes, ...llmNodes, ...transformNodes];
 
   return (
     <div className="rounded-lg border bg-card shadow-lg p-2 space-y-1">
@@ -1164,6 +1284,35 @@ function NodePicker({
           </button>
         );
       })}
+      {actionNodes.length > 0 && (
+        <>
+          <div className="border-t my-1" />
+          <div className="px-2 py-0.5">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Actions</span>
+          </div>
+          {actionNodes.map((nt) => {
+            const Icon = nt.icon;
+            return (
+              <button
+                key={nt.type}
+                onClick={() => onSelect(nt.type)}
+                className={cn(
+                  'w-full flex items-center gap-3 rounded-md px-2 py-2',
+                  'hover:bg-accent transition-colors text-left'
+                )}
+              >
+                <div className={cn('w-8 h-8 rounded-md flex items-center justify-center text-white shrink-0', nt.color)}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{nt.label}</div>
+                  <div className="text-xs text-muted-foreground">{nt.description}</div>
+                </div>
+              </button>
+            );
+          })}
+        </>
+      )}
       {outputNodes.length > 0 && (
         <>
           <div className="border-t my-1" />
@@ -1569,6 +1718,219 @@ function NodeConfigPanel({
                     </SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {node.type === 'conditional' && (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs">Condition</Label>
+                  <Textarea
+                    value={node.parameters.condition ?? ''}
+                    onChange={(e) => onUpdateParameter('condition', e.target.value)}
+                    placeholder="Describe the branching condition. e.g., 'If confidence > 0.8' or 'If lifecycle_stage equals SQL'"
+                    className="mt-1 text-sm font-mono min-h-[100px]"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">True Branch Label</Label>
+                    <Input
+                      value={node.parameters.true_label ?? 'Yes'}
+                      onChange={(e) => onUpdateParameter('true_label', e.target.value)}
+                      className="h-8 text-sm mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">False Branch Label</Label>
+                    <Input
+                      value={node.parameters.false_label ?? 'No'}
+                      onChange={(e) => onUpdateParameter('false_label', e.target.value)}
+                      className="h-8 text-sm mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {node.type === 'send_notification' && (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs">Notification Type</Label>
+                  <Select
+                    value={node.parameters.notification_type ?? 'in_app'}
+                    onValueChange={(v) => onUpdateParameter('notification_type', v)}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="in_app">In-App Notification</SelectItem>
+                      <SelectItem value="email">Email</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Recipient</Label>
+                  <Input
+                    value={node.parameters.recipient ?? ''}
+                    onChange={(e) => onUpdateParameter('recipient', e.target.value)}
+                    placeholder="User email or 'admin' or 'assignee'"
+                    className="h-8 text-sm mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Subject</Label>
+                  <Input
+                    value={node.parameters.subject ?? ''}
+                    onChange={(e) => onUpdateParameter('subject', e.target.value)}
+                    placeholder="Notification subject"
+                    className="h-8 text-sm mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Message Template</Label>
+                  <Textarea
+                    value={node.parameters.message_template ?? ''}
+                    onChange={(e) => onUpdateParameter('message_template', e.target.value)}
+                    placeholder="Message body. Use {{variable}} for dynamic content."
+                    className="mt-1 text-sm min-h-[80px]"
+                  />
+                </div>
+              </div>
+            )}
+
+            {node.type === 'assign_to_agent' && (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs">Agent Codename</Label>
+                  <Input
+                    value={node.parameters.agent_codename ?? ''}
+                    onChange={(e) => onUpdateParameter('agent_codename', e.target.value)}
+                    placeholder="e.g., auri, nora, astra"
+                    className="h-8 text-sm mt-1"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">The agent to assign the task to.</p>
+                </div>
+                <div>
+                  <Label className="text-xs">Task Title Template</Label>
+                  <Input
+                    value={node.parameters.task_title_template ?? ''}
+                    onChange={(e) => onUpdateParameter('task_title_template', e.target.value)}
+                    placeholder="e.g., Implement {{feature_name}}"
+                    className="h-8 text-sm mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Task Description Template</Label>
+                  <Textarea
+                    value={node.parameters.task_description_template ?? ''}
+                    onChange={(e) => onUpdateParameter('task_description_template', e.target.value)}
+                    placeholder="Describe what the agent should do. Use {{variable}} for upstream data."
+                    className="mt-1 text-sm min-h-[80px]"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Completion Criteria</Label>
+                  <Textarea
+                    value={node.parameters.completion_criteria ?? ''}
+                    onChange={(e) => onUpdateParameter('completion_criteria', e.target.value)}
+                    placeholder="What must be true for this task to be done?"
+                    className="mt-1 text-sm min-h-[60px]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={node.parameters.auto_start ?? true}
+                    onChange={(e) => onUpdateParameter('auto_start', e.target.checked)}
+                    className="rounded"
+                  />
+                  <Label className="text-xs">Auto-start agent execution after task creation</Label>
+                </div>
+              </div>
+            )}
+
+            {node.type === 'http_request' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-xs">Method</Label>
+                    <Select
+                      value={node.parameters.method ?? 'GET'}
+                      onValueChange={(v) => onUpdateParameter('method', v)}
+                    >
+                      <SelectTrigger className="h-8 text-sm mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GET">GET</SelectItem>
+                        <SelectItem value="POST">POST</SelectItem>
+                        <SelectItem value="PUT">PUT</SelectItem>
+                        <SelectItem value="PATCH">PATCH</SelectItem>
+                        <SelectItem value="DELETE">DELETE</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">URL</Label>
+                    <Input
+                      value={node.parameters.url ?? ''}
+                      onChange={(e) => onUpdateParameter('url', e.target.value)}
+                      placeholder="https://api.example.com/endpoint"
+                      className="h-8 text-sm mt-1"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Headers (JSON)</Label>
+                  <Textarea
+                    value={node.parameters.headers ?? '{}'}
+                    onChange={(e) => onUpdateParameter('headers', e.target.value)}
+                    placeholder='{"Authorization": "Bearer {{token}}"}'
+                    className="mt-1 text-sm font-mono min-h-[60px]"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Request Body</Label>
+                  <Textarea
+                    value={node.parameters.body ?? ''}
+                    onChange={(e) => onUpdateParameter('body', e.target.value)}
+                    placeholder="Request body (for POST/PUT). Use {{variable}} for upstream data."
+                    className="mt-1 text-sm font-mono min-h-[60px]"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Output Path (JSONPath)</Label>
+                  <Input
+                    value={node.parameters.output_path ?? ''}
+                    onChange={(e) => onUpdateParameter('output_path', e.target.value)}
+                    placeholder="e.g., data.results or leave empty for full response"
+                    className="h-8 text-sm mt-1"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(node.type === 'update_crm_contact' || node.type === 'update_crm_deal' || node.type === 'update_crm_company') && (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs">Match Field</Label>
+                  <Input
+                    value={node.parameters.match_field ?? 'email'}
+                    onChange={(e) => onUpdateParameter('match_field', e.target.value)}
+                    placeholder={node.type === 'update_crm_contact' ? 'email' : 'name'}
+                    className="h-8 text-sm mt-1"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Field used to find the existing record to update.
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs">Fields to Update (JSON)</Label>
+                  <Textarea
+                    value={node.parameters.update_fields ?? '{}'}
+                    onChange={(e) => onUpdateParameter('update_fields', e.target.value)}
+                    placeholder={'{"lifecycle_stage": "{{new_stage}}", "tags": ["{{tag}}"]}\nUse {{variable}} for upstream data.'}
+                    className="mt-1 text-sm font-mono min-h-[100px]"
+                  />
+                </div>
               </div>
             )}
 

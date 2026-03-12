@@ -80,6 +80,7 @@ const McpSettings       = lazy(() => import('@/pages/settings/McpSettings').then
 const WalletSettings    = lazy(() => import('@/pages/settings/WalletSettings').then(m => ({ default: m.WalletSettings })));
 const KeysSettings      = lazy(() => import('@/pages/settings/KeysSettings').then(m => ({ default: m.KeysSettings })));
 const NetworkSettings   = lazy(() => import('@/pages/settings/NetworkSettings').then(m => ({ default: m.NetworkSettings })));
+const DeveloperSettings = lazy(() => import('@/pages/settings/DeveloperSettings').then(m => ({ default: m.DeveloperSettings })));
 const BrandIntakePage   = lazy(() => import('@/pages/brand-intake').then(m => ({ default: m.BrandIntakePage })));
 const BrandGuidePage    = lazy(() => import('@/pages/brand-guide').then(m => ({ default: m.BrandGuidePage })));
 const CallIntakePage      = lazy(() => import('@/pages/call-intake'));
@@ -404,6 +405,7 @@ function App() {
             <Route path="mcp" element={<McpSettings />} />
             <Route path="airtable" element={<Navigate to="/settings/general" replace />} />
             <Route path="network" element={<NetworkSettings />} />
+            <Route path="developer" element={<AdminRoute><DeveloperSettings /></AdminRoute>} />
           </Route>
           <Route
             path="/mcp-servers"

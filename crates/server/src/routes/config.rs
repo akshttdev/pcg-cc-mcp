@@ -30,6 +30,8 @@ pub fn router() -> Router<DeploymentImpl> {
         .route("/sounds/{sound}", get(get_sound))
         .route("/mcp-config", get(get_mcp_servers).post(update_mcp_servers))
         .route("/profiles", get(get_profiles).put(update_profiles))
+        .route("/system-settings", get(get_system_settings))
+        .route("/system-settings/{key}", put(update_system_setting))
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -431,4 +433,38 @@ async fn update_profiles(
             e
         ))),
     }
+}
+
+// ========================================
+// System Settings Endpoints
+// ========================================
+
+async fn get_system_settings(
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<db::models::system_settings::SystemSetting>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let settings = db::models::system_settings::SystemSetting::get_all(pool).await
+        .map_err(|e| ApiError::InternalError(format!("Failed to load system settings: {}", e)))?;
+    Ok(ResponseJson(ApiResponse::success(settings)))
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateSettingBody {
+    value: String,
+}
+
+async fn update_system_setting(
+    Path(key): Path<String>,
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<UpdateSettingBody>,
+) -> Result<ResponseJson<ApiResponse<String>>, ApiError> {
+    // Only allow in debug/dev builds
+    if !cfg!(debug_assertions) {
+        return Err(ApiError::Forbidden("System settings can only be modified in development mode".into()));
+    }
+
+    let pool = &deployment.db().pool;
+    db::models::system_settings::SystemSetting::set(pool, &key, &body.value, None).await
+        .map_err(|e| ApiError::InternalError(format!("Failed to update setting: {}", e)))?;
+    Ok(ResponseJson(ApiResponse::success(format!("Setting '{}' updated", key))))
 }

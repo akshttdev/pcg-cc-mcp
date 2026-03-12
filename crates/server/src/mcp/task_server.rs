@@ -8,6 +8,7 @@ use db::models::{
     project_knowledge_source::{
         KnowledgeSourceType, ProjectKnowledgeSource,
     },
+    person::{ListPersonsQuery, Person},
     task::{CreateTask, Priority, Task, TaskStatus, TaskWithAttemptStatus},
     task_dependency::{CreateTaskDependency, DependencyType, TaskDependency},
 };
@@ -141,6 +142,8 @@ fn task_to_summary(task: &Task) -> TaskSummary {
         has_in_progress_attempt: None,
         has_merged_attempt: None,
         last_attempt_failed: None,
+        completion_criteria: task.completion_criteria.clone(),
+        output_format: task.output_format.clone(),
     }
 }
 
@@ -168,6 +171,8 @@ fn task_with_status_to_summary(task: &TaskWithAttemptStatus) -> TaskSummary {
         has_in_progress_attempt: Some(task.has_in_progress_attempt),
         has_merged_attempt: Some(task.has_merged_attempt),
         last_attempt_failed: Some(task.last_attempt_failed),
+        completion_criteria: task.completion_criteria.clone(),
+        output_format: task.output_format.clone(),
     }
 }
 
@@ -204,6 +209,10 @@ pub struct CreateTaskRequest {
     pub requires_approval: Option<bool>,
     #[schemars(description = "Arbitrary custom properties as JSON object")]
     pub custom_properties: Option<Value>,
+    #[schemars(description = "Structured completion criteria — measurable conditions that define when this task is done (e.g. 'All tests pass, coverage > 80%, PR approved')")]
+    pub completion_criteria: Option<String>,
+    #[schemars(description = "Expected output format — what deliverables look like (e.g. 'Rust module with pub fn, unit tests, updated CHANGELOG')")]
+    pub output_format: Option<String>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -310,6 +319,10 @@ pub struct TaskSummary {
     pub has_merged_attempt: Option<bool>,
     #[schemars(description = "Whether the last execution attempt failed")]
     pub last_attempt_failed: Option<bool>,
+    #[schemars(description = "Structured completion criteria for self-evaluation")]
+    pub completion_criteria: Option<String>,
+    #[schemars(description = "Expected output format/deliverables")]
+    pub output_format: Option<String>,
 }
 
 // Phase 1: Enriched ListTasksResponse
@@ -396,6 +409,10 @@ pub struct UpdateTaskRequest {
     pub requires_approval: Option<bool>,
     #[schemars(description = "New custom properties (JSON object, null to clear)")]
     pub custom_properties: Option<Value>,
+    #[schemars(description = "New completion criteria — measurable conditions for task completion")]
+    pub completion_criteria: Option<String>,
+    #[schemars(description = "New output format — expected deliverable format")]
+    pub output_format: Option<String>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -574,6 +591,44 @@ pub struct ManageDependenciesRequest {
     pub dependency_type: Option<String>,
     #[schemars(description = "Task UUID to list dependencies for (required for list action)")]
     pub task_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CheckDependenciesRequest {
+    #[schemars(description = "The task UUID to check dependencies for")]
+    pub task_id: String,
+    #[schemars(description = "Project UUID the task belongs to")]
+    pub project_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UnifiedSearchRequest {
+    #[schemars(description = "Search query — matches against titles, names, descriptions across all entity types")]
+    pub query: String,
+    #[schemars(description = "Entity types to search: 'projects', 'tasks', 'knowledge', 'persons'. Default: all")]
+    pub entity_types: Option<Vec<String>>,
+    #[schemars(description = "Optional project UUID to scope task/knowledge search")]
+    pub project_id: Option<String>,
+    #[schemars(description = "Max results per entity type (default: 10, max: 50)")]
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ScaffoldProjectRequest {
+    #[schemars(description = "Project name")]
+    pub name: String,
+    #[schemars(description = "Template type: 'software', 'research', 'marketing', 'client_onboarding'")]
+    pub template: String,
+    #[schemars(description = "Path to git repository (will be created if it doesn't exist)")]
+    pub git_repo_path: String,
+    #[schemars(description = "Optional organization UUID to associate with")]
+    pub organization_id: Option<String>,
+    #[schemars(description = "Optional client UUID to associate with")]
+    pub client_id: Option<String>,
+    #[schemars(description = "Optional topic/subject for research projects — used to generate contextual tasks")]
+    pub topic: Option<String>,
+    #[schemars(description = "Optional client name for client onboarding — used to personalize task descriptions")]
+    pub client_name: Option<String>,
 }
 
 // ─── Phase 3: Knowledge Types ───────────────────────────────────────────────
@@ -791,6 +846,8 @@ impl TaskServer {
             scheduled_start,
             scheduled_end,
             screenshot: None,
+            completion_criteria: req.completion_criteria.clone(),
+            output_format: req.output_format.clone(),
         };
 
         match Task::create(&self.pool, &create_task_data, task_id).await {
@@ -1116,6 +1173,9 @@ impl TaskServer {
 
         let new_requires_approval = req.requires_approval.unwrap_or(current_task.requires_approval);
 
+        let new_completion_criteria = req.completion_criteria.or_else(|| current_task.completion_criteria.clone());
+        let new_output_format = req.output_format.or_else(|| current_task.output_format.clone());
+
         let new_custom_properties = match &req.custom_properties {
             Some(Value::Null) => None,
             Some(v) => Some(SqlxJson(v.clone())),
@@ -1148,6 +1208,8 @@ impl TaskServer {
             new_custom_properties,
             new_scheduled_start,
             new_scheduled_end,
+            new_completion_criteria,
+            new_output_format,
         )
         .await
         {
@@ -1335,6 +1397,8 @@ impl TaskServer {
             custom_properties,
             current_task.scheduled_start,
             current_task.scheduled_end,
+            current_task.completion_criteria,
+            current_task.output_format,
         )
         .await
         {
@@ -1610,6 +1674,8 @@ impl TaskServer {
                 scheduled_start: None,
                 scheduled_end: None,
                 screenshot: None,
+                completion_criteria: None,
+                output_format: None,
             };
 
             match Task::create(&self.pool, &create_data, task_id).await {
@@ -1748,6 +1814,8 @@ impl TaskServer {
                 cp,
                 current.scheduled_start,
                 current.scheduled_end,
+                current.completion_criteria.clone(),
+                current.output_format.clone(),
             )
             .await
             {
@@ -1999,6 +2067,515 @@ impl TaskServer {
             }
             _ => Ok(error_result("Invalid action. Use 'add', 'remove', or 'list'", None)),
         }
+    }
+
+    #[tool(
+        description = "Check whether all blocking dependencies for a task are resolved (status = 'done'). Returns a structured report: all_resolved (bool), total blockers, resolved count, and details per blocker. Use this before starting work on a task to verify blockers are cleared."
+    )]
+    async fn check_dependencies(
+        &self,
+        Parameters(req): Parameters<CheckDependenciesRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let task_uuid = match parse_uuid(&req.task_id, "task_id") {
+            Ok(u) => u,
+            Err(r) => return Ok(r),
+        };
+        let project_uuid = match parse_uuid(&req.project_id, "project_id") {
+            Ok(u) => u,
+            Err(r) => return Ok(r),
+        };
+
+        // Verify task exists
+        match Task::find_by_id_and_project_id(&self.pool, task_uuid, project_uuid).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return Ok(error_result("Task not found in the specified project", None)),
+            Err(e) => return Ok(error_result("Failed to retrieve task", Some(&e.to_string()))),
+        }
+
+        // Get all dependencies where this task is the target (i.e., things that block this task)
+        let deps = match TaskDependency::list_by_task(&self.pool, task_uuid).await {
+            Ok(d) => d,
+            Err(e) => return Ok(error_result("Failed to list dependencies", Some(&e.to_string()))),
+        };
+
+        // Filter to only "blocks" dependencies where this task is the target
+        let blockers: Vec<&TaskDependency> = deps
+            .iter()
+            .filter(|d| d.dependency_type == DependencyType::Blocks && d.target_task_id == task_uuid)
+            .collect();
+
+        if blockers.is_empty() {
+            return Ok(success_json(&serde_json::json!({
+                "task_id": req.task_id,
+                "all_resolved": true,
+                "total_blockers": 0,
+                "resolved": 0,
+                "unresolved": 0,
+                "blockers": [],
+                "message": "No blocking dependencies — task is ready to start"
+            })));
+        }
+
+        let mut blocker_details = Vec::new();
+        let mut resolved_count = 0;
+
+        for dep in &blockers {
+            let source_task = Task::find_by_id(&self.pool, dep.source_task_id).await;
+            match source_task {
+                Ok(Some(t)) => {
+                    let status_str = serde_json::to_value(&t.status)
+                        .ok()
+                        .and_then(|v| v.as_str().map(String::from))
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let is_done = status_str == "done";
+                    if is_done {
+                        resolved_count += 1;
+                    }
+                    blocker_details.push(serde_json::json!({
+                        "task_id": dep.source_task_id.to_string(),
+                        "title": t.title,
+                        "status": status_str,
+                        "resolved": is_done,
+                    }));
+                }
+                Ok(None) => {
+                    blocker_details.push(serde_json::json!({
+                        "task_id": dep.source_task_id.to_string(),
+                        "title": null,
+                        "status": "not_found",
+                        "resolved": false,
+                    }));
+                }
+                Err(_) => {
+                    blocker_details.push(serde_json::json!({
+                        "task_id": dep.source_task_id.to_string(),
+                        "title": null,
+                        "status": "error",
+                        "resolved": false,
+                    }));
+                }
+            }
+        }
+
+        let all_resolved = resolved_count == blockers.len();
+        let message = if all_resolved {
+            "All blocking dependencies resolved — task is ready to start".to_string()
+        } else {
+            format!(
+                "{} of {} blockers unresolved — task is blocked",
+                blockers.len() - resolved_count,
+                blockers.len()
+            )
+        };
+
+        Ok(success_json(&serde_json::json!({
+            "task_id": req.task_id,
+            "all_resolved": all_resolved,
+            "total_blockers": blockers.len(),
+            "resolved": resolved_count,
+            "unresolved": blockers.len() - resolved_count,
+            "blockers": blocker_details,
+            "message": message,
+        })))
+    }
+
+    #[tool(
+        description = "Search across projects, tasks, knowledge sources, and persons in a single query. Returns categorized results. Use entity_types to narrow scope."
+    )]
+    async fn unified_search(
+        &self,
+        Parameters(req): Parameters<UnifiedSearchRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let limit = req.limit.unwrap_or(10).clamp(1, 50);
+        let search_all = req.entity_types.is_none();
+        let types: Vec<String> = req
+            .entity_types
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.to_lowercase())
+            .collect();
+
+        let search_projects = search_all || types.contains(&"projects".to_string());
+        let search_tasks = search_all || types.contains(&"tasks".to_string());
+        let search_knowledge = search_all || types.contains(&"knowledge".to_string());
+        let search_persons = search_all || types.contains(&"persons".to_string());
+
+        let mut results = serde_json::json!({ "query": req.query });
+
+        // Search projects
+        if search_projects {
+            let all_projects = match self.accessible_project_ids().await {
+                Ok(Some(ids)) => {
+                    let mut matched = Vec::new();
+                    for pid in ids {
+                        if let Ok(Some(p)) = Project::find_by_id(&self.pool, pid).await {
+                            let q_lower = req.query.to_lowercase();
+                            if p.name.to_lowercase().contains(&q_lower)
+                                || p.git_repo_path
+                                    .to_string_lossy()
+                                    .to_lowercase()
+                                    .contains(&q_lower)
+                            {
+                                matched.push(serde_json::json!({
+                                    "id": p.id.to_string(),
+                                    "name": p.name,
+                                    "git_repo_path": p.git_repo_path.to_string_lossy(),
+                                }));
+                            }
+                        }
+                        if matched.len() >= limit as usize {
+                            break;
+                        }
+                    }
+                    matched
+                }
+                Ok(None) => {
+                    // Admin — search all
+                    match Project::find_all(&self.pool).await {
+                        Ok(projects) => {
+                            let q_lower = req.query.to_lowercase();
+                            projects
+                                .iter()
+                                .filter(|p| {
+                                    p.name.to_lowercase().contains(&q_lower)
+                                        || p.git_repo_path
+                                            .to_string_lossy()
+                                            .to_lowercase()
+                                            .contains(&q_lower)
+                                })
+                                .take(limit as usize)
+                                .map(|p| {
+                                    serde_json::json!({
+                                        "id": p.id.to_string(),
+                                        "name": p.name,
+                                        "git_repo_path": p.git_repo_path.to_string_lossy(),
+                                    })
+                                })
+                                .collect()
+                        }
+                        Err(_) => vec![],
+                    }
+                }
+                Err(_) => vec![],
+            };
+            results["projects"] = serde_json::json!({
+                "count": all_projects.len(),
+                "results": all_projects,
+            });
+        }
+
+        // Search tasks
+        if search_tasks {
+            let like = format!("%{}%", req.query);
+            let project_filter = req.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+
+            let tasks: Vec<Value> = if let Some(pid) = project_filter {
+                match Task::find_by_project_id_with_attempt_status(&self.pool, pid).await {
+                    Ok(tasks) => {
+                        let q_lower = req.query.to_lowercase();
+                        tasks
+                            .iter()
+                            .filter(|t| {
+                                t.title.to_lowercase().contains(&q_lower)
+                                    || t.description
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .to_lowercase()
+                                        .contains(&q_lower)
+                            })
+                            .take(limit as usize)
+                            .map(|t| serde_json::to_value(task_with_status_to_summary(t)).unwrap())
+                            .collect()
+                    }
+                    Err(_) => vec![],
+                }
+            } else {
+                // Cross-project search using raw SQL LIKE
+                match sqlx::query_as::<_, Task>(
+                    "SELECT * FROM tasks WHERE (title LIKE ?1 OR description LIKE ?1) ORDER BY updated_at DESC LIMIT ?2"
+                )
+                .bind(&like)
+                .bind(limit as i64)
+                .fetch_all(&self.pool)
+                .await {
+                    Ok(tasks) => tasks.iter().map(|t| serde_json::to_value(task_to_summary(t)).unwrap()).collect(),
+                    Err(_) => vec![],
+                }
+            };
+            results["tasks"] = serde_json::json!({
+                "count": tasks.len(),
+                "results": tasks,
+            });
+        }
+
+        // Search knowledge
+        if search_knowledge {
+            let project_filter = req.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+            let like = format!("%{}%", req.query);
+
+            let knowledge: Vec<Value> = if let Some(pid) = project_filter {
+                match ProjectKnowledgeSource::find_by_project(&self.pool, pid).await {
+                    Ok(sources) => {
+                        let q_lower = req.query.to_lowercase();
+                        sources
+                            .iter()
+                            .filter(|s| {
+                                s.source_title
+                                    .to_lowercase()
+                                    .contains(&q_lower)
+                                    || s.source_summary
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .to_lowercase()
+                                        .contains(&q_lower)
+                            })
+                            .take(limit as usize)
+                            .map(|s| {
+                                serde_json::json!({
+                                    "id": s.id.to_string(),
+                                    "project_id": s.project_id.to_string(),
+                                    "source_type": s.source_type,
+                                    "source_title": s.source_title,
+                                    "source_summary": s.source_summary,
+                                })
+                            })
+                            .collect()
+                    }
+                    Err(_) => vec![],
+                }
+            } else {
+                match sqlx::query_as::<_, ProjectKnowledgeSource>(
+                    "SELECT * FROM project_knowledge_sources WHERE (source_title LIKE ?1 OR source_summary LIKE ?1) ORDER BY updated_at DESC LIMIT ?2"
+                )
+                .bind(&like)
+                .bind(limit as i64)
+                .fetch_all(&self.pool)
+                .await {
+                    Ok(sources) => sources.iter().map(|s| serde_json::json!({
+                        "id": s.id.to_string(),
+                        "project_id": s.project_id.to_string(),
+                        "source_type": s.source_type,
+                        "source_title": s.source_title,
+                        "source_summary": s.source_summary,
+                    })).collect(),
+                    Err(_) => vec![],
+                }
+            };
+            results["knowledge"] = serde_json::json!({
+                "count": knowledge.len(),
+                "results": knowledge,
+            });
+        }
+
+        // Search persons
+        if search_persons {
+            let persons: Vec<Value> = match Person::list(
+                &self.pool,
+                &ListPersonsQuery {
+                    person_type: None,
+                    financial_role: None,
+                    lifecycle_stage: None,
+                    organization_id: None,
+                    query: Some(req.query.clone()),
+                    limit: Some(limit as i64),
+                    offset: None,
+                },
+            )
+            .await
+            {
+                Ok(people) => people
+                    .iter()
+                    .map(|p| {
+                        serde_json::json!({
+                            "id": p.id.to_string(),
+                            "full_name": p.full_name,
+                            "email": p.email,
+                            "person_type": p.person_type,
+                            "company_name": p.company_name,
+                            "job_title": p.job_title,
+                        })
+                    })
+                    .collect(),
+                Err(_) => vec![],
+            };
+            results["persons"] = serde_json::json!({
+                "count": persons.len(),
+                "results": persons,
+            });
+        }
+
+        Ok(success_json(&results))
+    }
+
+    #[tool(
+        description = "Scaffold a new project from a template with pre-configured tasks and board. Templates: 'software' (dev lifecycle), 'research' (deep investigation), 'marketing' (campaign management), 'client_onboarding' (new client setup). Returns the created project ID and task list."
+    )]
+    async fn scaffold_project(
+        &self,
+        Parameters(req): Parameters<ScaffoldProjectRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let org_id = req
+            .organization_id
+            .as_deref()
+            .and_then(|s| Uuid::parse_str(s).ok());
+        let client_id = req
+            .client_id
+            .as_deref()
+            .and_then(|s| Uuid::parse_str(s).ok());
+
+        let template = req.template.to_lowercase();
+        let tasks_def: Vec<(&str, &str, &str, Option<&str>, Option<&str>)> = match template.as_str() {
+            "software" => vec![
+                ("Project Setup & Environment", "Initialize repository, configure CI/CD, set up dev environment", "high",
+                 Some("Repository initialized, CI pipeline green, README with setup instructions"), Some("Git repo with working build, CI config, developer onboarding docs")),
+                ("Requirements & Architecture", "Define functional requirements, design system architecture, document API contracts", "high",
+                 Some("Requirements doc reviewed, architecture diagram approved, API contracts defined"), Some("Architecture decision records (ADRs), API specification (OpenAPI/protobuf), system diagram")),
+                ("Core Implementation", "Build core features per architecture spec", "high",
+                 Some("All core features implemented, unit tests passing, code review approved"), Some("Source code with tests, PR merged to main")),
+                ("Testing & QA", "Write integration tests, perform QA validation, fix bugs", "medium",
+                 Some("Test coverage > 80%, no critical bugs, QA sign-off"), Some("Test suite, QA report, bug fix PRs")),
+                ("Documentation & Deploy", "Write user docs, prepare deployment, create runbook", "medium",
+                 Some("Docs published, staging deployment successful, runbook reviewed"), Some("User documentation, deployment scripts, operational runbook")),
+            ],
+            "research" => {
+                let topic = req.topic.as_deref().unwrap_or("the research subject");
+                // We'll use the topic in descriptions below
+                vec![
+                    ("Literature Review & Source Collection", "Gather and catalog existing research, papers, and data sources", "high",
+                     Some("Minimum 10 primary sources identified and summarized, research gaps documented"), Some("Annotated bibliography, source database, gap analysis document")),
+                    ("Hypothesis Formation", "Analyze collected sources, identify patterns, formulate research questions and hypotheses", "high",
+                     Some("Clear research questions defined, testable hypotheses documented, methodology selected"), Some("Research proposal with hypotheses, methodology section, expected outcomes")),
+                    ("Data Collection & Analysis", "Collect primary data, run experiments or analyses, document findings", "high",
+                     Some("Data collection complete, statistical analysis performed, preliminary findings documented"), Some("Raw data files, analysis notebooks/scripts, preliminary findings report")),
+                    ("Synthesis & Insights", "Synthesize findings, draw conclusions, identify implications and next steps", "medium",
+                     Some("Key insights documented, conclusions validated against hypotheses, implications mapped"), Some("Research report with findings, implications matrix, recommendations")),
+                    ("Report & Knowledge Integration", "Write final report, integrate findings into knowledge base, identify follow-up research", "medium",
+                     Some("Final report reviewed and approved, knowledge base updated, follow-up topics identified"), Some("Final research report, knowledge base entries, follow-up research proposals")),
+                ]
+            }
+            "marketing" => vec![
+                ("Campaign Strategy & Brief", "Define target audience, messaging, channels, budget, and success metrics", "high",
+                 Some("Campaign brief approved, target personas defined, channel mix selected, KPIs set"), Some("Campaign brief document, persona profiles, channel strategy, KPI dashboard setup")),
+                ("Content Creation", "Produce campaign assets: copy, visuals, videos, landing pages", "high",
+                 Some("All assets created and reviewed, brand guidelines followed, A/B variants prepared"), Some("Creative assets (copy, images, video), landing pages, A/B test variants")),
+                ("Channel Setup & Launch", "Configure ad platforms, schedule posts, set up tracking, launch campaign", "medium",
+                 Some("All channels configured, tracking pixels verified, campaign live"), Some("Platform configurations, UTM tracking sheet, launch confirmation")),
+                ("Monitor & Optimize", "Track performance metrics, optimize targeting and spend, A/B test results", "medium",
+                 Some("Weekly reports delivered, optimizations applied, A/B tests concluded"), Some("Performance reports, optimization log, A/B test results")),
+                ("Analysis & Retrospective", "Compile final results, calculate ROI, document learnings for future campaigns", "low",
+                 Some("Final report with ROI delivered, learnings documented, recommendations for next campaign"), Some("Campaign results report, ROI analysis, learnings document")),
+            ],
+            "client_onboarding" => {
+                let client = req.client_name.as_deref().unwrap_or("the client");
+                vec![
+                    ("Discovery & Intake", "Conduct intake call, gather requirements, understand business context and goals", "critical",
+                     Some("Intake form completed, requirements documented, stakeholders identified, timeline agreed"), Some("Intake form, requirements document, stakeholder map, project timeline")),
+                    ("Proposal & Agreement", "Draft proposal, define scope of work, negotiate terms, execute agreement", "critical",
+                     Some("Proposal approved by client, SOW signed, payment terms agreed"), Some("Signed proposal/SOW, payment schedule, project charter")),
+                    ("Environment & Access Setup", "Set up client workspace, configure access, create project structure", "high",
+                     Some("Client workspace created, all access provisioned, project boards set up"), Some("Workspace configuration, access credentials (securely shared), project board with initial tasks")),
+                    ("Kickoff & Alignment", "Run kickoff meeting, align on process, establish communication cadence", "high",
+                     Some("Kickoff meeting completed, communication channels established, first sprint planned"), Some("Kickoff meeting notes, communication plan, sprint 1 backlog")),
+                    ("First Deliverable & Feedback Loop", "Deliver first milestone, gather feedback, iterate on process", "medium",
+                     Some("First deliverable reviewed by client, feedback incorporated, process refined"), Some("First deliverable, client feedback document, updated process notes")),
+                ]
+            }
+            _ => {
+                return Ok(error_result(
+                    "Unknown template. Valid: software, research, marketing, client_onboarding",
+                    None,
+                ))
+            }
+        };
+
+        // Create the project
+        let project_id = Uuid::new_v4();
+        let create_project = db::models::project::CreateProject {
+            name: req.name.clone(),
+            git_repo_path: req.git_repo_path.clone(),
+            use_existing_repo: true,
+            setup_script: None,
+            dev_script: None,
+            cleanup_script: None,
+            copy_files: None,
+            organization_id: org_id,
+            client_id,
+            folder_id: None,
+            parent_project_id: None,
+        };
+
+        let project = match Project::create(&self.pool, &create_project, project_id).await {
+            Ok(p) => p,
+            Err(e) => return Ok(error_result("Failed to create project", Some(&e.to_string()))),
+        };
+
+        // Create tasks from template
+        let mut created_tasks = Vec::new();
+        let created_by = self
+            .user_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "mcp".to_string());
+
+        for (i, (title, description, priority_str, criteria, output_fmt)) in tasks_def.iter().enumerate() {
+            let task_id = Uuid::new_v4();
+            let priority = parse_priority(priority_str);
+            let create_task = CreateTask {
+                project_id: project.id,
+                pod_id: None,
+                board_id: None,
+                title: title.to_string(),
+                description: Some(description.to_string()),
+                parent_task_attempt: None,
+                image_ids: None,
+                priority,
+                assignee_id: None,
+                assignee_type: None,
+                assigned_agent: None,
+                agent_id: None,
+                assigned_mcps: None,
+                created_by: created_by.clone(),
+                requires_approval: None,
+                parent_task_id: None,
+                tags: Some(vec![template.clone()]),
+                due_date: None,
+                custom_properties: None,
+                scheduled_start: None,
+                scheduled_end: None,
+                screenshot: None,
+                completion_criteria: criteria.map(|s| s.to_string()),
+                output_format: output_fmt.map(|s| s.to_string()),
+            };
+
+            match Task::create(&self.pool, &create_task, task_id).await {
+                Ok(t) => {
+                    created_tasks.push(serde_json::json!({
+                        "order": i + 1,
+                        "task_id": task_id.to_string(),
+                        "title": title,
+                        "priority": priority_str,
+                        "completion_criteria": criteria,
+                        "output_format": output_fmt,
+                    }));
+                }
+                Err(e) => {
+                    created_tasks.push(serde_json::json!({
+                        "order": i + 1,
+                        "title": title,
+                        "error": e.to_string(),
+                    }));
+                }
+            }
+        }
+
+        Ok(success_json(&serde_json::json!({
+            "success": true,
+            "project_id": project.id.to_string(),
+            "project_name": project.name,
+            "template": template,
+            "tasks_created": created_tasks.len(),
+            "tasks": created_tasks,
+            "message": format!("Project '{}' scaffolded with {} tasks from '{}' template", project.name, created_tasks.len(), template),
+        })))
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -2636,14 +3213,14 @@ impl TaskServer {
 // ─── MCP Resources ──────────────────────────────────────────────────────────
 
 /// Build the 6 MCP resource templates
-fn pcg_resource_templates() -> Vec<ResourceTemplate> {
+fn orcha_resource_templates() -> Vec<ResourceTemplate> {
     let templates = vec![
-        ("pcg://projects/{project_id}", "Project Detail", "Get project details including VIBE budget and configuration"),
-        ("pcg://projects/{project_id}/tasks", "Project Tasks", "List all tasks in a project"),
-        ("pcg://projects/{project_id}/tasks/{task_id}", "Task Detail", "Get detailed information about a specific task"),
-        ("pcg://projects/{project_id}/knowledge", "Project Knowledge", "List knowledge sources for a project"),
-        ("pcg://projects/{project_id}/topology", "Project Topology", "Get the topology graph (nodes, edges, clusters)"),
-        ("pcg://projects/{project_id}/health", "Project Health", "Get health summary including issues and knowledge completeness"),
+        ("orcha://projects/{project_id}", "Project Detail", "Get project details including VIBE budget and configuration"),
+        ("orcha://projects/{project_id}/tasks", "Project Tasks", "List all tasks in a project"),
+        ("orcha://projects/{project_id}/tasks/{task_id}", "Task Detail", "Get detailed information about a specific task"),
+        ("orcha://projects/{project_id}/knowledge", "Project Knowledge", "List knowledge sources for a project"),
+        ("orcha://projects/{project_id}/topology", "Project Topology", "Get the topology graph (nodes, edges, clusters)"),
+        ("orcha://projects/{project_id}/health", "Project Health", "Get health summary including issues and knowledge completeness"),
     ];
 
     templates
@@ -2674,14 +3251,15 @@ impl ServerHandler for TaskServer {
             },
             instructions: Some(
                 "PCG Dashboard MCP v2 — Atlas-level project management for AI agents. \
-                 23 tools + 6 MCP resources. Use `list_projects` to discover project IDs. \
+                 26 tools + 6 MCP resources. Use `list_projects` to discover project IDs. \
                  Tools: list_projects, list_tasks, create_task, get_task, update_task, delete_task, \
                  assign_task, add_comment, list_project_members, \
                  evaluate_policy, bulk_create_tasks, bulk_update_tasks, search_tasks, \
-                 manage_task_dependencies, add_knowledge, list_knowledge, get_knowledge_completeness, \
+                 manage_task_dependencies, check_dependencies, unified_search, scaffold_project, \
+                 add_knowledge, list_knowledge, get_knowledge_completeness, \
                  manage_knowledge, get_topology, get_topology_issues, find_topology_path, \
                  get_vibe_budget, list_agents. \
-                 Resources: pcg://projects/{project_id}[/tasks|/knowledge|/topology|/health]"
+                 Resources: orcha://projects/{project_id}[/tasks|/knowledge|/topology|/health]"
                     .to_string(),
             ),
         }
@@ -2694,7 +3272,7 @@ impl ServerHandler for TaskServer {
     ) -> impl Future<Output = Result<ListResourceTemplatesResult, ErrorData>> + Send + '_
     {
         std::future::ready(Ok(ListResourceTemplatesResult {
-            resource_templates: pcg_resource_templates(),
+            resource_templates: orcha_resource_templates(),
             next_cursor: None,
         }))
     }
@@ -2724,11 +3302,11 @@ impl ServerHandler for TaskServer {
     }
 }
 
-/// Resolve a pcg:// resource URI to JSON
+/// Resolve an orcha:// resource URI to JSON
 async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String> {
-    // Parse: pcg://projects/{project_id}[/tasks[/{task_id}]|/knowledge|/topology|/health]
+    // Parse: orcha://projects/{project_id}[/tasks[/{task_id}]|/knowledge|/topology|/health]
     let path = uri
-        .strip_prefix("pcg://projects/")
+        .strip_prefix("orcha://projects/")
         .ok_or_else(|| format!("Unknown resource URI: {}", uri))?;
 
     let parts: Vec<&str> = path.splitn(3, '/').collect();

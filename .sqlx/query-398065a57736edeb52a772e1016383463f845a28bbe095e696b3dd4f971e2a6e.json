@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE airtable_record_links SET\n                sync_status = ?,\n                last_sync_error = ?,\n                last_synced_at = COALESCE(?, last_synced_at),\n                updated_at = ?\n            WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "398065a57736edeb52a772e1016383463f845a28bbe095e696b3dd4f971e2a6e"
+}

@@ -330,6 +330,12 @@ export function TaskCard({
                 </div>
               );
             })()}
+            {task.assigned_agent && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground" title={`Agent: ${task.assigned_agent}`}>
+                <Bot className="h-3 w-3 text-blue-500" />
+                <span className="truncate max-w-[80px]">{task.assigned_agent}</span>
+              </div>
+            )}
           </div>
           {task.vibe_cost != null && task.vibe_cost > 0 && (
             <div
