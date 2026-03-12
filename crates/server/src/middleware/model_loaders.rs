@@ -23,7 +23,7 @@ pub async fn load_project_middleware(
     next: Next,
 ) -> Result<Response, StatusCode> {
     // Load the project from the database
-    let project = match Project::find_by_id(&deployment.db().pool, project_id).await {
+    let project = match Project::find_by_id(&deployment.db().pool, &project_id.to_string()).await {
         Ok(Some(project)) => project,
         Ok(None) => {
             tracing::warn!("Project {} not found", project_id);
@@ -45,7 +45,7 @@ pub async fn load_project_middleware(
         match access_context
             .check_project_access_hierarchical(
                 &deployment.db().pool,
-                &project.id.to_string(),
+                &project.id,
                 ProjectRole::Viewer,
             )
             .await
@@ -84,7 +84,7 @@ pub async fn load_task_middleware(
     next: Next,
 ) -> Result<Response, StatusCode> {
     // Load the task and validate it belongs to the project
-    let task = match Task::find_by_id(&deployment.db().pool, task_id).await {
+    let task = match Task::find_by_id(&deployment.db().pool, &task_id.to_string()).await {
         Ok(Some(task)) => task,
         Ok(None) => {
             tracing::warn!("Task {} not found", task_id);

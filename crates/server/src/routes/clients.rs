@@ -22,7 +22,7 @@ use crate::{
 async fn require_org_access(
     pool: &sqlx::SqlitePool,
     access_context: &AccessContext,
-    org_id: Uuid,
+    org_id: &str,
 ) -> Result<(), ApiError> {
     if access_context.is_admin {
         return Ok(());
@@ -38,7 +38,7 @@ async fn require_org_access(
 async fn require_org_admin(
     pool: &sqlx::SqlitePool,
     access_context: &AccessContext,
-    org_id: Uuid,
+    org_id: &str,
 ) -> Result<(), ApiError> {
     if access_context.is_admin {
         return Ok(());
@@ -56,8 +56,9 @@ pub async fn list_clients(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<Client>>>, ApiError> {
-    require_org_access(&deployment.db().pool, &access_context, org_id).await?;
-    let clients = Client::find_by_organization(&deployment.db().pool, org_id).await?;
+    let org_id_str = org_id.to_string();
+    require_org_access(&deployment.db().pool, &access_context, &org_id_str).await?;
+    let clients = Client::find_by_organization(&deployment.db().pool, &org_id_str).await?;
     Ok(Json(ApiResponse::success(clients)))
 }
 
@@ -68,15 +69,16 @@ pub async fn create_client(
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<CreateClient>,
 ) -> Result<Json<ApiResponse<Client>>, ApiError> {
-    require_org_admin(&deployment.db().pool, &access_context, org_id).await?;
+    let org_id_str = org_id.to_string();
+    require_org_admin(&deployment.db().pool, &access_context, &org_id_str).await?;
 
     // Check slug uniqueness within org
-    if let Some(_) = Client::find_by_slug(&deployment.db().pool, org_id, &data.slug).await? {
+    if let Some(_) = Client::find_by_slug(&deployment.db().pool, &org_id_str, &data.slug).await? {
         return Err(ApiError::Conflict("Client with this slug already exists in the organization".into()));
     }
 
-    let id = Uuid::new_v4();
-    let client = Client::create(&deployment.db().pool, id, org_id, &data).await?;
+    let id = Uuid::new_v4().to_string();
+    let client = Client::create(&deployment.db().pool, &id, &org_id_str, &data).await?;
     Ok(Json(ApiResponse::success(client)))
 }
 
@@ -86,11 +88,11 @@ pub async fn get_client(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Client>>, ApiError> {
-    let client = Client::find_by_id(&deployment.db().pool, id)
+    let client = Client::find_by_id(&deployment.db().pool, &id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
-    require_org_access(&deployment.db().pool, &access_context, client.organization_id).await?;
+    require_org_access(&deployment.db().pool, &access_context, &client.organization_id).await?;
     Ok(Json(ApiResponse::success(client)))
 }
 
@@ -101,13 +103,13 @@ pub async fn update_client(
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<UpdateClient>,
 ) -> Result<Json<ApiResponse<Client>>, ApiError> {
-    let existing = Client::find_by_id(&deployment.db().pool, id)
+    let existing = Client::find_by_id(&deployment.db().pool, &id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, existing.organization_id).await?;
+    require_org_admin(&deployment.db().pool, &access_context, &existing.organization_id).await?;
 
-    let client = Client::update(&deployment.db().pool, id, &data).await?;
+    let client = Client::update(&deployment.db().pool, &id.to_string(), &data).await?;
     Ok(Json(ApiResponse::success(client)))
 }
 
@@ -117,13 +119,13 @@ pub async fn delete_client(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let existing = Client::find_by_id(&deployment.db().pool, id)
+    let existing = Client::find_by_id(&deployment.db().pool, &id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, existing.organization_id).await?;
+    require_org_admin(&deployment.db().pool, &access_context, &existing.organization_id).await?;
 
-    Client::soft_delete(&deployment.db().pool, id, access_context.user_id).await?;
+    Client::soft_delete(&deployment.db().pool, &id.to_string(), &access_context.user_id.to_string()).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -133,11 +135,11 @@ pub async fn list_client_members(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, ApiError> {
-    let client = Client::find_by_id(&deployment.db().pool, id)
+    let client = Client::find_by_id(&deployment.db().pool, &id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
-    require_org_access(&deployment.db().pool, &access_context, client.organization_id).await?;
+    require_org_access(&deployment.db().pool, &access_context, &client.organization_id).await?;
 
     #[derive(sqlx::FromRow)]
     struct MemberWithUser {
@@ -200,21 +202,22 @@ pub async fn add_client_member(
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<CreateClientMember>,
 ) -> Result<Json<ApiResponse<ClientMember>>, ApiError> {
-    let client = Client::find_by_id(&deployment.db().pool, id)
+    let client = Client::find_by_id(&deployment.db().pool, &id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, client.organization_id).await?;
+    require_org_admin(&deployment.db().pool, &access_context, &client.organization_id).await?;
 
-    let member_id = Uuid::new_v4();
+    let member_id = Uuid::new_v4().to_string();
     let role = data.role.as_deref().unwrap_or("viewer");
+    let granted_by = access_context.user_id.to_string();
     let member = Client::add_member(
         &deployment.db().pool,
-        member_id,
-        id,
-        data.user_id,
+        &member_id,
+        &id.to_string(),
+        Uuid::parse_str(&data.user_id).map_err(|_| ApiError::BadRequest("Invalid user_id".into()))?,
         role,
-        Some(access_context.user_id),
+        Some(&granted_by),
     )
     .await?;
     Ok(Json(ApiResponse::success(member)))
@@ -226,13 +229,13 @@ pub async fn remove_client_member(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    let client = Client::find_by_id(&deployment.db().pool, id)
+    let client = Client::find_by_id(&deployment.db().pool, &id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
-    require_org_admin(&deployment.db().pool, &access_context, client.organization_id).await?;
+    require_org_admin(&deployment.db().pool, &access_context, &client.organization_id).await?;
 
-    Client::remove_member(&deployment.db().pool, id, uid).await?;
+    Client::remove_member(&deployment.db().pool, &id.to_string(), uid).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -242,13 +245,13 @@ pub async fn list_client_projects(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<Project>>>, ApiError> {
-    let client = Client::find_by_id(&deployment.db().pool, id)
+    let client = Client::find_by_id(&deployment.db().pool, &id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Client not found".into()))?;
 
-    require_org_access(&deployment.db().pool, &access_context, client.organization_id).await?;
+    require_org_access(&deployment.db().pool, &access_context, &client.organization_id).await?;
 
-    let projects = Project::find_by_client(&deployment.db().pool, id).await?;
+    let projects = Project::find_by_client(&deployment.db().pool, &id.to_string()).await?;
     Ok(Json(ApiResponse::success(projects)))
 }
 

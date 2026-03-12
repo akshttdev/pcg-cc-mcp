@@ -272,7 +272,7 @@ async fn resolve_task_ralph_config(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     use db::models::task::Task;
 
-    let task = Task::find_by_id(&deployment.db().pool, task_id)
+    let task = Task::find_by_id(&deployment.db().pool, &task_id.to_string())
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Task not found".to_string()))?;

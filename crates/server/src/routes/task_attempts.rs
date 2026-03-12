@@ -255,7 +255,7 @@ pub async fn follow_up(
 
     let mut prompt = payload.prompt;
     if let Some(image_ids) = &payload.image_ids {
-        TaskImage::associate_many_dedup(&deployment.db().pool, task.id, image_ids).await?;
+        TaskImage::associate_many_dedup(&deployment.db().pool, Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?, image_ids).await?;
 
         // Copy new images from the image cache to the worktree
         if let Some(container_ref) = &task_attempt.container_ref {
@@ -476,7 +476,7 @@ pub async fn save_follow_up_draft(
             .parent_task(&deployment.db().pool)
             .await?
             .ok_or(SqlxError::RowNotFound)?;
-        TaskImage::associate_many_dedup(pool, task.id, image_ids).await?;
+        TaskImage::associate_many_dedup(pool, Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?, image_ids).await?;
     }
 
     // If queued and no process running for this attempt, attempt to start immediately.
@@ -1059,7 +1059,9 @@ pub async fn merge_task_attempt(
         .parent_task(pool)
         .await?
         .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
-    let ctx = TaskAttempt::load_context(pool, task_attempt.id, task.id, task.project_id).await?;
+    let task_id_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let project_id_uuid = Uuid::parse_str(&task.project_id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let ctx = TaskAttempt::load_context(pool, task_attempt.id, task_id_uuid, project_id_uuid).await?;
 
     let container_ref = deployment
         .container()
@@ -1103,7 +1105,7 @@ pub async fn merge_task_attempt(
         &merge_commit_id,
     )
     .await?;
-    Task::update_status(pool, ctx.task.id, TaskStatus::Done).await?;
+    Task::update_status(pool, &ctx.task.id, TaskStatus::Done).await?;
 
     deployment
         .track_if_analytics_allowed(
@@ -1181,7 +1183,7 @@ pub async fn create_github_pr(
         .parent_task(pool)
         .await?
         .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
-    let project = Project::find_by_id(pool, task.project_id)
+    let project = Project::find_by_id(pool, &task.project_id)
         .await?
         .ok_or(ApiError::Project(ProjectError::ProjectNotFound))?;
 
@@ -1382,7 +1384,9 @@ pub async fn get_task_attempt_branch_status(
         .parent_task(pool)
         .await?
         .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
-    let ctx = TaskAttempt::load_context(pool, task_attempt.id, task.id, task.project_id).await?;
+    let task_id_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let project_id_uuid = Uuid::parse_str(&task.project_id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let ctx = TaskAttempt::load_context(pool, task_attempt.id, task_id_uuid, project_id_uuid).await?;
     let has_uncommitted_changes = deployment
         .container()
         .is_container_clean(&task_attempt)
@@ -1522,7 +1526,9 @@ pub async fn rebase_task_attempt(
         .parent_task(pool)
         .await?
         .ok_or(ApiError::TaskAttempt(TaskAttemptError::TaskNotFound))?;
-    let ctx = TaskAttempt::load_context(pool, task_attempt.id, task.id, task.project_id).await?;
+    let task_id_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let project_id_uuid = Uuid::parse_str(&task.project_id).map_err(|e| ApiError::InternalError(e.to_string()))?;
+    let ctx = TaskAttempt::load_context(pool, task_attempt.id, task_id_uuid, project_id_uuid).await?;
 
     // Use the stored base branch if no new base branch is provided
     let effective_base_branch =
@@ -1645,7 +1651,7 @@ pub async fn start_dev_server(
 
     // Stop any existing dev servers for this project
     let existing_dev_servers =
-        match ExecutionProcess::find_running_dev_servers_by_project(pool, project.id).await {
+        match ExecutionProcess::find_running_dev_servers_by_project(pool, Uuid::parse_str(&project.id).map_err(|e| ApiError::InternalError(e.to_string()))?).await {
             Ok(servers) => servers,
             Err(e) => {
                 tracing::error!(

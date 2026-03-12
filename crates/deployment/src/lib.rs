@@ -200,7 +200,7 @@ pub trait Deployment: Clone + Send + Sync + 'static {
                 TaskAttempt::find_by_id(&self.db().pool, process.task_attempt_id).await
                 && let Ok(Some(task)) = task_attempt.parent_task(&self.db().pool).await
                 && let Err(e) =
-                    Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await
+                    Task::update_status(&self.db().pool, &task.id, TaskStatus::InReview).await
             {
                 tracing::error!(
                     "Failed to update task status to InReview for orphaned attempt: {}",
@@ -300,8 +300,8 @@ pub trait Deployment: Clone + Send + Sync + 'static {
                     }
 
                     // Create project (ignore individual failures)
-                    let project_id = Uuid::new_v4();
-                    match Project::create(&self.db().pool, &create_data, project_id).await {
+                    let project_id = Uuid::new_v4().to_string();
+                    match Project::create(&self.db().pool, &create_data, &project_id).await {
                         Ok(project) => {
                             tracing::info!(
                                 "Auto-created project '{}' from {}",
@@ -441,8 +441,8 @@ pub trait Deployment: Clone + Send + Sync + 'static {
             parent_project_id: None,
         };
 
-        let project_id = Uuid::new_v4();
-        match Project::create(&self.db().pool, &create_data, project_id).await {
+        let project_id = Uuid::new_v4().to_string();
+        match Project::create(&self.db().pool, &create_data, &project_id).await {
             Ok(project) => {
                 tracing::info!(
                     "Created project '{}' from topos (id: {})",

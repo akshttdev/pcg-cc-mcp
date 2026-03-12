@@ -38,7 +38,7 @@ impl UserRepository {
 
         #[derive(sqlx::FromRow)]
         struct OrgRow {
-            id: Uuid,
+            id: String,
             name: String,
             slug: String,
             role: String,

@@ -1180,7 +1180,7 @@ pub async fn chat_with_nora(
                 None, None, None,
             ).await {
                 Ok(tx) => {
-                    let _ = Project::adjust_vibe_spent(&pool, project_id, tx.amount_vibe).await;
+                    let _ = Project::adjust_vibe_spent(&pool, &project_id.to_string(), tx.amount_vibe).await;
                     tracing::info!("[VIBE] Nora recorded {} VIBE for project {}", tx.amount_vibe, project_id);
                 }
                 Err(e) => tracing::error!("[VIBE] Failed to record Nora usage: {}", e),
@@ -1969,7 +1969,7 @@ pub async fn nora_create_board(
         .executor
         .as_ref()
         .ok_or_else(|| ApiError::InternalError("Task executor not initialized".to_string()))?
-        .create_board(project_id, request.name, request.description, board_type)
+        .create_board(&project_id.to_string(), request.name, request.description, board_type)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create board: {}", e)))?;
 

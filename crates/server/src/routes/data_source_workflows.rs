@@ -1274,7 +1274,7 @@ async fn list_workflows_for_data_source(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<WorkflowDefinition>>>, ApiError> {
     let pool = &deployment.db().pool;
-    DataSource::find_by_id(pool, data_source_id)
+    DataSource::find_by_id(pool, &data_source_id.to_string())
         .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
     let workflows = load_all_workflows(pool).await
@@ -1954,7 +1954,7 @@ async fn run_workflow(
     let workflow_run_id = Uuid::new_v4();
     let run_start = std::time::Instant::now();
 
-    let data_source = DataSource::find_by_id(pool, data_source_id)
+    let data_source = DataSource::find_by_id(pool, &data_source_id.to_string())
         .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
 
@@ -2017,13 +2017,15 @@ async fn run_workflow(
     }
 
     // Create workflow run record
+    let ds_org_uuid = data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+    let ds_proj_uuid = data_source.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
     if let Err(e) = WorkflowRun::create(pool, CreateWorkflowRun {
         id: workflow_run_id,
         workflow_id: workflow.id.clone(),
         workflow_name: workflow.name.clone(),
         data_source_id: Some(data_source_id),
-        organization_id: data_source.organization_id,
-        project_id: data_source.project_id,
+        organization_id: ds_org_uuid,
+        project_id: ds_proj_uuid,
         model_used: if model.is_empty() { None } else { Some(model.clone()) },
         content_hash: Some(content_hash),
     }).await {
@@ -2097,7 +2099,7 @@ async fn run_workflow(
                 .collect::<Vec<_>>()
                 .join("\n");
             (input_data, None)
-        } else if let Some(action_result) = execute_action_node(pool, node, &previous, data_source.project_id, data_source.organization_id).await {
+        } else if let Some(action_result) = execute_action_node(pool, node, &previous, ds_proj_uuid, ds_org_uuid).await {
             // Action nodes (conditional, send_notification, assign_to_agent, http_request, update_crm_*)
             action_result
         } else {
@@ -2215,10 +2217,10 @@ async fn run_workflow(
                 for record in records {
                     // Check for duplicates against existing records
                     let dup = match staging_target {
-                        "crm_contact" => check_contact_duplicate(pool, &record, data_source.project_id).await,
-                        "company" => check_company_duplicate(pool, &record, data_source.organization_id).await,
-                        "crm_deal" => check_deal_duplicate(pool, &record, data_source.project_id).await,
-                        "task" => check_task_duplicate(pool, &record, data_source.project_id).await,
+                        "crm_contact" => check_contact_duplicate(pool, &record, ds_proj_uuid).await,
+                        "company" => check_company_duplicate(pool, &record, ds_org_uuid).await,
+                        "crm_deal" => check_deal_duplicate(pool, &record, ds_proj_uuid).await,
+                        "task" => check_task_duplicate(pool, &record, ds_proj_uuid).await,
                         _ => None,
                     };
 
@@ -2276,8 +2278,8 @@ async fn run_workflow(
                         workflow_id: workflow.id.clone(),
                         node_id: node.id.clone(),
                         data_source_id: Some(data_source_id),
-                        organization_id: data_source.organization_id,
-                        project_id: data_source.project_id,
+                        organization_id: ds_org_uuid,
+                        project_id: ds_proj_uuid,
                         target_type: staging_target.to_string(),
                         record_data: record,
                         duplicate_of_id: dup_id,
@@ -2345,7 +2347,7 @@ async fn list_data_source_artifacts(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<ExecutionArtifact>>>, ApiError> {
     let pool = &deployment.db().pool;
-    DataSource::find_by_id(pool, data_source_id)
+    DataSource::find_by_id(pool, &data_source_id.to_string())
         .await.map_err(|e| ApiError::InternalError(format!("Failed to look up data source: {e}")))?
         .ok_or_else(|| ApiError::NotFound("Data source not found".to_string()))?;
 
@@ -2678,7 +2680,7 @@ async fn execute_action_node(
                 output_format: None,
             };
 
-            match Task::create(pool, &create_task, task_id).await {
+            match Task::create(pool, &create_task, &task_id.to_string()).await {
                 Ok(task) => {
                     let status_msg = if auto_start { "created (auto_start=true, queued)" } else { "created" };
                     tracing::info!(
@@ -3575,16 +3577,16 @@ async fn get_run_stats(
 
 /// Check for matching workflow triggers and run them in the background.
 /// Called after a new data source is created. Non-blocking — spawns tokio tasks.
-pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_id: Uuid) {
+pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_id: String) {
     use db::models::workflow_trigger::WorkflowTrigger;
 
-    let ds = match DataSource::find_by_id(&pool, data_source_id).await {
+    let ds = match DataSource::find_by_id(&pool, &data_source_id).await {
         Ok(Some(ds)) => ds,
         _ => return,
     };
 
-    let org_id = ds.organization_id.map(|u| u.to_string());
-    let proj_id = ds.project_id.map(|u| u.to_string());
+    let org_id = ds.organization_id.clone();
+    let proj_id = ds.project_id.clone();
 
     let triggers = match WorkflowTrigger::find_matching_triggers(
         &pool,
@@ -3610,7 +3612,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 
     for trigger in triggers {
         let pool = pool.clone();
-        let ds_id = data_source_id;
+        let ds_id = data_source_id.clone();
         let trigger_id = trigger.id.clone();
         let workflow_id = trigger.workflow_id.clone();
         let model_override = trigger.model_override.clone();
@@ -3645,7 +3647,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 .unwrap_or_default();
 
             // Load data source
-            let data_source = match DataSource::find_by_id(&pool, ds_id).await {
+            let data_source = match DataSource::find_by_id(&pool, &ds_id).await {
                 Ok(Some(ds)) => ds,
                 _ => {
                     tracing::error!("[TRIGGER] Data source {} not found", ds_id);
@@ -3661,9 +3663,9 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 id: workflow_run_id,
                 workflow_id: workflow.id.clone(),
                 workflow_name: workflow.name.clone(),
-                data_source_id: Some(ds_id),
-                organization_id: data_source.organization_id,
-                project_id: data_source.project_id,
+                data_source_id: Uuid::parse_str(&ds_id).ok(),
+                organization_id: data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok()),
+                project_id: data_source.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok()),
                 model_used: if model.is_empty() { None } else { Some(model.clone()) },
                 content_hash: None,
             }).await {
@@ -3671,8 +3673,8 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 return;
             }
 
-            let ctx_project_id = data_source.project_id;
-            let ctx_org_id = data_source.organization_id;
+            let ctx_project_id = data_source.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
+            let ctx_org_id = data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
             let content = data_source.content.unwrap_or_default();
 
             // Build dependency map
@@ -3800,10 +3802,10 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                         let records = extract_records_from_output(&parsed, staging_target);
                         for record in records {
                             let dup = match staging_target {
-                                "crm_contact" => check_contact_duplicate(&pool, &record, data_source.project_id).await,
-                                "company" => check_company_duplicate(&pool, &record, data_source.organization_id).await,
-                                "crm_deal" => check_deal_duplicate(&pool, &record, data_source.project_id).await,
-                                "task" => check_task_duplicate(&pool, &record, data_source.project_id).await,
+                                "crm_contact" => check_contact_duplicate(&pool, &record, ctx_project_id).await,
+                                "company" => check_company_duplicate(&pool, &record, ctx_org_id).await,
+                                "crm_deal" => check_deal_duplicate(&pool, &record, ctx_project_id).await,
+                                "task" => check_task_duplicate(&pool, &record, ctx_project_id).await,
                                 _ => None,
                             };
                             let dup = dup.or(
@@ -3848,9 +3850,9 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                                 workflow_run_id,
                                 workflow_id: workflow.id.clone(),
                                 node_id: node.id.clone(),
-                                data_source_id: Some(ds_id),
-                                organization_id: data_source.organization_id,
-                                project_id: data_source.project_id,
+                                data_source_id: Uuid::parse_str(&ds_id).ok(),
+                                organization_id: ctx_org_id,
+                                project_id: ctx_project_id,
                                 target_type: staging_target.to_string(),
                                 record_data: record,
                                 duplicate_of_id: dup_id,

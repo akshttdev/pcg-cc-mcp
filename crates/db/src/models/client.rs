@@ -18,21 +18,21 @@ pub enum ClientError {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Client {
-    pub id: Uuid,
-    pub organization_id: Uuid,
+    pub id: String,
+    pub organization_id: String,
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
     pub logo_url: Option<String>,
     pub website: Option<String>,
-    pub crm_contact_id: Option<Uuid>,
+    pub crm_contact_id: Option<String>,
     pub is_active: bool,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<String>,
-    pub deleted_by: Option<Uuid>,
+    pub deleted_by: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -43,7 +43,7 @@ pub struct CreateClient {
     pub description: Option<String>,
     pub logo_url: Option<String>,
     pub website: Option<String>,
-    pub crm_contact_id: Option<Uuid>,
+    pub crm_contact_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -54,30 +54,30 @@ pub struct UpdateClient {
     pub description: Option<String>,
     pub logo_url: Option<String>,
     pub website: Option<String>,
-    pub crm_contact_id: Option<Uuid>,
+    pub crm_contact_id: Option<String>,
     pub is_active: Option<bool>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ClientMember {
-    pub id: Uuid,
-    pub client_id: Uuid,
-    pub user_id: Uuid,
+    pub id: String,
+    pub client_id: String,
+    pub user_id: String,
     pub role: String,
-    pub granted_by: Option<Uuid>,
+    pub granted_by: Option<String>,
     pub granted_at: String,
 }
 
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateClientMember {
-    pub user_id: Uuid,
+    pub user_id: String,
     pub role: Option<String>,
 }
 
 impl Client {
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Client>(
             r#"SELECT id, organization_id, name, slug, description, logo_url, website,
                       crm_contact_id, is_active, created_at, updated_at, deleted_at, deleted_by
@@ -90,7 +90,7 @@ impl Client {
 
     pub async fn find_by_organization(
         pool: &SqlitePool,
-        organization_id: Uuid,
+        organization_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Client>(
             r#"SELECT id, organization_id, name, slug, description, logo_url, website,
@@ -105,7 +105,7 @@ impl Client {
 
     pub async fn find_by_slug(
         pool: &SqlitePool,
-        organization_id: Uuid,
+        organization_id: &str,
         slug: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Client>(
@@ -121,8 +121,8 @@ impl Client {
 
     pub async fn create(
         pool: &SqlitePool,
-        id: Uuid,
-        organization_id: Uuid,
+        id: &str,
+        organization_id: &str,
         data: &CreateClient,
     ) -> Result<Self, sqlx::Error> {
         sqlx::query_as::<_, Client>(
@@ -138,12 +138,12 @@ impl Client {
         .bind(&data.description)
         .bind(&data.logo_url)
         .bind(&data.website)
-        .bind(data.crm_contact_id)
+        .bind(&data.crm_contact_id)
         .fetch_one(pool)
         .await
     }
 
-    pub async fn update(pool: &SqlitePool, id: Uuid, data: &UpdateClient) -> Result<Self, sqlx::Error> {
+    pub async fn update(pool: &SqlitePool, id: &str, data: &UpdateClient) -> Result<Self, sqlx::Error> {
         let existing = Self::find_by_id(pool, id)
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
@@ -153,7 +153,7 @@ impl Client {
         let description = data.description.as_deref().or(existing.description.as_deref());
         let logo_url = data.logo_url.as_deref().or(existing.logo_url.as_deref());
         let website = data.website.as_deref().or(existing.website.as_deref());
-        let crm_contact_id = data.crm_contact_id.or(existing.crm_contact_id);
+        let crm_contact_id = data.crm_contact_id.as_deref().or(existing.crm_contact_id.as_deref());
         let is_active = data.is_active.unwrap_or(existing.is_active);
 
         sqlx::query_as::<_, Client>(
@@ -176,7 +176,7 @@ impl Client {
         .await
     }
 
-    pub async fn soft_delete(pool: &SqlitePool, id: Uuid, deleted_by: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn soft_delete(pool: &SqlitePool, id: &str, deleted_by: &str) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE clients SET deleted_at = datetime('now'), deleted_by = ?, updated_at = datetime('now') WHERE id = ?"
         )
@@ -216,11 +216,11 @@ impl Client {
 
     pub async fn add_member(
         pool: &SqlitePool,
-        id: Uuid,
-        client_id: Uuid,
+        id: &str,
+        client_id: &str,
         user_id: Uuid,
         role: &str,
-        granted_by: Option<Uuid>,
+        granted_by: Option<&str>,
     ) -> Result<ClientMember, sqlx::Error> {
         sqlx::query_as::<_, ClientMember>(
             r#"INSERT INTO client_members (id, client_id, user_id, role, granted_by)
@@ -236,7 +236,7 @@ impl Client {
         .await
     }
 
-    pub async fn remove_member(pool: &SqlitePool, client_id: Uuid, user_id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn remove_member(pool: &SqlitePool, client_id: &str, user_id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query("DELETE FROM client_members WHERE client_id = ? AND user_id = ?")
             .bind(client_id)
             .bind(user_id)
@@ -245,7 +245,7 @@ impl Client {
         Ok(result.rows_affected())
     }
 
-    pub async fn get_members(pool: &SqlitePool, client_id: Uuid) -> Result<Vec<ClientMember>, sqlx::Error> {
+    pub async fn get_members(pool: &SqlitePool, client_id: &str) -> Result<Vec<ClientMember>, sqlx::Error> {
         sqlx::query_as::<_, ClientMember>(
             r#"SELECT id, client_id, user_id, role, granted_by, granted_at
                FROM client_members WHERE client_id = ?

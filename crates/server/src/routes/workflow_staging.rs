@@ -798,8 +798,8 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         output_format: None,
     };
 
-    let task = Task::create(pool, &create, task_id).await.map_err(|e| e.to_string())?;
-    Ok(task.id)
+    let task = Task::create(pool, &create, &task_id.to_string()).await.map_err(|e| e.to_string())?;
+    Ok(Uuid::parse_str(&task.id).map_err(|e| e.to_string())?)
 }
 
 // ── Helper functions ──────────────────────────────────────────────────────

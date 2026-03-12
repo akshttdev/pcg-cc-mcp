@@ -18,7 +18,7 @@ pub struct WorkflowInstance {
     pub current_stage: usize,
     pub state: WorkflowState,
     pub context: WorkflowContext,
-    pub created_tasks: Vec<Uuid>,
+    pub created_tasks: Vec<String>,
     pub deliverables: Vec<Deliverable>,
     pub started_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -102,7 +102,7 @@ pub struct WorkflowStageResult {
     pub stage_name: String,
     pub success: bool,
     pub output: serde_json::Value,
-    pub task_id: Option<Uuid>,
+    pub task_id: Option<String>,
     pub error: Option<String>,
     pub execution_time_ms: u64,
 }
@@ -115,7 +115,7 @@ pub struct WorkflowResult {
     pub agent_id: String,
     pub workflow_name: String,
     pub state: WorkflowState,
-    pub created_tasks: Vec<Uuid>,
+    pub created_tasks: Vec<String>,
     pub deliverables: Vec<Deliverable>,
     pub execution_time_ms: u64,
 }

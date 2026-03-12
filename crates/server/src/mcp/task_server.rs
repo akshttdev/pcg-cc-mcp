@@ -132,7 +132,7 @@ fn task_to_summary(task: &Task) -> TaskSummary {
         assigned_agent: task.assigned_agent.clone(),
         tags,
         due_date: task.due_date.map(|d| d.to_rfc3339()),
-        parent_task_id: task.parent_task_id.map(|id| id.to_string()),
+        parent_task_id: task.parent_task_id.clone(),
         requires_approval: task.requires_approval,
         approval_status: task.approval_status.as_ref().map(|s| format!("{:?}", s).to_lowercase()),
         created_by: task.created_by.clone(),
@@ -161,7 +161,7 @@ fn task_with_status_to_summary(task: &TaskWithAttemptStatus) -> TaskSummary {
         assigned_agent: task.assigned_agent.clone(),
         tags,
         due_date: task.due_date.map(|d| d.to_rfc3339()),
-        parent_task_id: task.parent_task_id.map(|id| id.to_string()),
+        parent_task_id: task.parent_task_id.clone(),
         requires_approval: task.requires_approval,
         approval_status: task.approval_status.as_ref().map(|s| format!("{:?}", s).to_lowercase()),
         created_by: task.created_by.clone(),
@@ -800,7 +800,7 @@ impl TaskServer {
             Err(r) => return Ok(r),
         };
 
-        match Project::exists(&self.pool, project_uuid).await {
+        match Project::exists(&self.pool, &project_uuid.to_string()).await {
             Ok(false) => return Ok(error_result("Project not found", None)),
             Err(e) => return Ok(error_result("Failed to check project", Some(&e.to_string()))),
             Ok(true) => {}
@@ -820,6 +820,7 @@ impl TaskServer {
             .and_then(|s| Uuid::parse_str(s).ok());
 
         let task_id = Uuid::new_v4();
+        let task_id_str = task_id.to_string();
         let create_task_data = CreateTask {
             project_id: project_uuid,
             pod_id: None,
@@ -850,10 +851,10 @@ impl TaskServer {
             output_format: req.output_format.clone(),
         };
 
-        match Task::create(&self.pool, &create_task_data, task_id).await {
+        match Task::create(&self.pool, &create_task_data, &task_id_str).await {
             Ok(_task) => Ok(success_json(&CreateTaskResponse {
                 success: true,
-                task_id: task_id.to_string(),
+                task_id: task_id_str,
                 message: "Task created successfully".to_string(),
             })),
             Err(e) => Ok(error_result("Failed to create task", Some(&e.to_string()))),
@@ -886,10 +887,8 @@ impl TaskServer {
 
             let mut projects = Vec::new();
             for pid_str in project_ids {
-                if let Ok(pid) = Uuid::parse_str(&pid_str) {
-                    if let Ok(Some(project)) = Project::find_by_id(&self.pool, pid).await {
-                        projects.push(project);
-                    }
+                if let Ok(Some(project)) = Project::find_by_id(&self.pool, &pid_str).await {
+                    projects.push(project);
                 }
             }
             Ok(projects)
@@ -948,7 +947,7 @@ impl TaskServer {
 
         let priority_filter = req.priority.as_deref().and_then(parse_priority);
 
-        let project = match Project::find_by_id(&self.pool, project_uuid).await {
+        let project = match Project::find_by_id(&self.pool, &project_uuid.to_string()).await {
             Ok(Some(p)) => p,
             Ok(None) => return Ok(error_result("Project not found", None)),
             Err(e) => return Ok(error_result("Failed to check project", Some(&e.to_string()))),
@@ -960,7 +959,7 @@ impl TaskServer {
         let sort_dir = req.sort_direction.clone().unwrap_or_else(|| "desc".to_string());
 
         let tasks_result =
-            Task::find_by_project_id_with_attempt_status(&self.pool, project_uuid).await;
+            Task::find_by_project_id_with_attempt_status(&self.pool, &project_uuid.to_string()).await;
 
         match tasks_result {
             Ok(tasks) => {
@@ -1108,7 +1107,7 @@ impl TaskServer {
         };
 
         let current_task =
-            match Task::find_by_id_and_project_id(&self.pool, task_uuid, project_uuid).await {
+            match Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
                 Ok(Some(t)) => t,
                 Ok(None) => return Ok(error_result("Task not found in the specified project", None)),
                 Err(e) => return Ok(error_result("Failed to retrieve task", Some(&e.to_string()))),
@@ -1161,14 +1160,14 @@ impl TaskServer {
 
         let new_parent_task_id = match &req.parent_task_id {
             Some(s) if s.is_empty() => None,
-            Some(s) => Uuid::parse_str(s).ok().or(current_task.parent_task_id),
-            None => current_task.parent_task_id,
+            Some(s) => Uuid::parse_str(s).ok().map(|u| u.to_string()).or(current_task.parent_task_id.clone()),
+            None => current_task.parent_task_id.clone(),
         };
 
         let new_board_id = match &req.board_id {
             Some(s) if s.is_empty() => None,
-            Some(s) => Uuid::parse_str(s).ok().or(current_task.board_id),
-            None => current_task.board_id,
+            Some(s) => Uuid::parse_str(s).ok().map(|u| u.to_string()).or(current_task.board_id.clone()),
+            None => current_task.board_id.clone(),
         };
 
         let new_requires_approval = req.requires_approval.unwrap_or(current_task.requires_approval);
@@ -1187,21 +1186,21 @@ impl TaskServer {
 
         match Task::update(
             &self.pool,
-            task_uuid,
-            project_uuid,
+            &task_uuid.to_string(),
+            &project_uuid.to_string(),
             new_title,
             new_description,
             new_status,
-            current_task.parent_task_attempt,
-            current_task.pod_id,
+            current_task.parent_task_attempt.clone(),
+            current_task.pod_id.clone(),
             new_board_id,
             new_priority,
             new_assignee_id,
-            current_task.assignee_type,
+            current_task.assignee_type.clone(),
             new_assigned_agent,
-            current_task.assigned_mcps,
+            current_task.assigned_mcps.clone(),
             new_requires_approval,
-            current_task.approval_status,
+            current_task.approval_status.clone(),
             new_parent_task_id,
             new_tags,
             new_due_date,
@@ -1241,8 +1240,8 @@ impl TaskServer {
             Err(r) => return Ok(r),
         };
 
-        match Task::exists(&self.pool, task_uuid, project_uuid).await {
-            Ok(true) => match Task::delete(&self.pool, task_uuid).await {
+        match Task::exists(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
+            Ok(true) => match Task::delete(&self.pool, &task_uuid.to_string()).await {
                 Ok(rows) if rows > 0 => Ok(success_json(&DeleteTaskResponse {
                     success: true,
                     message: "Task deleted successfully".to_string(),
@@ -1276,8 +1275,8 @@ impl TaskServer {
         };
 
         let task_result =
-            Task::find_by_id_and_project_id(&self.pool, task_uuid, project_uuid).await;
-        let project_result = Project::find_by_id(&self.pool, project_uuid).await;
+            Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await;
+        let project_result = Project::find_by_id(&self.pool, &project_uuid.to_string()).await;
 
         match (task_result, project_result) {
             (Ok(Some(task)), Ok(Some(project))) => Ok(success_json(&GetTaskResponse {
@@ -1323,7 +1322,7 @@ impl TaskServer {
 
         // Find the task
         let current_task =
-            match Task::find_by_id_and_project_id(&self.pool, task_uuid, project_uuid).await {
+            match Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
                 Ok(Some(task)) => task,
                 Ok(None) => {
                     return Ok(CallToolResult::error(vec![Content::text(
@@ -1376,8 +1375,8 @@ impl TaskServer {
         let task_title = current_task.title.clone();
         match Task::update(
             &self.pool,
-            task_uuid,
-            project_uuid,
+            &task_uuid.to_string(),
+            &project_uuid.to_string(),
             current_task.title,
             current_task.description,
             current_task.status,
@@ -1621,7 +1620,7 @@ impl TaskServer {
             Err(r) => return Ok(r),
         };
 
-        match Project::exists(&self.pool, project_uuid).await {
+        match Project::exists(&self.pool, &project_uuid.to_string()).await {
             Ok(false) => return Ok(error_result("Project not found", None)),
             Err(e) => return Ok(error_result("Failed to check project", Some(&e.to_string()))),
             Ok(true) => {}
@@ -1643,7 +1642,7 @@ impl TaskServer {
         let mut success_count = 0;
 
         for (i, item) in req.tasks.iter().enumerate() {
-            let task_id = Uuid::new_v4();
+            let task_id = Uuid::new_v4().to_string();
             let priority = item.priority.as_deref().and_then(parse_priority);
             let due_date = item.due_date.as_deref().and_then(parse_iso_datetime);
             let parent_task_id = item
@@ -1678,7 +1677,7 @@ impl TaskServer {
                 output_format: None,
             };
 
-            match Task::create(&self.pool, &create_data, task_id).await {
+            match Task::create(&self.pool, &create_data, &task_id).await {
                 Ok(_) => {
                     success_count += 1;
                     results.push(serde_json::json!({
@@ -1743,7 +1742,7 @@ impl TaskServer {
             };
 
             let current =
-                match Task::find_by_id_and_project_id(&self.pool, task_uuid, project_uuid).await {
+                match Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
                     Ok(Some(t)) => t,
                     Ok(None) => {
                         results.push(serde_json::json!({
@@ -1793,14 +1792,14 @@ impl TaskServer {
 
             match Task::update(
                 &self.pool,
-                task_uuid,
-                project_uuid,
+                &task_uuid.to_string(),
+                &project_uuid.to_string(),
                 current.title.clone(),
                 current.description.clone(),
                 new_status,
-                current.parent_task_attempt,
-                current.pod_id,
-                current.board_id,
+                current.parent_task_attempt.clone(),
+                current.pod_id.clone(),
+                current.board_id.clone(),
                 new_priority,
                 new_assignee,
                 current.assignee_type,
@@ -1855,9 +1854,9 @@ impl TaskServer {
         let priority_filter = req.priority.as_deref().and_then(parse_priority);
 
         // Determine which projects to search
-        let project_ids: Vec<Uuid> = if let Some(ref pid) = req.project_id {
+        let project_ids: Vec<String> = if let Some(ref pid) = req.project_id {
             match parse_uuid(pid, "project_id") {
-                Ok(u) => vec![u],
+                Ok(u) => vec![u.to_string()],
                 Err(r) => return Ok(r),
             }
         } else {
@@ -1870,7 +1869,7 @@ impl TaskServer {
                         Err(e) => return Ok(error_result("Failed to list projects", Some(&e.to_string()))),
                     }
                 }
-                Ok(Some(ids)) => ids,
+                Ok(Some(ids)) => ids.into_iter().map(|id| id.to_string()).collect(),
                 Err(e) => return Ok(error_result("Failed to determine accessible projects", Some(&e.to_string()))),
             }
         };
@@ -1878,7 +1877,7 @@ impl TaskServer {
         let mut all_tasks: Vec<TaskSummary> = Vec::new();
 
         for pid in &project_ids {
-            let tasks = match Task::find_by_project_id_with_attempt_status(&self.pool, *pid).await {
+            let tasks = match Task::find_by_project_id_with_attempt_status(&self.pool, pid).await {
                 Ok(t) => t,
                 Err(_) => continue,
             };
@@ -2086,7 +2085,7 @@ impl TaskServer {
         };
 
         // Verify task exists
-        match Task::find_by_id_and_project_id(&self.pool, task_uuid, project_uuid).await {
+        match Task::find_by_id_and_project_id(&self.pool, &task_uuid.to_string(), &project_uuid.to_string()).await {
             Ok(Some(_)) => {}
             Ok(None) => return Ok(error_result("Task not found in the specified project", None)),
             Err(e) => return Ok(error_result("Failed to retrieve task", Some(&e.to_string()))),
@@ -2120,7 +2119,7 @@ impl TaskServer {
         let mut resolved_count = 0;
 
         for dep in &blockers {
-            let source_task = Task::find_by_id(&self.pool, dep.source_task_id).await;
+            let source_task = Task::find_by_id(&self.pool, &dep.source_task_id.to_string()).await;
             match source_task {
                 Ok(Some(t)) => {
                     let status_str = serde_json::to_value(&t.status)
@@ -2208,7 +2207,7 @@ impl TaskServer {
                 Ok(Some(ids)) => {
                     let mut matched = Vec::new();
                     for pid in ids {
-                        if let Ok(Some(p)) = Project::find_by_id(&self.pool, pid).await {
+                        if let Ok(Some(p)) = Project::find_by_id(&self.pool, &pid.to_string()).await {
                             let q_lower = req.query.to_lowercase();
                             if p.name.to_lowercase().contains(&q_lower)
                                 || p.git_repo_path
@@ -2270,7 +2269,7 @@ impl TaskServer {
             let project_filter = req.project_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
 
             let tasks: Vec<Value> = if let Some(pid) = project_filter {
-                match Task::find_by_project_id_with_attempt_status(&self.pool, pid).await {
+                match Task::find_by_project_id_with_attempt_status(&self.pool, &pid.to_string()).await {
                     Ok(tasks) => {
                         let q_lower = req.query.to_lowercase();
                         tasks
@@ -2417,11 +2416,13 @@ impl TaskServer {
         let org_id = req
             .organization_id
             .as_deref()
-            .and_then(|s| Uuid::parse_str(s).ok());
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .map(|u| u.to_string());
         let client_id = req
             .client_id
             .as_deref()
-            .and_then(|s| Uuid::parse_str(s).ok());
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .map(|u| u.to_string());
 
         let template = req.template.to_lowercase();
         let tasks_def: Vec<(&str, &str, &str, Option<&str>, Option<&str>)> = match template.as_str() {
@@ -2504,7 +2505,7 @@ impl TaskServer {
             parent_project_id: None,
         };
 
-        let project = match Project::create(&self.pool, &create_project, project_id).await {
+        let project = match Project::create(&self.pool, &create_project, &project_id.to_string()).await {
             Ok(p) => p,
             Err(e) => return Ok(error_result("Failed to create project", Some(&e.to_string()))),
         };
@@ -2516,11 +2517,12 @@ impl TaskServer {
             .map(|id| id.to_string())
             .unwrap_or_else(|| "mcp".to_string());
 
+        let project_uuid_for_tasks = Uuid::parse_str(&project.id).unwrap();
         for (i, (title, description, priority_str, criteria, output_fmt)) in tasks_def.iter().enumerate() {
-            let task_id = Uuid::new_v4();
+            let task_id = Uuid::new_v4().to_string();
             let priority = parse_priority(priority_str);
             let create_task = CreateTask {
-                project_id: project.id,
+                project_id: project_uuid_for_tasks,
                 pod_id: None,
                 board_id: None,
                 title: title.to_string(),
@@ -2546,7 +2548,7 @@ impl TaskServer {
                 output_format: output_fmt.map(|s| s.to_string()),
             };
 
-            match Task::create(&self.pool, &create_task, task_id).await {
+            match Task::create(&self.pool, &create_task, &task_id).await {
                 Ok(t) => {
                     created_tasks.push(serde_json::json!({
                         "order": i + 1,
@@ -3117,7 +3119,7 @@ impl TaskServer {
             Err(r) => return Ok(r),
         };
 
-        match Project::find_by_id(&self.pool, project_uuid).await {
+        match Project::find_by_id(&self.pool, &project_uuid.to_string()).await {
             Ok(Some(project)) => {
                 let remaining = project.remaining_vibe();
                 let has_budget = project.has_vibe_budget(0);
@@ -3313,7 +3315,7 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
     let project_uuid = Uuid::parse_str(parts[0])
         .map_err(|_| "Invalid project_id in URI".to_string())?;
 
-    let project = Project::find_by_id(pool, project_uuid)
+    let project = Project::find_by_id(pool, &project_uuid.to_string())
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Project not found".to_string())?;
@@ -3341,14 +3343,14 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
                 // Single task detail
                 let task_uuid = Uuid::parse_str(parts[2])
                     .map_err(|_| "Invalid task_id in URI".to_string())?;
-                let task = Task::find_by_id_and_project_id(pool, task_uuid, project_uuid)
+                let task = Task::find_by_id_and_project_id(pool, &task_uuid.to_string(), &project_uuid.to_string())
                     .await
                     .map_err(|e| e.to_string())?
                     .ok_or_else(|| "Task not found".to_string())?;
                 Ok(serde_json::to_value(task_to_summary(&task)).unwrap())
             } else {
                 // Task list
-                let tasks = Task::find_by_project_id_with_attempt_status(pool, project_uuid)
+                let tasks = Task::find_by_project_id_with_attempt_status(pool, &project_uuid.to_string())
                     .await
                     .map_err(|e| e.to_string())?;
                 let summaries: Vec<Value> = tasks
@@ -3424,8 +3426,7 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
             }))
         }
         "health" => {
-            let pid_bytes = project_uuid.as_bytes().to_vec();
-            let health_map = ProjectKnowledgeSource::get_health_batch(pool, &[pid_bytes])
+            let health_map = ProjectKnowledgeSource::get_health_batch(pool, &[project_uuid.to_string()])
                 .await
                 .unwrap_or_default();
 

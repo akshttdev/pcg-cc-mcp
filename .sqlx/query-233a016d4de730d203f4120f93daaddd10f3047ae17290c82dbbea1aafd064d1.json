@@ -16,7 +16,7 @@
       {
         "name": "project_id!: Uuid",
         "ordinal": 2,
-        "type_info": "Blob"
+        "type_info": "Text"
       }
     ],
     "parameters": {

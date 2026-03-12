@@ -402,7 +402,7 @@ pub async fn agent_chat(
                         tx.amount_vibe, project_id, tx.id
                     );
                     // Update project spent amount
-                    if let Err(e) = Project::adjust_vibe_spent(pool, project_id, tx.amount_vibe).await {
+                    if let Err(e) = Project::adjust_vibe_spent(pool, &project_id.to_string(), tx.amount_vibe).await {
                         tracing::error!("[VIBE] Failed to update project spent amount: {}", e);
                     }
                 }

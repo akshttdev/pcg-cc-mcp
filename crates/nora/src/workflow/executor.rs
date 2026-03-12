@@ -146,8 +146,8 @@ impl AgentWorkflowExecutor {
         let output = self.execute_stage_logic(stage, context).await?;
 
         // Mark task as complete if created
-        if let (Some(executor), Some(task_id)) = (&self.task_executor, task_id) {
-            self.complete_stage_task(executor, task_id).await;
+        if let (Some(executor), Some(ref tid)) = (&self.task_executor, &task_id) {
+            self.complete_stage_task(executor, tid.clone()).await;
         }
 
         let execution_time_ms = start.elapsed().as_millis() as u64;
@@ -361,7 +361,7 @@ impl AgentWorkflowExecutor {
         context: &WorkflowContext,
         executor: &TaskExecutor,
         workflow_id: &str,
-    ) -> Result<Uuid> {
+    ) -> Result<String> {
         use crate::executor::TaskDefinition;
         use db::models::task::Priority;
 
@@ -383,13 +383,13 @@ impl AgentWorkflowExecutor {
             pod_id: None,
         };
 
-        executor.create_task(project_id, task_def).await.map(|task| task.id)
+        executor.create_task(project_id.to_string(), task_def).await.map(|task| task.id)
     }
 
     /// Mark a stage task as complete
-    async fn complete_stage_task(&self, executor: &TaskExecutor, task_id: Uuid) {
+    async fn complete_stage_task(&self, executor: &TaskExecutor, task_id: String) {
         use db::models::task::TaskStatus;
-        if let Err(e) = executor.update_task_status(task_id, TaskStatus::Done).await {
+        if let Err(e) = executor.update_task_status(&task_id, TaskStatus::Done).await {
             tracing::warn!("[WORKFLOW] Failed to complete task {}: {}", task_id, e);
         }
     }

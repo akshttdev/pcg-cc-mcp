@@ -42,13 +42,13 @@ pub async fn get_organization(
     Extension(access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Organization>>, ApiError> {
-    let org = Organization::find_by_id(&deployment.db().pool, id)
+    let org = Organization::find_by_id(&deployment.db().pool, &id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;
 
     // Check user has access (is admin or org member)
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, id, access_context.user_id).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }
@@ -63,11 +63,11 @@ pub async fn create_organization(
     State(deployment): State<DeploymentImpl>,
     Json(data): Json<CreateOrganization>,
 ) -> Result<Json<ApiResponse<Organization>>, ApiError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::new_v4().to_string();
     let org = Organization::create(
         &deployment.db().pool,
-        id,
-        access_context.user_id,
+        &id,
+        &access_context.user_id.to_string(),
         &data,
     )
     .await?;
@@ -75,7 +75,7 @@ pub async fn create_organization(
     // Add creator as admin member
     Organization::add_member(
         &deployment.db().pool,
-        org.id,
+        &org.id,
         access_context.user_id,
         "admin",
     )
@@ -93,14 +93,14 @@ pub async fn update_organization(
 ) -> Result<Json<ApiResponse<Organization>>, ApiError> {
     // Only org admins or system admins can update
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, id, access_context.user_id).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id).await?;
         match role.as_deref() {
             Some("admin") => {}
             _ => return Err(ApiError::Forbidden("Only org admins can update organizations".into())),
         }
     }
 
-    let org = Organization::update(&deployment.db().pool, id, &data).await?;
+    let org = Organization::update(&deployment.db().pool, &id.to_string(), &data).await?;
     Ok(Json(ApiResponse::success(org)))
 }
 
@@ -112,7 +112,7 @@ pub async fn list_members(
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, ApiError> {
     let pool = &deployment.db().pool;
     if !access_context.is_admin {
-        let role = Organization::get_user_role(pool, id, access_context.user_id).await?;
+        let role = Organization::get_user_role(pool, &id.to_string(), access_context.user_id).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }
@@ -179,7 +179,7 @@ pub async fn add_member(
     Json(data): Json<AddMemberRequest>,
 ) -> Result<Json<ApiResponse<OrganizationMember>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, id, access_context.user_id).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id).await?;
         match role.as_deref() {
             Some("admin") => {}
             _ => return Err(ApiError::Forbidden("Only org admins can add members".into())),
@@ -187,7 +187,7 @@ pub async fn add_member(
     }
 
     let role = data.role.as_deref().unwrap_or("member");
-    let member = Organization::add_member(&deployment.db().pool, id, data.user_id, role).await?;
+    let member = Organization::add_member(&deployment.db().pool, &id.to_string(), data.user_id, role).await?;
     Ok(Json(ApiResponse::success(member)))
 }
 
@@ -204,7 +204,7 @@ pub async fn change_member_role(
     Json(data): Json<ChangeRoleRequest>,
 ) -> Result<Json<ApiResponse<OrganizationMember>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, id, access_context.user_id).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id).await?;
         match role.as_deref() {
             Some("admin") => {}
             _ => return Err(ApiError::Forbidden("Only org admins can change roles".into())),
@@ -212,8 +212,8 @@ pub async fn change_member_role(
     }
 
     // Remove and re-add with new role
-    Organization::remove_member(&deployment.db().pool, id, uid).await?;
-    let member = Organization::add_member(&deployment.db().pool, id, uid, &data.role).await?;
+    Organization::remove_member(&deployment.db().pool, &id.to_string(), uid).await?;
+    let member = Organization::add_member(&deployment.db().pool, &id.to_string(), uid, &data.role).await?;
     Ok(Json(ApiResponse::success(member)))
 }
 
@@ -224,14 +224,14 @@ pub async fn remove_member(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, id, access_context.user_id).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id).await?;
         match role.as_deref() {
             Some("admin") => {}
             _ => return Err(ApiError::Forbidden("Only org admins can remove members".into())),
         }
     }
 
-    Organization::remove_member(&deployment.db().pool, id, uid).await?;
+    Organization::remove_member(&deployment.db().pool, &id.to_string(), uid).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -331,13 +331,14 @@ pub async fn get_org_persons(
     let pool = &deployment.db().pool;
 
     if !access_context.is_admin {
-        let role = Organization::get_user_role(pool, id, access_context.user_id).await?;
+        let role = Organization::get_user_role(pool, &id.to_string(), access_context.user_id).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }
     }
 
     // Return persons directly in org UNION persons bridged via crm_contacts
+    let id_str = id.to_string();
     let persons = sqlx::query_as::<_, Person>(
         "SELECT * FROM persons WHERE organization_id = ?
          UNION
@@ -346,9 +347,9 @@ pub async fn get_org_persons(
          WHERE cc.organization_id = ? AND (p.organization_id IS NULL OR p.organization_id != ?)
          ORDER BY full_name ASC",
     )
-    .bind(id.as_bytes().as_slice())
-    .bind(id.as_bytes().as_slice())
-    .bind(id.as_bytes().as_slice())
+    .bind(&id_str)
+    .bind(&id_str)
+    .bind(&id_str)
     .fetch_all(pool)
     .await?;
 
@@ -364,13 +365,13 @@ pub async fn list_data_sources(
     let rows: Vec<Value> = if let Some(org_id) = params.get("organization_id") {
         let org_uuid = Uuid::parse_str(org_id)
             .map_err(|_| ApiError::BadRequest("Invalid organization_id".into()))?;
-        let org_bytes = org_uuid.as_bytes().as_slice().to_vec();
+        let org_id_str = org_uuid.to_string();
         sqlx::query_scalar::<_, String>(
             r#"SELECT json_object(
-                'id', lower(hex(id)),
-                'organization_id', lower(hex(organization_id)),
-                'project_id', lower(hex(project_id)),
-                'created_by', lower(hex(created_by)),
+                'id', id,
+                'organization_id', organization_id,
+                'project_id', project_id,
+                'created_by', created_by,
                 'title', title,
                 'description', description,
                 'data_type', data_type,
@@ -387,7 +388,7 @@ pub async fn list_data_sources(
             WHERE organization_id = ? AND archived_at IS NULL
             ORDER BY created_at DESC"#,
         )
-        .bind(org_bytes)
+        .bind(&org_id_str)
         .fetch_all(pool)
         .await?
         .into_iter()
@@ -405,13 +406,13 @@ pub async fn list_org_data_sources(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<Vec<Value>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let org_bytes = id.as_bytes().as_slice().to_vec();
+    let org_id_str = id.to_string();
     let rows: Vec<Value> = sqlx::query_scalar::<_, String>(
         r#"SELECT json_object(
-            'id', lower(hex(id)),
-            'organization_id', lower(hex(organization_id)),
-            'project_id', lower(hex(project_id)),
-            'created_by', lower(hex(created_by)),
+            'id', id,
+            'organization_id', organization_id,
+            'project_id', project_id,
+            'created_by', created_by,
             'title', title,
             'description', description,
             'data_type', data_type,
@@ -428,7 +429,7 @@ pub async fn list_org_data_sources(
         WHERE organization_id = ? AND archived_at IS NULL
         ORDER BY created_at DESC"#,
     )
-    .bind(org_bytes)
+    .bind(&org_id_str)
     .fetch_all(pool)
     .await?
     .into_iter()
@@ -446,7 +447,7 @@ pub async fn activate_organization(
     if !access_context.is_admin {
         return Err(ApiError::Forbidden("Only system admins can activate organizations".into()));
     }
-    Organization::activate(&deployment.db().pool, id).await?;
+    Organization::activate(&deployment.db().pool, &id.to_string()).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -459,7 +460,7 @@ pub async fn deactivate_organization(
     if !access_context.is_admin {
         return Err(ApiError::Forbidden("Only system admins can deactivate organizations".into()));
     }
-    Organization::deactivate(&deployment.db().pool, id).await?;
+    Organization::deactivate(&deployment.db().pool, &id.to_string()).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -470,14 +471,14 @@ pub async fn delete_organization(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     if !access_context.is_admin {
-        let role = Organization::get_user_role(&deployment.db().pool, id, access_context.user_id).await?;
+        let role = Organization::get_user_role(&deployment.db().pool, &id.to_string(), access_context.user_id).await?;
         match role.as_deref() {
             Some("admin") => {}
             _ => return Err(ApiError::Forbidden("Only org admins can delete organizations".into())),
         }
     }
 
-    Organization::deactivate(&deployment.db().pool, id).await?;
+    Organization::deactivate(&deployment.db().pool, &id.to_string()).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -541,7 +542,7 @@ async fn require_org_admin_access(
     if access_context.is_admin {
         return Ok(());
     }
-    let role = Organization::get_user_role(pool, org_id, access_context.user_id).await?;
+    let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id).await?;
     match role.as_deref() {
         Some("admin") => Ok(()),
         _ => Err(ApiError::Forbidden("Only org admins can manage member assignments".into())),
@@ -554,7 +555,7 @@ async fn require_is_org_member(
     org_id: Uuid,
     user_id: Uuid,
 ) -> Result<(), ApiError> {
-    let role = Organization::get_user_role(pool, org_id, user_id).await?;
+    let role = Organization::get_user_role(pool, &org_id.to_string(), user_id).await?;
     if role.is_none() {
         return Err(ApiError::BadRequest("User is not a member of this organization".into()));
     }
@@ -697,7 +698,7 @@ pub async fn watch_task_for_member(
     require_is_org_member(pool, org_id, user_id).await?;
 
     // Use the Task::add_watcher method from Phase 2
-    db::models::task::Task::add_watcher(pool, data.task_id, &user_id.to_string()).await
+    db::models::task::Task::add_watcher(pool, &data.task_id.to_string(), &user_id.to_string()).await
         .map_err(|e| ApiError::InternalError(format!("Failed to add watcher: {}", e)))?;
 
     Ok(Json(ApiResponse::success(serde_json::json!({
@@ -1027,7 +1028,7 @@ pub async fn trigger_brand_research(
     let pool = &deployment.db().pool;
 
     // Fetch org name + existing brand profile
-    let org: Option<Organization> = Organization::find_by_id(pool, org_id).await
+    let org: Option<Organization> = Organization::find_by_id(pool, &org_id.to_string()).await
         .map_err(|e| ApiError::InternalError(format!("DB error: {e}")))?;
 
     let org = org.ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;
@@ -1122,12 +1123,12 @@ pub async fn seed_brand_project(
 
     let pool = &deployment.db().pool;
 
-    let org = Organization::find_by_id(pool, org_id)
+    let org = Organization::find_by_id(pool, &org_id.to_string())
         .await?
         .ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;
 
     if !access_context.is_admin {
-        let role = Organization::get_user_role(pool, org_id, access_context.user_id).await?;
+        let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }
@@ -1258,7 +1259,7 @@ pub async fn get_org_knowledge(
     let pool = &deployment.db().pool;
 
     if !access_context.is_admin {
-        let role = Organization::get_user_role(pool, org_id, access_context.user_id).await?;
+        let role = Organization::get_user_role(pool, &org_id.to_string(), access_context.user_id).await?;
         if role.is_none() {
             return Err(ApiError::Forbidden("Not a member of this organization".into()));
         }
@@ -2568,7 +2569,7 @@ pub async fn get_intake_context(
         return Err(ApiError::BadRequest("This intake link has expired".into()));
     }
 
-    let org: Organization = Organization::find_by_id(pool, intake.organization_id)
+    let org: Organization = Organization::find_by_id(pool, &intake.organization_id.to_string())
         .await
         .map_err(|e| ApiError::InternalError(format!("{e}")))?
         .ok_or_else(|| ApiError::NotFound("Organization not found".into()))?;

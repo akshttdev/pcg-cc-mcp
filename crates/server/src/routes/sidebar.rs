@@ -7,8 +7,6 @@ use deployment::Deployment;
 use serde::Serialize;
 use ts_rs::TS;
 use utils::response::ApiResponse;
-use uuid::Uuid;
-
 use db::models::project_knowledge_source::{ProjectKnowledgeSource, ProjectHealthSummary};
 
 use crate::{
@@ -90,7 +88,7 @@ pub struct SidebarProject {
 
 #[derive(Debug, sqlx::FromRow)]
 struct OrgRow {
-    id: Vec<u8>,
+    id: String,
     name: String,
     slug: String,
     role: String,
@@ -98,37 +96,33 @@ struct OrgRow {
 
 #[derive(Debug, sqlx::FromRow)]
 struct ClientRow {
-    id: Vec<u8>,
+    id: String,
     name: String,
     slug: String,
-    crm_contact_id: Option<Vec<u8>>,
+    crm_contact_id: Option<String>,
     crm_confidence: Option<f64>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 struct ProjectRow {
-    id: Vec<u8>,
+    id: String,
     name: String,
     git_repo_path: String,
-    client_id: Option<Vec<u8>>,
-    parent_project_id: Option<Vec<u8>>,
+    client_id: Option<String>,
+    parent_project_id: Option<String>,
     sort_order: i32,
 }
 
 #[derive(Debug, sqlx::FromRow)]
 struct SharedBoardRow {
-    board_id: Vec<u8>,
+    board_id: String,
     board_name: String,
-    project_id: Vec<u8>,
+    project_id: String,
     project_name: String,
-    source_org_id: Vec<u8>,
+    source_org_id: String,
     source_org_name: String,
     permission: String,
     share_type: String,
-}
-
-fn uuid_from_bytes(bytes: &[u8]) -> Option<Uuid> {
-    Uuid::from_slice(bytes).ok()
 }
 
 /// Collect all SidebarProject references recursively (for health rollup)
@@ -208,19 +202,17 @@ fn rollup_health(
 fn build_project_tree(
     project_rows: &[ProjectRow],
     health_map: &std::collections::HashMap<String, ProjectHealthSummary>,
-    parent_id: Option<&[u8]>,
+    parent_id: Option<&str>,
 ) -> Vec<SidebarProject> {
     let mut projects: Vec<SidebarProject> = project_rows
         .iter()
         .filter(|p| p.parent_project_id.as_deref() == parent_id)
-        .filter_map(|proj| {
-            let proj_uuid = uuid_from_bytes(&proj.id)?;
-            let proj_id = proj_uuid.to_string();
-            let health = health_map.get(&proj_id);
+        .map(|proj| {
+            let health = health_map.get(&proj.id);
             let children = build_project_tree(project_rows, health_map, Some(&proj.id));
             let is_container = proj.git_repo_path.is_empty() || proj.git_repo_path.starts_with("container:");
-            Some(SidebarProject {
-                id: proj_id,
+            SidebarProject {
+                id: proj.id.clone(),
                 name: proj.name.clone(),
                 is_container,
                 children,
@@ -228,7 +220,7 @@ fn build_project_tree(
                 active_issues_count: health.map(|h| h.active_issues_count),
                 knowledge_completeness: health.map(|h| h.knowledge_completeness),
                 last_activity_at: health.and_then(|h| h.last_activity_at.clone()),
-            })
+            }
         })
         .collect();
     projects.sort_by(|a, b| a.name.cmp(&b.name));
@@ -242,7 +234,7 @@ pub async fn get_sidebar_tree(
 ) -> Result<Json<ApiResponse<SidebarTree>>, ApiError> {
     let pool = &deployment.db().pool;
     let user_id = access_context.user_id;
-    let user_id_bytes = user_id.as_bytes().to_vec();
+    let user_id_str = user_id.to_string();
 
     // For admin: get ALL organizations. For regular users: only orgs they belong to.
     let org_rows: Vec<OrgRow> = if access_context.is_admin {
@@ -254,7 +246,7 @@ pub async fn get_sidebar_tree(
                WHERE o.is_active = 1
                ORDER BY o.name ASC"#,
         )
-        .bind(&user_id_bytes)
+        .bind(&user_id_str)
         .fetch_all(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to fetch orgs: {}", e)))?
@@ -266,7 +258,7 @@ pub async fn get_sidebar_tree(
                WHERE om.user_id = ? AND o.is_active = 1
                ORDER BY o.name ASC"#,
         )
-        .bind(&user_id_bytes)
+        .bind(&user_id_str)
         .fetch_all(pool)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to fetch orgs: {}", e)))?
@@ -276,11 +268,7 @@ pub async fn get_sidebar_tree(
     let mut member_orgs = Vec::new();
 
     for org_row in &org_rows {
-        let org_id = match uuid_from_bytes(&org_row.id) {
-            Some(id) => id,
-            None => continue,
-        };
-        let org_id_bytes = org_id.as_bytes().to_vec();
+        let org_id_str = &org_row.id;
 
         // Get projects for this org (with parent_project_id for tree building)
         let project_rows: Vec<ProjectRow> = if access_context.is_admin {
@@ -289,7 +277,7 @@ pub async fn get_sidebar_tree(
                    FROM projects WHERE organization_id = ? AND deleted_at IS NULL
                    ORDER BY sort_order ASC, name ASC"#,
             )
-            .bind(&org_id_bytes)
+            .bind(org_id_str)
             .fetch_all(pool)
             .await
             .unwrap_or_default()
@@ -300,7 +288,7 @@ pub async fn get_sidebar_tree(
                    FROM projects WHERE organization_id = ? AND deleted_at IS NULL
                    ORDER BY sort_order ASC, name ASC"#,
             )
-            .bind(&org_id_bytes)
+            .bind(org_id_str)
             .fetch_all(pool)
             .await
             .unwrap_or_default()
@@ -317,9 +305,9 @@ pub async fn get_sidebar_tree(
                    )
                    ORDER BY p.sort_order ASC, p.name ASC"#,
             )
-            .bind(&org_id_bytes)
-            .bind(&user_id_bytes)
-            .bind(&user_id_bytes)
+            .bind(org_id_str)
+            .bind(&user_id_str)
+            .bind(&user_id_str)
             .bind(user_id.to_string())
             .fetch_all(pool)
             .await
@@ -337,7 +325,7 @@ pub async fn get_sidebar_tree(
                    WHERE c.organization_id = ? AND c.deleted_at IS NULL AND c.is_active = 1
                    ORDER BY c.name ASC"#,
             )
-            .bind(&org_id_bytes)
+            .bind(org_id_str)
             .fetch_all(pool)
             .await
             .unwrap_or_default()
@@ -351,15 +339,15 @@ pub async fn get_sidebar_tree(
                    WHERE c.organization_id = ? AND c.deleted_at IS NULL AND c.is_active = 1
                    ORDER BY c.name ASC"#,
             )
-            .bind(&user_id_bytes)
-            .bind(&org_id_bytes)
+            .bind(&user_id_str)
+            .bind(org_id_str)
             .fetch_all(pool)
             .await
             .unwrap_or_default()
         };
 
         // Batch fetch health data for all projects in this org
-        let all_project_ids: Vec<Vec<u8>> = project_rows.iter().map(|p| p.id.clone()).collect();
+        let all_project_ids: Vec<String> = project_rows.iter().map(|p| p.id.clone()).collect();
         let health_map = ProjectKnowledgeSource::get_health_batch(pool, &all_project_ids)
             .await
             .unwrap_or_default();
@@ -393,18 +381,14 @@ pub async fn get_sidebar_tree(
                     rollup_health(&all_client_projects);
 
                 SidebarClient {
-                    id: uuid_from_bytes(&cr.id)
-                        .map(|u| u.to_string())
-                        .unwrap_or_default(),
+                    id: cr.id.clone(),
                     name: cr.name.clone(),
                     slug: cr.slug.clone(),
                     health_status: client_health,
                     active_issues_count: client_issues,
                     knowledge_completeness: client_kc,
                     last_activity_at: client_activity,
-                    crm_person_id: cr.crm_contact_id.as_ref()
-                        .and_then(|b| uuid_from_bytes(b))
-                        .map(|u| u.to_string()),
+                    crm_person_id: cr.crm_contact_id.clone(),
                     crm_confidence: cr.crm_confidence,
                     projects,
                 }
@@ -424,40 +408,33 @@ pub async fn get_sidebar_tree(
                WHERE bs.target_organization_id = ? AND bs.is_active = 1
                ORDER BY src_org.name, pb.name"#,
         )
-        .bind(&org_id_bytes)
+        .bind(org_id_str)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
 
         // Group shared boards by source org
-        let mut shared_groups: std::collections::HashMap<Vec<u8>, SidebarSharedBoardGroup> =
+        let mut shared_groups: std::collections::HashMap<String, SidebarSharedBoardGroup> =
             std::collections::HashMap::new();
 
         for row in &shared_board_rows {
             let group = shared_groups
                 .entry(row.source_org_id.clone())
                 .or_insert_with(|| SidebarSharedBoardGroup {
-                    source_org_id: uuid_from_bytes(&row.source_org_id)
-                        .map(|u| u.to_string())
-                        .unwrap_or_default(),
+                    source_org_id: row.source_org_id.clone(),
                     source_org_name: row.source_org_name.clone(),
                     share_type: row.share_type.clone(),
                     boards: Vec::new(),
                 });
 
-            if let (Some(bid), Some(pid)) = (
-                uuid_from_bytes(&row.board_id),
-                uuid_from_bytes(&row.project_id),
-            ) {
-                group.boards.push(SidebarSharedBoard {
-                    board_id: bid.to_string(),
-                    board_name: row.board_name.clone(),
-                    project_id: pid.to_string(),
-                    project_name: row.project_name.clone(),
-                    permission: row.permission.clone(),
-                    share_type: row.share_type.clone(),
-                });
-            }
+            group.boards.push(SidebarSharedBoard {
+                board_id: row.board_id.clone(),
+                board_name: row.board_name.clone(),
+                project_id: row.project_id.clone(),
+                project_name: row.project_name.clone(),
+                permission: row.permission.clone(),
+                share_type: row.share_type.clone(),
+            });
         }
 
         let shared_boards: Vec<SidebarSharedBoardGroup> = shared_groups.into_values().collect();
@@ -470,7 +447,7 @@ pub async fn get_sidebar_tree(
         let (org_health, org_issues, org_kc, org_activity) = rollup_health(&all_org_projects);
 
         let sidebar_org = SidebarOrg {
-            id: org_id.to_string(),
+            id: org_id_str.clone(),
             name: org_row.name.clone(),
             slug: org_row.slug.clone(),
             role: org_row.role.clone(),
@@ -500,13 +477,13 @@ pub async fn get_sidebar_tree(
                WHERE pm.user_id = ? AND p.organization_id IS NULL AND p.deleted_at IS NULL
                ORDER BY p.sort_order ASC, p.name ASC"#,
         )
-        .bind(&user_id_bytes)
+        .bind(&user_id_str)
         .fetch_all(pool)
         .await
         .unwrap_or_default();
 
         if !orphan_projects.is_empty() {
-            let orphan_ids: Vec<Vec<u8>> = orphan_projects.iter().map(|p| p.id.clone()).collect();
+            let orphan_ids: Vec<String> = orphan_projects.iter().map(|p| p.id.clone()).collect();
             let orphan_health = ProjectKnowledgeSource::get_health_batch(pool, &orphan_ids)
                 .await
                 .unwrap_or_default();

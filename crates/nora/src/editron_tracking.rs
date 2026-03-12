@@ -188,10 +188,10 @@ pub async fn find_or_create_task(
 ) -> Option<(Uuid, Uuid)> {
     // 1. Explicit task_id provided (workflow path)
     if let Some(tid) = task_id {
-        if let Ok(task_uuid) = Uuid::parse_str(tid) {
-            if let Ok(Some(task)) = Task::find_by_id(pool, task_uuid).await {
-                return Some((task.id, task.project_id));
-            }
+        if let Ok(Some(task)) = Task::find_by_id(pool, tid).await {
+            let task_uuid = Uuid::parse_str(&task.id).ok()?;
+            let proj_uuid = Uuid::parse_str(&task.project_id).ok()?;
+            return Some((task_uuid, proj_uuid));
         }
         tracing::warn!("[EDITRON_TRACKING] task_id '{}' not found, falling through", tid);
     }
@@ -234,7 +234,7 @@ pub async fn find_or_create_task(
         output_format: None,
     };
 
-    match Task::create(pool, &create, task_id).await {
+    match Task::create(pool, &create, &task_id.to_string()).await {
         Ok(task) => {
             tracing::info!(
                 "[EDITRON_TRACKING] Created task '{}' ({})",
@@ -243,11 +243,11 @@ pub async fn find_or_create_task(
             );
 
             // Try to assign to a board
-            if let Ok(Some(board)) = executor.get_default_board_for_tasks(project_uuid).await {
-                let _ = executor.add_task_to_board(task.id, board.id).await;
+            if let Ok(Some(board)) = executor.get_default_board_for_tasks(&project_uuid.to_string()).await {
+                let _ = executor.add_task_to_board(&task.id, &board.id).await;
             }
 
-            Some((task.id, project_uuid))
+            Some((task_id, project_uuid))
         }
         Err(e) => {
             tracing::error!("[EDITRON_TRACKING] Failed to create task: {}", e);
@@ -261,7 +261,7 @@ async fn find_workflow_task_by_batch_id(
     pool: &SqlitePool,
     batch_id: &str,
 ) -> Option<(Uuid, Uuid)> {
-    let row: Option<(Uuid, Uuid)> = sqlx::query_as(
+    let row: Option<(String, String)> = sqlx::query_as(
         r#"SELECT id, project_id
            FROM tasks
            WHERE json_extract(custom_properties, '$.editron_batch_id') = ?1
@@ -272,5 +272,8 @@ async fn find_workflow_task_by_batch_id(
     .await
     .ok()?;
 
-    row
+    let (id_str, pid_str) = row?;
+    let id = Uuid::parse_str(&id_str).ok()?;
+    let pid = Uuid::parse_str(&pid_str).ok()?;
+    Some((id, pid))
 }

@@ -499,7 +499,7 @@ impl TopsiServer {
         let pid = pid_hex(project_id);
 
         // Get task details
-        let task = match Task::find_by_id(&self.pool, task_id).await {
+        let task = match Task::find_by_id(&self.pool, &task_id.to_string()).await {
             Ok(Some(t)) => t,
             Ok(None) => return Ok(err_result("Task not found")),
             Err(e) => return Ok(err_result(&format!("Database error: {}", e))),

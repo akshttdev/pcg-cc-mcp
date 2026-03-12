@@ -601,7 +601,7 @@ async fn save_meeting_knowledge_source(pool: &sqlx::SqlitePool, session_id: &str
         }).to_string();
 
         let _ = DataSource::create(pool, CreateDataSource {
-            organization_id: org_uuid,
+            organization_id: org_uuid.map(|u| u.to_string()),
             project_id: None,
             created_by: None,
             title: title.clone(),
@@ -768,7 +768,7 @@ async fn detect_and_link_attendees(
         }).to_string();
 
         let _ = DataSource::create(pool, CreateDataSource {
-            organization_id: Some(attendee_org_uuid),
+            organization_id: Some(attendee_org_uuid.to_string()),
             project_id: None,
             created_by: None,
             title: ds_title.to_string(),

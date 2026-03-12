@@ -38,7 +38,7 @@ use uuid::Uuid;
 use crate::{DeploymentImpl, error::ApiError, middleware::load_task_middleware, middleware::access_control::AccessContext};
 
 /// Broadcast a task event to all connected WebSocket clients
-fn broadcast_task_event(deployment: &DeploymentImpl, op: &str, task_id: Uuid, task: Option<&TaskWithAttemptStatus>) {
+fn broadcast_task_event(deployment: &DeploymentImpl, op: &str, task_id: &str, task: Option<&TaskWithAttemptStatus>) {
     let patch = match op {
         "add" | "replace" => {
             if let Some(t) = task {
@@ -100,7 +100,7 @@ pub async fn get_tasks(
         .await?;
 
     let tasks =
-        Task::find_by_project_id_with_attempt_status(&deployment.db().pool, query.project_id)
+        Task::find_by_project_id_with_attempt_status(&deployment.db().pool, &query.project_id.to_string())
             .await?;
 
     Ok(ResponseJson(ApiResponse::success(tasks)))
@@ -174,7 +174,7 @@ pub async fn create_task(
         )
         .await?;
 
-    let id = Uuid::new_v4();
+    let id = Uuid::new_v4().to_string();
 
     tracing::debug!(
         "Creating task '{}' in project {} by user {}",
@@ -196,8 +196,8 @@ pub async fn create_task(
     }
 
     if let Some(board_id) = payload.board_id {
-        match ProjectBoard::find_by_id(&deployment.db().pool, board_id).await? {
-            Some(board) if board.project_id == payload.project_id => {}
+        match ProjectBoard::find_by_id(&deployment.db().pool, &board_id.to_string()).await? {
+            Some(board) if board.project_id == payload.project_id.to_string() => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
                     "Board does not belong to this project".to_string(),
@@ -211,17 +211,18 @@ pub async fn create_task(
     let mut payload = payload;
     payload.created_by = access_context.user_id.to_string();
 
-    let task = Task::create(&deployment.db().pool, &payload, id).await?;
+    let task = Task::create(&deployment.db().pool, &payload, &id).await?;
 
     if let Some(image_ids) = &payload.image_ids {
-        TaskImage::associate_many_dedup(&deployment.db().pool, task.id, image_ids).await?;
+        let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, image_ids).await?;
     }
 
     deployment
         .track_if_analytics_allowed(
             "task_created",
             serde_json::json!({
-            "task_id": task.id.to_string(),
+            "task_id": &task.id,
             "project_id": payload.project_id,
             "has_description": task.description.is_some(),
             "has_images": payload.image_ids.is_some(),
@@ -231,7 +232,7 @@ pub async fn create_task(
 
     // Broadcast task creation to WebSocket clients
     let task_with_status = task_to_with_attempt_status(task.clone());
-    broadcast_task_event(&deployment, "add", task.id, Some(&task_with_status));
+    broadcast_task_event(&deployment, "add", &task.id, Some(&task_with_status));
 
     Ok(ResponseJson(ApiResponse::success(task)))
 }
@@ -275,8 +276,8 @@ pub async fn create_task_and_start(
     }
 
     if let Some(board_id) = task_payload.board_id {
-        match ProjectBoard::find_by_id(&deployment.db().pool, board_id).await? {
-            Some(board) if board.project_id == task_payload.project_id => {}
+        match ProjectBoard::find_by_id(&deployment.db().pool, &board_id.to_string()).await? {
+            Some(board) if board.project_id == task_payload.project_id.to_string() => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
                     "Board does not belong to this project".to_string(),
@@ -286,21 +287,22 @@ pub async fn create_task_and_start(
         }
     }
 
-    let task_id = Uuid::new_v4();
+    let task_id = Uuid::new_v4().to_string();
     // Override created_by with the authenticated user's ID
     let mut task_payload = task_payload;
     task_payload.created_by = access_context.user_id.to_string();
-    let task = Task::create(&deployment.db().pool, &task_payload, task_id).await?;
+    let task = Task::create(&deployment.db().pool, &task_payload, &task_id).await?;
 
     if let Some(image_ids) = &task_payload.image_ids {
-        TaskImage::associate_many(&deployment.db().pool, task.id, image_ids).await?;
+        let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        TaskImage::associate_many(&deployment.db().pool, task_uuid, image_ids).await?;
     }
 
     deployment
         .track_if_analytics_allowed(
             "task_created",
             serde_json::json!({
-                "task_id": task.id.to_string(),
+                "task_id": &task.id,
                 "project_id": task.project_id,
                 "has_description": task.description.is_some(),
                 "has_images": task_payload.image_ids.is_some(),
@@ -320,7 +322,7 @@ pub async fn create_task_and_start(
 
     // Check project VIBE budget
     if !vibe_bypass {
-        if let Some(project) = Project::find_by_id(&deployment.db().pool, task_payload.project_id).await? {
+        if let Some(project) = Project::find_by_id(&deployment.db().pool, &task_payload.project_id.to_string()).await? {
             if !project.has_vibe_budget(ESTIMATED_VIBE_COST) {
                 let remaining = project.remaining_vibe().unwrap_or(0);
                 return Err(ApiError::PaymentRequired(format!(
@@ -358,8 +360,10 @@ pub async fn create_task_and_start(
             ));
         }
 
+        let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
         let metadata = json!({
-            "task_id": task.id,
+            "task_id": &task.id,
             "executor_profile": executor_profile_id.to_string(),
             "estimated_vibe_cost": ESTIMATED_VIBE_COST,
         })
@@ -374,7 +378,7 @@ pub async fn create_task_and_start(
                 amount: EXECUTION_DEBIT,
                 description: Some("Task attempt start".to_string()),
                 metadata: Some(metadata.clone()),
-                task_id: Some(task.id),
+                task_id: Some(task_uuid),
                 process_id: None,
             },
         )
@@ -392,7 +396,7 @@ pub async fn create_task_and_start(
                 model: None,
                 provider: None,
                 calculated_cost_cents: None,
-                task_id: Some(task.id),
+                task_id: Some(task_uuid),
                 task_attempt_id: None, // Will be set after attempt creation
                 process_id: None,
                 description: Some("Task execution started - pending cost calculation".to_string()),
@@ -402,13 +406,14 @@ pub async fn create_task_and_start(
         .await;
     }
 
+    let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let task_attempt = TaskAttempt::create(
         &deployment.db().pool,
         &CreateTaskAttempt {
             executor: executor_profile_id.executor,
             base_branch,
         },
-        task.id,
+        task_uuid,
     )
     .await?;
     let execution_process = deployment
@@ -419,7 +424,7 @@ pub async fn create_task_and_start(
         .track_if_analytics_allowed(
             "task_attempt_started",
             serde_json::json!({
-                "task_id": task.id.to_string(),
+                "task_id": &task.id,
                 "executor": &executor_profile_id.executor,
                 "variant": &executor_profile_id.variant,
                 "attempt_id": task_attempt.id.to_string(),
@@ -427,7 +432,7 @@ pub async fn create_task_and_start(
         )
         .await;
 
-    let task = Task::find_by_id(&deployment.db().pool, task.id)
+    let task = Task::find_by_id(&deployment.db().pool, &task.id)
         .await?
         .ok_or(ApiError::Database(SqlxError::RowNotFound))?;
 
@@ -445,7 +450,7 @@ pub async fn create_task_and_start(
     };
 
     // Broadcast task creation to WebSocket clients
-    broadcast_task_event(&deployment, "add", task_with_status.id, Some(&task_with_status));
+    broadcast_task_event(&deployment, "add", &task_with_status.id, Some(&task_with_status));
 
     Ok(ResponseJson(ApiResponse::success(task_with_status)))
 }
@@ -461,11 +466,12 @@ pub async fn update_task(
     let status = payload.status.unwrap_or(existing_task.status.clone());
     let parent_task_attempt = payload
         .parent_task_attempt
+        .map(|u| u.to_string())
         .or(existing_task.parent_task_attempt);
     let pod_change = payload.pod_id.clone();
     if let Some(Some(pod_id)) = pod_change.as_ref() {
         match ProjectPod::find_by_id(&deployment.db().pool, *pod_id).await? {
-            Some(pod) if pod.project_id == existing_task.project_id => {}
+            Some(pod) if pod.project_id.to_string() == existing_task.project_id => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
                     "Pod does not belong to this project".to_string(),
@@ -474,10 +480,13 @@ pub async fn update_task(
             None => return Err(ApiError::NotFound("Pod not found".to_string())),
         }
     }
-    let pod_id = pod_change.unwrap_or(existing_task.pod_id);
+    let pod_id = match pod_change {
+        Some(opt) => opt.map(|u| u.to_string()),
+        None => existing_task.pod_id,
+    };
     let board_change = payload.board_id.clone();
     if let Some(Some(board_id)) = board_change.as_ref() {
-        match ProjectBoard::find_by_id(&deployment.db().pool, *board_id).await? {
+        match ProjectBoard::find_by_id(&deployment.db().pool, &board_id.to_string()).await? {
             Some(board) if board.project_id == existing_task.project_id => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
@@ -487,7 +496,10 @@ pub async fn update_task(
             None => return Err(ApiError::NotFound("Board not found".to_string())),
         }
     }
-    let board_id = board_change.unwrap_or(existing_task.board_id);
+    let board_id = match board_change {
+        Some(opt) => opt.map(|u| u.to_string()),
+        None => existing_task.board_id,
+    };
     let priority = payload.priority.unwrap_or(existing_task.priority.clone());
     let assignee_id = payload.assignee_id.or(existing_task.assignee_id.clone());
     let assignee_type = payload.assignee_type.or(existing_task.assignee_type.clone());
@@ -505,7 +517,7 @@ pub async fn update_task(
     let approval_status = payload
         .approval_status
         .or(existing_task.approval_status.clone());
-    let parent_task_id = payload.parent_task_id.or(existing_task.parent_task_id);
+    let parent_task_id = payload.parent_task_id.map(|u| u.to_string()).or(existing_task.parent_task_id);
     let tags = if let Some(tags) = &payload.tags {
         Some(serde_json::to_string(tags).unwrap())
     } else {
@@ -539,8 +551,8 @@ pub async fn update_task(
 
     let task = Task::update(
         &deployment.db().pool,
-        existing_task.id,
-        existing_task.project_id,
+        &existing_task.id,
+        &existing_task.project_id,
         title,
         description,
         status,
@@ -566,15 +578,16 @@ pub async fn update_task(
     .await?;
 
     if let Some(image_ids) = &payload.image_ids {
-        TaskImage::delete_by_task_id(&deployment.db().pool, task.id).await?;
-        TaskImage::associate_many_dedup(&deployment.db().pool, task.id, image_ids).await?;
+        let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        TaskImage::delete_by_task_id(&deployment.db().pool, task_uuid).await?;
+        TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, image_ids).await?;
     }
 
     // Broadcast task update to WebSocket clients
     // Fetch full TaskWithAttemptStatus for accurate attempt info
-    if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(&deployment.db().pool, task.project_id).await {
+    if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(&deployment.db().pool, &task.project_id).await {
         if let Some(task_with_status) = tasks.into_iter().find(|t| t.id == task.id) {
-            broadcast_task_event(&deployment, "replace", task.id, Some(&task_with_status));
+            broadcast_task_event(&deployment, "replace", &task.id, Some(&task_with_status));
         }
     }
 
@@ -586,16 +599,17 @@ pub async fn delete_task(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<(StatusCode, ResponseJson<ApiResponse<()>>), ApiError> {
     // Validate no running execution processes
+    let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     if deployment
         .container()
-        .has_running_processes(task.id)
+        .has_running_processes(task_uuid)
         .await?
     {
         return Err(ApiError::Conflict("Task has running execution processes. Please wait for them to complete or stop them first.".to_string()));
     }
 
     // Gather task attempts data needed for background cleanup
-    let attempts = TaskAttempt::fetch_all(&deployment.db().pool, Some(task.id))
+    let attempts = TaskAttempt::fetch_all(&deployment.db().pool, Some(task_uuid))
         .await
         .map_err(|e| {
             tracing::error!("Failed to fetch task attempts for task {}: {}", task.id, e);
@@ -624,14 +638,14 @@ pub async fn delete_task(
 
     // Delete task from database (FK CASCADE will handle task_attempts)
     let task_id = task.id;
-    let rows_affected = Task::delete(&deployment.db().pool, task_id).await?;
+    let rows_affected = Task::delete(&deployment.db().pool, &task_id).await?;
 
     if rows_affected == 0 {
         return Err(ApiError::Database(SqlxError::RowNotFound));
     }
 
     // Broadcast task deletion to WebSocket clients
-    broadcast_task_event(&deployment, "remove", task_id, None);
+    broadcast_task_event(&deployment, "remove", &task_id, None);
 
     // Spawn background worktree cleanup task
     tokio::spawn(async move {
@@ -668,8 +682,8 @@ pub async fn approve_task(
 
     let approved_task = Task::update(
         &deployment.db().pool,
-        task.id,
-        task.project_id,
+        &task.id,
+        &task.project_id,
         task.title,
         task.description,
         task.status,
@@ -705,8 +719,8 @@ pub async fn request_changes(
 
     let updated_task = Task::update(
         &deployment.db().pool,
-        task.id,
-        task.project_id,
+        &task.id,
+        &task.project_id,
         task.title,
         task.description,
         task.status,
@@ -764,10 +778,9 @@ pub async fn get_assigned_to_me(
     // Collect unique project IDs and fetch project names
     let mut project_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for task in &tasks {
-        let project_id = task.project_id.to_string();
-        if !project_names.contains_key(&project_id) {
-            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, task.project_id).await {
-                project_names.insert(project_id, project.name);
+        if !project_names.contains_key(&task.project_id) {
+            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, &task.project_id).await {
+                project_names.insert(task.project_id.clone(), project.name);
             }
         }
     }
@@ -775,7 +788,6 @@ pub async fn get_assigned_to_me(
     let assigned_tasks: Vec<AssignedTask> = tasks
         .into_iter()
         .map(|task| {
-            let project_id = task.project_id.to_string();
             // Convert Priority enum to string using serde
             let priority_str = serde_json::to_value(&task.priority)
                 .ok()
@@ -786,19 +798,20 @@ pub async fn get_assigned_to_me(
                 .ok()
                 .and_then(|v| v.as_str().map(String::from))
                 .unwrap_or_else(|| "todo".to_string());
+            let project_id = task.project_id.clone();
             AssignedTask {
-                id: task.id.to_string(),
-                title: task.title.clone(),
+                id: task.id,
+                title: task.title,
                 status: status_str,
                 priority: priority_str,
                 due_date: task.due_date.map(|d| d.to_rfc3339()),
                 project_name: project_names.get(&project_id).cloned().unwrap_or_else(|| "Unknown".to_string()),
                 project_id,
-                description: task.description.clone(),
-                assigned_agent: task.assigned_agent.clone(),
-                assignee_id: task.assignee_id.clone(),
-                created_by: Some(task.created_by.clone()),
-                tags: task.tags.clone(),
+                description: task.description,
+                assigned_agent: task.assigned_agent,
+                assignee_id: task.assignee_id,
+                created_by: Some(task.created_by),
+                tags: task.tags,
             }
         })
         .collect();
@@ -819,10 +832,9 @@ pub async fn get_created_by_me(
     // Collect unique project IDs and fetch project names
     let mut project_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for task in &tasks {
-        let project_id = task.project_id.to_string();
-        if !project_names.contains_key(&project_id) {
-            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, task.project_id).await {
-                project_names.insert(project_id, project.name);
+        if !project_names.contains_key(&task.project_id) {
+            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, &task.project_id).await {
+                project_names.insert(task.project_id.clone(), project.name);
             }
         }
     }
@@ -830,7 +842,6 @@ pub async fn get_created_by_me(
     let created_tasks: Vec<AssignedTask> = tasks
         .into_iter()
         .map(|task| {
-            let project_id = task.project_id.to_string();
             let priority_str = serde_json::to_value(&task.priority)
                 .ok()
                 .and_then(|v| v.as_str().map(String::from))
@@ -839,19 +850,20 @@ pub async fn get_created_by_me(
                 .ok()
                 .and_then(|v| v.as_str().map(String::from))
                 .unwrap_or_else(|| "todo".to_string());
+            let project_id = task.project_id.clone();
             AssignedTask {
-                id: task.id.to_string(),
-                title: task.title.clone(),
+                id: task.id,
+                title: task.title,
                 status: status_str,
                 priority: priority_str,
                 due_date: task.due_date.map(|d| d.to_rfc3339()),
                 project_name: project_names.get(&project_id).cloned().unwrap_or_else(|| "Unknown".to_string()),
                 project_id,
-                description: task.description.clone(),
-                assigned_agent: task.assigned_agent.clone(),
-                assignee_id: task.assignee_id.clone(),
-                created_by: Some(task.created_by.clone()),
-                tags: task.tags.clone(),
+                description: task.description,
+                assigned_agent: task.assigned_agent,
+                assignee_id: task.assignee_id,
+                created_by: Some(task.created_by),
+                tags: task.tags,
             }
         })
         .collect();
@@ -867,8 +879,8 @@ pub async fn reject_task(
 
     let rejected_task = Task::update(
         &deployment.db().pool,
-        task.id,
-        task.project_id,
+        &task.id,
+        &task.project_id,
         task.title,
         task.description,
         task.status,
@@ -903,7 +915,7 @@ pub async fn watch_task(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     let user_id = access_context.user_id.to_string();
-    Task::add_watcher(&deployment.db().pool, task.id, &user_id).await?;
+    Task::add_watcher(&deployment.db().pool, &task.id, &user_id).await?;
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
@@ -914,7 +926,7 @@ pub async fn unwatch_task(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     let user_id = access_context.user_id.to_string();
-    Task::remove_watcher(&deployment.db().pool, task.id, &user_id).await?;
+    Task::remove_watcher(&deployment.db().pool, &task.id, &user_id).await?;
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
@@ -930,33 +942,32 @@ pub async fn get_watched_tasks(
 
     let mut project_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for task in &tasks {
-        let pid = task.project_id.to_string();
-        if !project_names.contains_key(&pid) {
-            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, task.project_id).await {
-                project_names.insert(pid, project.name);
+        if !project_names.contains_key(&task.project_id) {
+            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, &task.project_id).await {
+                project_names.insert(task.project_id.clone(), project.name);
             }
         }
     }
 
     let watched: Vec<AssignedTask> = tasks.into_iter().map(|task| {
-        let pid = task.project_id.to_string();
         let priority_str = serde_json::to_value(&task.priority).ok()
             .and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "low".to_string());
         let status_str = serde_json::to_value(&task.status).ok()
             .and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "todo".to_string());
+        let pid = task.project_id.clone();
         AssignedTask {
-            id: task.id.to_string(),
-            title: task.title.clone(),
+            id: task.id,
+            title: task.title,
             status: status_str,
             priority: priority_str,
             due_date: task.due_date.map(|d| d.to_rfc3339()),
             project_name: project_names.get(&pid).cloned().unwrap_or_else(|| "Unknown".to_string()),
             project_id: pid,
-            description: task.description.clone(),
-            assigned_agent: task.assigned_agent.clone(),
-            assignee_id: task.assignee_id.clone(),
-            created_by: Some(task.created_by.clone()),
-            tags: task.tags.clone(),
+            description: task.description,
+            assigned_agent: task.assigned_agent,
+            assignee_id: task.assignee_id,
+            created_by: Some(task.created_by),
+            tags: task.tags,
         }
     }).collect();
 
