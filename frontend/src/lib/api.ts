@@ -6619,11 +6619,11 @@ export interface SystemSetting {
 
 export const systemSettingsApi = {
   getAll: async (): Promise<SystemSetting[]> => {
-    const r = await makeRequest('/api/config/system-settings');
+    const r = await makeRequest('/api/system-settings');
     return handleApiResponse<SystemSetting[]>(r);
   },
   update: async (key: string, value: string): Promise<string> => {
-    const r = await makeRequest(`/api/config/system-settings/${key}`, {
+    const r = await makeRequest(`/api/system-settings/${key}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value }),

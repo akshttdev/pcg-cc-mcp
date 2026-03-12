@@ -28,6 +28,7 @@ import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
 import { CommandPalette } from '@/components/command/CommandPalette';
 import { KeyboardShortcutsOverlay } from '@/components/keyboard-shortcuts/KeyboardShortcutsOverlay';
 import { ErrorDisplay } from '@/components/ErrorDisplay';
+import { ViewAsBanner } from '@/components/layout/ViewAsBanner';
 
 // Shared suspense fallback
 export const PageLoader = () => (
@@ -192,6 +193,7 @@ export function AppShell() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto">
+                  <ViewAsBanner />
                   <Suspense fallback={<PageLoader />}>
                     <Outlet />
                   </Suspense>

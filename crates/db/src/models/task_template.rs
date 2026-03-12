@@ -50,7 +50,7 @@ pub struct UpdateTaskTemplate {
     pub tags: Option<Vec<String>>,
 }
 
-const TEMPLATE_COLS: &str = r#"id as "id!: Uuid", project_id as "project_id?: Uuid", title, description, template_name, priority, completion_criteria, output_format, assigned_agent, tags, organization_id as "organization_id?: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#;
+const TEMPLATE_COLS: &str = "id, project_id, title, description, template_name, priority, completion_criteria, output_format, assigned_agent, tags, organization_id, created_at, updated_at";
 
 impl TaskTemplate {
     pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {

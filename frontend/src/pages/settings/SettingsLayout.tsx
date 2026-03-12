@@ -1,10 +1,14 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { useCallback } from 'react';
+import { NavLink, Outlet, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2, Key, Code2 } from 'lucide-react';
+import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2, Key, Code2, Plug, CreditCard, Palette, Layout } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
 import { useAuth } from '@/contexts/AuthContext';
+import { useEffectiveRole } from '@/hooks/useEffectiveRole';
+import { type SettingsScope, SETTINGS_SCOPE_LABELS, ROLE_LEVEL } from '@/lib/roles';
 
 interface SettingsNavItem {
   path: string;
@@ -13,33 +17,62 @@ interface SettingsNavItem {
   description: string;
   adminOnly?: boolean;
   absolutePath?: string;
+  scopes: SettingsScope[];
+  planned?: boolean;
 }
 
 const settingsNavigation: SettingsNavItem[] = [
+  // ─── User scope ──────────────────────────────────────────────
   {
     path: 'general',
     icon: Settings,
     label: 'General',
     description: 'Theme, notifications, and preferences',
+    scopes: ['user', 'system'],
   },
   {
     path: 'wallet',
     icon: Wallet,
     label: 'Wallet',
     description: 'Token balances & usage history',
+    scopes: ['user', 'system'],
   },
   {
     path: 'profile',
     icon: User,
     label: 'Profile',
     description: 'Manage your personal information',
+    scopes: ['user', 'system'],
   },
+  {
+    path: 'privacy',
+    icon: Shield,
+    label: 'Privacy & Security',
+    description: 'Control your privacy and security settings',
+    scopes: ['user', 'system'],
+  },
+  {
+    path: 'activity',
+    icon: Activity,
+    label: 'Activity Log',
+    description: 'View your recent account activity',
+    scopes: ['user', 'system'],
+  },
+  {
+    path: 'keys',
+    icon: Key,
+    label: 'API Keys',
+    description: 'LLM provider API keys',
+    scopes: ['user', 'org', 'system'],
+  },
+  // ─── System Admin scope ──────────────────────────────────────
   {
     path: 'users',
     icon: Users,
     label: 'Users',
     description: 'Manage team members and permissions',
     adminOnly: true,
+    scopes: ['system'],
   },
   {
     path: 'organizations',
@@ -47,6 +80,7 @@ const settingsNavigation: SettingsNavItem[] = [
     label: 'Organizations',
     description: 'Manage all organizations',
     adminOnly: true,
+    scopes: ['system'],
   },
   {
     path: 'projects',
@@ -54,62 +88,103 @@ const settingsNavigation: SettingsNavItem[] = [
     label: 'Projects',
     description: 'Manage project access and permissions',
     adminOnly: true,
+    scopes: ['system'],
   },
-  {
-    path: 'privacy',
-    icon: Shield,
-    label: 'Privacy & Security',
-    description: 'Control your privacy and security settings',
-  },
-  {
-    path: 'activity',
-    icon: Activity,
-    label: 'Activity Log',
-    description: 'View your recent account activity',
-  },
+  // ─── Org scope ───────────────────────────────────────────────
   {
     path: 'agents',
     icon: Cpu,
     label: 'Agents',
     description: 'Autonomous agents and budgets',
-  },
-  {
-    path: 'keys',
-    icon: Key,
-    label: 'API Keys',
-    description: 'LLM provider API keys',
+    scopes: ['org', 'system'],
   },
   {
     path: 'models',
     icon: Boxes,
     label: 'Models',
     description: 'AI model configurations',
+    scopes: ['org', 'system'],
   },
   {
     path: 'mcp',
     icon: Server,
     label: 'MCP Servers',
     description: 'Model Context Protocol servers',
+    scopes: ['org', 'system'],
   },
   {
     path: 'network',
     icon: Network,
     label: 'Network & Mesh',
     description: 'APN identity, mesh monitoring, and capabilities',
+    scopes: ['org', 'system'],
   },
+  // ─── Client scope ────────────────────────────────────────────
   {
     path: 'pulse',
     icon: Activity,
     label: 'Pulse Engine',
     description: 'System health and performance metrics',
     absolutePath: '/pulse',
+    scopes: ['client', 'system'],
   },
+  // ─── Planned items ───────────────────────────────────────────
+  {
+    path: 'integrations-personal',
+    icon: Plug,
+    label: 'Integrations',
+    description: 'Personal developer tools (GitHub, etc.)',
+    scopes: ['user'],
+    planned: true,
+  },
+  {
+    path: 'integrations-org',
+    icon: Plug,
+    label: 'Integrations',
+    description: 'Organization-level service connections',
+    scopes: ['org'],
+    planned: true,
+  },
+  {
+    path: 'billing-org',
+    icon: CreditCard,
+    label: 'Billing & Usage',
+    description: 'Organization billing and usage tracking',
+    scopes: ['org'],
+    planned: true,
+  },
+  {
+    path: 'integrations-client',
+    icon: Plug,
+    label: 'Integrations',
+    description: 'Client-facing tool connections (socials, etc.)',
+    scopes: ['client'],
+    planned: true,
+  },
+  {
+    path: 'branding',
+    icon: Palette,
+    label: 'Branding',
+    description: 'Client branding and white-label settings',
+    scopes: ['client'],
+    planned: true,
+  },
+  {
+    path: 'client-portal',
+    icon: Layout,
+    label: 'Client Portal',
+    description: 'Client portal configuration',
+    scopes: ['client'],
+    planned: true,
+  },
+  // ─── Dev-only ────────────────────────────────────────────────
   ...(import.meta.env.MODE === 'development' ? [{
     path: 'developer',
     icon: Code2,
     label: 'Developer',
     description: 'Development-only tools and bypasses',
     adminOnly: true,
+    scopes: ['system'] as SettingsScope[],
   }] : []),
 ];
 
@@ -117,11 +192,42 @@ export function SettingsLayout() {
   const { t } = useTranslation('settings');
   const goToPreviousPath = usePreviousPath();
   const { user } = useAuth();
+  const { role, canSeeAdminPlatforms, canManageOrg } = useEffectiveRole();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Filter navigation items based on admin status
-  const visibleNavigation = settingsNavigation.filter(
-    (item) => !item.adminOnly || user?.is_admin
-  );
+  const level = ROLE_LEVEL[role];
+
+  // Determine which tabs are visible
+  const visibleTabs: { scope: SettingsScope; label: string }[] = [
+    { scope: 'user', label: SETTINGS_SCOPE_LABELS.user },
+    ...(canSeeAdminPlatforms ? [{ scope: 'system' as const, label: SETTINGS_SCOPE_LABELS.system }] : []),
+    ...(canManageOrg || level >= ROLE_LEVEL.org_editor ? [{ scope: 'org' as const, label: SETTINGS_SCOPE_LABELS.org }] : []),
+    ...(level >= ROLE_LEVEL.client_editor || canSeeAdminPlatforms ? [{ scope: 'client' as const, label: SETTINGS_SCOPE_LABELS.client }] : []),
+  ];
+
+  // Read scope from URL param, validate against visible tabs (permission guard)
+  const urlScope = searchParams.get('scope') as SettingsScope | null;
+  const effectiveScope = urlScope && visibleTabs.some((t) => t.scope === urlScope)
+    ? urlScope
+    : visibleTabs[0]?.scope ?? 'user';
+
+  const setActiveScope = useCallback((scope: SettingsScope) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (scope === 'user') {
+        next.delete('scope');
+      } else {
+        next.set('scope', scope);
+      }
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  // Filter navigation items by active scope and admin status
+  const visibleNavigation = settingsNavigation.filter((item) => {
+    if (item.adminOnly && !user?.is_admin) return false;
+    return item.scopes.includes(effectiveScope);
+  });
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -136,9 +242,53 @@ export function SettingsLayout() {
             <h2 className="px-3 py-2 text-lg font-semibold">
               {t('settings.layout.nav.title')}
             </h2>
+
+            {/* Scope tabs */}
+            {visibleTabs.length > 1 && (
+              <div className="flex flex-wrap gap-1 px-1 pb-2">
+                {visibleTabs.map(({ scope, label }) => (
+                  <button
+                    key={scope}
+                    onClick={() => setActiveScope(scope)}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap',
+                      effectiveScope === scope
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <nav className="space-y-1">
               {visibleNavigation.map((item) => {
                 const Icon = item.icon;
+
+                if (item.planned) {
+                  return (
+                    <div
+                      key={item.path}
+                      className="flex items-start gap-3 px-3 py-2 text-sm rounded-lg text-muted-foreground/50 cursor-default"
+                    >
+                      <Icon className="h-4 w-4 mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium flex items-center gap-2">
+                          {item.label}
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal text-muted-foreground/50 border-muted-foreground/20">
+                            Coming soon
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground/40">
+                          {item.description}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <NavLink
                     key={item.path}

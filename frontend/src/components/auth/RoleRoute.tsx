@@ -1,21 +1,8 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEffectiveRole, type EffectiveRole } from '@/hooks/useEffectiveRole';
+import { hasMinRole } from '@/lib/roles';
 import { Loader } from '../ui/loader';
-
-/**
- * Role hierarchy (highest to lowest):
- *   platform_admin > operator > org_admin > org_member > org_viewer > client_user > authenticated
- */
-const ROLE_LEVEL: Record<EffectiveRole, number> = {
-  platform_admin: 7,
-  operator: 6,
-  org_admin: 5,
-  org_member: 4,
-  org_viewer: 3,
-  client_user: 2,
-  authenticated: 1,
-};
 
 interface RoleRouteProps {
   children: React.ReactNode;
@@ -52,7 +39,7 @@ export function RoleRoute({ children, minRole, allowedRoles, fallback = '/' }: R
   const hasAccess = allowedRoles
     ? allowedRoles.includes(role)
     : minRole
-      ? ROLE_LEVEL[role] >= ROLE_LEVEL[minRole]
+      ? hasMinRole(role, minRole)
       : true;
 
   if (!hasAccess) {

@@ -8,6 +8,7 @@ import { KeyboardShortcutsProvider } from '@/contexts/keyboard-shortcuts-context
 import { HotkeysProvider } from 'react-hotkeys-hook';
 import { ProjectProvider } from '@/contexts/project-context';
 import { OrganizationProvider } from '@/contexts/organization-context';
+import { ViewContextProvider } from '@/contexts/view-context';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { SignupPage } from '@/pages/auth/SignupPage';
@@ -133,15 +134,17 @@ function App() {
           <AuthProvider>
             <UserSystemProvider>
               <OrganizationProvider>
-                <ProjectProvider>
-                  <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
-                    <KeyboardShortcutsProvider>
-                      <NiceModal.Provider>
-                        <AppShell />
-                      </NiceModal.Provider>
-                    </KeyboardShortcutsProvider>
-                  </HotkeysProvider>
-                </ProjectProvider>
+                <ViewContextProvider>
+                  <ProjectProvider>
+                    <HotkeysProvider initiallyActiveScopes={['*', 'global', 'kanban']}>
+                      <KeyboardShortcutsProvider>
+                        <NiceModal.Provider>
+                          <AppShell />
+                        </NiceModal.Provider>
+                      </KeyboardShortcutsProvider>
+                    </HotkeysProvider>
+                  </ProjectProvider>
+                </ViewContextProvider>
               </OrganizationProvider>
             </UserSystemProvider>
           </AuthProvider>
@@ -306,12 +309,12 @@ function App() {
           <Route path="/nora" element={<AdminRoute><NoraPage /></AdminRoute>} />
           <Route path="/topsi" element={<ProtectedRoute><TopsiPage /></ProtectedRoute>} />
           <Route path="/global-tasks" element={<AdminRoute><GlobalTasksPage /></AdminRoute>} />
-          <Route path="/mission-control" element={<RoleRoute minRole="operator"><MissionControlPage /></RoleRoute>} />
+          <Route path="/mission-control" element={<RoleRoute minRole="platform_member"><MissionControlPage /></RoleRoute>} />
           <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
           <Route path="/workflows/staging/:runId" element={<ProtectedRoute><StagingRedirect /></ProtectedRoute>} />
           <Route
             path="/social-command"
-            element={<RoleRoute minRole="org_member"><SocialPage /></RoleRoute>}
+            element={<RoleRoute minRole="org_editor"><SocialPage /></RoleRoute>}
           />
           <Route
             path="/projects/:projectId/social"
@@ -320,35 +323,35 @@ function App() {
           {/* Management routes — require operator+ role */}
           <Route
             path="/crm"
-            element={<RoleRoute minRole="operator"><CrmPage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><CrmPage /></RoleRoute>}
           />
           <Route
             path="/people"
-            element={<RoleRoute minRole="operator"><PeoplePage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><PeoplePage /></RoleRoute>}
           />
           <Route
             path="/people/:personId"
-            element={<RoleRoute minRole="operator"><PersonDetailPage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><PersonDetailPage /></RoleRoute>}
           />
           <Route
             path="/proposals"
-            element={<RoleRoute minRole="operator"><ProposalsPage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><ProposalsPage /></RoleRoute>}
           />
           <Route
             path="/companies"
-            element={<RoleRoute minRole="operator"><CompaniesPage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><CompaniesPage /></RoleRoute>}
           />
           <Route
             path="/companies/:companyId"
-            element={<RoleRoute minRole="operator"><CompanyProfilePage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><CompanyProfilePage /></RoleRoute>}
           />
           <Route
             path="/command-center"
-            element={<RoleRoute minRole="operator"><CommandCenterPage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><CommandCenterPage /></RoleRoute>}
           />
           <Route
             path="/invoices"
-            element={<RoleRoute minRole="operator"><InvoicesPage /></RoleRoute>}
+            element={<RoleRoute minRole="platform_member"><InvoicesPage /></RoleRoute>}
           />
           <Route
             path="/projects/:projectId/deliverables"
@@ -369,16 +372,16 @@ function App() {
           />
           <Route
             path="/virtual-environment"
-            element={<RoleRoute minRole="org_member"><VirtualEnvironmentPage /></RoleRoute>}
+            element={<RoleRoute minRole="org_editor"><VirtualEnvironmentPage /></RoleRoute>}
           />
           <Route path="/mesh" element={<Navigate to="/settings/network" replace />} />
-          <Route path="/pulse" element={<RoleRoute minRole="operator"><PulsePage /></RoleRoute>} />
+          <Route path="/pulse" element={<RoleRoute minRole="platform_member"><PulsePage /></RoleRoute>} />
           <Route
             path="/projects/:projectId/pulse"
             element={<ProtectedRoute><PulsePage /></ProtectedRoute>}
           />
           <Route path="/ai-usage" element={<AdminRoute><AIUsagePage /></AdminRoute>} />
-          <Route path="/vibe" element={<RoleRoute minRole="org_member"><VibePage /></RoleRoute>} />
+          <Route path="/vibe" element={<RoleRoute minRole="org_editor"><VibePage /></RoleRoute>} />
           <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
           <Route path="/call-intake" element={<AdminRoute><CallIntakePage /></AdminRoute>} />
           <Route path="/business-reports" element={<AdminRoute><BusinessReportsPage /></AdminRoute>} />

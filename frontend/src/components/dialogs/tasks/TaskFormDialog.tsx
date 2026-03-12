@@ -784,7 +784,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     return (
       <>
         <Dialog open={modal.visible} onOpenChange={handleDialogOpenChange}>
-          <DialogContent className="sm:max-w-[550px]">
+          <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <DialogTitle>
@@ -944,20 +944,20 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Assigned MCPs (comma-separated)</Label>
-                    <Textarea
+                    <Input
                       value={assignedMcpsInput}
                       onChange={(e) => setAssignedMcpsInput(e.target.value)}
-                      rows={2}
+                      placeholder="e.g. orcha-tasks, playwright"
                       disabled={isSubmitting || isSubmittingAndStart}
                     />
                   </div>
 
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Tags (comma-separated)</Label>
-                    <Textarea
+                    <Input
                       value={tagsInput}
                       onChange={(e) => setTagsInput(e.target.value)}
-                      rows={2}
+                      placeholder="e.g. frontend, bug, urgent"
                       disabled={isSubmitting || isSubmittingAndStart}
                     />
                   </div>

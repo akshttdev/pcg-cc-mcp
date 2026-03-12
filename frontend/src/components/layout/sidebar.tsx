@@ -87,6 +87,7 @@ import type { CreateNameDialogResult } from '@/components/dialogs';
 import type { ProjectFormDialogResult } from '@/components/dialogs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectiveRole } from '@/hooks/useEffectiveRole';
+import { SidebarUserCard } from '@/components/layout/SidebarUserCard';
 import {
   DndContext,
   closestCenter,
@@ -1704,7 +1705,10 @@ export function Sidebar({ className }: SidebarProps) {
       {!sidebarCollapsed && <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <ScrollArea className="flex-1 min-h-0">
           {/* Admin Platforms (collapsible, only shown for admins) */}
-          {filteredAdminNav.length > 0 && (
+          <div className={cn(
+            "transition-all duration-200 ease-in-out overflow-hidden",
+            filteredAdminNav.length > 0 ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+          )}>
             <div className="border-b border-border/40 p-2 px-3">
               <Collapsible open={adminPlatformsExpanded} onOpenChange={setAdminPlatformsExpanded}>
                 <CollapsibleTrigger asChild>
@@ -1730,7 +1734,7 @@ export function Sidebar({ className }: SidebarProps) {
                 </CollapsibleContent>
               </Collapsible>
             </div>
-          )}
+          </div>
 
           {/* My Workspace — user-level pages */}
           <div className="border-b border-border/40">
@@ -1782,7 +1786,10 @@ export function Sidebar({ className }: SidebarProps) {
           </div>
 
           {/* Management, Global Views - role-gated (collapsed into sections) */}
-          {roleInfo.canSeeManagement && (
+          <div className={cn(
+            "transition-all duration-200 ease-in-out overflow-hidden",
+            roleInfo.canSeeManagement ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
+          )}>
             <div className="border-b border-border/40">
               {/* Management section */}
               <Collapsible open={managementExpanded} onOpenChange={setManagementExpanded}>
@@ -1862,7 +1869,7 @@ export function Sidebar({ className }: SidebarProps) {
                 </CollapsibleContent>
               </Collapsible>
             </div>
-          )}
+          </div>
 
           {/* Favorites Section */}
           {favorites.length > 0 && (
@@ -2123,6 +2130,10 @@ export function Sidebar({ className }: SidebarProps) {
               </Button>
             );
           })}
+
+          {/* User card with view-as switcher */}
+          <div className={cn("border-t border-border/40 my-1", sidebarCollapsed ? "mx-1" : "mx-0")} />
+          <SidebarUserCard isCollapsed={sidebarCollapsed} />
 
           {/* Subtle separator */}
           <div className={cn("border-t border-border/40 my-1", sidebarCollapsed ? "mx-1" : "mx-0")} />

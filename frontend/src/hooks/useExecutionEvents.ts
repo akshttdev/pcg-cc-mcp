@@ -2,6 +2,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolveApiUrl, resolveWsUrl } from '@/lib/api';
 import type { CoordinationEvent } from '@/types/nora';
 
+const MAX_FAILURES = 3;
+const INITIAL_BACKOFF_MS = 2000;
+const MAX_BACKOFF_MS = 30000;
+
+/** Check if real-time events are disabled via dev settings */
+export function isRealtimeDisabled(): boolean {
+  try {
+    return localStorage.getItem('dev_disable_realtime') === 'true';
+  } catch {
+    return false;
+  }
+}
+
 /** Filter for execution-specific events */
 type ExecutionEventType =
   | 'ExecutionStarted'
@@ -44,11 +57,23 @@ export function useExecutionEvents(options: UseExecutionEventsOptions = {}) {
   const [activeExecutions, setActiveExecutions] = useState<Map<string, ActiveExecution>>(new Map());
   const [completedExecutions, setCompletedExecutions] = useState<ActiveExecution[]>([]);
   const [connected, setConnected] = useState(false);
-  const [connectionMode, setConnectionMode] = useState<'websocket' | 'sse' | null>(null);
+  const [connectionMode, setConnectionMode] = useState<'websocket' | 'sse' | 'degraded' | null>(null);
 
   const websocketRef = useRef<WebSocket | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failureCount = useRef(0);
+
+  const getBackoffDelay = useCallback(() => {
+    const delay = INITIAL_BACKOFF_MS * Math.pow(2, failureCount.current);
+    return Math.min(delay, MAX_BACKOFF_MS);
+  }, []);
+
+  const enterDegradedMode = useCallback(() => {
+    setConnected(false);
+    setConnectionMode('degraded');
+    console.warn('[ExecutionEvents] Max failures reached, entering degraded mode (no real-time updates)');
+  }, []);
 
   const isExecutionEvent = (event: CoordinationEvent): boolean => {
     const executionTypes: ExecutionEventType[] = [
@@ -204,11 +229,17 @@ export function useExecutionEvents(options: UseExecutionEventsOptions = {}) {
 
   const setupWebSocket = useCallback(() => {
     if (typeof window === 'undefined') return;
+    if (isRealtimeDisabled()) return;
+    if (failureCount.current >= MAX_FAILURES) {
+      enterDegradedMode();
+      return;
+    }
 
     const ws = new WebSocket(resolveWsUrl('/api/nora/coordination/events'));
 
     ws.onopen = () => {
       websocketRef.current = ws;
+      failureCount.current = 0;
       setConnected(true);
       setConnectionMode('websocket');
     };
@@ -225,7 +256,13 @@ export function useExecutionEvents(options: UseExecutionEventsOptions = {}) {
     ws.onclose = () => {
       websocketRef.current = null;
       setConnected(false);
-      reconnectTimeout.current = window.setTimeout(setupWebSocket, 5000);
+      failureCount.current += 1;
+      if (failureCount.current >= MAX_FAILURES) {
+        enterDegradedMode();
+        return;
+      }
+      const delay = getBackoffDelay();
+      reconnectTimeout.current = window.setTimeout(setupWebSocket, delay);
     };
 
     ws.onerror = () => {
@@ -235,15 +272,21 @@ export function useExecutionEvents(options: UseExecutionEventsOptions = {}) {
     };
 
     websocketRef.current = ws;
-  }, [handleEvent]);
+  }, [handleEvent, enterDegradedMode, getBackoffDelay]);
 
   const setupEventSource = useCallback(() => {
     if (typeof window === 'undefined') return;
+    if (isRealtimeDisabled()) return;
+    if (failureCount.current >= MAX_FAILURES) {
+      enterDegradedMode();
+      return;
+    }
 
     const es = new EventSource(resolveApiUrl('/api/nora/coordination/events/sse'));
 
     es.onopen = () => {
       eventSourceRef.current = es;
+      failureCount.current = 0;
       setConnected(true);
       setConnectionMode('sse');
     };
@@ -261,11 +304,17 @@ export function useExecutionEvents(options: UseExecutionEventsOptions = {}) {
       setConnected(false);
       es.close();
       eventSourceRef.current = null;
-      reconnectTimeout.current = window.setTimeout(setupEventSource, 5000);
+      failureCount.current += 1;
+      if (failureCount.current >= MAX_FAILURES) {
+        enterDegradedMode();
+        return;
+      }
+      const delay = getBackoffDelay();
+      reconnectTimeout.current = window.setTimeout(setupEventSource, delay);
     };
 
     eventSourceRef.current = es;
-  }, [handleEvent]);
+  }, [handleEvent, enterDegradedMode, getBackoffDelay]);
 
   useEffect(() => {
     setupWebSocket();

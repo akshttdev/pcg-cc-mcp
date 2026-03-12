@@ -9,7 +9,6 @@ import {
   Menu,
 } from 'lucide-react';
 import { SearchBar } from '@/components/search-bar';
-import { ProfileSection } from '@/components/layout/profile-section';
 import { useSearch } from '@/contexts/search-context';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { useProject } from '@/contexts/project-context';
@@ -18,6 +17,7 @@ import { showProjectForm } from '@/lib/modals';
 import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 import { useCommandStore } from '@/stores/useCommandStore';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
+import { NavbarUserButton } from '@/components/layout/NavbarUserButton';
 
 const ADMIN_ROUTES = ['/site-directory', '/nora', '/mission-control', '/admin'];
 
@@ -193,7 +193,9 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
             )}
 
             <NotificationCenter />
-            <ProfileSection />
+
+            {/* Mobile user avatar — quick access without opening sidebar */}
+            <NavbarUserButton />
           </div>
         </div>
       </div>
