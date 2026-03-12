@@ -185,71 +185,55 @@
 
 ## Cross-Cutting Observations
 
-### Console Errors & Warnings — Status After Fixes
-| Issue | Severity | Status | Details |
-|-------|----------|--------|---------|
-| WebSocket connection failures | Medium | **RESOLVED** | Exponential backoff + max 3 retries + dev toggle |
-| i18n missing translation keys | Low | **RESOLVED** | Debug logging disabled |
-| React Router future flag warnings | Low | Open | Standard deprecation warnings for v7 migration |
-| `validateDOMNesting` warning | Low | Open | Button nested inside button in workflow editor |
+### Console Errors & Warnings
+| Issue | Severity | Count | Details |
+|-------|----------|-------|---------|
+| WebSocket connection failures | Medium | Every page | `Firefox can't establish a connection to ws://...` — expected in dev without active agent executions |
+| i18n missing translation keys | Low | ~100+ per settings page | All settings page strings fall through to default English — keys not configured in i18n |
+| React Router future flag warnings | Low | Every page | Standard deprecation warnings for v7 migration |
+| `validateDOMNesting` warning | Low | Workflow editor | Button nested inside button in workflow editor |
 
-### Usability Gaps — ALL RESOLVED
-1. ~~**Task form dialog too tall**~~ — RESOLVED: 650px width, `max-h-[90vh] overflow-y-auto`, MCPs/Tags → Input
-2. ~~**No workflow schedule trigger UI**~~ — RESOLVED: Triggers button in editor toolbar
-3. ~~**Task template edit missing new fields**~~ — RESOLVED: All 8 fields in dialog + templates API 500 fixed
-4. ~~**Agent profile not accessible**~~ — RESOLVED: Route registered, backend recompiled
-5. ~~**System workflows not seeded**~~ — RESOLVED: Migrations applied, seed DBs updated
-6. ~~**ORCHA server not in MCP carousel**~~ — RESOLVED: Carousel → CSS grid
-7. ~~**completion_criteria/output_format on Task model**~~ — RESOLVED: Migration applied to dev DB
+### Usability Gaps
+1. **Task form dialog too tall** — Simple mode toggle and Close button are outside the viewport when the dialog content is long. Users can't access the toggle without scrolling the page behind the dialog.
+2. **No workflow schedule trigger UI** — Backend supports schedule triggers but users have no way to create or manage them.
+3. **Task template edit missing new fields** — Backend has 6 new columns but the edit dialog only exposes 3 original fields.
+4. **Agent profile not accessible** — Profile endpoint exists but isn't reachable from the frontend.
+5. **System workflows not seeded** — 4 new workflows exist in code but don't appear in the running dev database.
+6. **ORCHA server not in MCP carousel** — Popular servers list appears hardcoded and doesn't include ORCHA.
+7. **completion_criteria/output_format on Task model** — Fields exist on form and template but the Task struct itself has no columns for these values. Data entered is silently lost.
 
-### Architecture Observations — ALL RESOLVED
-1. ~~**Seed vs Migration gap**~~ — RESOLVED: All migrations applied to dev and seed DBs
-2. ~~**Frontend-backend field mismatch**~~ — RESOLVED: Task model has both columns
-3. ~~**Route proxy issue**~~ — RESOLVED: Route registered, works after backend recompile
+### Architecture Observations
+1. **Seed vs Migration gap**: New system workflows are seeded programmatically but the dev database is file-copied, so seeds don't run unless explicitly triggered.
+2. **Frontend-backend field mismatch**: `completion_criteria` and `output_format` exist on `TaskTemplate` and `TaskFormDialog` but not on the `Task` model. This is the most impactful gap — it undermines the core Sprint 1A feature.
+3. **Route proxy issue**: The `/api/agents/:id/profile` endpoint works conceptually but isn't reachable through the Vite dev proxy, suggesting the backend binary may not include the new route or there's a routing conflict.
 
 ---
 
 ## Summary
 
-> **Final Status (2026-03-12 session 4):** All sprint items complete. All critical bugs fixed and Playwright-verified. Pushed as commit `ff6b76654` on `feature/blob-to-text-scoped`.
-
 | Sprint | Feature | Status |
 |--------|---------|--------|
-| 1A | Completion Criteria in Task Form | **PASS** — Fields persist, display in detail view |
+| 1A | Completion Criteria in Task Form | **PARTIAL** — UI present, backend Task model missing fields |
 | 1B | Project Scaffolding UI | **PASS** — Templates and task creation working |
-| 1C | ORCHA in MCP Popular Servers | **PASS** — Grid layout, all servers visible |
+| 1C | ORCHA in MCP Popular Servers | **FAIL** — Not visible in carousel |
 | 1D | output_tasks Node | **PASS** — Present in NodePicker |
-| 1E | Mission Control Dashboard | **PASS** — Fully functional with quick-start guidance |
+| 1E | Mission Control Dashboard | **PASS** — Fully functional |
 | 2A | New Node Types (Frontend) | **PASS** — All 7 types with config panels |
 | 2B | Convert Automations | **DEFERRED** — As planned |
-| 2C | Workflow Trigger System | **PASS** — Backend + Triggers button in editor |
-| 2D | System Workflows | **PASS** — Seeded via migrations, 5 workflows visible |
-| 3A | Wire ACP to MCP | **PASS** — harness.rs loads default_mcp.json |
+| 2C | Workflow Trigger System | **PARTIAL** — Backend only, no UI |
+| 2D | System Workflows | **FAIL** — Not seeded in dev database |
+| 3A | Wire ACP to MCP | **NOT TESTABLE** — Backend-only |
 | 3B | Platform/User MCP Separation | **PASS** — Architectural separation confirmed |
-| 3C | Enhanced Task Templates | **PASS** — All 8 fields in dialog, templates API fixed |
-| 3D | Agent Capability Profiles | **PARTIAL** — Backend endpoint works, frontend "View Profile" link not yet added |
+| 3C | Enhanced Task Templates | **PARTIAL** — Backend done, frontend UI not updated |
+| 3D | Agent Capability Profiles | **PARTIAL** — Backend endpoint exists, not accessible from frontend |
 | 3E | Agent Flow Orchestration | **N/A** — Design only |
 
-### Priority Fixes Applied
+### Priority Fixes Needed
 1. ~~**P0**: Add `completion_criteria` and `output_format` columns to the `tasks` table~~ — **RESOLVED** (migration already existed, now applied)
 2. ~~**P1**: Trigger `seed_defaults()` or add new system workflows to the seed database~~ — **RESOLVED** (migrations applied, seed DBs updated)
-3. ~~**P1**: Debug why `/api/agents/:id/profile` returns HTML~~ — **RESOLVED** (route registered, backend recompiled, works via curl)
+3. **P1**: Debug why `/api/agents/:id/profile` returns HTML — **STILL OPEN** (verified route is registered in backend; likely needs backend recompile or Vite proxy investigation)
 4. ~~**P2**: Add UI fields to `TaskTemplateEditDialog`~~ — **RESOLVED** (all 8 fields exposed, agent dropdown from API)
 5. ~~**P2**: Add ORCHA Task Server to the MCP popular servers carousel~~ — **RESOLVED** (carousel → grid, all servers visible)
 6. ~~**P2**: Build minimal UI for workflow schedule triggers~~ — **RESOLVED** (Triggers button in editor toolbar)
 7. ~~**P3**: Display completion_criteria and output_format in the task detail view~~ — **RESOLVED** (compact mode in EnhancedTaskDetailsPanel)
-8. **P3**: Add "View Profile" link to agent cards in Settings → Agents — **OPEN** (low priority, deferred)
-
-### Bug Fixes Applied (this sprint)
-| Fix | Severity | File(s) | Verified |
-|-----|----------|---------|----------|
-| C1: Route parameter shadowing | Critical | `tasks.rs` | Playwright |
-| C2: Task templates 500 | High | `task_template.rs` | Playwright |
-| C3: created_by override | High | `tasks.rs` | Playwright |
-| C4: FTS5 triggers conflict | Critical | Migration `20260327100000` | DB verified |
-| C5: VIBE bypass API path | High | `api.ts` | Playwright |
-| C6: i18n debug noise | Low | `config.ts` | Console verified |
-| C7: WS/SSE exponential backoff | Medium | `useExecutionEvents.ts`, `event-stream.ts` | Console verified |
-| C8: Dev realtime toggle | Medium | `DeveloperSettings.tsx` | Playwright |
-| C9: JsonPatch WS retry cap | Medium | `useJsonPatchWsStream.ts` | Playwright |
-| C10: Combobox overlay in dialogs | Medium | `assignee-combobox.tsx` | Code verified |
+8. **P3**: Add "View Profile" link to agent cards in Settings → Agents — **STILL OPEN**

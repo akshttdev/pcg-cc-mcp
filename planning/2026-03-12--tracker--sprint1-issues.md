@@ -134,12 +134,10 @@
 
 ## Known Limitations & Future Work
 
-> **Status (2026-03-12 session 4):** Items 6 and 7 partially resolved. All critical bugs fixed. See `2026-03-12--review--project-task-agent-automation.md` for full bug fix list.
-
 1. **Conditional node**: Only supports simple string matching and `count>N` — complex boolean expressions need LLM preprocessing
 2. **CRM update nodes**: Match by email (contacts) or name (deals/companies) only — no fuzzy matching
 3. **http_request node**: No OAuth/auth token management — headers must be static
 4. **send_notification node**: Logs only — no actual email/in-app delivery (placeholder for future integration)
 5. **ACP MCP loading**: Path resolution depends on server working directory
-6. ~~**Task template UI**: Backend supports new fields but the `TaskTemplateEditDialog` doesn't expose them yet~~ — **RESOLVED**: All 8 fields now in dialog including agent Select from API. Templates API 500 bug also fixed (TEMPLATE_COLS annotation syntax).
-7. ~~**Agent profile endpoint**: Frontend doesn't consume it yet~~ — **PARTIALLY RESOLVED**: Route verified registered, endpoint works via curl. "View Profile" link on agent cards still needed (low priority, deferred).
+6. ~~**Task template UI**: Backend supports new fields but the `TaskTemplateEditDialog` doesn't expose them yet~~ — **RESOLVED**: All 8 fields now in dialog including agent Select from API
+7. **Agent profile endpoint**: Frontend doesn't consume it yet — needs UI integration in Settings → Agents (route verified registered, endpoint works via curl)

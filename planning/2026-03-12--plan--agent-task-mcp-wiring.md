@@ -1,8 +1,8 @@
 # Agent-Task Integration Enhancement Plan
 
 **Date:** 2026-03-12
-**Branch:** `feature/blob-to-text-scoped` (originally `feature/fraze-2026-03-12`, ported to main-based branch)
-**Status:** MOSTLY COMPLETE — Phases 1, 2, 3F, 3G, 3I done. 3H (orchestration engine) not started. All bug fixes verified via Playwright (`ff6b76654`).
+**Branch:** `feature/fraze-2026-03-12`
+**Status:** MOSTLY COMPLETE — Phases 1, 2, 3F, 3G, 3I done. 3H (orchestration engine) not started.
 
 ---
 
