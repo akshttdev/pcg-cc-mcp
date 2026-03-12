@@ -74,6 +74,11 @@ export const TaskTemplateEditDialog =
               template_name: formData.template_name,
               title: formData.title,
               description: formData.description || null,
+              priority: null,
+              completion_criteria: null,
+              output_format: null,
+              assigned_agent: null,
+              tags: null,
             };
             await templatesApi.update(template.id, updateData);
           } else {
@@ -82,6 +87,12 @@ export const TaskTemplateEditDialog =
               template_name: formData.template_name,
               title: formData.title,
               description: formData.description || null,
+              priority: null,
+              completion_criteria: null,
+              output_format: null,
+              assigned_agent: null,
+              tags: null,
+              organization_id: null,
             };
             await templatesApi.create(createData);
           }
