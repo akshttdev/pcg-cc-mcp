@@ -28,11 +28,10 @@ export async function apiLogin(request: APIRequestContext) {
 
 /** Navigate to a known project's task board */
 export async function navigateToFirstProjectTasks(page: Page) {
-  // Use API to get a project ID, then navigate directly
-  const res = await page.request.post("/api/auth/login", {
+  // Authenticate via API, then navigate directly to project tasks
+  await page.request.post("/api/auth/login", {
     data: { username: TEST_USER.username, password: TEST_USER.password },
   });
-  const cookies = res.headers()["set-cookie"];
 
   const projectsRes = await page.request.get("/api/projects");
   const projects = (await projectsRes.json()).data;
@@ -47,6 +46,34 @@ export async function navigateToFirstProjectTasks(page: Page) {
 
 /** Prefix for all test-created data — makes cleanup easy */
 export const TEST_DATA_PREFIX = "[E2E]";
+
+// ─── View-As Helpers ────────────────────────────────────────────────────────
+
+/** Set a view-as role override via localStorage and reload */
+export async function setViewAsRole(page: Page, role: string) {
+  await page.evaluate((r) => localStorage.setItem("pcg:view-as-role", r), role);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2500);
+}
+
+/** Clear view-as override via localStorage and reload */
+export async function clearViewAsRole(page: Page) {
+  await page.evaluate(() => localStorage.removeItem("pcg:view-as-role"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2500);
+}
+
+/** Locate a settings scope tab button by exact label (scoped to settings aside) */
+export function settingsTab(page: Page, label: string) {
+  return page.locator("aside button", { hasText: new RegExp(`^${label}$`) });
+}
+
+/** Get the current view-as role from localStorage */
+export async function getViewAsRole(page: Page): Promise<string | null> {
+  return page.evaluate(() => localStorage.getItem("pcg:view-as-role"));
+}
+
+// ─── Cleanup ────────────────────────────────────────────────────────────────
 
 /** Clean up test data created during E2E runs */
 export async function cleanupTestData(request: APIRequestContext) {

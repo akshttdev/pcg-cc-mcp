@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login, apiLogin, navigateToFirstProjectTasks, cleanupTestData, TEST_DATA_PREFIX } from "./helpers";
+import { login, apiLogin, navigateToFirstProjectTasks, cleanupTestData, TEST_DATA_PREFIX, TEST_USER } from "./helpers";
 
 /**
  * ORCHA Dashboard — E2E Health Check Suite
@@ -261,7 +261,7 @@ test.describe("My Tasks", () => {
 test.describe("API Health", () => {
   test("login API returns session", async ({ request }) => {
     const res = await request.post("/api/auth/login", {
-      data: { username: "admin", password: "admin123" },
+      data: { username: TEST_USER.username, password: TEST_USER.password },
     });
     expect(res.ok()).toBeTruthy();
     const data = await res.json();
