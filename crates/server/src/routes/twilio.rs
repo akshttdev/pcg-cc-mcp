@@ -65,6 +65,8 @@ const SMS_THREAD_WINDOW_SECS: u64 = 8;
 /// Buffered SMS thread state per sender
 struct SmsThread {
     messages: Vec<String>,
+    /// Pending media URLs to fetch+describe before sending to Nora
+    pending_media: Vec<(String, Option<String>)>,
     last_received: SystemTime,
     person_context: Option<serde_json::Value>,
 }
@@ -79,6 +81,16 @@ async fn lookup_sms_sender_context(
     pool: &sqlx::SqlitePool,
     phone: &str,
 ) -> Option<serde_json::Value> {
+    // PCG team check first — higher priority than CRM lookup
+    if let Some((_uid, full_name, is_admin)) = lookup_pcg_team_member(pool, phone).await {
+        return Some(serde_json::json!({
+            "name": full_name,
+            "phone": phone,
+            "caller_type": if is_admin { "pcg_admin" } else { "pcg_team" },
+            "is_pcg_team": true,
+        }));
+    }
+
     #[derive(sqlx::FromRow)]
     struct Row {
         full_name: String,
@@ -101,6 +113,8 @@ async fn lookup_sms_sender_context(
         "name": r.full_name,
         "email": r.email,
         "phone": phone,
+        "caller_type": "client",
+        "is_pcg_team": false,
     }))
 }
 
@@ -113,19 +127,29 @@ fn truncate_for_sms(text: &str, max: usize) -> String {
     format!("{}…", truncated)
 }
 
-/// Send an outbound SMS via Twilio REST API.
+/// Send an outbound SMS via SignalWire (or Twilio-compatible) REST API.
 async fn send_outbound_sms(to: &str, body: &str) -> Result<(), anyhow::Error> {
     let account_sid = std::env::var("TWILIO_ACCOUNT_SID")
         .map_err(|_| anyhow::anyhow!("TWILIO_ACCOUNT_SID not set"))?;
     let auth_token = std::env::var("TWILIO_AUTH_TOKEN")
         .map_err(|_| anyhow::anyhow!("TWILIO_AUTH_TOKEN not set"))?;
-    let from_number = std::env::var("TWILIO_FROM_NUMBER")
-        .map_err(|_| anyhow::anyhow!("TWILIO_FROM_NUMBER not set"))?;
+    // Accept TWILIO_PHONE_NUMBER (current) or legacy TWILIO_FROM_NUMBER
+    let from_number = std::env::var("TWILIO_PHONE_NUMBER")
+        .or_else(|_| std::env::var("TWILIO_FROM_NUMBER"))
+        .map_err(|_| anyhow::anyhow!("TWILIO_PHONE_NUMBER not set"))?;
 
-    let url = format!(
-        "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
-        account_sid
-    );
+    // Use SignalWire endpoint when SIGNALWIRE_SPACE_URL is configured
+    let url = if let Ok(space) = std::env::var("SIGNALWIRE_SPACE_URL") {
+        format!(
+            "https://{}/api/laml/2010-04-01/Accounts/{}/Messages.json",
+            space, account_sid
+        )
+    } else {
+        format!(
+            "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
+            account_sid
+        )
+    };
 
     let client = reqwest::Client::new();
     let resp = client
@@ -140,7 +164,7 @@ async fn send_outbound_sms(to: &str, body: &str) -> Result<(), anyhow::Error> {
     } else {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        Err(anyhow::anyhow!("Twilio SMS error {}: {}", status, &text[..text.len().min(200)]))
+        Err(anyhow::anyhow!("SMS send error {}: {}", status, &text[..text.len().min(200)]))
     }
 }
 
@@ -1651,7 +1675,7 @@ async fn process_with_nora(
 // SMS Handling
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Twilio SMS webhook params
+/// SignalWire / Twilio-compatible SMS webhook params
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct TwilioSmsRequest {
@@ -1662,6 +1686,13 @@ pub struct TwilioSmsRequest {
     pub from_city: Option<String>,
     pub from_country: Option<String>,
     pub num_media: Option<String>,
+    // MMS media attachments — provider sends MediaUrl0..N + MediaContentType0..N
+    pub media_url_0: Option<String>,
+    pub media_url_1: Option<String>,
+    pub media_url_2: Option<String>,
+    pub media_content_type_0: Option<String>,
+    pub media_content_type_1: Option<String>,
+    pub media_content_type_2: Option<String>,
 }
 
 /// POST /twilio/sms — Handle incoming SMS messages
@@ -1717,7 +1748,21 @@ pub async fn handle_incoming_sms(
     }
 
     // ── No active call — SMS thread buffering + Nora orchestration ───────────
-    // Resolve sender identity (persons > crm_contacts > pcg_team)
+    // Collect MMS media attachments (provider sends MediaUrl0..N as form fields)
+    let media_attachments: Vec<(String, Option<String>)> = [
+        (request.media_url_0.clone(), request.media_content_type_0.clone()),
+        (request.media_url_1.clone(), request.media_content_type_1.clone()),
+        (request.media_url_2.clone(), request.media_content_type_2.clone()),
+    ]
+    .into_iter()
+    .filter_map(|(url, ct)| url.map(|u| (u, ct)))
+    .collect();
+
+    if !media_attachments.is_empty() {
+        info!("SMS from {} includes {} media attachment(s)", request.from, media_attachments.len());
+    }
+
+    // Resolve sender identity (persons > CRM > pcg_team)
     let person_context = lookup_sms_sender_context(pool, &request.from).await;
     let caller_name = person_context
         .as_ref()
@@ -1725,22 +1770,24 @@ pub async fn handle_incoming_sms(
         .unwrap_or("there")
         .to_string();
 
-    // Add to thread buffer
-    let (is_first_in_thread, msg_count) = {
+    // Buffer message + media URLs immediately — image fetch happens inside the debounce
+    // spawn so we don't block the webhook response (SignalWire times out after ~15s)
+    let msg_count = {
         let mut buffer = SMS_THREAD_BUFFER.lock().await;
         let entry = buffer.entry(request.from.clone()).or_insert_with(|| SmsThread {
             messages: Vec::new(),
+            pending_media: Vec::new(),
             last_received: SystemTime::now(),
             person_context: person_context.clone(),
         });
         entry.messages.push(request.body.clone());
+        // Accumulate media from all messages in the thread
+        entry.pending_media.extend(media_attachments);
         entry.last_received = SystemTime::now();
-        // Update person context if we just resolved it
         if entry.person_context.is_none() && person_context.is_some() {
             entry.person_context = person_context.clone();
         }
-        let count = entry.messages.len();
-        (count == 1, count)
+        entry.messages.len()
     };
 
     info!("SMS thread from {}: {} message(s) buffered", request.from, msg_count);
@@ -1764,11 +1811,36 @@ pub async fn handle_incoming_sms(
         };
 
         if let Some(thread) = thread {
-            let combined = thread.messages.iter()
+            // Fetch and process all media attachments (async, outside webhook handler)
+            let media_result = if !thread.pending_media.is_empty() {
+                info!("Fetching {} media attachment(s) for SMS thread from {}", thread.pending_media.len(), from_clone);
+                fetch_and_describe_media(thread.pending_media).await
+            } else {
+                MediaResult { text_content: None, image_description: None }
+            };
+
+            // Build combined message — start with buffered SMS bodies
+            let mut combined = thread.messages.iter()
                 .enumerate()
                 .map(|(i, m)| format!("[{}] {}", i + 1, m))
                 .collect::<Vec<_>>()
                 .join("\n\n");
+
+            // Append text content from text/plain media (SignalWire sends message body this way)
+            if let Some(text) = media_result.text_content {
+                info!("Recovered text from media attachment ({} chars): {:?}", text.len(), &text[..text.len().min(80)]);
+                combined = if combined.trim().is_empty() {
+                    text
+                } else {
+                    format!("{}\n\n{}", combined, text)
+                };
+            }
+
+            // Append image description
+            if let Some(desc) = media_result.image_description {
+                info!("Image described ({} chars), appending to thread", desc.len());
+                combined = format!("{}\n\n[Attached image: {}]", combined, desc);
+            }
 
             let sender_label = thread.person_context
                 .as_ref()
@@ -1778,12 +1850,8 @@ pub async fn handle_incoming_sms(
 
             let nora_content = format!(
                 "[SMS THREAD from {} — {} message(s)]\n\n{}\n\n\
-                [Channel: SMS/WhatsApp. Instructions: \
-                (1) Create exactly ONE task for this request — do not create duplicates. \
-                (2) Assign it to the Editron agent (short_name: editron-post). \
-                (3) Place it in the most relevant project for Sirak Studios — prefer 'Mopar Car Show' if the content matches. \
-                (4) Include the Dropbox link and all requirements in the task description. \
-                (5) Reply in plain text only, no markdown, MAXIMUM 280 characters. Be concise.]",
+                [Channel: SMS. Reply in plain text only, no markdown. \
+                Be concise — under 300 characters where possible.]",
                 sender_label,
                 thread.messages.len(),
                 combined
@@ -1803,27 +1871,130 @@ pub async fn handle_incoming_sms(
         }
     });
 
-    // Acknowledge immediately so Twilio doesn't time out
-    let ack = if is_first_in_thread {
-        format!(
-            "Hi {}! Got your message — send everything and I'll take care of it right away.",
-            caller_name
-        )
-    } else {
-        String::new() // Silence subsequent messages — we'll reply via outbound SMS
+    // Return empty TwiML immediately — Nora replies via outbound SMS only
+    (StatusCode::OK, [("Content-Type", "application/xml")], "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>".to_string())
+}
+
+/// Fetch MMS media from SignalWire/Twilio (requires basic auth), then ask
+/// Claude Vision to describe the images. Returns a combined text description.
+/// Result of processing MMS media attachments.
+struct MediaResult {
+    /// Text extracted from text/plain media attachments (the user's actual message body)
+    pub text_content: Option<String>,
+    /// Claude Vision description of any image attachments
+    pub image_description: Option<String>,
+}
+
+/// Fetch and process all MMS media attachments from SignalWire/Twilio.
+/// - text/plain → fetched and returned as the user's message text
+/// - image/* → fetched, base64-encoded, described via Claude Vision
+async fn fetch_and_describe_media(media: Vec<(String, Option<String>)>) -> MediaResult {
+    if media.is_empty() {
+        return MediaResult { text_content: None, image_description: None };
+    }
+
+    let account_sid = match std::env::var("TWILIO_ACCOUNT_SID") {
+        Ok(v) => v,
+        Err(_) => return MediaResult { text_content: None, image_description: None },
+    };
+    let auth_token = match std::env::var("TWILIO_AUTH_TOKEN") {
+        Ok(v) => v,
+        Err(_) => return MediaResult { text_content: None, image_description: None },
+    };
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
+        .ok();
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return MediaResult { text_content: None, image_description: None },
     };
 
-    let twiml = if ack.is_empty() {
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>".to_string()
+    let mut image_blocks: Vec<serde_json::Value> = Vec::new();
+    let mut text_parts: Vec<String> = Vec::new();
+
+    for (url, content_type) in media.iter().take(5) {
+        let mime = content_type.as_deref().unwrap_or("application/octet-stream");
+
+        if mime.starts_with("text/plain") {
+            // This is the user's message body sent as a media attachment by SignalWire
+            match client.get(url).basic_auth(&account_sid, Some(&auth_token)).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(text) = resp.text().await {
+                        let trimmed = text.trim().to_string();
+                        if !trimmed.is_empty() {
+                            info!("Fetched text/plain media ({} chars): {:?}", trimmed.len(), &trimmed[..trimmed.len().min(100)]);
+                            text_parts.push(trimmed);
+                        }
+                    }
+                }
+                Ok(resp) => warn!("Text media fetch {} returned HTTP {}", url, resp.status()),
+                Err(e) => warn!("Text media fetch error for {}: {}", url, e),
+            }
+        } else if mime.starts_with("image/") {
+            match client.get(url).basic_auth(&account_sid, Some(&auth_token)).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(bytes) = resp.bytes().await {
+                        use base64::Engine;
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        image_blocks.push(serde_json::json!({
+                            "type": "image",
+                            "source": { "type": "base64", "media_type": mime, "data": b64 }
+                        }));
+                    }
+                }
+                Ok(resp) => warn!("Image fetch {} returned HTTP {}", url, resp.status()),
+                Err(e) => warn!("Image fetch error for {}: {}", url, e),
+            }
+        } else {
+            info!("Skipping unsupported media type: {} ({})", url, mime);
+        }
+    }
+
+    let text_content = if text_parts.is_empty() { None } else { Some(text_parts.join("\n")) };
+
+    // Describe images with Claude Vision if we have any
+    let image_description = if image_blocks.is_empty() || api_key.is_none() {
+        None
     } else {
-        format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>{}</Message></Response>",
-            xml_escape(&ack)
-        )
+        let mut content = image_blocks;
+        content.push(serde_json::json!({
+            "type": "text",
+            "text": "Describe what you see in these image(s) in detail. Include subject matter, \
+                     any visible text or numbers, colours, composition, and any context useful \
+                     for someone who hasn't seen the image. Be thorough but concise."
+        }));
+
+        let api_key = api_key.unwrap();
+        let body = serde_json::json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 1024,
+            "messages": [{ "role": "user", "content": content }]
+        });
+
+        let resp = client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .ok();
+
+        match resp {
+            Some(r) => {
+                let data: serde_json::Value = r.json().await.unwrap_or_default();
+                data["content"][0]["text"].as_str().map(|s| s.to_string())
+            }
+            None => None,
+        }
     };
 
-
-    (StatusCode::OK, [("Content-Type", "application/xml")], twiml)
+    MediaResult { text_content, image_description }
 }
 
 /// Fetch and extract readable content from any URLs in an SMS body.
@@ -1918,50 +2089,80 @@ fn extract_text_from_html(html: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Process an SMS through Nora's LLM (text channel — no voice constraints).
-
+/// Process an SMS through the real Nora agent (with full tool access),
+/// falling back to a direct Claude API call if Nora is unavailable.
 async fn process_sms_with_nora(
     message: &str,
     from_number: &str,
     context: Option<serde_json::Value>,
 ) -> Result<String, String> {
-
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
-        .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
-
     let caller_type = context
         .as_ref()
         .and_then(|ctx| ctx.get("caller_type"))
         .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+        .unwrap_or("client");
 
-    let system_prompt = if caller_type == "pcg_team" {
-        NORA_PCG_TEAM_SYSTEM
-    } else {
-        NORA_CLIENT_SYSTEM
-    };
+    let is_team = caller_type == "pcg_team" || caller_type == "pcg_admin";
 
     let caller_note = context
         .as_ref()
         .and_then(|ctx| ctx.get("name"))
         .and_then(|v| v.as_str())
-        .filter(|n| !n.is_empty() && *n != "Unknown")
-
+        .filter(|n| !n.is_empty())
         .map(|name| format!("[SMS from {} ({})] ", name, from_number))
         .unwrap_or_else(|| format!("[SMS from {}] ", from_number));
 
+    let full_content = format!("{}{}", caller_note, message);
+
+    // ── Route through the real Nora agent (has tools — can create tasks, etc.) ─
+    let nora_result: Option<String> = async {
+        let nora_arc = get_nora_instance().await.ok()?;
+        let guard = nora_arc.read().await;
+        let nora = guard.as_ref()?;
+
+        // Always use TextInteraction — it calls process_text_with_tools which reads the
+        // actual message content via LLM + tools. TaskCoordination ignores request.content
+        // and returns a canned template response.
+        let request_type = NoraRequestType::TextInteraction;
+
+        let nora_req = NoraRequest {
+            request_id: Uuid::new_v4().to_string(),
+            session_id: format!("sms-{}", from_number),
+            request_type,
+            content: full_content.clone(),
+            context: context.clone(),
+            voice_enabled: false,
+            priority: if is_team { RequestPriority::High } else { RequestPriority::Normal },
+            timestamp: chrono::Utc::now(),
+        };
+
+        match timeout(Duration::from_secs(55), nora.process_request(nora_req)).await {
+            Ok(Ok(response)) => Some(response.content),
+            Ok(Err(e)) => { error!("Nora agent error on SMS from {}: {}", from_number, e); None }
+            Err(_) => { warn!("Nora agent timed out on SMS from {}", from_number); None }
+        }
+    }.await;
+
+    if let Some(text) = nora_result {
+        return Ok(text);
+    }
+
+    // ── Fallback: direct Claude API call ──────────────────────────────────────
+    info!("Falling back to direct Claude API for SMS from {}", from_number);
+
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("NORA_ANTHROPIC_API_KEY"))
+        .map_err(|_| "ANTHROPIC_API_KEY not set".to_string())?;
+
+    let system_prompt = if is_team { NORA_PCG_TEAM_SYSTEM } else { NORA_CLIENT_SYSTEM };
     let sms_instruction = "[SMS channel — reply as plain text, no markdown, \
-        keep under 300 characters if possible. British English.]";
+        keep under 300 characters. British English.]";
 
     let body = json!({
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 300,
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 512,
         "system": format!("{}\n\n{}", system_prompt, sms_instruction),
-        "messages": [{
-            "role": "user",
-            "content": format!("{}{}", caller_note, message)
-        }]
+        "messages": [{ "role": "user", "content": full_content }]
     });
 
     let client = reqwest::Client::new();
@@ -1973,7 +2174,7 @@ async fn process_sms_with_nora(
         .json(&body)
         .send();
 
-    let resp = match timeout(Duration::from_secs(15), fut).await {
+    let resp = match timeout(Duration::from_secs(20), fut).await {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => return Err(format!("HTTP error: {}", e)),
         Err(_) => return Ok("I'm just catching up — please send again in a moment.".into()),
