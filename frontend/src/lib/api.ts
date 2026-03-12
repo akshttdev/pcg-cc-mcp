@@ -6128,7 +6128,7 @@ export interface WorkflowTrigger {
   workflow_id: string;
   name: string;
   enabled: boolean;
-  trigger_type: 'data_source_created' | 'data_source_updated' | 'scheduled';
+  trigger_type: 'data_source_created' | 'data_source_updated' | 'schedule';
   filter_data_source_types: string | null;  // JSON array
   filter_organization_id: string | null;
   filter_project_id: string | null;
