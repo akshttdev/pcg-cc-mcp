@@ -118,6 +118,7 @@ pub mod discord;
 pub mod graph;
 pub mod invite_dispatch;
 pub mod meet;
+pub mod nora_classifier;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -204,6 +205,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(intake::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
+        .merge(nora_classifier::router(&deployment))
         .layer(middleware::from_fn_with_state(
             deployment.clone(),
             app_middleware::require_auth,
@@ -261,6 +263,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(mesh::router(&deployment))
         .merge(peer_rewards::router(&deployment))
         .merge(marketplace::public_router(&deployment))
+        .merge(nora_classifier::public_router(&deployment))
         .merge(pythia::router(&deployment))
         .merge(pcg_router::router(&deployment))
         .route("/data-sync-test", get(apn_data::apn_ping))

@@ -38,6 +38,7 @@ import {
   callAgent,
   synthesizeTts,
 } from './audio.js';
+import { createContextBuffer, shouldNoraSpeak } from './classifier.js';
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -298,6 +299,7 @@ async function handleJoin(interaction, agentName) {
     player,
     guild: interaction.guild,
     participants,
+    contextBuffer: createContextBuffer(8),
   };
 
   sessions.set(sessionKey, session);
@@ -413,6 +415,39 @@ function setupReceivePipeline(connection, session) {
   });
 }
 
+/**
+ * Fire-and-forget POST to the classifier prediction log endpoint.
+ * Errors are silently swallowed — this must never affect the voice pipeline.
+ *
+ * @param {object} session
+ * @param {string} transcript
+ * @param {string} displayName
+ * @param {{ decision: boolean, confidence: string, reasoning: string }} result
+ * @param {boolean} wasActuallyAddressed  true when wake-word was detected
+ */
+async function logClassifierPrediction(session, transcript, displayName, result, wasActuallyAddressed) {
+  const url = `http://127.0.0.1:${SERVER_PORT}/api/nora-classifier/predictions/log`;
+  const body = {
+    meetingSessionId: session.meetingId,
+    segmentIndex: session.segmentCount + 1,
+    speakerLabel: displayName,
+    utterance: transcript,
+    contextJson: JSON.stringify(session.contextBuffer.getHistory()),
+    predictedSpeak: result.decision,
+    confidence: result.confidence,
+    reasoning: result.reasoning ?? null,
+    wasWakeWordAddressed: wasActuallyAddressed,
+  };
+  await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Key': process.env.ADMIN_API_KEY ?? '',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 async function processUtterance(pcm, userId, displayName, session) {
   const startMs = Date.now() - session.startedAt;
 
@@ -424,6 +459,12 @@ async function processUtterance(pcm, userId, displayName, session) {
   console.log(`[${session.agentName}] [${displayName}]: ${transcript.slice(0, 100)}`);
 
   const addressed = detectWakeWord(transcript, session.agentName);
+
+  // Shadow classifier — logs predictions vs ground truth, does not affect behaviour
+  const classifierResult = await shouldNoraSpeak(transcript, displayName, session.contextBuffer.getHistory());
+  session.contextBuffer.push(displayName, transcript);
+  // Log to server asynchronously (fire-and-forget, never blocks voice pipeline)
+  logClassifierPrediction(session, transcript, displayName, classifierResult, addressed !== null).catch(() => {});
 
   // Nora: wake-word gated — only responds when explicitly addressed.
   // Topsi: responds to everything (name is too often misheard by Whisper).
