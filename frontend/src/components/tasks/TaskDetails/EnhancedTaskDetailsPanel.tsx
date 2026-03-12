@@ -683,6 +683,26 @@ export function EnhancedTaskDetailsPanel({
                 </div>
               )}
 
+              {/* Completion Criteria */}
+              {task.completion_criteria && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Completion Criteria</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 rounded-md p-3 border">
+                    {task.completion_criteria}
+                  </p>
+                </div>
+              )}
+
+              {/* Output Format */}
+              {task.output_format && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Output Format</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 rounded-md p-3 border">
+                    {task.output_format}
+                  </p>
+                </div>
+              )}
+
               {/* Recent Artifacts Preview */}
               <div>
                 <div className="flex items-center justify-between mb-3">
