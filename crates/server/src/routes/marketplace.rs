@@ -197,7 +197,7 @@ async fn gateway(
 
     let vibe_cost = listing.price_vibe.max(listing.min_vibe);
 
-    if !subscription.has_balance(vibe_cost) {
+    if !crate::helpers::vibe_check::is_vibe_bypass_active(pool).await && !subscription.has_balance(vibe_cost) {
         return Err(ApiError::PaymentRequired(format!(
             "Insufficient VIBE balance. Need {:.4}, have {:.4}",
             vibe_cost,

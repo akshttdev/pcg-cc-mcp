@@ -309,16 +309,20 @@ pub async fn create_task_and_start(
     // This is a conservative estimate; actual cost will be calculated after LLM usage
     const ESTIMATED_VIBE_COST: i64 = 100; // ~$0.10 USD worth of VIBE
 
+    let vibe_bypass = crate::helpers::vibe_check::is_vibe_bypass_active(&deployment.db().pool).await;
+
     // Check project VIBE budget
-    if let Some(project) = Project::find_by_id(&deployment.db().pool, task_payload.project_id).await? {
-        if !project.has_vibe_budget(ESTIMATED_VIBE_COST) {
-            let remaining = project.remaining_vibe().unwrap_or(0);
-            return Err(ApiError::PaymentRequired(format!(
-                "Project VIBE budget exceeded. Remaining: {} VIBE, Required: {} VIBE (~${})",
-                remaining,
-                ESTIMATED_VIBE_COST,
-                ESTIMATED_VIBE_COST as f64 * 0.01
-            )));
+    if !vibe_bypass {
+        if let Some(project) = Project::find_by_id(&deployment.db().pool, task_payload.project_id).await? {
+            if !project.has_vibe_budget(ESTIMATED_VIBE_COST) {
+                let remaining = project.remaining_vibe().unwrap_or(0);
+                return Err(ApiError::PaymentRequired(format!(
+                    "Project VIBE budget exceeded. Remaining: {} VIBE, Required: {} VIBE (~${})",
+                    remaining,
+                    ESTIMATED_VIBE_COST,
+                    ESTIMATED_VIBE_COST as f64 * 0.01
+                )));
+            }
         }
     }
 
@@ -328,7 +332,7 @@ pub async fn create_task_and_start(
             .await?
     {
         // Check VIBE budget first
-        if !wallet.has_vibe_budget(ESTIMATED_VIBE_COST) {
+        if !vibe_bypass && !wallet.has_vibe_budget(ESTIMATED_VIBE_COST) {
             let remaining = wallet.remaining_vibe().unwrap_or(0);
             return Err(ApiError::PaymentRequired(format!(
                 "Agent VIBE budget exceeded. Remaining: {} VIBE, Required: {} VIBE (~${})",
@@ -341,7 +345,7 @@ pub async fn create_task_and_start(
         // Also check APT budget for legacy support
         const EXECUTION_DEBIT: i64 = 1;
         let remaining = wallet.budget_limit - wallet.spent_amount;
-        if remaining < EXECUTION_DEBIT {
+        if !vibe_bypass && remaining < EXECUTION_DEBIT {
             return Err(ApiError::Conflict(
                 "Agent wallet APT budget exceeded for this profile".to_string(),
             ));
@@ -733,6 +737,11 @@ pub struct AssignedTask {
     pub due_date: Option<String>,
     pub project_id: String,
     pub project_name: String,
+    pub description: Option<String>,
+    pub assigned_agent: Option<String>,
+    pub assignee_id: Option<String>,
+    pub created_by: Option<String>,
+    pub tags: Option<String>,
 }
 
 /// Get all tasks assigned to the current user
@@ -772,17 +781,75 @@ pub async fn get_assigned_to_me(
                 .unwrap_or_else(|| "todo".to_string());
             AssignedTask {
                 id: task.id.to_string(),
-                title: task.title,
+                title: task.title.clone(),
                 status: status_str,
                 priority: priority_str,
                 due_date: task.due_date.map(|d| d.to_rfc3339()),
                 project_name: project_names.get(&project_id).cloned().unwrap_or_else(|| "Unknown".to_string()),
                 project_id,
+                description: task.description.clone(),
+                assigned_agent: task.assigned_agent.clone(),
+                assignee_id: task.assignee_id.clone(),
+                created_by: Some(task.created_by.clone()),
+                tags: task.tags.clone(),
             }
         })
         .collect();
 
     Ok(ResponseJson(ApiResponse::success(assigned_tasks)))
+}
+
+/// Get all tasks created by the current user
+pub async fn get_created_by_me(
+    Extension(access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<AssignedTask>>>, ApiError> {
+    use db::models::project::Project;
+
+    let user_id_str = access_context.user_id.to_string();
+    let tasks = Task::find_by_creator(&deployment.db().pool, &user_id_str).await?;
+
+    // Collect unique project IDs and fetch project names
+    let mut project_names: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for task in &tasks {
+        let project_id = task.project_id.to_string();
+        if !project_names.contains_key(&project_id) {
+            if let Ok(Some(project)) = Project::find_by_id(&deployment.db().pool, task.project_id).await {
+                project_names.insert(project_id, project.name);
+            }
+        }
+    }
+
+    let created_tasks: Vec<AssignedTask> = tasks
+        .into_iter()
+        .map(|task| {
+            let project_id = task.project_id.to_string();
+            let priority_str = serde_json::to_value(&task.priority)
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_else(|| "low".to_string());
+            let status_str = serde_json::to_value(&task.status)
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_else(|| "todo".to_string());
+            AssignedTask {
+                id: task.id.to_string(),
+                title: task.title.clone(),
+                status: status_str,
+                priority: priority_str,
+                due_date: task.due_date.map(|d| d.to_rfc3339()),
+                project_name: project_names.get(&project_id).cloned().unwrap_or_else(|| "Unknown".to_string()),
+                project_id,
+                description: task.description.clone(),
+                assigned_agent: task.assigned_agent.clone(),
+                assignee_id: task.assignee_id.clone(),
+                created_by: Some(task.created_by.clone()),
+                tags: task.tags.clone(),
+            }
+        })
+        .collect();
+
+    Ok(ResponseJson(ApiResponse::success(created_tasks)))
 }
 
 pub async fn reject_task(
@@ -872,12 +939,17 @@ pub async fn get_watched_tasks(
             .and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "todo".to_string());
         AssignedTask {
             id: task.id.to_string(),
-            title: task.title,
+            title: task.title.clone(),
             status: status_str,
             priority: priority_str,
             due_date: task.due_date.map(|d| d.to_rfc3339()),
             project_name: project_names.get(&pid).cloned().unwrap_or_else(|| "Unknown".to_string()),
             project_id: pid,
+            description: task.description.clone(),
+            assigned_agent: task.assigned_agent.clone(),
+            assignee_id: task.assignee_id.clone(),
+            created_by: Some(task.created_by.clone()),
+            tags: task.tags.clone(),
         }
     }).collect();
 
@@ -898,6 +970,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/stream/ws", get(stream_tasks_ws))
         .route("/create-and-start", post(create_task_and_start))
         .route("/assigned-to-me", get(get_assigned_to_me))
+        .route("/created-by-me", get(get_created_by_me))
         .route("/watched", get(get_watched_tasks))
         .nest("/{task_id}", task_id_router);
 
