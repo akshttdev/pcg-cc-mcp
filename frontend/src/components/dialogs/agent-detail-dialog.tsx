@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -13,7 +14,10 @@ import {
   Brain,
   Sparkles,
   Activity,
+  BarChart3,
+  ExternalLink,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { AgentWithParsedFields } from 'shared/types';
 
 interface AgentDetailDialogProps {
@@ -80,7 +84,37 @@ const statusStyles: Record<string, string> = {
   training: 'bg-blue-100 text-blue-700 border-blue-200',
 };
 
+interface AgentProfile {
+  execution_stats: {
+    total_attempts: number;
+    completed: number;
+    failed: number;
+    in_progress: number;
+    success_rate: string;
+  };
+  recent_attempts: Array<{
+    id: string;
+    task_id: string;
+    status: string;
+    created_at: string;
+  }>;
+  platform_mcp_servers: string[];
+}
+
 export function AgentDetailDialog({ agent, open, onOpenChange }: AgentDetailDialogProps) {
+  const [profile, setProfile] = useState<AgentProfile | null>(null);
+
+  useEffect(() => {
+    if (!agent || !open) {
+      setProfile(null);
+      return;
+    }
+    fetch(`/api/agents/${agent.id}/profile`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data) setProfile(data); })
+      .catch(() => {});
+  }, [agent?.id, open]);
+
   if (!agent) return null;
 
   const pricing = getModelPricing(agent.default_model);
@@ -276,37 +310,120 @@ export function AgentDetailDialog({ agent, open, onOpenChange }: AgentDetailDial
             </Card>
           )}
 
-          {/* Statistics */}
+          {/* Execution Stats (from profile API) */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Activity className="h-4 w-4" />
-                Statistics
+                <BarChart3 className="h-4 w-4" />
+                Execution Stats
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-4 gap-3 text-center">
                 <div>
                   <div className="text-2xl font-bold">
-                    {agent.tasks_completed?.toString() || '0'}
+                    {profile?.execution_stats.total_attempts ?? agent.tasks_completed?.toString() ?? '0'}
                   </div>
-                  <div className="text-xs text-muted-foreground">Tasks Completed</div>
+                  <div className="text-xs text-muted-foreground">Total</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold">
-                    {agent.tasks_failed?.toString() || '0'}
+                  <div className="text-2xl font-bold text-green-600">
+                    {profile?.execution_stats.completed ?? agent.tasks_completed?.toString() ?? '0'}
                   </div>
-                  <div className="text-xs text-muted-foreground">Tasks Failed</div>
+                  <div className="text-xs text-muted-foreground">Completed</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold">
-                    {agent.average_rating?.toFixed(1) || '—'}
+                  <div className="text-2xl font-bold text-red-600">
+                    {profile?.execution_stats.failed ?? agent.tasks_failed?.toString() ?? '0'}
                   </div>
-                  <div className="text-xs text-muted-foreground">Avg Rating</div>
+                  <div className="text-xs text-muted-foreground">Failed</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-primary">
+                    {profile?.execution_stats.success_rate ?? '—'}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Success Rate</div>
                 </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* Recent Attempts */}
+          {profile?.recent_attempts && profile.recent_attempts.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  Recent Attempts
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {profile.recent_attempts.slice(0, 5).map((attempt) => (
+                    <div
+                      key={attempt.id}
+                      className="flex items-center justify-between text-sm border-b last:border-0 pb-1.5 last:pb-0"
+                    >
+                      <span className="font-mono text-xs text-muted-foreground truncate max-w-[180px]">
+                        {attempt.task_id.slice(0, 8)}...
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={
+                          attempt.status === 'completed'
+                            ? 'text-green-700 border-green-300'
+                            : attempt.status === 'failed'
+                              ? 'text-red-700 border-red-300'
+                              : 'text-blue-700 border-blue-300'
+                        }
+                      >
+                        {attempt.status}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(attempt.created_at + 'Z').toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Platform MCP Servers */}
+          {profile?.platform_mcp_servers && profile.platform_mcp_servers.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ExternalLink className="h-4 w-4" />
+                  Platform MCP Servers
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {profile.platform_mcp_servers.map((server) => (
+                    <Badge key={server} variant="secondary" className="text-xs">
+                      {server.replace(/_/g, ' ')}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mission Control Link */}
+          <div className="flex justify-center pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onOpenChange(false);
+                window.location.href = '/mission-control';
+              }}
+            >
+              <Activity className="h-3.5 w-3.5 mr-1.5" />
+              View in Mission Control
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
