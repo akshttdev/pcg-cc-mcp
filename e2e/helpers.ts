@@ -1,5 +1,33 @@
 import { Page, APIRequestContext, expect } from "@playwright/test";
 
+const headed = process.env.E2E_HEADED === "true";
+
+/**
+ * Scale a timeout for headed mode (slowMo makes everything take longer).
+ * Usage: `await expect(locator).toBeVisible({ timeout: t(5_000) })`
+ */
+export function t(baseMs: number, headedMs?: number): number {
+  if (!headed) return baseMs;
+  return headedMs ?? baseMs * 2;
+}
+
+/**
+ * Ensure page is authenticated. Call this in beforeEach when using shared context.
+ * If the page ended up on /login (e.g. after cookie loss), re-authenticates.
+ */
+export async function ensureAuthenticated(page: Page) {
+  await page.goto("/");
+  await page.waitForLoadState("domcontentloaded");
+  // Check if we got redirected to login
+  try {
+    await page.waitForURL(/\/login/, { timeout: 1_000 });
+    // We're on login — need to re-auth
+    await login(page);
+  } catch {
+    // Not on login — we're authenticated, good
+  }
+}
+
 /** Default test credentials */
 export const TEST_USER = {
   username: "admin",

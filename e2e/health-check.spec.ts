@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { login, apiLogin, navigateToFirstProjectTasks, cleanupTestData, TEST_DATA_PREFIX, TEST_USER } from "./helpers";
 
 // Most tests use storageState from auth.setup.ts — no per-test login needed.
@@ -32,8 +32,11 @@ test.afterAll(async ({ request }) => {
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 test.describe("Authentication", () => {
-  // These tests exercise the login flow itself — bypass stored auth
-  test.use({ storageState: { cookies: [], origins: [] } });
+  // These tests exercise the login flow itself — clear auth state before each
+  test.beforeEach(async ({ page }) => {
+    await page.context().clearCookies();
+    await page.evaluate(() => localStorage.clear()).catch(() => {});
+  });
 
   test("login with valid credentials redirects to dashboard", async ({ page }) => {
     await login(page);
@@ -52,6 +55,11 @@ test.describe("Authentication", () => {
   test("unauthenticated access redirects to login", async ({ page }) => {
     await page.goto("/projects");
     await expect(page).toHaveURL(/\/login/);
+  });
+
+  // Re-login after auth tests so the shared context has valid cookies
+  test("restore auth state", async ({ page }) => {
+    await login(page);
   });
 });
 

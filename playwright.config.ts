@@ -13,6 +13,7 @@ import { defineConfig, devices } from "@playwright/test";
  *   FRONTEND_PORT  — port the frontend dev server listens on (default 3000)
  *   E2E_HEADED     — set to "true" to run with visible browser (default headless)
  *   E2E_BROWSER    — "chromium" | "firefox" | "webkit" (default "chromium")
+ *   E2E_SCREENSHOTS — set to "true" to capture screenshots on failure (default off)
  *
  * Usage:
  *   npx playwright test                          # headless, chromium
@@ -23,6 +24,7 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const headed = process.env.E2E_HEADED === "true";
 const browser = process.env.E2E_BROWSER || "chromium";
+const screenshots = process.env.E2E_SCREENSHOTS === "true";
 
 const browserDeviceMap: Record<string, string> = {
   chromium: "Desktop Chrome",
@@ -47,7 +49,7 @@ export default defineConfig({
     // Slow down actions in headed mode so devs can visually follow along
     ...(headed && { launchOptions: { slowMo: 250 } }),
     trace: "on-first-retry",
-    screenshot: "only-on-failure",
+    screenshot: screenshots ? "only-on-failure" : "off",
     video: headed ? "on" : "retain-on-failure",
   },
 
