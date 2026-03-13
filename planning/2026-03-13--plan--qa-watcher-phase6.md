@@ -1,6 +1,7 @@
 # Phase 6: Agent Watcher API + UI + Prompt Injection
 
 **Branch:** `feature/qa-watcher-phase6`
+**PR:** #26
 **Status:** Complete
 **Depends on:** Phases 1-5 (PRs #23 + #24, merged to main)
 
@@ -13,6 +14,7 @@ Phases 1-5 of the QA Agent Watcher refactor are complete. The watcher system wor
 2. Frontend UI (AgentWatcherPanel) for managing watchers with status badges
 3. QA review prompt injection — agents now receive the structured review prompt directly in their execution prompt
 4. CollaborationTimeline enhancement to distinguish agent_watcher actor type
+5. E2E tests for the new agent watcher API and UI
 
 ## Implementation Steps
 
@@ -53,6 +55,21 @@ Phases 1-5 of the QA Agent Watcher refactor are complete. The watcher system wor
 - Distinguishes `agent_watcher` actor type from `agent` and `human`
 - Shows separate purple Eye badge for agent watcher count in header
 
+### Step 8: E2E Tests — `e2e/workflow-pipeline.spec.ts`
+- **10C-2: Agent Watcher API** — tests manual add/remove/list via API
+  - Create task without agent → verify empty watcher list
+  - Add QA agent as watcher → verify list returns 1 watcher with "watching" status
+  - Add DEV agent → verify list returns 2
+  - Remove QA → verify only DEV remains
+  - Invalid agent_id returns 400+ error
+- **10C-3: Agent Watcher UI** — browser test for AgentWatcherPanel
+  - Create task with DEV agent (auto-registers QA watcher)
+  - Open task detail panel → verify "Agent Reviewers" heading visible
+  - Verify "Watching" badge visible for auto-registered watcher
+  - Verify "Add" button present
+
+**E2E impact analysis:** Existing tests in 10C (lines 175-210) and 10D (lines 243-265) test auto-registration via `collaborators` JSON parsing — these are unaffected since we didn't change the auto-registration flow. The `health-check.spec.ts` task detail test (line 174-186) only checks Overview/Artifacts tabs — unaffected.
+
 ## QA Findings & Fixes
 
 | # | Severity | Issue | Resolution |
@@ -67,3 +84,8 @@ Phases 1-5 of the QA Agent Watcher refactor are complete. The watcher system wor
 
 - `flox activate -- cargo check --workspace` — compiles clean
 - `cd frontend && npx tsc --noEmit` — no TS errors
+- E2E: `npx playwright test e2e/workflow-pipeline.spec.ts` — all tests pass (requires running dev server)
+
+## Cross-PR Conflict Check
+
+- **PR #25** (Topsi Phase 5): Only overlapping file is `TaskDetailsPanel.tsx`. PR #25 adds `AskTopsiButton` in the header toolbar area; PR #26 adds `AgentWatcherPanel` in the sidebar. Different hunks — clean auto-merge in either order. Verified via `git merge-tree`.

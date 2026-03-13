@@ -210,6 +210,152 @@ test.describe("10C: Task Assignment → Execution Status", () => {
   });
 });
 
+// ─── 10C-2: Agent Watcher API (manual add/remove/list) ──────────────────────
+
+test.describe("10C-2: Agent Watcher API", () => {
+  test("add, list, and remove agent watchers via API", async ({ request }) => {
+    await apiLogin(request);
+
+    // 1. Create a task (no agent_id — no auto-registered watchers)
+    const taskRes = await request.post("/api/tasks", {
+      data: {
+        project_id: ORCHA_PROJECT_ID,
+        title: `${TEST_DATA_PREFIX} Agent watcher API test`,
+        description: "Test manual add/remove/list of agent watchers.",
+        priority: "low",
+        board_id: BUGS_BOARD_ID,
+      },
+    });
+    expect(taskRes.ok()).toBeTruthy();
+    const task = (await taskRes.json()).data;
+
+    // 2. List watchers — should be empty
+    const listEmpty = await request.get(`/api/tasks/${task.id}/agent-watchers`);
+    expect(listEmpty.ok()).toBeTruthy();
+    const emptyWatchers = (await listEmpty.json()).data;
+    expect(emptyWatchers).toHaveLength(0);
+
+    // 3. Add QA agent as watcher
+    const addRes = await request.post(`/api/tasks/${task.id}/agent-watchers`, {
+      data: { agent_id: QA_AGENT_ID },
+    });
+    expect(addRes.ok()).toBeTruthy();
+
+    // 4. List watchers — should contain QA agent with "watching" status
+    const listOne = await request.get(`/api/tasks/${task.id}/agent-watchers`);
+    expect(listOne.ok()).toBeTruthy();
+    const watchers = (await listOne.json()).data;
+    expect(watchers).toHaveLength(1);
+    expect(watchers[0].agent_id).toBe(QA_AGENT_ID);
+    expect(watchers[0].last_action).toBe("watching");
+    expect(watchers[0].agent_name).toBeTruthy();
+
+    // 5. Add DEV agent as second watcher
+    const addDev = await request.post(`/api/tasks/${task.id}/agent-watchers`, {
+      data: { agent_id: DEV_AGENT_ID },
+    });
+    expect(addDev.ok()).toBeTruthy();
+
+    const listTwo = await request.get(`/api/tasks/${task.id}/agent-watchers`);
+    expect(listTwo.ok()).toBeTruthy();
+    expect((await listTwo.json()).data).toHaveLength(2);
+
+    // 6. Remove QA watcher
+    const removeRes = await request.delete(
+      `/api/tasks/${task.id}/agent-watchers/${QA_AGENT_ID}`
+    );
+    expect(removeRes.ok()).toBeTruthy();
+
+    // 7. Verify only DEV watcher remains
+    const listAfterRemove = await request.get(`/api/tasks/${task.id}/agent-watchers`);
+    expect(listAfterRemove.ok()).toBeTruthy();
+    const remaining = (await listAfterRemove.json()).data;
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].agent_id).toBe(DEV_AGENT_ID);
+
+    // Cleanup
+    await request.delete(`/api/tasks/${task.id}`).catch(() => {});
+  });
+
+  test("add watcher with invalid agent_id returns error", async ({ request }) => {
+    await apiLogin(request);
+
+    const taskRes = await request.post("/api/tasks", {
+      data: {
+        project_id: ORCHA_PROJECT_ID,
+        title: `${TEST_DATA_PREFIX} Watcher invalid agent test`,
+        description: "Test adding watcher with non-existent agent ID.",
+        priority: "low",
+        board_id: BUGS_BOARD_ID,
+      },
+    });
+    expect(taskRes.ok()).toBeTruthy();
+    const task = (await taskRes.json()).data;
+
+    // Try to add a non-existent agent
+    const addRes = await request.post(`/api/tasks/${task.id}/agent-watchers`, {
+      data: { agent_id: "00000000-0000-0000-0000-999999999999" },
+    });
+    expect(addRes.ok()).toBeFalsy();
+    expect(addRes.status()).toBeGreaterThanOrEqual(400);
+
+    // Cleanup
+    await request.delete(`/api/tasks/${task.id}`).catch(() => {});
+  });
+});
+
+// ─── 10C-3: Agent Watcher UI ────────────────────────────────────────────────
+
+test.describe("10C-3: Agent Watcher UI", () => {
+  test("AgentWatcherPanel renders in task detail with watcher badges", async ({
+    page,
+    request,
+  }) => {
+    await apiLogin(request);
+
+    // Create task with DEV agent → auto-registers QA watcher
+    const taskRes = await request.post("/api/tasks", {
+      data: {
+        project_id: ORCHA_PROJECT_ID,
+        title: `${TEST_DATA_PREFIX} Watcher panel UI test`,
+        description: "Test that AgentWatcherPanel renders watchers.",
+        priority: "low",
+        agent_id: DEV_AGENT_ID,
+        board_id: BUGS_BOARD_ID,
+      },
+    });
+    expect(taskRes.ok()).toBeTruthy();
+    const task = (await taskRes.json()).data;
+
+    // Navigate to project tasks and click the task
+    await page.goto(`/projects/${ORCHA_PROJECT_ID}/tasks`);
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.getByText("To Do").first()).toBeVisible({ timeout: t(10_000) });
+    await expect(
+      page.getByText("Watcher panel UI test").first()
+    ).toBeVisible({ timeout: t(10_000) });
+    await page.getByText("Watcher panel UI test").first().click();
+
+    // Verify "Agent Reviewers" heading is visible in the detail panel
+    await expect(
+      page.getByText("Agent Reviewers").first()
+    ).toBeVisible({ timeout: t(5_000) });
+
+    // Verify at least one watcher badge is visible (QA agent auto-registered)
+    await expect(
+      page.getByText("Watching").first()
+    ).toBeVisible({ timeout: t(5_000) });
+
+    // Verify "Add" button exists
+    await expect(
+      page.getByRole("button", { name: "Add" }).first()
+    ).toBeVisible();
+
+    // Cleanup
+    await request.delete(`/api/tasks/${task.id}`).catch(() => {});
+  });
+});
+
 // ─── 10D: Full Pipeline Walkthrough ────────────────────────────────────────
 
 test.describe("10D: Full Pipeline Walkthrough", () => {
