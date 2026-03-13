@@ -196,9 +196,9 @@ impl WorkflowExecutionService {
 
 ---
 
-## Phase 4: Topsi Builds Workflows (NL → Node Graph)
+## Phase 4: Topsi Builds Workflows (NL → Node Graph) — DONE ✅
 
-Tools: `create_workflow`, `modify_workflow`.
+Consolidated into single `build_workflow` tool with `action: "create"|"modify"` parameter. Specialist agent in `workflow_builder.rs` (378 lines) generates node graphs from natural language.
 
 ### Implementation
 - Use `WorkflowLLMService::completion_with_tools()` with node type registry as LLM context
@@ -242,7 +242,7 @@ Phase 3 (Confirmation system)          ── DONE ✅
     ↓
 Phase 2F (Full service extraction)       ── DONE ✅
     ↓
-Phase 4 (Topsi builds workflows — NL → node graph)
+Phase 4 (Topsi builds workflows)         ── DONE ✅ (build_workflow tool + specialist)
     ↓
 Phase 5 (Bidirectional UI + admin settings)
 ```
