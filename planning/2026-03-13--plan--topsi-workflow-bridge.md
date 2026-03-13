@@ -106,9 +106,24 @@ System prompt also adapts: structured mode gets extraction-focused prompt, text 
 
 ---
 
-## Phase 2: Service Extraction + Topsi Triggers
+## Phase 2: Service Extraction + Topsi Triggers — PARTIAL ✅
 
-### 2A: Extract workflow execution into service (FIRST)
+### 2A: Extract unified execution engine ✅
+Extracted `WorkflowExecutionResult`, `ExecutionOptions`, `execute_workflow_nodes()`, `finalize_workflow_run()`, and `check_for_llm_errors()` into `crates/server/src/routes/workflow_engine.rs`. This shared engine is used by run_workflow, preview_workflow, fire_triggers, and schedule triggers.
+
+### 2B: Topsi workflow trigger/review tools ✅
+Added 5 tools: `list_workflow_runs`, `get_workflow_run_status`, `review_staged_data`, `approve_staged_records`, and `build_workflow` (specialist delegation).
+
+### 2C: Workflow Builder specialist ✅
+Added `crates/topsi/src/workflow_builder.rs` — specialist agent that generates workflow node graphs from natural language. Topsi delegates to it via the `build_workflow` tool. Contains full node type registry, output schema reference, and validation.
+
+### 2D: CRM write tools ✅
+Added `create_crm_contact`, `create_crm_deal`, `update_crm_deal` tools.
+
+### 2E: Platform Data Service extraction ✅
+Extracted all 22 database CRUD tools from `agent.rs` into `crates/topsi/src/platform_data.rs` (PlatformDataService). Agent.rs reduced from ~3420 to ~2382 lines. PlatformDataService is reusable by any agent.
+
+### 2F: Full service extraction — NOT YET STARTED
 **Full extraction** of workflow execution logic from `data_source_workflows.rs` (~2000+ lines) into `crates/services/src/services/workflow_execution.rs`.
 
 **What moves:**
@@ -153,40 +168,39 @@ impl WorkflowExecutionService {
 
 ---
 
-## Phase 3: Topsi Writes + Configurable Confirmation
+## Phase 3: Topsi Writes + Configurable Confirmation — DONE ✅
 
-**Moved earlier** because unprotected write tools (`create_task`, `update_task`, `create_project`, `update_project`, `start_task_execution`) already exist in Topsi with zero confirmation gates.
+### What shipped
 
-### Confirmation system
+**Per-user confirmation settings (new table):**
+- Migration `20260313000000_topsi_user_settings.sql` — `topsi_user_settings` table
+- Model `crates/db/src/models/topsi_user_settings.rs`:
+  - `ConfirmationMode` enum: `AlwaysConfirm`, `ConfirmDestructive` (default), `Autonomous`
+  - `ToolRisk` enum: `Green` (reads), `Yellow` (creates/updates), `Red` (deletes/bulk)
+  - `classify_tool_risk()` — maps tool names to risk levels
+  - `TopsiUserSettings::get_or_default()` / `upsert()` — per-user settings with per-tool JSON overrides
+  - `confirmation_mode_for_tool()` — resolves overrides → default → risk classification
 
-**Infrastructure already exists:**
-- `TopsiConfig.autonomy_level` enum: `Full`, `Supervised`, `ApprovalRequired`, `Manual` — defined but **not enforced**
-- `system_settings` table — can store per-tool overrides
-- `organization_members` — role-based access (Admin, Member, Viewer)
+**Confirmation gate in agent.rs:**
+- Loads user settings once per tool batch
+- Before executing non-Green tools, checks `requires_confirmation()`
+- Returns `{"pending_confirmation": true, "action": "...", "risk_level": "..."}` instead of executing
+- `describe_tool_action()` generates human-readable descriptions
 
-**Implementation:**
-1. Add confirmation check before all write tool executions in `execute_tool_calls()`
-2. Tool classification:
-   - **Green** (reads): always execute — all Phase 1 tools
-   - **Yellow** (creates/updates): execute by default, confirmable — `create_task`, `update_task`, `create_project`, `update_project`, `create_crm_contact`, `update_crm_deal`, `create_crm_deal`
-   - **Red** (deletes, bulk, execution): confirm by default — `delete_task`, `bulk_update_tasks`, `start_task_execution`, `trigger_workflow`, `commit_staged_data`
-3. Settings via `system_settings`:
-   - `topsi_confirmation_mode` → `"confirm_destructive"` (default), `"always_confirm"`, `"autonomous"`
-   - `topsi_tool_overrides` → JSON: `{"create_task": "always_confirm", "start_task_execution": "autonomous"}`
-4. Pending action pattern: return `{"pending_confirmation": true, "action": "description"}` and store in conversation state
+**New Red-level tools:**
+| Tool | Risk | Description |
+|------|------|-------------|
+| `delete_task` | Red | Permanently delete a task (with scope check) |
+| `bulk_update_tasks` | Red | Batch update up to 100 tasks (status, priority, agent) |
 
-### New write tools (if not already present)
+**CRM write tools (shipped in Phase 2D):**
 | Tool | Risk | Description |
 |------|------|-------------|
 | `create_crm_contact` | Yellow | Create CRM contact in org |
-| `update_crm_deal` | Yellow | Update deal fields |
 | `create_crm_deal` | Yellow | Create new deal |
-| `delete_task` | Red | Delete a task |
+| `update_crm_deal` | Yellow | Update deal fields |
 
-### Files
-- **MODIFY** `crates/topsi/src/agent.rs` — confirmation gate in `execute_tool_calls()`
-- **MODIFY** `crates/topsi/src/tools/mod.rs` — new CRM write tool schemas
-- **NO new migration** — uses existing `system_settings` key-value store
+**Default behavior:** Red tools require confirmation, Yellow execute immediately, Green always execute. Users can override per-tool via `per_tool_overrides` JSON column.
 
 ---
 
@@ -227,17 +241,13 @@ Tools: `create_workflow`, `modify_workflow`.
 ## Updated Implementation Order
 
 ```
-Phase 0 (WorkflowLLMService)  ──┐
-                                 ├── DONE ✅
-Phase 1 (Topsi reads)          ──┘
+Phase 0 (WorkflowLLMService)           ── DONE ✅
+Phase 1 (Topsi reads + 1B gaps)        ── DONE ✅
+Phase 2 (Triggers, builder, CRM write, ── DONE ✅ (partial: 2F service extraction pending)
+         PlatformDataService extract)
+Phase 3 (Confirmation system)          ── DONE ✅
     ↓
-Phase 1B (Close gaps: org-scope, system prompt, node output modes)
-    ↓
-Phase 2A (Service extraction ~2000 lines)
-    ↓
-Phase 2B (Topsi trigger/commit tools)  ──┐
-                                          ├── CAN PARALLEL
-Phase 3 (Confirmation system)           ──┘
+Phase 2F (Full service extraction ~2000 lines from data_source_workflows.rs)
     ↓
 Phase 4 (Topsi builds workflows — NL → node graph)
     ↓
@@ -268,8 +278,12 @@ Phase 5 (Bidirectional UI + admin settings)
 | `crates/server/src/routes/data_source_workflows.rs` | Workflow engine (~4070 lines, to be extracted in Phase 2A) |
 | `crates/server/src/routes/pcg_router.rs` | Model registry, direct API route (KEEP) |
 | `crates/db/src/models/pcg_router_model.rs` | Model registry DB model |
-| `crates/topsi/src/tools/mod.rs` | Topsi tool schemas |
-| `crates/topsi/src/agent.rs` | Topsi agent loop, tool dispatch (~3730 lines) |
+| `crates/topsi/src/tools/mod.rs` | Topsi tool schemas (24 tools + respond_to_user) |
+| `crates/topsi/src/agent.rs` | Topsi agent loop, tool dispatch (~2450 lines) |
+| `crates/topsi/src/platform_data.rs` | PlatformDataService — 24 CRUD tools (~1970 lines) |
+| `crates/topsi/src/workflow_builder.rs` | Workflow Builder specialist agent |
+| `crates/db/src/models/topsi_user_settings.rs` | Per-user confirmation settings model |
+| `crates/server/src/routes/workflow_engine.rs` | Shared workflow execution engine |
 | `crates/topsi/src/agent/access_control.rs` | AccessScope (project-only, needs org extension) |
 | `crates/topsi/src/config.rs` | TopsiConfig with autonomy_level + system_prompt |
 | `crates/db/src/models/system_settings.rs` | Key-value settings store |
