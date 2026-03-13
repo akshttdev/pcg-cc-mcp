@@ -1,8 +1,8 @@
 # Remaining Work — Post-Sprint Summary
 
-**Date:** 2026-03-12
+**Date:** 2026-03-12 (updated 2026-03-13)
 **Branch:** `feature/blob-to-text-scoped` (commit `ff6b76654`)
-**Context:** All QA plan items (15/15) complete. All critical bugs fixed. This doc captures remaining open items across planning docs.
+**Context:** All QA plan items (15/15) complete. All critical bugs fixed. Phases 7-11 (Dogfood Pipeline) code-complete. This doc captures remaining open items across planning docs.
 
 ---
 
@@ -21,7 +21,7 @@
 **Status:** NOT STARTED — largest remaining effort item.
 
 ### 3. `send_notification` Node — Real Implementation
-**Source:** `2026-03-12--review--sprint1-qa-results.md`
+**Source:** `archive/2026-03-12--review--sprint1-qa-results.md` (originally)
 **What:** Currently logs only — no actual email/in-app delivery. Placeholder for future integration.
 **Priority:** P1 — needed for workflow automation to have visible side effects.
 
@@ -35,17 +35,17 @@
 **Status:** Partially resolved — endpoint verified, UI link not added.
 
 ### 5. `http_request` Node — Guardrails
-**Source:** `2026-03-12--review--sprint1-qa-results.md`
+**Source:** `archive/2026-03-12--review--sprint1-qa-results.md`
 **What:** No OAuth/auth token management — headers must be static. No URL allowlisting. No rate limiting.
 **Priority:** P2 — security concern for production use.
 
 ### 6. Workflow Scheduler Hardening
-**Source:** `2026-03-12--review--sprint1-qa-results.md`
+**Source:** `archive/2026-03-12--review--sprint1-qa-results.md`
 **What:** Schedule trigger loop (`spawn_workflow_schedule_loop`) needs error recovery, missed-execution handling, and better logging.
 **Priority:** P2.
 
 ### 7. Loading Skeletons
-**Source:** `2026-03-12--review--project-task-agent-automation.md` (U3)
+**Source:** `archive/2026-03-12--review--project-task-agent-automation.md` (U3)
 **What:** Pages show blank content for 3-6s during load. Need skeleton UI.
 **Priority:** P2 — UX polish.
 
@@ -54,7 +54,7 @@
 ## Low Priority / Future Sprints
 
 ### 8. Three-Sprint Roadmap — Remaining Items
-**Source:** `2026-03-12--plan--three-sprint-roadmap.md`
+**Source:** `archive/2026-03-12--plan--three-sprint-roadmap.md` (archived)
 **Sprint 2 open items:**
 - Convert hardcoded automations to editable system workflows
 - Bulk task operations (select multiple, batch status change)
@@ -80,18 +80,39 @@
 3. ACP MCP loading: Path depends on server working directory
 4. Task FTS search index: Auto-sync triggers dropped (C4 fix) — needs app-level reindexing
 
+### 11. QA Automation Review — Remaining UX Items
+**Source:** `archive/2026-03-12--review--qa-automation-loop.md` (archived, all core items addressed)
+**Minor polish leftover:**
+- Task detail: show Description/Completion Criteria in default view (not just Enhanced)
+- Template table: show Priority + Agent columns
+- Workflow triggers panel: expose in Builder tab
+- Agent terminal: show capabilities inline + VIBE cost estimate
+
+---
+
+## Completed Since Last Update (2026-03-13)
+
+### Dogfood Pipeline (Phases 7-11) — ALL COMPLETE
+**Source:** `2026-03-13--plan--dogfood-pipeline-activation.md`
+- Phase 7: Seed agents + runtime config docs ✅
+- Phase 8: Auto-approve + QA loop + audit trail ✅
+- Phase 9: PR feedback loop (verdict → comment → iteration) ✅
+- Phase 10: E2E Playwright tests ✅
+- Phase 11: Agent execution dashboard + frontend polish ✅
+
+**Remaining:** Runtime configuration only (API keys, GitHub PAT) — see `notes/2026-03-13--reference--llm-workflow-config.md`
+
 ---
 
 ## Active Planning Docs
 
 | File | Purpose | Status |
 |------|---------|--------|
+| `2026-03-13--plan--dogfood-pipeline-activation.md` | Dogfood pipeline phases 7-11 | ✅ Code complete |
 | `2026-03-12--plan--agent-task-mcp-wiring.md` | Agent-task integration plan | Phase 3H open |
-| `2026-03-12--plan--three-sprint-roadmap.md` | 3-sprint roadmap | Sprint 2-3 items open |
-| `2026-03-12--review--qa-automation-loop.md` | QA checklist for manual post-merge testing | Needs re-run |
-| `2026-03-12--review--sprint1-qa-results.md` | Sprint QA results | 2 minor items open |
 | `2026-03-12--review--ui-backend-capability-gaps.md` | Usability/functionality gap analysis | Polish items open |
 | `2026-03-12--tracker--sprint1-issues.md` | Implementation issues tracker | 5 limitations noted |
+| `notes/2026-03-13--reference--llm-workflow-config.md` | Runtime config reference | Active reference |
 
 ## Archived Docs (in `planning/archive/`)
 
@@ -107,6 +128,8 @@
 | `2026-03-12--analysis--sloperation311-merge-review.md` | Merge complete |
 | `2026-03-12--release--seed-db-migration-update.md` | Release applied |
 | `2026-03-12--review--project-task-agent-automation.md` | All bugs fixed, Playwright-verified |
+| `2026-03-12--review--qa-automation-loop.md` | All core items addressed (Phases 7-11) |
+| `2026-03-12--plan--three-sprint-roadmap.md` | All sprint items either done or captured here |
 
 ## Deferred Docs (in `planning/deferred/`)
 

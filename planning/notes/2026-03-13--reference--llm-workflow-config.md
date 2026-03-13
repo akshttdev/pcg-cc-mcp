@@ -139,24 +139,19 @@ The PAT needs: `repo` (full), `workflow` (if touching CI), `pull_requests:write`
 
 ## 4. Wire `auto_approve` into Trigger Flow
 
-**Status**: Implemented (Phase 8A)
+**Status**: ✅ Complete (Phase 8A)
 **Impact**: When trigger has `auto_approve = 1`, valid non-duplicate records are auto-approved and committed
 
-### Current state
+### Implementation
 
-- `workflow_triggers` table has `auto_approve` column (ORCHA Bug Triage trigger has it set to `0`)
-- `WorkflowStagingRecord::auto_approve_valid()` method exists
-- `fire_triggers_for_data_source()` in `data_source_workflows.rs` **never checks it**
+`fire_triggers_for_data_source()` in `data_source_workflows.rs` now:
+1. Captures `trigger.auto_approve` before spawning the tokio task
+2. After staging records are created, checks `trigger_auto_approve`
+3. If `true`: calls `auto_approve_valid()` → `reject_duplicates()` → commits approved records
+4. Post-commit: links contacts to companies by matching `company_name`
+5. Post-commit: auto-starts agent execution for tasks with `agent_id`
 
-### What to do
-
-After staging records are created in `fire_triggers_for_data_source()`, check `trigger.auto_approve`:
-- If `true` and all records pass `auto_approve_valid()` → call `batch_commit()` immediately
-- If `false` → leave as `pending_review` (current behavior)
-
-### Where
-
-`crates/server/src/routes/data_source_workflows.rs` — in `fire_triggers_for_data_source()`, after the staging records creation loop.
+The ORCHA Bug Triage trigger seed sets `auto_approve = 1` via migration `20260330000000`.
 
 ---
 
