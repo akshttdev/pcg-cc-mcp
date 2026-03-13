@@ -77,7 +77,7 @@ test.describe("Sidebar & Navigation", () => {
   test("My Projects link navigates to projects page", async ({ page }) => {
     await page.getByRole("link", { name: "My Projects" }).click();
     await expect(page).toHaveURL("/projects");
-    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
   });
 
   test("My Tasks link navigates to tasks page", async ({ page }) => {
@@ -144,7 +144,7 @@ test.describe("Tasks & Kanban", () => {
 
     // Core fields
     await expect(page.getByRole("textbox", { name: "Title" })).toBeVisible();
-    await expect(page.getByText("Priority")).toBeVisible();
+    await expect(page.getByText("Priority").first()).toBeVisible();
     await expect(page.getByText("Completion Criteria")).toBeVisible();
     await expect(page.getByText("Output Format")).toBeVisible();
   });
