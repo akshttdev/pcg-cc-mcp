@@ -272,7 +272,7 @@ impl GitHubService {
     ) -> Result<(), GitHubServiceError> {
         self.client
             .issues(&repo_info.owner, &repo_info.repo_name)
-            .create_comment(pr_number as u64, body)
+            .create_comment(u64::try_from(pr_number).unwrap_or(0), body)
             .await
             .map_err(|err| match GitHubServiceError::from(err) {
                 GitHubServiceError::Client(source) => GitHubServiceError::PullRequest(format!(
@@ -292,7 +292,7 @@ impl GitHubService {
         (|| async {
             self.client
                 .pulls(&repo_info.owner, &repo_info.repo_name)
-                .get(pr_number as u64)
+                .get(u64::try_from(pr_number).unwrap_or(0))
                 .await
                 .map(Self::map_pull_request)
                 .map_err(|err| match GitHubServiceError::from(err) {

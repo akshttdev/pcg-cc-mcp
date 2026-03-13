@@ -141,9 +141,9 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
         ExecutorProfileId::new(BaseCodingAgent::ClaudeCode)
     };
 
-    // Build the review description (will be used as task description context for the agent)
+    // Build the review description (structured QA prompt with PR URL, criteria, verdict schema)
     let completion_criteria = ctx.task.completion_criteria.clone().unwrap_or_default();
-    let _review_description = build_review_description(pr, ctx, &completion_criteria);
+    let review_description = build_review_description(pr, ctx, &completion_criteria);
 
     // Resolve task UUID for attempt creation
     let task_uuid = Uuid::parse_str(&ctx.task.id)
@@ -164,11 +164,39 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
     .await
     .map_err(|e| format!("Failed to create QA task attempt: {e}"))?;
 
-    // Start execution — the container will use run_reason = AgentReview
-    let _process = container
-        .start_attempt(&attempt, executor_profile_id)
+    // Start execution with AgentReview run reason — this is critical for routing
+    // completions to finalize_review() instead of finalize_task() in spawn_exit_monitor
+    let process = container
+        .start_attempt_with_reason(
+            &attempt,
+            executor_profile_id,
+            Some(ExecutionProcessRunReason::AgentReview),
+        )
         .await
         .map_err(|e| format!("Failed to start QA execution: {e}"))?;
+
+    // Store review instructions as an execution artifact linked to the process.
+    // The agent can retrieve these via its execution_process_id to get the
+    // structured review prompt with PR URL, criteria, and verdict schema.
+    if let Err(e) = db::models::execution_artifact::ExecutionArtifact::create(
+        pool,
+        db::models::execution_artifact::CreateExecutionArtifact {
+            execution_process_id: Some(process.id),
+            artifact_type: db::models::execution_artifact::ArtifactType::ResearchReport,
+            title: format!("QA Review Instructions — Task {} PR #{}", ctx.task.id, pr.number),
+            content: Some(review_description),
+            file_path: None,
+            metadata: Some(serde_json::json!({
+                "task_id": ctx.task.id,
+                "pr_number": pr.number,
+                "pr_url": pr.url,
+                "agent_watcher_id": agent_id,
+                "type": "qa_review_instructions",
+            })),
+        },
+    ).await {
+        tracing::warn!("Failed to store QA review instructions artifact: {e}");
+    }
 
     tracing::info!(
         "Triggered agent watcher '{}' ({}) on task {} — attempt {}",
