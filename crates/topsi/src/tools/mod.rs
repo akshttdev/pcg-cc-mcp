@@ -607,6 +607,85 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        // ── Workflow execution tools ──────────────────────────────────────────
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_workflow_runs",
+                "description": "List recent workflow execution runs. Filter by workflow_id or organization_id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "Filter runs by workflow definition ID"
+                        },
+                        "organization_id": {
+                            "type": "string",
+                            "description": "Filter runs by organization UUID"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results (default: 20)"
+                        }
+                    }
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_workflow_run_status",
+                "description": "Get status and details of a specific workflow run, including staged record counts.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "run_id": {
+                            "type": "string",
+                            "description": "UUID of the workflow run"
+                        }
+                    },
+                    "required": ["run_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "review_staged_data",
+                "description": "Show staged CRM/task records pending review for a workflow run or organization.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "run_id": {
+                            "type": "string",
+                            "description": "UUID of the workflow run to review staged records for"
+                        },
+                        "organization_id": {
+                            "type": "string",
+                            "description": "UUID of the organization to show all pending staged records"
+                        }
+                    }
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "approve_staged_records",
+                "description": "Approve staged records from a workflow run. Approves valid non-duplicate records and rejects duplicates.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "run_id": {
+                            "type": "string",
+                            "description": "UUID of the workflow run whose records to approve"
+                        }
+                    },
+                    "required": ["run_id"]
+                }
+            }
+        }),
         // Chat/response tool for conversational replies
         json!({
             "type": "function",

@@ -121,6 +121,10 @@ You HAVE full internet access. NEVER say you can't browse URLs or search the web
 - `list_workflow_definitions` - List saved workflow definitions. System workflows visible to all; org-owned filtered by access.
 - `get_workflow_definition` - Get full workflow definition with steps. Requires workflow_id.
 - `search_entities` - Cross-entity keyword search across projects, contacts, deals, and tasks. Requires query; organization_id needed for CRM entity results. Supports entity_types filter.
+- `list_workflow_runs` - List recent workflow execution runs. Optional workflow_id or organization_id filter.
+- `get_workflow_run_status` - Get detailed status of a workflow run including staged record counts. Requires run_id.
+- `review_staged_data` - Show staged CRM/task records pending review. Requires run_id or organization_id.
+- `approve_staged_records` - Approve valid staged records and reject duplicates for a workflow run. Requires run_id.
 
 ### Communication
 - `respond_to_user` - IMPORTANT: Use this to deliver your response. Write your complete answer in the message parameter.
@@ -141,6 +145,10 @@ You HAVE full internet access. NEVER say you can't browse URLs or search the web
 - "What deals are in the pipeline?" → list_crm_deals → respond_to_user
 - "What workflows do we have?" → list_workflow_definitions → respond_to_user
 - "Find anything about Acme" → search_entities → respond_to_user
+- "Show recent workflow runs" → list_workflow_runs → respond_to_user
+- "How did that last run go?" → get_workflow_run_status → respond_to_user
+- "What records are pending?" → review_staged_data → respond_to_user
+- "Approve the staged records" → approve_staged_records → respond_to_user
 - Action requests → execute → respond_to_user
 
 **Golden rule:** If you already have enough to give a good answer, call respond_to_user NOW. Don't keep calling tools hoping for better data — one or two tool calls is almost always enough.
@@ -860,6 +868,10 @@ impl TopsiAgent {
                 "list_workflow_definitions" => self.tool_list_workflow_definitions(&call.arguments, scope).await,
                 "get_workflow_definition" => self.tool_get_workflow_definition(&call.arguments, scope).await,
                 "search_entities" => self.tool_search_entities(&call.arguments, user_context, scope).await,
+                "list_workflow_runs" => self.tool_list_workflow_runs(&call.arguments, user_context, scope).await,
+                "get_workflow_run_status" => self.tool_get_workflow_run_status(&call.arguments, scope).await,
+                "review_staged_data" => self.tool_review_staged_data(&call.arguments, user_context, scope).await,
+                "approve_staged_records" => self.tool_approve_staged_records(&call.arguments, user_context, scope).await,
                 _ => Err(TopsiError::ToolError(format!(
                     "Unknown tool: {}",
                     call.name
@@ -2959,6 +2971,244 @@ impl TopsiAgent {
         }
 
         Ok(results)
+    }
+
+    // ── Workflow execution tools ─────────────────────────────────────────────
+
+    /// List recent workflow runs
+    async fn tool_list_workflow_runs(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        use db::models::workflow_run::WorkflowRun;
+
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        let org_id = args.get("organization_id").and_then(|v| v.as_str());
+
+        // Validate org membership if filtering by org
+        if let Some(oid) = org_id {
+            if let Ok(org_uuid) = Uuid::parse_str(oid) {
+                self.verify_org_membership(pool, user_context, org_uuid).await?;
+            }
+        }
+
+        let runs = WorkflowRun::find_recent(pool, limit, workflow_id, org_id)
+            .await
+            .unwrap_or_default();
+
+        let items: Vec<serde_json::Value> = runs
+            .iter()
+            .map(|r| serde_json::json!({
+                "id": r.id,
+                "workflow_id": r.workflow_id,
+                "workflow_name": r.workflow_name,
+                "status": r.status,
+                "data_source_id": r.data_source_id,
+                "organization_id": r.organization_id,
+                "model_used": r.model_used,
+                "total_records_staged": r.total_records_staged,
+                "total_duplicates_found": r.total_duplicates_found,
+                "duration_ms": r.duration_ms,
+                "started_at": r.started_at,
+                "completed_at": r.completed_at,
+            }))
+            .collect();
+
+        Ok(serde_json::json!({
+            "runs": items,
+            "total": items.len()
+        }))
+    }
+
+    /// Get status and details of a specific workflow run
+    async fn tool_get_workflow_run_status(
+        &self,
+        args: &serde_json::Value,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        use db::models::workflow_run::WorkflowRun;
+        use db::models::workflow_staging::WorkflowStagingRecord;
+
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let run_id = match args.get("run_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(serde_json::json!({"error": "run_id is required"})),
+        };
+
+        let run = match WorkflowRun::find_by_id(pool, run_id).await {
+            Ok(Some(r)) => r,
+            Ok(None) => return Ok(serde_json::json!({"error": "Workflow run not found"})),
+            Err(e) => return Ok(serde_json::json!({"error": format!("Database error: {}", e)})),
+        };
+
+        // Get staged record summary
+        let run_uuid = Uuid::parse_str(run_id).unwrap_or(Uuid::nil());
+        let staged = WorkflowStagingRecord::find_by_run(pool, run_uuid)
+            .await
+            .unwrap_or_default();
+
+        let pending = staged.iter().filter(|r| r.status == "pending_review").count();
+        let approved = staged.iter().filter(|r| r.status == "approved").count();
+        let rejected = staged.iter().filter(|r| r.status == "rejected").count();
+        let committed = staged.iter().filter(|r| r.status == "committed").count();
+        let duplicates = staged.iter().filter(|r| r.duplicate_of_id.is_some()).count();
+
+        Ok(serde_json::json!({
+            "id": run.id,
+            "workflow_id": run.workflow_id,
+            "workflow_name": run.workflow_name,
+            "status": run.status,
+            "data_source_id": run.data_source_id,
+            "organization_id": run.organization_id,
+            "model_used": run.model_used,
+            "total_input_tokens": run.total_input_tokens,
+            "total_output_tokens": run.total_output_tokens,
+            "total_estimated_cost_micros": run.total_estimated_cost_micros,
+            "duration_ms": run.duration_ms,
+            "node_count": run.node_count,
+            "llm_node_count": run.llm_node_count,
+            "started_at": run.started_at,
+            "completed_at": run.completed_at,
+            "staging_summary": {
+                "total": staged.len(),
+                "pending_review": pending,
+                "approved": approved,
+                "rejected": rejected,
+                "committed": committed,
+                "duplicates": duplicates,
+            }
+        }))
+    }
+
+    /// Show staged CRM/task records pending review
+    async fn tool_review_staged_data(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        use db::models::workflow_staging::WorkflowStagingRecord;
+
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let records = if let Some(run_id_str) = args.get("run_id").and_then(|v| v.as_str()) {
+            let run_uuid = Uuid::parse_str(run_id_str)
+                .map_err(|_| TopsiError::ToolError("Invalid run_id UUID".to_string()))?;
+            WorkflowStagingRecord::find_by_run(pool, run_uuid)
+                .await
+                .unwrap_or_default()
+        } else if let Some(org_id_str) = args.get("organization_id").and_then(|v| v.as_str()) {
+            let org_uuid = Uuid::parse_str(org_id_str)
+                .map_err(|_| TopsiError::ToolError("Invalid organization_id UUID".to_string()))?;
+            self.verify_org_membership(pool, user_context, org_uuid).await?;
+            WorkflowStagingRecord::find_by_org_pending(pool, org_uuid)
+                .await
+                .unwrap_or_default()
+        } else {
+            return Ok(serde_json::json!({"error": "Either run_id or organization_id is required"}));
+        };
+
+        let items: Vec<serde_json::Value> = records
+            .iter()
+            .map(|r| {
+                let data: serde_json::Value = serde_json::from_str(&r.record_data)
+                    .unwrap_or(serde_json::json!({}));
+                let validation_errs: Option<Vec<String>> = r.validation_errors.as_ref()
+                    .and_then(|s| serde_json::from_str(s).ok());
+                serde_json::json!({
+                    "id": r.id,
+                    "target_type": r.target_type,
+                    "status": r.status,
+                    "record_data": data,
+                    "duplicate_of_id": r.duplicate_of_id,
+                    "duplicate_of_type": r.duplicate_of_type,
+                    "confidence": r.confidence,
+                    "validation_errors": validation_errs,
+                    "workflow_id": r.workflow_id,
+                    "node_id": r.node_id,
+                    "created_at": r.created_at,
+                })
+            })
+            .collect();
+
+        let pending = items.iter().filter(|r| r["status"] == "pending_review").count();
+
+        Ok(serde_json::json!({
+            "records": items,
+            "total": items.len(),
+            "pending_review": pending,
+        }))
+    }
+
+    /// Approve staged records — auto-approve valid ones and reject duplicates
+    async fn tool_approve_staged_records(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        use db::models::workflow_staging::WorkflowStagingRecord;
+
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let run_id_str = match args.get("run_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(serde_json::json!({"error": "run_id is required"})),
+        };
+
+        let run_uuid = Uuid::parse_str(run_id_str)
+            .map_err(|_| TopsiError::ToolError("Invalid run_id UUID".to_string()))?;
+
+        // Verify access: check if user has access to the run's org
+        if !user_context.is_admin {
+            use db::models::workflow_run::WorkflowRun;
+            if let Ok(Some(run)) = WorkflowRun::find_by_id(pool, run_id_str).await {
+                if let Some(ref org_id) = run.organization_id {
+                    if let Ok(org_uuid) = Uuid::parse_str(org_id) {
+                        self.verify_org_membership(pool, user_context, org_uuid).await?;
+                    }
+                }
+            }
+        }
+
+        // Auto-approve valid non-duplicate records
+        let approved = WorkflowStagingRecord::auto_approve_valid(pool, run_uuid)
+            .await
+            .unwrap_or(0);
+
+        // Auto-reject duplicates
+        let rejected = WorkflowStagingRecord::reject_duplicates(pool, run_uuid)
+            .await
+            .unwrap_or(0);
+
+        // Get remaining pending
+        let remaining = WorkflowStagingRecord::find_by_run(pool, run_uuid)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .filter(|r| r.status == "pending_review")
+            .count();
+
+        Ok(serde_json::json!({
+            "approved": approved,
+            "rejected_duplicates": rejected,
+            "remaining_pending": remaining,
+            "message": format!("Approved {} records, rejected {} duplicates. {} records still pending review.", approved, rejected, remaining)
+        }))
     }
 
     /// Handle topology requests
