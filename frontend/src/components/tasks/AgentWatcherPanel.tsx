@@ -30,7 +30,7 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [removing, setRemoving] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<Set<string>>(new Set());
 
   const loadWatchers = useCallback(async () => {
     try {
@@ -98,15 +98,19 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
   };
 
   const handleRemove = async (agentId: string) => {
-    if (removing) return;
-    setRemoving(agentId);
+    if (removing.has(agentId)) return;
+    setRemoving((prev) => new Set(prev).add(agentId));
     try {
       await agentWatchersApi.remove(taskId, agentId);
       await loadWatchers();
     } catch {
       toast.error('Failed to remove agent reviewer');
     } finally {
-      setRemoving(null);
+      setRemoving((prev) => {
+        const next = new Set(prev);
+        next.delete(agentId);
+        return next;
+      });
     }
   };
 
@@ -175,7 +179,7 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
                 key={w.agent_id}
                 className={cn(
                   'flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/50 group transition-opacity',
-                  removing === w.agent_id && 'opacity-40 pointer-events-none'
+                  removing.has(w.agent_id) && 'opacity-40 pointer-events-none'
                 )}
               >
                 <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center flex-shrink-0">
@@ -192,7 +196,7 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
                 </Badge>
                 <button
                   onClick={() => handleRemove(w.agent_id)}
-                  disabled={removing === w.agent_id}
+                  disabled={removing.has(w.agent_id)}
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 disabled:opacity-50"
                   title="Remove watcher"
                 >

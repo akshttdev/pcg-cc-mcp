@@ -42,12 +42,17 @@ pub async fn load_project_middleware(
             "Checking project access for user {} (is_admin={}) on project {}",
             access_context.user_id, access_context.is_admin, project_id
         );
-        if let Err(e) = access_context.require_viewer(&deployment.db().pool, &project.id).await {
-            tracing::warn!(
-                "User {} denied access to project {}: {:?}",
-                access_context.user_id, project_id, e
-            );
-            return Err(StatusCode::FORBIDDEN);
+        match access_context.require_viewer(&deployment.db().pool, &project.id).await {
+            Ok(role) => {
+                tracing::debug!("User {} granted {:?} access to project {}", access_context.user_id, role, project_id);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "User {} denied access to project {}: {:?}",
+                    access_context.user_id, project_id, e
+                );
+                return Err(StatusCode::FORBIDDEN);
+            }
         }
     } else {
         tracing::warn!("Unauthenticated request to project {}", project_id);
