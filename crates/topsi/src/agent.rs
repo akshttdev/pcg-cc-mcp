@@ -125,6 +125,7 @@ You HAVE full internet access. NEVER say you can't browse URLs or search the web
 - `get_workflow_run_status` - Get detailed status of a workflow run including staged record counts. Requires run_id.
 - `review_staged_data` - Show staged CRM/task records pending review. Requires run_id or organization_id.
 - `approve_staged_records` - Approve valid staged records and reject duplicates for a workflow run. Requires run_id.
+- `build_workflow` - Delegate to the Workflow Builder specialist to create or modify a workflow. Provide user_request (what they want) and context (data you've gathered about their org, schemas, existing workflows). The specialist handles node graph generation.
 
 ### Communication
 - `respond_to_user` - IMPORTANT: Use this to deliver your response. Write your complete answer in the message parameter.
@@ -149,6 +150,7 @@ You HAVE full internet access. NEVER say you can't browse URLs or search the web
 - "How did that last run go?" → get_workflow_run_status → respond_to_user
 - "What records are pending?" → review_staged_data → respond_to_user
 - "Approve the staged records" → approve_staged_records → respond_to_user
+- "Create a workflow that extracts contacts from emails" → (gather context with list_workflow_definitions) → build_workflow → respond_to_user
 - Action requests → execute → respond_to_user
 
 **Golden rule:** If you already have enough to give a good answer, call respond_to_user NOW. Don't keep calling tools hoping for better data — one or two tool calls is almost always enough.
@@ -872,6 +874,7 @@ impl TopsiAgent {
                 "get_workflow_run_status" => self.tool_get_workflow_run_status(&call.arguments, scope).await,
                 "review_staged_data" => self.tool_review_staged_data(&call.arguments, user_context, scope).await,
                 "approve_staged_records" => self.tool_approve_staged_records(&call.arguments, user_context, scope).await,
+                "build_workflow" => self.tool_build_workflow(&call.arguments, user_context).await,
                 _ => Err(TopsiError::ToolError(format!(
                     "Unknown tool: {}",
                     call.name
@@ -3209,6 +3212,40 @@ impl TopsiAgent {
             "remaining_pending": remaining,
             "message": format!("Approved {} records, rejected {} duplicates. {} records still pending review.", approved, rejected, remaining)
         }))
+    }
+
+    // ── Workflow builder delegation ─────────────────────────────────────────
+
+    /// Delegate workflow creation/modification to the Workflow Builder specialist.
+    /// Topsi passes the user's request and scoping info; the builder queries the DB
+    /// directly for anything else it needs.
+    async fn tool_build_workflow(
+        &self,
+        args: &serde_json::Value,
+        _user_context: &UserContext,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+        let Some(llm) = &self.llm else {
+            return Ok(serde_json::json!({"error": "LLM not configured — cannot generate workflows"}));
+        };
+
+        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("create");
+        let user_request = match args.get("user_request").and_then(|v| v.as_str()) {
+            Some(r) => r,
+            None => return Ok(serde_json::json!({"error": "user_request is required"})),
+        };
+        let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("");
+        let workflow_id = args.get("workflow_id").and_then(|v| v.as_str());
+        let owner_id = args.get("owner_id").and_then(|v| v.as_str());
+
+        match crate::workflow_builder::build_workflow(
+            llm, pool, action, user_request, context, workflow_id, owner_id,
+        ).await {
+            Ok(result) => Ok(result),
+            Err(e) => Ok(serde_json::json!({"error": e})),
+        }
     }
 
     /// Handle topology requests

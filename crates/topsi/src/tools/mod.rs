@@ -686,6 +686,41 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        // ── Workflow builder delegation ──────────────────────────────────────────
+        json!({
+            "type": "function",
+            "function": {
+                "name": "build_workflow",
+                "description": "Delegate workflow creation or modification to the Workflow Builder specialist agent. Provide the user's request and any context you've gathered (existing workflows, CRM schema info, project details). The specialist will generate the node graph and save it. Use this when the user wants to create a new workflow or modify an existing one.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["create", "modify"],
+                            "description": "'create' for new workflows, 'modify' to update existing"
+                        },
+                        "user_request": {
+                            "type": "string",
+                            "description": "The user's natural language description of what they want the workflow to do"
+                        },
+                        "context": {
+                            "type": "string",
+                            "description": "Any context you've gathered: existing workflow definitions, CRM data shapes, project info, org details. Include anything that helps the builder make good decisions."
+                        },
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "For 'modify' action: the ID of the existing workflow to update"
+                        },
+                        "owner_id": {
+                            "type": "string",
+                            "description": "Organization UUID that should own this workflow"
+                        }
+                    },
+                    "required": ["action", "user_request"]
+                }
+            }
+        }),
         // Chat/response tool for conversational replies
         json!({
             "type": "function",

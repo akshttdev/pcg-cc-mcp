@@ -20,6 +20,7 @@ pub mod meeting;
 pub mod prioritization;
 pub mod topology;
 pub mod tools;
+pub mod workflow_builder;
 
 pub use agent::{
     TopsiAgent, TopsiRequest, TopsiRequestType, TaskExecutionBridge,
