@@ -91,6 +91,8 @@ pub struct LocalContainerService {
     flow_ids: Arc<RwLock<HashMap<Uuid, Uuid>>>,
 }
 
+use services::services::qa_review::{self, PrCreatedInfo};
+
 impl LocalContainerService {
     // Max cumulative content bytes allowed per diff stream
     const MAX_CUMULATIVE_DIFF_BYTES: usize = 150 * 1024; // 150KB
@@ -200,32 +202,49 @@ impl LocalContainerService {
     }
 
     /// Finalize task execution by updating status to InReview, optionally creating a PR,
-    /// and sending notifications.
+    /// triggering agent watchers (QA review), and sending notifications.
     async fn finalize_task(
         db: &DBService,
         config: &Arc<RwLock<Config>>,
         git: &GitService,
         ctx: &ExecutionContext,
+        container: &Self,
     ) {
+        // Route AgentReview completions to finalize_review (Phase 5)
+        if ctx.execution_process.run_reason == ExecutionProcessRunReason::AgentReview {
+            qa_review::finalize_review(&db.pool, config, git, ctx).await;
+            let notify_cfg = config.read().await.notifications.clone();
+            NotificationService::notify_execution_halted(notify_cfg, ctx).await;
+            return;
+        }
+
         if let Err(e) = Task::update_status(&db.pool, &ctx.task.id, TaskStatus::InReview).await {
             tracing::error!("Failed to update task status to InReview: {e}");
         }
 
         // Auto-create PR if agent execution config says so
-        Self::try_auto_create_pr(db, config, git, ctx).await;
+        let pr_info = Self::try_auto_create_pr(db, config, git, ctx).await;
+
+        // Post dev agent audit comment on PR + trigger agent watchers
+        if let Some(ref pr) = pr_info {
+            qa_review::post_dev_agent_pr_comment(config, ctx, pr).await;
+            // Trigger all pending agent watchers (replaces try_auto_qa_review)
+            qa_review::trigger_agent_watchers(&db.pool, container, ctx, pr).await;
+        }
 
         let notify_cfg = config.read().await.notifications.clone();
         NotificationService::notify_execution_halted(notify_cfg, ctx).await;
     }
 
     /// Attempt to auto-create a GitHub PR if the agent's execution config has
-    /// `auto_create_pr_on_complete` enabled. Failures are logged but do not block finalization.
+    /// `auto_create_pr_on_complete` enabled. Returns PR info on success.
+    /// Failures are logged but do not block finalization.
     async fn try_auto_create_pr(
         db: &DBService,
         config: &Arc<RwLock<Config>>,
         git: &GitService,
         ctx: &ExecutionContext,
-    ) {
+    ) -> Option<PrCreatedInfo> {
         use db::models::agent_execution_config::AgentExecutionConfig;
         use services::services::github_service::{CreatePrRequest, GitHubService};
 
@@ -233,18 +252,18 @@ impl LocalContainerService {
         let agent_id = match ctx.task.agent_id {
             Some(ref id) => match Uuid::parse_str(id) {
                 Ok(uuid) => uuid,
-                Err(_) => return,
+                Err(_) => return None,
             },
-            None => return,
+            None => return None,
         };
 
         let agent_config = match AgentExecutionConfig::find_by_agent_id(&db.pool, agent_id).await {
             Ok(Some(cfg)) => cfg,
-            _ => return,
+            _ => return None,
         };
 
         if agent_config.auto_create_pr_on_complete != Some(true) {
-            return;
+            return None;
         }
 
         // Need a branch to create a PR from
@@ -252,7 +271,7 @@ impl LocalContainerService {
             Some(b) if !b.is_empty() => b.clone(),
             _ => {
                 tracing::warn!("Auto-PR skipped: no branch on task attempt {}", ctx.task_attempt.id);
-                return;
+                return None;
             }
         };
 
@@ -268,7 +287,7 @@ impl LocalContainerService {
             Some(t) => t,
             None => {
                 tracing::warn!("Auto-PR skipped: no GitHub token configured");
-                return;
+                return None;
             }
         };
 
@@ -277,7 +296,7 @@ impl LocalContainerService {
             Ok(Some(p)) => p,
             _ => {
                 tracing::warn!("Auto-PR skipped: project not found for task {}", ctx.task.id);
-                return;
+                return None;
             }
         };
 
@@ -286,14 +305,14 @@ impl LocalContainerService {
             Some(path) => PathBuf::from(path),
             None => {
                 tracing::warn!("Auto-PR skipped: no container_ref on attempt {}", ctx.task_attempt.id);
-                return;
+                return None;
             }
         };
 
         // Push branch to GitHub
         if let Err(e) = git.push_to_github(&workspace_path, &branch_name, &github_token) {
             tracing::error!("Auto-PR: failed to push branch '{}': {}", branch_name, e);
-            return;
+            return None;
         }
 
         // Create the PR
@@ -301,7 +320,7 @@ impl LocalContainerService {
             Ok(s) => s,
             Err(e) => {
                 tracing::error!("Auto-PR: failed to create GitHub service: {}", e);
-                return;
+                return None;
             }
         };
 
@@ -309,7 +328,7 @@ impl LocalContainerService {
             Ok(info) => info,
             Err(e) => {
                 tracing::error!("Auto-PR: failed to get repo info: {}", e);
-                return;
+                return None;
             }
         };
 
@@ -337,9 +356,16 @@ impl LocalContainerService {
                 {
                     tracing::error!("Auto-PR: failed to record PR in database: {}", e);
                 }
+                Some(PrCreatedInfo {
+                    number: pr_info.number,
+                    url: pr_info.url,
+                    repo_owner: repo_info.owner,
+                    repo_name: repo_info.repo_name,
+                })
             }
             Err(e) => {
                 tracing::error!("Auto-PR: failed to create PR: {}", e);
+                None
             }
         }
     }
@@ -684,12 +710,12 @@ impl LocalContainerService {
                         );
 
                         // Manually finalize task since we're bypassing normal execution flow
-                        Self::finalize_task(&db, &config, &container.git, &ctx).await;
+                        Self::finalize_task(&db, &config, &container.git, &ctx, &container).await;
                     }
                 }
 
                 if Self::should_finalize(&ctx) {
-                    Self::finalize_task(&db, &config, &container.git, &ctx).await;
+                    Self::finalize_task(&db, &config, &container.git, &ctx, &container).await;
                     // After finalization, check if a queued follow-up exists and start it
                     if let Err(e) = container.try_consume_queued_followup(&ctx).await {
                         tracing::error!(

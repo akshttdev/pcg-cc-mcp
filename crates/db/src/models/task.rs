@@ -7,6 +7,18 @@ use uuid::Uuid;
 
 use super::{execution_summary::CompletionStatus, project::Project, task_attempt::TaskAttempt};
 
+// ── Actor type constants (collaborators JSON) ────────────────────────────────
+pub const ACTOR_TYPE_AGENT_WATCHER: &str = "agent_watcher";
+pub const ACTOR_TYPE_WATCHER: &str = "watcher";
+pub const ACTOR_TYPE_AGENT: &str = "agent";
+
+// ── Watcher action constants ─────────────────────────────────────────────────
+pub const WATCHER_ACTION_WATCHING: &str = "watching";
+pub const WATCHER_ACTION_TRIGGERED: &str = "triggered";
+pub const WATCHER_ACTION_QA_PASS: &str = "qa_pass";
+pub const WATCHER_ACTION_QA_NEEDS_CHANGES: &str = "qa_needs_changes";
+pub const WATCHER_ACTION_QA_FAIL: &str = "qa_fail";
+
 #[derive(Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS)]
 #[sqlx(type_name = "task_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
@@ -822,6 +834,102 @@ ORDER BY t.created_at DESC"#,
             .bind(&pattern)
             .fetch_all(pool)
             .await
+    }
+
+    // ── Agent Watcher Methods ─────────────────────────────────────────────────
+
+    /// Add an agent as a watcher on a task (distinct from human watchers).
+    /// Uses `actor_type = "agent_watcher"` so existing remove_watcher() won't touch it.
+    pub async fn add_agent_watcher(
+        pool: &SqlitePool,
+        task_id: &str,
+        agent_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        Self::update_collaborator(
+            pool,
+            task_id,
+            agent_id,
+            ACTOR_TYPE_AGENT_WATCHER,
+            WATCHER_ACTION_WATCHING,
+        )
+        .await
+    }
+
+    /// Remove an agent watcher from a task.
+    pub async fn remove_agent_watcher(
+        pool: &SqlitePool,
+        task_id: &str,
+        agent_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        let record =
+            sqlx::query("SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL")
+                .bind(task_id)
+                .fetch_optional(pool)
+                .await?;
+
+        let mut collaborators: Vec<TaskCollaborator> = match record {
+            Some(rec) => rec
+                .get::<Option<String>, _>("collaborators")
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default(),
+            None => return Ok(()),
+        };
+
+        collaborators.retain(|c| {
+            !(c.actor_id == agent_id && c.actor_type == ACTOR_TYPE_AGENT_WATCHER)
+        });
+
+        let collaborators_json = serde_json::to_string(&collaborators)
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+        sqlx::query(
+            "UPDATE tasks SET collaborators = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        )
+        .bind(task_id)
+        .bind(&collaborators_json)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Find all agent watchers on a task.
+    pub async fn find_agent_watchers(
+        pool: &SqlitePool,
+        task_id: &str,
+    ) -> Result<Vec<TaskCollaborator>, sqlx::Error> {
+        let record =
+            sqlx::query("SELECT collaborators FROM tasks WHERE id = $1 AND deleted_at IS NULL")
+                .bind(task_id)
+                .fetch_optional(pool)
+                .await?;
+
+        let collaborators: Vec<TaskCollaborator> = match record {
+            Some(rec) => rec
+                .get::<Option<String>, _>("collaborators")
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default(),
+            None => return Ok(vec![]),
+        };
+
+        Ok(collaborators
+            .into_iter()
+            .filter(|c| c.actor_type == ACTOR_TYPE_AGENT_WATCHER)
+            .collect())
+    }
+
+    /// Find agent watchers that haven't been triggered yet (last_action == "watching").
+    pub async fn find_pending_agent_watchers(
+        pool: &SqlitePool,
+        task_id: &str,
+    ) -> Result<Vec<TaskCollaborator>, sqlx::Error> {
+        let watchers = Self::find_agent_watchers(pool, task_id).await?;
+        Ok(watchers
+            .into_iter()
+            .filter(|c| c.last_action == WATCHER_ACTION_WATCHING)
+            .collect())
     }
 
     /// Find all tasks assigned to a specific user across all projects

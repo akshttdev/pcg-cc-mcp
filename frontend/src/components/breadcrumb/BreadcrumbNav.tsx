@@ -257,6 +257,7 @@ export function BreadcrumbNav() {
       '/discord': 'Discord Voice',
       '/oss-library-listener': 'OSS Library Listener',
       '/ai-usage': 'AI Usage',
+      '/agent-executions': 'Agent Executions',
       '/site-directory': 'Site Directory',
     };
     // Sort by length descending so longer paths match first (e.g. /settings/profile before /settings)

@@ -48,6 +48,7 @@ const VibePage              = lazy(() => import('@/pages/vibe'));
 const CalendarPage          = lazy(() => import('@/pages/calendar'));
 const PulsePage             = lazy(() => import('@/pages/pulse'));
 const AIUsagePage           = lazy(() => import('@/pages/ai-usage').then(m => ({ default: m.AIUsagePage })));
+const AgentExecutionsPage   = lazy(() => import('@/pages/agent-executions').then(m => ({ default: m.AgentExecutionsPage })));
 const OAuthCallbackPage     = lazy(() => import('@/pages/oauth/OAuthCallbackPage').then(m => ({ default: m.OAuthCallbackPage })));
 const PeoplePage            = lazy(() => import('@/pages/people').then(m => ({ default: m.PeoplePage })));
 const PersonDetailPage      = lazy(() => import('@/pages/person-detail').then(m => ({ default: m.PersonDetailPage })));
@@ -381,6 +382,7 @@ function App() {
             element={<ProtectedRoute><PulsePage /></ProtectedRoute>}
           />
           <Route path="/ai-usage" element={<AdminRoute><AIUsagePage /></AdminRoute>} />
+          <Route path="/agent-executions" element={<AdminRoute><AgentExecutionsPage /></AdminRoute>} />
           <Route path="/vibe" element={<RoleRoute minRole="org_editor"><VibePage /></RoleRoute>} />
           <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
           <Route path="/call-intake" element={<AdminRoute><CallIntakePage /></AdminRoute>} />

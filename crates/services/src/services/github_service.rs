@@ -263,6 +263,26 @@ impl GitHubService {
         Ok(pr_info)
     }
 
+    /// Add a comment to a pull request
+    pub async fn add_pr_comment(
+        &self,
+        repo_info: &GitHubRepoInfo,
+        pr_number: i64,
+        body: &str,
+    ) -> Result<(), GitHubServiceError> {
+        self.client
+            .issues(&repo_info.owner, &repo_info.repo_name)
+            .create_comment(pr_number as u64, body)
+            .await
+            .map_err(|err| match GitHubServiceError::from(err) {
+                GitHubServiceError::Client(source) => GitHubServiceError::PullRequest(format!(
+                    "Failed to comment on PR #{pr_number}: {source}"
+                )),
+                other => other,
+            })?;
+        Ok(())
+    }
+
     /// Update and get the status of a pull request
     pub async fn update_pr_status(
         &self,

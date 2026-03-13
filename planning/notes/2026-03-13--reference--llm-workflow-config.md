@@ -63,30 +63,26 @@ Or update `api_key_value` directly in the `pcg_router_models` table for specific
 
 ## 2. Agent Execution Configs
 
-**Status**: Table exists but is EMPTY
-**Impact**: Auto-execution after task creation silently skips (no config = no execution)
+**Status**: Seeded (migration `20260330000000_seed_dogfood_agents.sql`)
+**Impact**: Auto-execution after task creation now works for seeded agents
 
 ### How it works
 
 When `commit_task()` in `workflow_staging.rs` creates a task with `agent_id` set, the auto-execute code calls `AgentExecutionConfig::find_by_agent_id()` to look up the `execution_profile_id`. No config row means no execution happens.
 
-### What to do
+### Seeded agents
 
-Insert a row linking an agent to an executor profile:
+| Agent | ID | Profile | Auto-PR | Use Case |
+|---|---|---|---|---|
+| ORCHA Dev | `a0000000-...-001` | `profile-standard` | Yes | Code changes, bug fixes |
+| ORCHA QA | `a0000000-...-002` | `profile-standard` | No | PR review, analysis only |
+
+### Manual override (if needed)
 
 ```sql
-INSERT INTO agent_execution_configs (
-  id, agent_id, execution_profile_id,
-  auto_create_pr_on_complete,
-  created_at, updated_at
-) VALUES (
-  '<new-uuid>',
-  '<agent-uuid>',           -- must match an existing agent in the agents table
-  'CLAUDE_CODE:DEFAULT',    -- see available profiles below
-  1,                        -- auto-create PR when execution completes
-  datetime('now'),
-  datetime('now')
-);
+UPDATE agent_execution_config
+SET execution_profile_id = 'profile-ralph-standard'
+WHERE agent_id = 'a0000000-0000-0000-0000-000000000001';
 ```
 
 ### Available executor profiles
@@ -143,24 +139,19 @@ The PAT needs: `repo` (full), `workflow` (if touching CI), `pull_requests:write`
 
 ## 4. Wire `auto_approve` into Trigger Flow
 
-**Status**: Code gap (~15 lines needed)
-**Impact**: All workflow staging records require manual review, even when trigger has `auto_approve = 1`
+**Status**: ✅ Complete (Phase 8A)
+**Impact**: When trigger has `auto_approve = 1`, valid non-duplicate records are auto-approved and committed
 
-### Current state
+### Implementation
 
-- `workflow_triggers` table has `auto_approve` column (ORCHA Bug Triage trigger has it set to `0`)
-- `WorkflowStagingRecord::auto_approve_valid()` method exists
-- `fire_triggers_for_data_source()` in `data_source_workflows.rs` **never checks it**
+`fire_triggers_for_data_source()` in `data_source_workflows.rs` now:
+1. Captures `trigger.auto_approve` before spawning the tokio task
+2. After staging records are created, checks `trigger_auto_approve`
+3. If `true`: calls `auto_approve_valid()` → `reject_duplicates()` → commits approved records
+4. Post-commit: links contacts to companies by matching `company_name`
+5. Post-commit: auto-starts agent execution for tasks with `agent_id`
 
-### What to do
-
-After staging records are created in `fire_triggers_for_data_source()`, check `trigger.auto_approve`:
-- If `true` and all records pass `auto_approve_valid()` → call `batch_commit()` immediately
-- If `false` → leave as `pending_review` (current behavior)
-
-### Where
-
-`crates/server/src/routes/data_source_workflows.rs` — in `fire_triggers_for_data_source()`, after the staging records creation loop.
+The ORCHA Bug Triage trigger seed sets `auto_approve = 1` via migration `20260330000000`.
 
 ---
 
@@ -195,11 +186,13 @@ Or set `default_model` on the workflow definition itself.
 | Trigger matching (org + data_type) | Done | Done | ORCHA Bug Triage trigger seeded |
 | LLM triage (4-tier prompt) | Done | **Needs API key** | Falls back to mock without key |
 | Staging record creation | Done | Done | All records created as pending_review |
-| `auto_approve` bypass | **Code gap** | Trigger col exists | ~15 lines in fire_triggers |
+| `auto_approve` bypass | Done | Done | Wired in fire_triggers (Phase 8A) |
 | Batch commit → Task creation | Done | Done | commit_task() reads all fields |
-| Auto-execute on task creation | Done | **Needs agent config** | Empty agent_execution_configs table |
+| Auto-execute on task creation | Done | Done | Dev/QA agents seeded (Phase 7A) |
+| Auto-register agent watchers | Done | Done | `auto_watch_agent_ids` on agent config (Phase 8D) |
 | Auto-PR on execution complete | Done | **Needs GitHub token** | try_auto_create_pr() in container.rs |
-| PR feedback loop | Future | Future | Phase 6 — deferred |
+| QA watcher trigger | Done | Done | `trigger_agent_watchers()` in `qa_review.rs` — no separate QA task |
+| PR feedback loop | Done | Done | `finalize_review()` in `qa_review.rs` — server-side iteration count |
 
 ---
 
@@ -211,8 +204,9 @@ Or set `default_model` on the workflow definition itself.
 | `crates/server/src/routes/workflow_staging.rs` | Batch commit, task creation, auto-execute wiring |
 | `crates/server/src/routes/feedback.rs` | Feedback → Task + DataSource + trigger |
 | `crates/server/src/routes/webhooks.rs` | GitHub webhook → DataSource + trigger |
-| `crates/local-deployment/src/container.rs` | Agent execution, auto-PR |
-| `crates/db/src/models/agent_execution_config.rs` | Agent-to-profile mapping |
+| `crates/local-deployment/src/container.rs` | Agent execution, auto-PR, finalization routing |
+| `crates/services/src/services/qa_review.rs` | QA watcher trigger, review finalization, PR comments |
+| `crates/db/src/models/agent_execution_config.rs` | Agent-to-profile mapping, auto_watch_agent_ids |
 | `crates/db/migrations/20260329000000_seed_dogfood_project.sql` | Project, boards, trigger seed |
 | `crates/db/migrations/20260101000000_seed_pcg_router.sql` | PCG Router model seed |
 | `crates/local-deployment/src/default_profiles.json` | Executor profile definitions |
@@ -222,10 +216,14 @@ Or set `default_model` on the workflow definition itself.
 ## Quick Start Checklist
 
 - [ ] Set `ANTHROPIC_API_KEY` (or other provider key) in environment
-- [ ] Create agent execution config row in DB
-- [ ] Set GitHub PAT in deployment config
-- [ ] Wire `auto_approve` in `fire_triggers_for_data_source()` (code change)
+- [x] Create agent execution config rows in DB (seeded via migration)
+- [ ] Set GitHub PAT in deployment config (`[github] pat = "ghp_..."`)
+- [x] Wire `auto_approve` in `fire_triggers_for_data_source()` (Phase 8A)
+- [ ] Set `GITHUB_WEBHOOK_SECRET` for production webhook validation
+- [ ] Optional: pin model on Bug Triage Pipeline node
 - [ ] Test: submit feedback → verify LLM triage runs with real model
 - [ ] Test: approve staging → verify task created with correct fields
 - [ ] Test: task with agent_id → verify execution starts
 - [ ] Test: execution completes → verify PR created
+- [ ] Test: QA agent reviews PR → verify comment posted
+- [ ] Test: QA needs_changes → dev agent iterates

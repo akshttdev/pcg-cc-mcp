@@ -379,7 +379,9 @@ async fn batch_commit(
 
 // ── Commit logic ────────────────────────────────────────────────────────────
 
-async fn commit_record(pool: &SqlitePool, record: &WorkflowStagingRecord) -> CommitResult {
+/// Public commit function for use by auto-approve trigger flow.
+/// Commits a single approved staging record and marks it committed/error in DB.
+pub async fn commit_record_internal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Result<Uuid, String> {
     let result = match record.target_type.as_str() {
         "crm_contact" => commit_contact(pool, record).await,
         "company" => commit_company(pool, record).await,
@@ -388,25 +390,28 @@ async fn commit_record(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Com
         _ => Err(format!("Unknown target type: {}", record.target_type)),
     };
 
-    match result {
-        Ok(created_id) => {
-            let _ = WorkflowStagingRecord::mark_committed(pool, record.id).await;
-            CommitResult {
-                id: record.id,
-                target_type: record.target_type.clone(),
-                created_id: Some(created_id),
-                error: None,
-            }
-        }
-        Err(err) => {
-            let _ = WorkflowStagingRecord::mark_error(pool, record.id, &err).await;
-            CommitResult {
-                id: record.id,
-                target_type: record.target_type.clone(),
-                created_id: None,
-                error: Some(err),
-            }
-        }
+    match &result {
+        Ok(_) => { let _ = WorkflowStagingRecord::mark_committed(pool, record.id).await; }
+        Err(err) => { let _ = WorkflowStagingRecord::mark_error(pool, record.id, err).await; }
+    }
+
+    result
+}
+
+async fn commit_record(pool: &SqlitePool, record: &WorkflowStagingRecord) -> CommitResult {
+    match commit_record_internal(pool, record).await {
+        Ok(created_id) => CommitResult {
+            id: record.id,
+            target_type: record.target_type.clone(),
+            created_id: Some(created_id),
+            error: None,
+        },
+        Err(err) => CommitResult {
+            id: record.id,
+            target_type: record.target_type.clone(),
+            created_id: None,
+            error: Some(err),
+        },
     }
 }
 
@@ -839,7 +844,7 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
 /// When a workflow creates a task with an `agent_id`, automatically start
 /// execution: look up the agent's execution config for the executor profile,
 /// create a TaskAttempt, and start the container.
-async fn auto_start_agent_execution(
+pub async fn auto_start_agent_execution(
     pool: &SqlitePool,
     deployment: &DeploymentImpl,
     task_id: Uuid,
@@ -880,6 +885,27 @@ async fn auto_start_agent_execution(
     let config = AgentExecutionConfig::find_by_agent_id(pool, agent_id)
         .await
         .map_err(|e| format!("Failed to find agent execution config: {e}"))?;
+
+    // Auto-register agent watchers (e.g., QA agent watches tasks assigned to Dev agent)
+    if let Some(ref cfg) = config {
+        for watcher_id in cfg.get_auto_watch_agent_ids() {
+            if let Err(e) =
+                Task::add_agent_watcher(pool, &task_id.to_string(), &watcher_id).await
+            {
+                tracing::warn!(
+                    "Failed to add agent watcher {} to task {}: {e}",
+                    watcher_id,
+                    task_id
+                );
+            } else {
+                tracing::info!(
+                    "Auto-registered agent watcher {} on task {}",
+                    watcher_id,
+                    task_id
+                );
+            }
+        }
+    }
 
     // Parse executor profile from config, default to CLAUDE_CODE
     let profile_str = config.and_then(|c| c.execution_profile_id);
@@ -1014,7 +1040,7 @@ async fn auto_link_company(
 
 /// Persist a company_id inside the contact's custom_fields JSON.
 /// Merges with any existing custom_fields rather than overwriting them.
-async fn store_company_id_in_custom_fields(
+pub async fn store_company_id_in_custom_fields(
     pool: &SqlitePool,
     contact_id: Uuid,
     company_id: Uuid,

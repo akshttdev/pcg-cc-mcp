@@ -249,6 +249,10 @@ pub struct AgentExecutionConfig {
     pub auto_create_pr_on_complete: Option<bool>,
     pub require_tests_pass: Option<bool>,
 
+    /// JSON array of agent IDs that should automatically watch tasks assigned to this agent.
+    /// When a task is created/committed with this agent's ID, watchers are added to collaborators.
+    pub auto_watch_agent_ids: Option<String>,
+
     // Metadata
     pub is_active: Option<bool>,
     pub created_at: DateTime<Utc>,
@@ -269,6 +273,14 @@ impl AgentExecutionConfig {
         self.max_iterations_override
             .or_else(|| profile.and_then(|p| p.max_iterations))
             .unwrap_or(50)
+    }
+
+    /// Get auto-watch agent IDs as Vec<String>
+    pub fn get_auto_watch_agent_ids(&self) -> Vec<String> {
+        self.auto_watch_agent_ids
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default()
     }
 
     /// Get project-type backpressure config
