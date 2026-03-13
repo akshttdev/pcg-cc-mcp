@@ -63,30 +63,26 @@ Or update `api_key_value` directly in the `pcg_router_models` table for specific
 
 ## 2. Agent Execution Configs
 
-**Status**: Table exists but is EMPTY
-**Impact**: Auto-execution after task creation silently skips (no config = no execution)
+**Status**: Seeded (migration `20260330000000_seed_dogfood_agents.sql`)
+**Impact**: Auto-execution after task creation now works for seeded agents
 
 ### How it works
 
 When `commit_task()` in `workflow_staging.rs` creates a task with `agent_id` set, the auto-execute code calls `AgentExecutionConfig::find_by_agent_id()` to look up the `execution_profile_id`. No config row means no execution happens.
 
-### What to do
+### Seeded agents
 
-Insert a row linking an agent to an executor profile:
+| Agent | ID | Profile | Auto-PR | Use Case |
+|---|---|---|---|---|
+| ORCHA Dev | `a0000000-...-001` | `profile-standard` | Yes | Code changes, bug fixes |
+| ORCHA QA | `a0000000-...-002` | `profile-standard` | No | PR review, analysis only |
+
+### Manual override (if needed)
 
 ```sql
-INSERT INTO agent_execution_configs (
-  id, agent_id, execution_profile_id,
-  auto_create_pr_on_complete,
-  created_at, updated_at
-) VALUES (
-  '<new-uuid>',
-  '<agent-uuid>',           -- must match an existing agent in the agents table
-  'CLAUDE_CODE:DEFAULT',    -- see available profiles below
-  1,                        -- auto-create PR when execution completes
-  datetime('now'),
-  datetime('now')
-);
+UPDATE agent_execution_config
+SET execution_profile_id = 'profile-ralph-standard'
+WHERE agent_id = 'a0000000-0000-0000-0000-000000000001';
 ```
 
 ### Available executor profiles
@@ -143,8 +139,8 @@ The PAT needs: `repo` (full), `workflow` (if touching CI), `pull_requests:write`
 
 ## 4. Wire `auto_approve` into Trigger Flow
 
-**Status**: Code gap (~15 lines needed)
-**Impact**: All workflow staging records require manual review, even when trigger has `auto_approve = 1`
+**Status**: Implemented (Phase 8A)
+**Impact**: When trigger has `auto_approve = 1`, valid non-duplicate records are auto-approved and committed
 
 ### Current state
 
@@ -195,11 +191,12 @@ Or set `default_model` on the workflow definition itself.
 | Trigger matching (org + data_type) | Done | Done | ORCHA Bug Triage trigger seeded |
 | LLM triage (4-tier prompt) | Done | **Needs API key** | Falls back to mock without key |
 | Staging record creation | Done | Done | All records created as pending_review |
-| `auto_approve` bypass | **Code gap** | Trigger col exists | ~15 lines in fire_triggers |
+| `auto_approve` bypass | Done | Done | Wired in fire_triggers (Phase 8A) |
 | Batch commit → Task creation | Done | Done | commit_task() reads all fields |
-| Auto-execute on task creation | Done | **Needs agent config** | Empty agent_execution_configs table |
+| Auto-execute on task creation | Done | Done | Dev/QA agents seeded (Phase 7A) |
 | Auto-PR on execution complete | Done | **Needs GitHub token** | try_auto_create_pr() in container.rs |
-| PR feedback loop | Future | Future | Phase 6 — deferred |
+| QA agent review hook | Done | Done | Auto-creates QA task after PR (Phase 8B) |
+| PR feedback loop | Done | Done | QA verdict → PR comment → iteration (Phase 9) |
 
 ---
 
@@ -222,10 +219,14 @@ Or set `default_model` on the workflow definition itself.
 ## Quick Start Checklist
 
 - [ ] Set `ANTHROPIC_API_KEY` (or other provider key) in environment
-- [ ] Create agent execution config row in DB
-- [ ] Set GitHub PAT in deployment config
-- [ ] Wire `auto_approve` in `fire_triggers_for_data_source()` (code change)
+- [x] Create agent execution config rows in DB (seeded via migration)
+- [ ] Set GitHub PAT in deployment config (`[github] pat = "ghp_..."`)
+- [x] Wire `auto_approve` in `fire_triggers_for_data_source()` (Phase 8A)
+- [ ] Set `GITHUB_WEBHOOK_SECRET` for production webhook validation
+- [ ] Optional: pin model on Bug Triage Pipeline node
 - [ ] Test: submit feedback → verify LLM triage runs with real model
 - [ ] Test: approve staging → verify task created with correct fields
 - [ ] Test: task with agent_id → verify execution starts
 - [ ] Test: execution completes → verify PR created
+- [ ] Test: QA agent reviews PR → verify comment posted
+- [ ] Test: QA needs_changes → dev agent iterates
