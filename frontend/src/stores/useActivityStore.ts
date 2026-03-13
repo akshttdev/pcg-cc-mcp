@@ -36,7 +36,7 @@ export const useActivityStore = create<ActivityStore>()(
         };
 
         set((state) => ({
-          activities: [activity, ...state.activities],
+          activities: [activity, ...state.activities].slice(0, 1000),
         }));
       },
 

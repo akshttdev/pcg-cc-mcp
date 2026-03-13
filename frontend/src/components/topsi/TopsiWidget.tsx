@@ -259,7 +259,11 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
     addMessage('assistant', `Workflow running... (${runId})`);
 
+    let pollCount = 0;
+    const maxPolls = 60; // 5 minutes at 5s intervals
+
     const interval = setInterval(async () => {
+      pollCount++;
       try {
         const res = await makeRequest(`/api/workflows/runs/${runId}`);
         if (!res.ok) return;
@@ -280,6 +284,10 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
             workflow_run_id: runId,
             status,
           });
+        } else if (pollCount >= maxPolls) {
+          clearInterval(interval);
+          workflowPollsRef.current.delete(runId);
+          addMessage('assistant', `Workflow polling timed out after 5 minutes (${runId}). Check status manually.`);
         }
       } catch {
         // Silently retry on next interval

@@ -2640,6 +2640,9 @@ pub async fn update_admin_prompt(
     }
 
     if let Some(mode) = &request.mode {
+        if !matches!(mode.as_str(), "standard" | "sudolang") {
+            return Err(ApiError::BadRequest(format!("Invalid prompt mode: '{}'. Must be 'standard' or 'sudolang'", mode)));
+        }
         SystemSetting::set(pool, "topsi_prompt_mode", mode, Some(&user_id))
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to save mode: {}", e)))?;
@@ -2652,6 +2655,9 @@ pub async fn update_admin_prompt(
     }
 
     if let Some(ref level) = request.autonomy_level {
+        if !matches!(level.as_str(), "full" | "supervised" | "approval_required" | "manual") {
+            return Err(ApiError::BadRequest(format!("Invalid autonomy level: '{}'. Must be 'full', 'supervised', 'approval_required', or 'manual'", level)));
+        }
         SystemSetting::set(pool, "topsi_autonomy_level", level, Some(&user_id))
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to save autonomy level: {}", e)))?;
@@ -2702,6 +2708,23 @@ pub async fn update_user_settings(
     let user_id = access_ctx.user_id.to_string();
 
     let mode = request.default_confirmation_mode.as_deref().unwrap_or("confirm_destructive");
+    if !matches!(mode, "always_confirm" | "confirm_destructive" | "autonomous") {
+        return Err(ApiError::BadRequest(format!("Invalid confirmation mode: '{}'. Must be 'always_confirm', 'confirm_destructive', or 'autonomous'", mode)));
+    }
+
+    // Validate per_tool_overrides shape: must be a flat object of string -> string
+    if let Some(ref overrides) = request.per_tool_overrides {
+        if let Some(obj) = overrides.as_object() {
+            for (key, val) in obj {
+                if !val.is_string() {
+                    return Err(ApiError::BadRequest(format!("per_tool_overrides value for '{}' must be a string", key)));
+                }
+            }
+        } else {
+            return Err(ApiError::BadRequest("per_tool_overrides must be a JSON object".to_string()));
+        }
+    }
+
     let overrides_json = request.per_tool_overrides.map(|v| v.to_string());
 
     TopsiUserSettings::upsert(
