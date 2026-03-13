@@ -677,6 +677,13 @@ pub async fn initialize_topsi_on_startup(state: &DeploymentImpl) -> Result<Strin
     let mut config = TopsiConfig::default();
     apply_topsi_llm_overrides(&mut config);
 
+    // Load persisted autonomy level from system_settings
+    let pool = &state.db().pool;
+    if let Ok(Some(level_str)) = SystemSetting::get(pool, "topsi_autonomy_level").await {
+        config.autonomy_level = topsi::config::AutonomyLevel::from_str(&level_str);
+        tracing::info!("Loaded persisted autonomy level: {}", level_str);
+    }
+
     // Create the execution bridge with deployment handle
     let bridge = Arc::new(DeploymentBridge {
         deployment: state.clone(),
@@ -2570,6 +2577,7 @@ pub struct AdminPromptResponse {
     pub prompt: Option<String>,
     pub mode: String,
     pub prompt_sudolang: Option<String>,
+    pub autonomy_level: String,
 }
 
 /// Request to update admin prompt
@@ -2578,6 +2586,7 @@ pub struct UpdateAdminPromptRequest {
     pub prompt: Option<String>,
     pub mode: Option<String>,
     pub prompt_sudolang: Option<String>,
+    pub autonomy_level: Option<String>,
 }
 
 /// GET /topsi/admin/prompt — returns current system prompt settings
@@ -2597,11 +2606,17 @@ pub async fn get_admin_prompt(
         .flatten()
         .unwrap_or_else(|| "standard".to_string());
     let prompt_sudolang = SystemSetting::get(pool, "topsi_system_prompt_sudolang").await.ok().flatten();
+    let autonomy_level = SystemSetting::get(pool, "topsi_autonomy_level")
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "supervised".to_string());
 
     Ok(Json(AdminPromptResponse {
         prompt,
         mode,
         prompt_sudolang,
+        autonomy_level,
     }))
 }
 
@@ -2634,6 +2649,21 @@ pub async fn update_admin_prompt(
         SystemSetting::set(pool, "topsi_system_prompt_sudolang", sudolang, Some(&user_id))
             .await
             .map_err(|e| ApiError::InternalError(format!("Failed to save sudolang prompt: {}", e)))?;
+    }
+
+    if let Some(ref level) = request.autonomy_level {
+        SystemSetting::set(pool, "topsi_autonomy_level", level, Some(&user_id))
+            .await
+            .map_err(|e| ApiError::InternalError(format!("Failed to save autonomy level: {}", e)))?;
+
+        // Update the running Topsi instance config
+        let topsi_instance = TOPSI_INSTANCE.get();
+        if let Some(instance_lock) = topsi_instance {
+            let mut instance = instance_lock.write().await;
+            if let Some(ref mut agent) = *instance {
+                agent.config.autonomy_level = topsi::config::AutonomyLevel::from_str(level);
+            }
+        }
     }
 
     Ok(Json(serde_json::json!({ "success": true })))

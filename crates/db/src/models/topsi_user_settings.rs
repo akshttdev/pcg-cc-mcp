@@ -18,6 +18,20 @@ pub enum ConfirmationMode {
 }
 
 impl ConfirmationMode {
+    /// Restrictiveness ordering (higher = more restrictive)
+    pub fn restrictiveness(&self) -> u8 {
+        match self {
+            Self::Autonomous => 0,
+            Self::ConfirmDestructive => 1,
+            Self::AlwaysConfirm => 2,
+        }
+    }
+
+    /// Return the more restrictive of two modes
+    pub fn most_restrictive(a: &Self, b: &Self) -> Self {
+        if a.restrictiveness() >= b.restrictiveness() { a.clone() } else { b.clone() }
+    }
+
     pub fn from_str(s: &str) -> Self {
         match s {
             "always_confirm" => Self::AlwaysConfirm,

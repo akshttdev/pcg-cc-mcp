@@ -6,14 +6,24 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { makeRequest } from '@/lib/api';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 type PromptMode = 'standard' | 'sudolang';
+type AutonomyLevel = 'manual' | 'approval_required' | 'supervised' | 'full';
 
 interface AdminPromptData {
   prompt: string | null;
   mode: PromptMode;
   prompt_sudolang: string | null;
+  autonomy_level: AutonomyLevel;
 }
+
+const AUTONOMY_OPTIONS: { value: AutonomyLevel; label: string; desc: string }[] = [
+  { value: 'manual', label: 'Manual', desc: 'Confirm all tool calls' },
+  { value: 'approval_required', label: 'Approval Required', desc: 'Confirm destructive only' },
+  { value: 'supervised', label: 'Supervised', desc: 'User settings apply fully' },
+  { value: 'full', label: 'Full', desc: 'No instance constraints' },
+];
 
 const DEFAULT_PROMPT = `You are Topsi, the platform orchestrator. Help users manage projects, tasks, CRM contacts, and workflows.`;
 const DEFAULT_SUDOLANG_PROMPT = `Topsi {
@@ -26,6 +36,7 @@ export function TopsiAdminSettings() {
     prompt: null,
     mode: 'standard',
     prompt_sudolang: null,
+    autonomy_level: 'supervised',
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -61,16 +72,17 @@ export function TopsiAdminSettings() {
           prompt: data.prompt,
           mode: data.mode,
           prompt_sudolang: data.prompt_sudolang,
+          autonomy_level: data.autonomy_level,
         }),
       });
       if (res.ok) {
-        toast.success('System prompt saved');
+        toast.success('Settings saved');
       } else {
         const err = await res.text();
         toast.error(`Failed to save: ${err}`);
       }
     } catch (err) {
-      toast.error('Failed to save prompt');
+      toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
     }
@@ -113,6 +125,45 @@ export function TopsiAdminSettings() {
           Manage system prompt and agent configuration
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Instance Autonomy Level</CardTitle>
+          <CardDescription>
+            Sets the instance-wide floor for tool confirmation. Users cannot be more permissive than this level.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-1">
+            {AUTONOMY_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setData((prev) => ({ ...prev, autonomy_level: opt.value }))}
+                className={cn(
+                  'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-all border',
+                  data.autonomy_level === opt.value
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-transparent border-border/60 hover:bg-accent text-muted-foreground'
+                )}
+              >
+                <div>{opt.label}</div>
+                <div className={cn(
+                  'text-[10px] mt-0.5',
+                  data.autonomy_level === opt.value
+                    ? 'text-primary-foreground/70'
+                    : 'text-muted-foreground/70'
+                )}>
+                  {opt.desc}
+                </div>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Manual forces confirmation on all tools. Supervised (default) lets user settings fully apply.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

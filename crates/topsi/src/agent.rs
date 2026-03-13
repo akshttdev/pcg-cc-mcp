@@ -886,7 +886,7 @@ impl TopsiAgent {
         user_context: &UserContext,
         scope: &AccessScope,
     ) -> Vec<serde_json::Value> {
-        use db::models::topsi_user_settings::{TopsiUserSettings, classify_tool_risk, ToolRisk};
+        use db::models::topsi_user_settings::{TopsiUserSettings, ConfirmationMode, classify_tool_risk, ToolRisk};
 
         // Load user confirmation settings once per batch
         let user_settings = if let Some(pool) = &self.db {
@@ -894,6 +894,9 @@ impl TopsiAgent {
         } else {
             None
         };
+
+        // Instance-wide autonomy floor constrains user settings
+        let instance_floor = self.config.autonomy_level.max_confirmation_mode();
 
         let mut results = Vec::new();
 
@@ -907,7 +910,9 @@ impl TopsiAgent {
             // ── Confirmation gate ────────────────────────────────────────
             if let Some(ref settings) = user_settings {
                 let risk = classify_tool_risk(&call.name);
-                if risk != ToolRisk::Green && settings.requires_confirmation(&call.name) {
+                let user_mode = settings.confirmation_mode_for_tool(&call.name);
+                let effective = ConfirmationMode::most_restrictive(&user_mode, &instance_floor);
+                if risk != ToolRisk::Green && matches!(effective, ConfirmationMode::AlwaysConfirm) {
                     let action_desc = describe_tool_action(&call.name, &call.arguments);
                     results.push(serde_json::json!({
                         "pending_confirmation": true,
