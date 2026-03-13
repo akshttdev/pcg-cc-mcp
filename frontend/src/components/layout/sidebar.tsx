@@ -138,6 +138,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse', adminOnly: true },
   { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
   { label: 'Agent Executions', icon: Bot, to: '/agent-executions', id: 'agent-executions', adminOnly: true },
+  { label: 'Topsi Activity', icon: Activity, to: '/topsi-activity', id: 'topsi-activity', adminOnly: true },
 ];
 
 // Primary navigation - workspace destinations (user-level pages)

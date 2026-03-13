@@ -83,6 +83,9 @@ const WalletSettings    = lazy(() => import('@/pages/settings/WalletSettings').t
 const KeysSettings      = lazy(() => import('@/pages/settings/KeysSettings').then(m => ({ default: m.KeysSettings })));
 const NetworkSettings   = lazy(() => import('@/pages/settings/NetworkSettings').then(m => ({ default: m.NetworkSettings })));
 const DeveloperSettings = lazy(() => import('@/pages/settings/DeveloperSettings').then(m => ({ default: m.DeveloperSettings })));
+const TopsiAdminSettings = lazy(() => import('@/pages/settings/TopsiAdminSettings').then(m => ({ default: m.TopsiAdminSettings })));
+const TopsiUserSettingsPage = lazy(() => import('@/pages/settings/TopsiUserSettings').then(m => ({ default: m.TopsiUserSettings })));
+const TopsiActivityPage = lazy(() => import('@/pages/topsi-activity').then(m => ({ default: m.TopsiActivityPage })));
 const BrandIntakePage   = lazy(() => import('@/pages/brand-intake').then(m => ({ default: m.BrandIntakePage })));
 const BrandGuidePage    = lazy(() => import('@/pages/brand-guide').then(m => ({ default: m.BrandGuidePage })));
 const CallIntakePage      = lazy(() => import('@/pages/call-intake'));
@@ -309,6 +312,7 @@ function App() {
           <Route path="/site-directory" element={<AdminRoute><SiteDirectoryPage /></AdminRoute>} />
           <Route path="/nora" element={<AdminRoute><NoraPage /></AdminRoute>} />
           <Route path="/topsi" element={<ProtectedRoute><TopsiPage /></ProtectedRoute>} />
+          <Route path="/topsi-activity" element={<AdminRoute><TopsiActivityPage /></AdminRoute>} />
           <Route path="/global-tasks" element={<AdminRoute><GlobalTasksPage /></AdminRoute>} />
           <Route path="/mission-control" element={<RoleRoute minRole="platform_member"><MissionControlPage /></RoleRoute>} />
           <Route path="/workflows" element={<ProtectedRoute><WorkflowsPage /></ProtectedRoute>} />
@@ -410,6 +414,8 @@ function App() {
             <Route path="mcp" element={<McpSettings />} />
             <Route path="airtable" element={<Navigate to="/settings/general" replace />} />
             <Route path="network" element={<NetworkSettings />} />
+            <Route path="topsi" element={<AdminRoute><TopsiAdminSettings /></AdminRoute>} />
+            <Route path="topsi-preferences" element={<TopsiUserSettingsPage />} />
             <Route path="developer" element={<AdminRoute><DeveloperSettings /></AdminRoute>} />
           </Route>
           <Route
