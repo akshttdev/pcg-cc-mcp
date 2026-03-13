@@ -3,4 +3,4 @@ import type { EmailAccountType } from "./EmailAccountType";
 import type { EmailProvider } from "./EmailProvider";
 import type { JsonValue } from "./serde_json/JsonValue";
 
-export type CreateEmailAccount = { project_id: string, provider: EmailProvider, account_type: EmailAccountType | null, email_address: string, display_name: string | null, avatar_url: string | null, access_token: string | null, refresh_token: string | null, token_expires_at: string | null, imap_host: string | null, imap_port: number | null, smtp_host: string | null, smtp_port: number | null, use_ssl: boolean | null, granted_scopes: Array<string> | null, metadata: JsonValue | null, };
+export type CreateEmailAccount = { project_id: string | null, provider: EmailProvider, account_type: EmailAccountType | null, email_address: string, display_name: string | null, avatar_url: string | null, access_token: string | null, refresh_token: string | null, token_expires_at: string | null, imap_host: string | null, imap_port: number | null, smtp_host: string | null, smtp_port: number | null, use_ssl: boolean | null, granted_scopes: Array<string> | null, metadata: JsonValue | null, };

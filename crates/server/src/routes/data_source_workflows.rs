@@ -236,51 +236,83 @@ fn bug_triage_workflow() -> WorkflowDefinition {
     WorkflowDefinition {
         id: "bug_triage_pipeline".to_string(),
         name: "Bug Triage Pipeline".to_string(),
-        description: Some("Analyze bug reports, categorize by severity, and create prioritized tasks.".to_string()),
+        description: Some(
+            "Investigate and triage bug reports into 4 outcomes: critical fix-now, \
+             low-cost fix-now, high-cost planning, or report-findings-to-user."
+                .to_string(),
+        ),
         nodes: vec![
             WorkflowNode {
-                id: "analyze_bugs".to_string(),
-                name: "Analyze Bug Reports".to_string(),
+                id: "investigate".to_string(),
+                name: "Investigate & Triage".to_string(),
                 node_type: "llm_analyze".to_string(),
                 parameters: json!({
                     "prompt_template": concat!(
-                        "Analyze the following bug reports and categorize each one.\n",
-                        "For each bug, provide:\n",
-                        "- title: Short descriptive title\n",
-                        "- description: Detailed description of the issue\n",
-                        "- severity: One of critical, high, medium, low\n",
-                        "- component: Affected system component\n",
-                        "- reproducible: true/false\n",
-                        "- suggested_fix: Brief suggestion for resolution\n\n",
-                        "Output as JSON with a top-level \"bugs\" array.\n\n",
-                        "Content:\n{{content}}"
+                        "You are a senior platform engineer triaging a bug report for the ORCHA ",
+                        "dashboard (Rust/Axum backend, React/TypeScript frontend, SQLite DB).\n\n",
+                        "INVESTIGATE the bug report below. Determine:\n",
+                        "1. What component is affected (frontend, backend, db, mcp, workflow, infra)\n",
+                        "2. Whether it's reproducible from the description\n",
+                        "3. Estimated fix complexity (lines of code, number of files)\n",
+                        "4. Risk of the bug (data loss, security, UX degradation, cosmetic)\n\n",
+                        "Then CLASSIFY into exactly ONE triage outcome:\n\n",
+                        "- **critical_fix_now**: Bug causes data loss, security issue, or blocks core ",
+                        "functionality. Must be fixed immediately. Create a task with priority=critical, ",
+                        "tags=[\"bug\",\"critical\",\"fix-now\"], and detailed completion_criteria.\n\n",
+                        "- **low_cost_fix_now**: Bug is straightforward to fix (< 50 lines, 1-2 files). ",
+                        "Just fix it. Create a task with priority=high, tags=[\"bug\",\"quick-fix\"], ",
+                        "and completion_criteria.\n\n",
+                        "- **high_cost_planning**: Bug requires significant refactoring or touches many ",
+                        "files/systems. Create a task with priority=medium, tags=[\"bug\",\"needs-planning\"], ",
+                        "description includes an investigation summary and proposed approach, and ",
+                        "output_format=\"Planning document with implementation steps\".\n\n",
+                        "- **report_findings**: Unclear if it's a real bug, needs more info, or is ",
+                        "actually expected behavior. Create a task with priority=low, ",
+                        "tags=[\"bug\",\"needs-triage\",\"awaiting-feedback\"], description includes ",
+                        "findings and recommended options for the reporter.\n\n",
+                        "OUTPUT as JSON:\n",
+                        "```json\n",
+                        "{\n",
+                        "  \"triage_outcome\": \"critical_fix_now|low_cost_fix_now|high_cost_planning|report_findings\",\n",
+                        "  \"investigation_summary\": \"What you found\",\n",
+                        "  \"affected_component\": \"frontend|backend|db|mcp|workflow|infra\",\n",
+                        "  \"estimated_fix_lines\": 25,\n",
+                        "  \"estimated_files\": 2,\n",
+                        "  \"risk_level\": \"critical|high|medium|low\",\n",
+                        "  \"tasks\": [\n",
+                        "    {\n",
+                        "      \"title\": \"Fix: short description\",\n",
+                        "      \"description\": \"Detailed description with context\",\n",
+                        "      \"priority\": \"critical|high|medium|low\",\n",
+                        "      \"tags\": [\"bug\", ...],\n",
+                        "      \"completion_criteria\": \"Bullet list of done conditions\",\n",
+                        "      \"output_format\": \"PR with tests|Planning document|Investigation report\",\n",
+                        "      \"board_id\": \"d0600000-0000-0000-0000-000000000001\"\n",
+                        "    }\n",
+                        "  ]\n",
+                        "}\n",
+                        "```\n\n",
+                        "Bug Report:\n{{content}}"
                     ),
-                    "output_schema": "bugs[]"
+                    "output_schema": "tasks[]"
                 }),
                 position: NodePosition { x: 100.0, y: 200.0 },
             },
             WorkflowNode {
-                id: "filter_critical".to_string(),
-                name: "Filter Critical/High".to_string(),
-                node_type: "conditional".to_string(),
-                parameters: json!({
-                    "condition": "contains:critical",
-                    "true_label": "has_critical",
-                    "false_label": "no_critical"
-                }),
-                position: NodePosition { x: 500.0, y: 200.0 },
-            },
-            WorkflowNode {
                 id: "create_tasks".to_string(),
-                name: "Create Bug Tasks".to_string(),
+                name: "Create Triage Tasks".to_string(),
                 node_type: "output_tasks".to_string(),
                 parameters: json!({}),
-                position: NodePosition { x: 900.0, y: 200.0 },
+                position: NodePosition { x: 500.0, y: 200.0 },
             },
         ],
         connections: vec![
-            WorkflowConnection { source: "analyze_bugs".to_string(), target: "filter_critical".to_string(), source_output: Some(0), target_input: Some(0) },
-            WorkflowConnection { source: "analyze_bugs".to_string(), target: "create_tasks".to_string(), source_output: Some(0), target_input: Some(0) },
+            WorkflowConnection {
+                source: "investigate".to_string(),
+                target: "create_tasks".to_string(),
+                source_output: Some(0),
+                target_input: Some(0),
+            },
         ],
         is_system: true,
         owner_type: "system".to_string(),
@@ -476,7 +508,7 @@ async fn seed_defaults(pool: &sqlx::SqlitePool) {
         let data = serialize_workflow_data(wf);
         let desc = wf.description.clone().unwrap_or_default();
         let _ = sqlx::query(
-            r#"INSERT OR IGNORE INTO workflow_definitions (id, owner_type, name, description, steps, is_system)
+            r#"INSERT OR REPLACE INTO workflow_definitions (id, owner_type, name, description, steps, is_system)
                VALUES (?1, 'system', ?2, ?3, ?4, 1)"#,
         )
         .bind(&wf.id)

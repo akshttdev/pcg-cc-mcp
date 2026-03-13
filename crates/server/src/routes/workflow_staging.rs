@@ -349,6 +349,26 @@ async fn batch_commit(
         }
     }
 
+    // Auto-start execution for agent-assigned tasks
+    for (result, record) in results.iter().zip(approved.iter()) {
+        if result.target_type == "task" && result.error.is_none() {
+            if let Some(task_id) = result.created_id {
+                let data: Value = match serde_json::from_str(&record.record_data) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                if data["agent_id"].as_str().is_some() {
+                    let pool = pool.clone();
+                    let dep = deployment.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = auto_start_agent_execution(&pool, &dep, task_id).await {
+                            tracing::warn!("Auto-execute for task {task_id} failed: {e}");
+                        }
+                    });
+                }
+            }
+        }
+    }
 
     Ok(Json(ApiResponse::success(BatchCommitResult {
         committed,
@@ -769,21 +789,33 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         Some(Value::Object(props))
     };
 
+    // Extract optional agent/assignee fields from workflow output data
+    let assignee_id = data["assignee_id"].as_str().map(|s| s.to_string());
+    let assignee_type = data["assignee_type"].as_str().map(|s| s.to_string());
+    let assigned_agent = data["assigned_agent"].as_str().map(|s| s.to_string());
+    let agent_id = data["agent_id"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok());
+    let board_id = data["board_id"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok());
+    let completion_criteria = data["completion_criteria"].as_str().map(|s| s.to_string());
+    let output_format = data["output_format"].as_str().map(|s| s.to_string());
+
     let task_id = Uuid::new_v4();
     let create = CreateTask {
         project_id,
         pod_id: None,
-        board_id: None,
+        board_id,
         title,
         description: data["description"].as_str().map(|s| s.to_string()),
         parent_task_attempt: None,
         image_ids: None,
         priority,
-        assignee_id: None,
-        assignee_type: None,
-
-        assigned_agent: None,
-        agent_id: None,
+        assignee_id,
+        assignee_type,
+        assigned_agent,
+        agent_id,
         assigned_mcps: None,
         created_by: "workflow".to_string(),
         requires_approval: None,
@@ -794,12 +826,133 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         scheduled_start: None,
         scheduled_end: None,
         screenshot: None,
-        completion_criteria: None,
-        output_format: None,
+        completion_criteria,
+        output_format,
     };
 
     let task = Task::create(pool, &create, &task_id.to_string()).await.map_err(|e| e.to_string())?;
     Ok(Uuid::parse_str(&task.id).map_err(|e| e.to_string())?)
+}
+
+// ── Auto-execute for agent-assigned tasks ────────────────────────────────
+
+/// When a workflow creates a task with an `agent_id`, automatically start
+/// execution: look up the agent's execution config for the executor profile,
+/// create a TaskAttempt, and start the container.
+async fn auto_start_agent_execution(
+    pool: &SqlitePool,
+    deployment: &DeploymentImpl,
+    task_id: Uuid,
+) -> Result<(), String> {
+    use db::models::agent_execution_config::AgentExecutionConfig;
+    use db::models::task::Task;
+    use db::models::task_attempt::{CreateTaskAttempt, TaskAttempt};
+    use executors::executors::BaseCodingAgent;
+    use executors::profile::ExecutorProfileId;
+    use services::services::container::ContainerService;
+    use std::str::FromStr;
+
+    let task = Task::find_by_id(pool, &task_id.to_string())
+        .await
+        .map_err(|e| format!("Failed to find task: {e}"))?
+        .ok_or("Task not found")?;
+
+    // Fix 4: Guard against duplicate TaskAttempts — skip if one already exists
+    let existing_attempts = TaskAttempt::find_by_task_id_with_project(pool, task_id)
+        .await
+        .unwrap_or_default();
+    if !existing_attempts.is_empty() {
+        tracing::info!(
+            "Task {} already has {} attempt(s) — skipping auto-execute",
+            task_id,
+            existing_attempts.len()
+        );
+        return Ok(());
+    }
+
+    let agent_id = task
+        .agent_id
+        .as_ref()
+        .and_then(|id| Uuid::parse_str(id).ok())
+        .ok_or("No agent_id on task")?;
+
+    // Look up execution config for the agent
+    let config = AgentExecutionConfig::find_by_agent_id(pool, agent_id)
+        .await
+        .map_err(|e| format!("Failed to find agent execution config: {e}"))?;
+
+    // Parse executor profile from config, default to CLAUDE_CODE
+    let profile_str = config.and_then(|c| c.execution_profile_id);
+    let executor_profile_id = if let Some(ref profile_str) = profile_str {
+        // Format: "CLAUDE_CODE" or "CLAUDE_CODE:PLAN"
+        let parts: Vec<&str> = profile_str.splitn(2, ':').collect();
+        let executor = BaseCodingAgent::from_str(parts[0])
+            .map_err(|_| format!("Unknown executor: {}", parts[0]))?;
+        let variant = parts.get(1).map(|s| s.to_string());
+        ExecutorProfileId { executor, variant }
+    } else {
+        ExecutorProfileId::new(BaseCodingAgent::ClaudeCode)
+    };
+
+    // Resolve base branch from git repo (default to "main")
+    let base_branch = {
+        use db::models::project::Project;
+        let project = Project::find_by_id(pool, &task.project_id)
+            .await
+            .ok()
+            .flatten();
+        if let Some(ref proj) = project {
+            // Try to read default branch from git config
+            let repo_path = &proj.git_repo_path;
+            std::process::Command::new("git")
+                .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
+                .current_dir(repo_path)
+                .output()
+                .ok()
+                .and_then(|o| {
+                    if o.status.success() {
+                        String::from_utf8(o.stdout).ok().map(|s| {
+                            s.trim()
+                                .strip_prefix("origin/")
+                                .unwrap_or(s.trim())
+                                .to_string()
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| "main".to_string())
+        } else {
+            "main".to_string()
+        }
+    };
+
+    // Create TaskAttempt
+    let task_attempt = TaskAttempt::create(
+        pool,
+        &CreateTaskAttempt {
+            executor: executor_profile_id.executor.clone(),
+            base_branch,
+        },
+        task_id,
+    )
+    .await
+    .map_err(|e| format!("Failed to create task attempt: {e}"))?;
+
+    // Start execution
+    let _process = deployment
+        .container()
+        .start_attempt(&task_attempt, executor_profile_id)
+        .await
+        .map_err(|e| format!("Failed to start execution: {e}"))?;
+
+    tracing::info!(
+        "Auto-started execution for workflow task {} (attempt {})",
+        task_id,
+        task_attempt.id
+    );
+
+    Ok(())
 }
 
 // ── Helper functions ──────────────────────────────────────────────────────

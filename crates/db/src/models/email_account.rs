@@ -572,12 +572,12 @@ mod tests {
             .expect("account missing");
         assert_eq!(fetched.display_name.as_deref(), Some("Team Account"));
 
-        let by_project = EmailAccount::find_by_project(&pool, project_id)
+        let by_project = EmailAccount::find_by_project(&pool, project_id.unwrap())
             .await
             .expect("project lookup failed");
         assert_eq!(by_project.len(), 1);
 
-        let by_provider = EmailAccount::find_by_provider(&pool, project_id, EmailProvider::Gmail)
+        let by_provider = EmailAccount::find_by_provider(&pool, project_id.unwrap(), EmailProvider::Gmail)
             .await
             .expect("provider lookup failed");
         assert_eq!(by_provider.len(), 1);

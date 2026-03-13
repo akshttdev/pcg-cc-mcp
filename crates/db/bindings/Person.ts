@@ -23,4 +23,13 @@ client_profile: string | null,
 /**
  * 'idea' | 'funding' | 'manufacturing' | 'distribution' | 'customer_acquisition'
  */
-business_stage: string | null, lifecycle_stage: string, lead_score: number, company_name: string | null, job_title: string | null, website: string | null, user_id: string | null, crm_contact_id: string | null, organization_id: string | null, intelligence_summary: string | null, intelligence_raw: string | null, intelligence_last_run_at: string | null, intelligence_confidence: number, notes: string | null, tags: string, custom_fields: string, created_at: string, updated_at: string, };
+business_stage: string | null, lifecycle_stage: string, lead_score: number, company_name: string | null, job_title: string | null, website: string | null, user_id: string | null, crm_contact_id: string | null, organization_id: string | null, intelligence_summary: string | null, intelligence_raw: string | null, intelligence_last_run_at: string | null, intelligence_confidence: number, notes: string | null, tags: string, custom_fields: string, 
+/**
+ * How this person first engaged with PCG.
+ * 'email'|'instagram'|'whatsapp'|'linkedin'|'twitter'|'sms'|'phone'|'in_person'
+ */
+onboarding_channel: string | null, 
+/**
+ * Preferred channel for outbound communication (may differ from onboarding).
+ */
+preferred_contact: string | null, created_at: string, updated_at: string, };

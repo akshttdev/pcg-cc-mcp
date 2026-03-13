@@ -75,7 +75,7 @@ pub struct CreateDataSource {
 
 // ── Update input ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Default, Deserialize, TS)]
 #[ts(export)]
 pub struct UpdateDataSource {
     pub title: Option<String>,

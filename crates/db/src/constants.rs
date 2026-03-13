@@ -4,15 +4,16 @@
 
 use uuid::Uuid;
 
-/// The Powerclub Global project — feedback/bug reports land here.
+/// The ORCHA Platform project — feedback/bug reports land here.
+/// This is the dogfooding project under Power Club Global org.
 ///
-/// UUID: 05abaaf5-b249-4d1c-a980-c27aa095f579
-pub const BUGREPORTS_PROJECT_ID: Uuid = Uuid::from_u128(0x05abaaf5_b249_4d1c_a980_c27aa095f579);
+/// UUID: 00000000-0000-0000-0000-000000000001
+pub const BUGREPORTS_PROJECT_ID: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_000000000001);
 
-/// The Bug Board within the Powerclub Global project.
+/// The Bugs board within the ORCHA Platform project.
 ///
-/// UUID: f91564ab-ae26-0bfd-f3f8-ad627cf442c0
-pub const BUGREPORTS_BOARD_ID: Uuid = Uuid::from_u128(0xf91564ab_ae26_0bfd_f3f8_ad627cf442c0);
+/// UUID: d0600000-0000-0000-0000-000000000001
+pub const BUGREPORTS_BOARD_ID: Uuid = Uuid::from_u128(0xd0600000_0000_0000_0000_000000000001);
 
 /// The default admin user for local development.
 /// Only seeded if no users exist in the database.
@@ -30,7 +31,7 @@ mod tests {
     fn test_bugreports_project_id() {
         assert_eq!(
             BUGREPORTS_PROJECT_ID.to_string(),
-            "05abaaf5-b249-4d1c-a980-c27aa095f579"
+            "00000000-0000-0000-0000-000000000001"
         );
     }
 
@@ -38,7 +39,7 @@ mod tests {
     fn test_bugreports_board_id() {
         assert_eq!(
             BUGREPORTS_BOARD_ID.to_string(),
-            "f91564ab-ae26-0bfd-f3f8-ad627cf442c0"
+            "d0600000-0000-0000-0000-000000000001"
         );
     }
 
