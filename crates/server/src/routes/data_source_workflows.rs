@@ -21,7 +21,7 @@ use uuid::Uuid;
 use deployment::Deployment;
 use db::models::pcg_router_model::PcgRouterModel;
 use crate::{DeploymentImpl, error::ApiError};
-use super::pcg_router::{self, ChatMessage};
+use services::services::workflow_llm::WorkflowLLMService;
 
 // ── Workflow types (n8n-inspired schema) ─────────────────────────────────────
 
@@ -3200,16 +3200,10 @@ async fn execute_node_with_llm(
         prompt
     };
 
-    // Route through PCG Router — handles multi-provider fallback
+    // Route through WorkflowLLMService — handles multi-provider fallback
     let messages = vec![
-        ChatMessage {
-            role: "system".to_string(),
-            content: json!("You are a precise data extraction assistant. Your task is to extract REAL entities (people, companies, deals, tasks) that are explicitly mentioned in the source content provided. Rules:\n1. Only extract entities that are clearly and explicitly named in the source text.\n2. NEVER use document metadata (titles, dates, section headings) as entity names.\n3. NEVER fabricate or hallucinate entities that are not in the source.\n4. If no entities of the requested type exist in the source, return an empty array.\n5. Always output valid JSON without markdown formatting or preamble."),
-        },
-        ChatMessage {
-            role: "user".to_string(),
-            content: json!(prompt),
-        },
+        WorkflowLLMService::system_message("You are a precise data extraction assistant. Your task is to extract REAL entities (people, companies, deals, tasks) that are explicitly mentioned in the source content provided. Rules:\n1. Only extract entities that are clearly and explicitly named in the source text.\n2. NEVER use document metadata (titles, dates, section headings) as entity names.\n3. NEVER fabricate or hallucinate entities that are not in the source.\n4. If no entities of the requested type exist in the source, return an empty array.\n5. Always output valid JSON without markdown formatting or preamble."),
+        WorkflowLLMService::user_message(&prompt),
     ];
 
     // Use per-node model override if set, otherwise use the workflow-level model
@@ -3218,8 +3212,8 @@ async fn execute_node_with_llm(
         .filter(|s| !s.is_empty())
         .or_else(|| if model.is_empty() { None } else { Some(model) });
 
-    match pcg_router::route_completion(pool, messages.clone(), node_model, Some(2048), None).await {
-        Ok((resp, metadata)) => {
+    match WorkflowLLMService::completion(pool, messages.clone(), node_model, Some(2048), None).await {
+        Ok((text, metadata)) => {
             tracing::info!(
                 "[WORKFLOW] Node '{}' routed via {} ({}), tokens: {:?}/{:?}",
                 node.id, metadata.model_used, metadata.provider,
@@ -3232,90 +3226,79 @@ async fn execute_node_with_llm(
                 "output_tokens": metadata.output_tokens,
                 "estimated_cost_micros": metadata.estimated_cost_micros,
             });
-            // Extract text from OpenAI-format response
-            if let Some(text) = resp["choices"][0]["message"]["content"].as_str() {
-                if !text.is_empty() {
-                    // Try to parse the response as JSON — if it fails, attempt one repair retry
-                    let trimmed = text.trim();
-                    // Strip markdown code fences if present
-                    let json_text = if trimmed.starts_with("```") {
-                        trimmed
-                            .trim_start_matches("```json")
-                            .trim_start_matches("```")
-                            .trim_end_matches("```")
-                            .trim()
-                    } else {
-                        trimmed
-                    };
+            if !text.is_empty() {
+                // Try to parse the response as JSON — if it fails, attempt one repair retry
+                let trimmed = text.trim();
+                // Strip markdown code fences if present
+                let json_text = if trimmed.starts_with("```") {
+                    trimmed
+                        .trim_start_matches("```json")
+                        .trim_start_matches("```")
+                        .trim_end_matches("```")
+                        .trim()
+                } else {
+                    trimmed
+                };
 
-                    if serde_json::from_str::<Value>(json_text).is_ok() {
-                        // Valid JSON — return the cleaned text
-                        return (json_text.to_string(), Some(usage_meta));
-                    }
-
-                    // JSON parse failed — attempt one repair retry
-                    tracing::warn!(
-                        "[WORKFLOW] Node '{}' returned invalid JSON, attempting repair retry",
-                        node.id
-                    );
-                    let repair_messages = vec![
-                        ChatMessage {
-                            role: "system".to_string(),
-                            content: json!("You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only."),
-                        },
-                        ChatMessage {
-                            role: "user".to_string(),
-                            content: json!(format!(
-                                "The previous response was not valid JSON. Please fix it and return only valid JSON. Do not include any explanation or markdown formatting.\n\nOriginal response:\n{}",
-                                text
-                            )),
-                        },
-                    ];
-
-                    match pcg_router::route_completion(pool, repair_messages, node_model, Some(2048), None).await {
-                        Ok((retry_resp, retry_meta)) => {
-                            tracing::info!(
-                                "[WORKFLOW] Node '{}' repair retry via {} ({})",
-                                node.id, retry_meta.model_used, retry_meta.provider
-                            );
-                            // Merge usage metadata
-                            let combined_usage = json!({
-                                "model_used": retry_meta.model_used,
-                                "provider": retry_meta.provider,
-                                "input_tokens": metadata.input_tokens.unwrap_or(0) + retry_meta.input_tokens.unwrap_or(0),
-                                "output_tokens": metadata.output_tokens.unwrap_or(0) + retry_meta.output_tokens.unwrap_or(0),
-                                "estimated_cost_micros": metadata.estimated_cost_micros.unwrap_or(0) + retry_meta.estimated_cost_micros.unwrap_or(0),
-                                "retry_used": true,
-                            });
-                            if let Some(retry_text) = retry_resp["choices"][0]["message"]["content"].as_str() {
-                                let retry_trimmed = retry_text.trim();
-                                let retry_json = if retry_trimmed.starts_with("```") {
-                                    retry_trimmed
-                                        .trim_start_matches("```json")
-                                        .trim_start_matches("```")
-                                        .trim_end_matches("```")
-                                        .trim()
-                                } else {
-                                    retry_trimmed
-                                };
-                                if !retry_json.is_empty() {
-                                    return (retry_json.to_string(), Some(combined_usage));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("[WORKFLOW] Repair retry failed for node '{}': {e}", node.id);
-                        }
-                    }
-
-                    // Return original text even if repair failed — validation will catch errors downstream
-                    return (text.to_string(), Some(usage_meta));
+                if serde_json::from_str::<Value>(json_text).is_ok() {
+                    // Valid JSON — return the cleaned text
+                    return (json_text.to_string(), Some(usage_meta));
                 }
+
+                // JSON parse failed — attempt one repair retry
+                tracing::warn!(
+                    "[WORKFLOW] Node '{}' returned invalid JSON, attempting repair retry",
+                    node.id
+                );
+                let repair_messages = vec![
+                    WorkflowLLMService::system_message("You are a data extraction and analysis assistant. Always output valid JSON. Do not include markdown formatting or preamble — respond with raw JSON only."),
+                    WorkflowLLMService::user_message(&format!(
+                        "The previous response was not valid JSON. Please fix it and return only valid JSON. Do not include any explanation or markdown formatting.\n\nOriginal response:\n{}",
+                        text
+                    )),
+                ];
+
+                match WorkflowLLMService::completion(pool, repair_messages, node_model, Some(2048), None).await {
+                    Ok((retry_text, retry_meta)) => {
+                        tracing::info!(
+                            "[WORKFLOW] Node '{}' repair retry via {} ({})",
+                            node.id, retry_meta.model_used, retry_meta.provider
+                        );
+                        // Merge usage metadata
+                        let combined_usage = json!({
+                            "model_used": retry_meta.model_used,
+                            "provider": retry_meta.provider,
+                            "input_tokens": metadata.input_tokens.unwrap_or(0) + retry_meta.input_tokens.unwrap_or(0),
+                            "output_tokens": metadata.output_tokens.unwrap_or(0) + retry_meta.output_tokens.unwrap_or(0),
+                            "estimated_cost_micros": metadata.estimated_cost_micros.unwrap_or(0) + retry_meta.estimated_cost_micros.unwrap_or(0),
+                            "retry_used": true,
+                        });
+                        let retry_trimmed = retry_text.trim();
+                        let retry_json = if retry_trimmed.starts_with("```") {
+                            retry_trimmed
+                                .trim_start_matches("```json")
+                                .trim_start_matches("```")
+                                .trim_end_matches("```")
+                                .trim()
+                        } else {
+                            retry_trimmed
+                        };
+                        if !retry_json.is_empty() {
+                            return (retry_json.to_string(), Some(combined_usage));
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("[WORKFLOW] Repair retry failed for node '{}': {e}", node.id);
+                    }
+                }
+
+                // Return original text even if repair failed — validation will catch errors downstream
+                return (text.to_string(), Some(usage_meta));
             }
             tracing::warn!("[WORKFLOW] Empty response from router for node '{}'", node.id);
         }
         Err(e) => {
-            tracing::error!("[WORKFLOW] PCG Router failed for node '{}': {e}. Check that API keys are configured (e.g. ANTHROPIC_API_KEY env var).", node.id);
+            tracing::error!("[WORKFLOW] WorkflowLLMService failed for node '{}': {e}. Check that API keys are configured (e.g. ANTHROPIC_API_KEY env var).", node.id);
         }
     }
 
