@@ -30,13 +30,14 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const loadWatchers = useCallback(async () => {
     try {
       const data = await agentWatchersApi.list(taskId);
       setWatchers(data);
-    } catch {
-      // Initial load — fail silently
+    } catch (err) {
+      console.error('Failed to load agent watchers:', err);
     }
   }, [taskId]);
 
@@ -48,8 +49,8 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
     try {
       const agents = await agentsApi.listActive();
       setAvailableAgents(agents);
-    } catch {
-      // Agent list load — fail silently
+    } catch (err) {
+      console.error('Failed to load agents:', err);
     }
   }, []);
 
@@ -58,6 +59,13 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
       loadAgents();
     }
   }, [pickerOpen, loadAgents]);
+
+  const handlePickerOpenChange = useCallback((open: boolean) => {
+    setPickerOpen(open);
+    if (!open) {
+      setSearchQuery('');
+    }
+  }, []);
 
   const watcherIds = useMemo(
     () => new Set(watchers.map((w) => w.agent_id)),
@@ -79,8 +87,7 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
     try {
       await agentWatchersApi.add(taskId, agentId);
       await loadWatchers();
-      setPickerOpen(false);
-      setSearchQuery('');
+      handlePickerOpenChange(false);
     } catch {
       toast.error('Failed to add agent reviewer');
     } finally {
@@ -89,11 +96,15 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
   };
 
   const handleRemove = async (agentId: string) => {
+    if (removing) return;
+    setRemoving(agentId);
     try {
       await agentWatchersApi.remove(taskId, agentId);
       await loadWatchers();
     } catch {
       toast.error('Failed to remove agent reviewer');
+    } finally {
+      setRemoving(null);
     }
   };
 
@@ -104,7 +115,7 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
           <Eye className="h-3 w-3" />
           Agent Reviewers
         </p>
-        <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+        <Popover open={pickerOpen} onOpenChange={handlePickerOpenChange}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs">
               <Plus className="h-3 w-3 mr-1" />
@@ -176,7 +187,8 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
                 </Badge>
                 <button
                   onClick={() => handleRemove(w.agent_id)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10"
+                  disabled={removing === w.agent_id}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 disabled:opacity-50"
                   title="Remove watcher"
                 >
                   <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />

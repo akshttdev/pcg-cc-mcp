@@ -1015,7 +1015,7 @@ pub async fn get_watched_tasks(
 
 #[derive(Deserialize, TS)]
 pub struct AddAgentWatcherRequest {
-    pub agent_id: String,
+    pub agent_id: Uuid,
 }
 
 #[derive(serde::Serialize, TS)]
@@ -1034,22 +1034,19 @@ pub async fn add_agent_watcher(
     State(deployment): State<DeploymentImpl>,
     Json(body): Json<AddAgentWatcherRequest>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    // Validate agent exists
-    let agent_uuid = Uuid::parse_str(&body.agent_id)
-        .map_err(|e| ApiError::BadRequest(format!("Invalid agent_id: {e}")))?;
-    Agent::find_by_id(&deployment.db().pool, agent_uuid)
+    Agent::find_by_id(&deployment.db().pool, body.agent_id)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to find agent: {e}")))?
         .ok_or_else(|| ApiError::NotFound(format!("Agent {} not found", body.agent_id)))?;
 
-    Task::add_agent_watcher(&deployment.db().pool, &task.id, &body.agent_id).await?;
+    Task::add_agent_watcher(&deployment.db().pool, &task.id, &body.agent_id.to_string()).await?;
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
 #[derive(Deserialize)]
 struct AgentWatcherPath {
     #[allow(dead_code)]
-    task_id: String,
+    task_id: Uuid,
     agent_id: String,
 }
 
@@ -1072,17 +1069,19 @@ pub async fn list_agent_watchers(
 ) -> Result<ResponseJson<ApiResponse<Vec<AgentWatcherInfo>>>, ApiError> {
     let watchers = Task::find_agent_watchers(&deployment.db().pool, &task.id).await?;
 
+    // Batch-fetch agent info to avoid N+1 queries
+    let all_agents = Agent::find_all(&deployment.db().pool).await.unwrap_or_default();
+    let agent_map: std::collections::HashMap<String, &Agent> = all_agents
+        .iter()
+        .map(|a| (a.id.to_string(), a))
+        .collect();
+
     let mut result = Vec::with_capacity(watchers.len());
     for w in watchers {
-        let (name, designation) = if let Ok(uuid) = Uuid::parse_str(&w.actor_id) {
-            if let Ok(Some(agent)) = Agent::find_by_id(&deployment.db().pool, uuid).await {
-                (agent.short_name, agent.designation)
-            } else {
-                (w.actor_id.clone(), String::new())
-            }
-        } else {
-            (w.actor_id.clone(), String::new())
-        };
+        let (name, designation) = agent_map
+            .get(&w.actor_id)
+            .map(|a| (a.short_name.clone(), a.designation.clone()))
+            .unwrap_or_else(|| (w.actor_id.clone(), String::new()));
 
         result.push(AgentWatcherInfo {
             agent_id: w.actor_id,

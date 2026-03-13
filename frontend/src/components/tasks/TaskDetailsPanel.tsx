@@ -648,7 +648,8 @@ export function TaskDetailsPanel({
                               ) : activeTab === 'workflows' ? (
                                 <div className="p-4">{renderWorkflowBody()}</div>
                               ) : activeTab === 'activity' ? (
-                                <div className="p-4">
+                                <div className="p-4 space-y-4">
+                                  <AgentWatcherPanel taskId={task.id} />
                                   <ActivityTimeline taskId={task.id} />
                                 </div>
                               ) : activeTab === 'artifacts' ? (
