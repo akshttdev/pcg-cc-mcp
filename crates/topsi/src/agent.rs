@@ -113,6 +113,15 @@ For complex requests like "build a website", break into phases:
 - `fetch_web_page` - Fetch and read any URL. Use when asked to open or read a specific web page or link.
 You HAVE full internet access. NEVER say you can't browse URLs or search the web — call the tools.
 
+### CRM & Data tools
+- `get_project_detail` - Get project details with task counts and metadata. Requires project_id.
+- `list_crm_contacts` - List CRM contacts for an organization. Requires organization_id, supports search_query and lifecycle_stage filters.
+- `list_crm_deals` - List CRM deals. Requires one of: organization_id, pipeline_id, or stage_id.
+- `list_crm_pipelines` - List CRM pipelines and stages. Requires organization_id, optional pipeline_type filter.
+- `list_workflow_definitions` - List saved workflow definitions. System workflows visible to all; org-owned filtered by access.
+- `get_workflow_definition` - Get full workflow definition with steps. Requires workflow_id.
+- `search_entities` - Cross-entity keyword search across projects, contacts, deals, and tasks. Requires query; organization_id needed for CRM entity results. Supports entity_types filter.
+
 ### Communication
 - `respond_to_user` - IMPORTANT: Use this to deliver your response. Write your complete answer in the message parameter.
 
@@ -128,6 +137,10 @@ You HAVE full internet access. NEVER say you can't browse URLs or search the web
 - "How are my tasks going?" → list_tasks → respond_to_user
 - "What projects do I have?" → list_projects → respond_to_user
 - "Any issues?" → detect_issues → respond_to_user
+- "Show my contacts" → list_crm_contacts → respond_to_user
+- "What deals are in the pipeline?" → list_crm_deals → respond_to_user
+- "What workflows do we have?" → list_workflow_definitions → respond_to_user
+- "Find anything about Acme" → search_entities → respond_to_user
 - Action requests → execute → respond_to_user
 
 **Golden rule:** If you already have enough to give a good answer, call respond_to_user NOW. Don't keep calling tools hoping for better data — one or two tool calls is almost always enough.
@@ -477,10 +490,13 @@ impl TopsiAgent {
         let mut total_output_tokens: i64 = 0;
         let mut final_message: Option<String> = None;
 
+        // Load effective system prompt (custom from DB or default)
+        let system_prompt = self.get_effective_system_prompt().await;
+
         // Initial LLM call with conversation history
         let mut response = llm
             .generate_with_tools_and_history(
-                TOPSI_SYSTEM_PROMPT,
+                &system_prompt,
                 message,
                 &context,
                 &tools,
@@ -607,7 +623,7 @@ impl TopsiAgent {
                     // Feed results back to LLM for next reasoning step
                     response = llm
                         .continue_with_tool_results_and_history(
-                            TOPSI_SYSTEM_PROMPT,
+                            &system_prompt,
                             message,
                             &context,
                             &calls,
@@ -645,7 +661,7 @@ impl TopsiAgent {
                 "You gathered this information:\n{}\n\nNow give a direct, conversational answer.",
                 gathered
             );
-            match llm.generate(TOPSI_SYSTEM_PROMPT, message, &synthesis_context).await {
+            match llm.generate(&system_prompt, message, &synthesis_context).await {
                 Ok(content) => content,
                 Err(_) => "Something went sideways — try asking again with a bit more context.".to_string(),
             }
@@ -838,12 +854,12 @@ impl TopsiAgent {
                 "search_web" => self.tool_search_web(&call.arguments).await,
                 "fetch_web_page" => self.tool_fetch_web_page(&call.arguments).await,
                 "get_project_detail" => self.tool_get_project_detail(&call.arguments, scope).await,
-                "list_crm_contacts" => self.tool_list_crm_contacts(&call.arguments, scope).await,
-                "list_crm_deals" => self.tool_list_crm_deals(&call.arguments, scope).await,
-                "list_crm_pipelines" => self.tool_list_crm_pipelines(&call.arguments, scope).await,
+                "list_crm_contacts" => self.tool_list_crm_contacts(&call.arguments, user_context, scope).await,
+                "list_crm_deals" => self.tool_list_crm_deals(&call.arguments, user_context, scope).await,
+                "list_crm_pipelines" => self.tool_list_crm_pipelines(&call.arguments, user_context, scope).await,
                 "list_workflow_definitions" => self.tool_list_workflow_definitions(&call.arguments, scope).await,
                 "get_workflow_definition" => self.tool_get_workflow_definition(&call.arguments, scope).await,
-                "search_entities" => self.tool_search_entities(&call.arguments, scope).await,
+                "search_entities" => self.tool_search_entities(&call.arguments, user_context, scope).await,
                 _ => Err(TopsiError::ToolError(format!(
                     "Unknown tool: {}",
                     call.name
@@ -857,6 +873,34 @@ impl TopsiAgent {
         }
 
         results
+    }
+
+    /// Resolve the effective system prompt. Checks system_settings for a custom prompt
+    /// (key: "topsi_system_prompt"), falling back to the compiled-in default.
+    /// Also checks "topsi_prompt_mode" for "sudolang" vs "standard" (default).
+    async fn get_effective_system_prompt(&self) -> String {
+        let Some(pool) = &self.db else {
+            return TOPSI_SYSTEM_PROMPT.to_string();
+        };
+
+        // Check if there's a custom prompt stored
+        let mode = db::models::system_settings::SystemSetting::get(pool, "topsi_prompt_mode")
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "standard".to_string());
+
+        let setting_key = if mode == "sudolang" {
+            "topsi_system_prompt_sudolang"
+        } else {
+            "topsi_system_prompt"
+        };
+
+        db::models::system_settings::SystemSetting::get(pool, setting_key)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| TOPSI_SYSTEM_PROMPT.to_string())
     }
 
     // ==================== Tool Implementations ====================
@@ -2404,10 +2448,46 @@ impl TopsiAgent {
         }))
     }
 
+    /// Verify that a user has membership in the given organization.
+    /// Admins bypass the check. Returns Ok(()) if access is granted, Err otherwise.
+    async fn verify_org_membership(
+        &self,
+        pool: &SqlitePool,
+        user_context: &UserContext,
+        org_id: Uuid,
+    ) -> Result<()> {
+        if user_context.is_admin {
+            return Ok(());
+        }
+
+        let user_uuid = Uuid::parse_str(&user_context.user_id)
+            .map_err(|_| TopsiError::AccessDenied("Invalid user_id".to_string()))?;
+        let user_id_bytes = user_uuid.as_bytes().to_vec();
+
+        let member: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM organization_members WHERE organization_id = ? AND user_id = ? LIMIT 1",
+        )
+        .bind(org_id.to_string())
+        .bind(&user_id_bytes)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| TopsiError::ToolError(format!("Database error: {}", e)))?;
+
+        if member.is_some() {
+            Ok(())
+        } else {
+            Err(TopsiError::AccessDenied(format!(
+                "User is not a member of organization {}",
+                org_id
+            )))
+        }
+    }
+
     /// List CRM contacts for an organization
     async fn tool_list_crm_contacts(
         &self,
         args: &serde_json::Value,
+        user_context: &UserContext,
         _scope: &AccessScope,
     ) -> Result<serde_json::Value> {
         let Some(pool) = &self.db else {
@@ -2423,6 +2503,10 @@ impl TopsiAgent {
             Ok(u) => u,
             Err(_) => return Ok(serde_json::json!({"error": "Invalid organization_id UUID"})),
         };
+
+        if let Err(e) = self.verify_org_membership(pool, user_context, org_uuid).await {
+            return Ok(serde_json::json!({"error": e.to_string()}));
+        }
 
         let limit = args.get("limit").and_then(|v| v.as_i64()).map(|v| v as i32).unwrap_or(50);
         let search_query = args.get("search_query").and_then(|v| v.as_str());
@@ -2476,6 +2560,7 @@ impl TopsiAgent {
     async fn tool_list_crm_deals(
         &self,
         args: &serde_json::Value,
+        user_context: &UserContext,
         _scope: &AccessScope,
     ) -> Result<serde_json::Value> {
         let Some(pool) = &self.db else {
@@ -2485,6 +2570,16 @@ impl TopsiAgent {
         let pipeline_id = args.get("pipeline_id").and_then(|v| v.as_str());
         let stage_id = args.get("stage_id").and_then(|v| v.as_str());
         let org_id = args.get("organization_id").and_then(|v| v.as_str());
+
+        // Validate org membership when org_id is provided directly
+        if let Some(oid) = org_id {
+            if let Ok(uuid) = Uuid::parse_str(oid) {
+                if let Err(e) = self.verify_org_membership(pool, user_context, uuid).await {
+                    return Ok(serde_json::json!({"error": e.to_string()}));
+                }
+            }
+        }
+        // TODO: For pipeline_id/stage_id queries, validate via pipeline→org ownership
 
         let deals = if let Some(pid) = pipeline_id {
             match Uuid::parse_str(pid) {
@@ -2533,6 +2628,7 @@ impl TopsiAgent {
     async fn tool_list_crm_pipelines(
         &self,
         args: &serde_json::Value,
+        user_context: &UserContext,
         _scope: &AccessScope,
     ) -> Result<serde_json::Value> {
         let Some(pool) = &self.db else {
@@ -2548,6 +2644,10 @@ impl TopsiAgent {
             Ok(u) => u,
             Err(_) => return Ok(serde_json::json!({"error": "Invalid organization_id UUID"})),
         };
+
+        if let Err(e) = self.verify_org_membership(pool, user_context, org_uuid).await {
+            return Ok(serde_json::json!({"error": e.to_string()}));
+        }
 
         let pipeline_type_filter = args
             .get("pipeline_type")
@@ -2704,6 +2804,7 @@ impl TopsiAgent {
     async fn tool_search_entities(
         &self,
         args: &serde_json::Value,
+        user_context: &UserContext,
         _scope: &AccessScope,
     ) -> Result<serde_json::Value> {
         let Some(pool) = &self.db else {
@@ -2720,6 +2821,13 @@ impl TopsiAgent {
             .get("organization_id")
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok());
+
+        // Validate org membership when org_id is provided (needed for CRM entity searches)
+        if let Some(oid) = org_id {
+            if let Err(e) = self.verify_org_membership(pool, user_context, oid).await {
+                return Ok(serde_json::json!({"error": e.to_string()}));
+            }
+        }
 
         let entity_types: Vec<String> = args
             .get("entity_types")

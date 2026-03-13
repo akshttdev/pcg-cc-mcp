@@ -81,6 +81,9 @@ pub enum TopsiError {
     #[error("Tool execution error: {0}")]
     ToolError(String),
 
+    #[error("Access denied: {0}")]
+    AccessDenied(String),
+
     #[error("Configuration error: {0}")]
     ConfigError(String),
 
