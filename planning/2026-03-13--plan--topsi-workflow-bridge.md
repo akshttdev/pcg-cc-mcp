@@ -3,7 +3,7 @@
 **Date:** 2026-03-13 (updated after Phase 4 completion + auto-approve encapsulation)
 **Branch:** `feature/topsi-workflow-bridge`
 **PR:** #22
-**Depends on:** PR #21 (LLM dogfooding infrastructure)
+**Depends on:** PR #21 (LLM dogfooding infrastructure), PR #23 (dogfood pipeline), PR #24 (QA review fixes) — all merged to main
 **Related:** `2026-03-12--plan--three-sprint-roadmap.md`, `2026-03-12--plan--agent-task-mcp-wiring.md`
 
 ---
@@ -133,27 +133,18 @@ Extracted ~2200 lines of workflow execution logic from `data_source_workflows.rs
 - Request/response type definitions
 - Router setup
 
-**Service API:**
+**Extracted API** (free functions, not a struct):
 ```rust
-pub struct WorkflowExecutionService;
+// crates/services/src/services/workflow_execution.rs — core logic (~2400 lines)
+pub fn execute_node_with_llm(), execute_action_node()
+pub fn extract_records_from_output(), check_*_duplicate()
+pub fn validate_record_against_schema(), compute_confidence()
 
-impl WorkflowExecutionService {
-    pub async fn execute(pool, definition, trigger_data, org_id) -> Result<WorkflowRun>
-    pub async fn execute_preview(pool, definition, content, org_id) -> Result<Vec<PreviewNodeResult>>
-    pub async fn get_run_status(pool, run_id) -> Result<WorkflowRun>
-    pub async fn list_runs(pool, filters) -> Result<Vec<WorkflowRun>>
-    pub async fn commit_staged_data(pool, run_id, approver_id) -> Result<CommitResult>
-}
+// crates/server/src/routes/workflow_engine.rs — orchestration (~590 lines)
+pub fn execute_workflow_nodes(), finalize_workflow_run()
+pub fn auto_approve_staged_records(), check_for_llm_errors()
+pub const MAX_AUTO_APPROVE_RECORDS: i64 = 50;
 ```
-
-### 2B: Topsi workflow trigger tools
-| Tool | Description | Uses |
-|------|-------------|------|
-| `trigger_workflow` | Execute a saved workflow by ID | `WorkflowExecutionService::execute()` |
-| `get_workflow_run_status` | Check running workflow status | `WorkflowExecutionService::get_run_status()` |
-| `list_workflow_runs` | List recent executions | `WorkflowExecutionService::list_runs()` |
-| `review_staged_data` | Show staged CRM data pending review | `WorkflowStagingRecord::find_by_run()` |
-| `commit_staged_data` | Approve and commit staged output | `WorkflowExecutionService::commit_staged_data()` |
 
 ### Files
 - **NEW** `crates/services/src/services/workflow_execution.rs` (~2000 lines extracted)
@@ -258,27 +249,28 @@ Phase 5 (Bidirectional UI + admin settings)
 | `Organization::get_user_role()` | `db/models/user.rs` | Exists — returns role for user in org |
 | `system_settings` table | Migration 20260327000000 | Exists — key-value store with `get()`/`set()` |
 | `TopsiConfig.autonomy_level` | `topsi/src/config.rs` | Exists — `Full/Supervised/ApprovalRequired/Manual` — NOT enforced |
-| `TopsiConfig.system_prompt` | `topsi/src/config.rs` | Exists — optional override field, not wired to DB |
-| `AccessScope` enum | `topsi/src/agent/access_control.rs` | Project-scoped only — no org awareness |
-| `WorkflowNode.parameters` | `data_source_workflows.rs:36-44` | Untyped JSON — can add `output_mode` without schema change |
+| `TopsiConfig.system_prompt` | `topsi/src/config.rs` | Now wired to DB via `get_effective_system_prompt()` (Phase 1B.3) |
+| `AccessScope` enum | `topsi/src/agent/access_control.rs` | Project-scoped; org validation via `verify_org_membership()` (Phase 1B.1) |
+| `WorkflowNode.parameters` | `workflow_execution.rs` | Untyped JSON — `output_mode` added (Phase 1B.4) |
 
 ---
 
 ## Critical Files Reference
 
-| File | Role |
-|------|------|
-| `crates/services/src/services/workflow_llm.rs` | WorkflowLLMService (Phase 0 — DONE) |
-| `crates/server/src/routes/data_source_workflows.rs` | Thin route handlers (~1250 lines) |
-| `crates/server/src/routes/pcg_router.rs` | Model registry, direct API route (KEEP) |
-| `crates/db/src/models/pcg_router_model.rs` | Model registry DB model |
-| `crates/topsi/src/tools/mod.rs` | Topsi tool schemas (24 tools + respond_to_user) |
-| `crates/topsi/src/agent.rs` | Topsi agent loop, tool dispatch (~2450 lines) |
-| `crates/topsi/src/platform_data.rs` | PlatformDataService — 24 CRUD tools (~1970 lines) |
-| `crates/topsi/src/workflow_builder.rs` | Workflow Builder specialist agent |
-| `crates/db/src/models/topsi_user_settings.rs` | Per-user confirmation settings model |
-| `crates/server/src/routes/workflow_engine.rs` | Shared workflow execution engine + auto-approve |
-| `crates/topsi/src/agent/access_control.rs` | AccessScope (project-only, needs org extension) |
-| `crates/topsi/src/config.rs` | TopsiConfig with autonomy_level + system_prompt |
-| `crates/db/src/models/system_settings.rs` | Key-value settings store |
-| `crates/db/src/models/user.rs` | User model with org membership queries |
+| File | Lines | Role |
+|------|-------|------|
+| `crates/services/src/services/workflow_llm.rs` | ~772 | WorkflowLLMService — multi-provider LLM with tool calling |
+| `crates/services/src/services/workflow_execution.rs` | ~2396 | Core execution logic — LLM nodes, action nodes, dedup, validation |
+| `crates/server/src/routes/workflow_engine.rs` | ~590 | Orchestration — topo sort, staging, auto-approve, finalization |
+| `crates/server/src/routes/data_source_workflows.rs` | ~1349 | Thin HTTP handlers + trigger/schedule loops |
+| `crates/server/src/routes/pcg_router.rs` | — | Model registry, direct API route (KEEP) |
+| `crates/db/src/models/pcg_router_model.rs` | — | Model registry DB model |
+| `crates/topsi/src/tools/mod.rs` | ~1005 | Topsi tool schemas (31 tools + respond_to_user) |
+| `crates/topsi/src/agent.rs` | ~2455 | Topsi agent loop, tool dispatch, confirmation gate |
+| `crates/topsi/src/platform_data.rs` | ~1974 | PlatformDataService — 22 CRUD tools |
+| `crates/topsi/src/workflow_builder.rs` | ~378 | Workflow Builder specialist agent |
+| `crates/db/src/models/topsi_user_settings.rs` | — | Per-user confirmation settings model |
+| `crates/server/src/routes/workflow_staging.rs` | — | Staging commit logic, agent auto-start |
+| `crates/topsi/src/agent/access_control.rs` | — | AccessScope + verify_org_membership |
+| `crates/topsi/src/config.rs` | — | TopsiConfig with autonomy_level + DB-backed system prompt |
+| `crates/db/src/models/system_settings.rs` | — | Key-value settings store |
