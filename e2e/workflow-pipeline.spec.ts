@@ -171,6 +171,43 @@ test.describe("10C: Task Assignment → Execution Status", () => {
     // Cleanup
     await request.delete(`/api/tasks/${task.id}`).catch(() => {});
   });
+
+  test("task with agent_id auto-registers QA agent watcher", async ({ request }) => {
+    await apiLogin(request);
+
+    // Create task with dev agent assigned — should auto-register QA watcher
+    const taskRes = await request.post("/api/tasks", {
+      data: {
+        project_id: ORCHA_PROJECT_ID,
+        title: `${TEST_DATA_PREFIX} Agent watcher registration test`,
+        description: "Test that creating a task with DEV agent auto-registers QA agent as watcher.",
+        priority: "low",
+        agent_id: DEV_AGENT_ID,
+        board_id: BUGS_BOARD_ID,
+        tags: ["e2e-test"],
+      },
+    });
+    expect(taskRes.ok()).toBeTruthy();
+    const task = (await taskRes.json()).data;
+
+    // Fetch the task and verify collaborators include QA agent as agent_watcher
+    const getRes = await request.get(`/api/tasks/${task.id}`);
+    expect(getRes.ok()).toBeTruthy();
+    const fetchedTask = (await getRes.json()).data;
+
+    // collaborators is a JSON string — parse it
+    const collaborators = fetchedTask.collaborators
+      ? JSON.parse(fetchedTask.collaborators)
+      : [];
+    const qaWatcher = collaborators.find(
+      (c: any) => c.actor_id === QA_AGENT_ID && c.actor_type === "agent_watcher"
+    );
+    expect(qaWatcher).toBeTruthy();
+    expect(qaWatcher.last_action).toBe("watching");
+
+    // Cleanup
+    await request.delete(`/api/tasks/${task.id}`).catch(() => {});
+  });
 });
 
 // ─── 10D: Full Pipeline Walkthrough ────────────────────────────────────────
@@ -203,13 +240,37 @@ test.describe("10D: Full Pipeline Walkthrough", () => {
     expect(devAgent).toBeTruthy();
     expect(qaAgent).toBeTruthy();
 
-    // 4. Verify project boards exist
+    // 4. Verify agent watcher auto-registration works end-to-end
+    //    Create a task with DEV agent → QA should appear as agent_watcher
+    const watcherTaskRes = await request.post("/api/tasks", {
+      data: {
+        project_id: ORCHA_PROJECT_ID,
+        title: `${TEST_DATA_PREFIX} Watcher pipeline check`,
+        description: "Verify auto_watch_agent_ids wiring in full pipeline.",
+        priority: "low",
+        agent_id: DEV_AGENT_ID,
+        board_id: BUGS_BOARD_ID,
+      },
+    });
+    expect(watcherTaskRes.ok()).toBeTruthy();
+    const watcherTask = (await watcherTaskRes.json()).data;
+    const watcherTaskGet = await request.get(`/api/tasks/${watcherTask.id}`);
+    expect(watcherTaskGet.ok()).toBeTruthy();
+    const wtData = (await watcherTaskGet.json()).data;
+    const collabs = wtData.collaborators ? JSON.parse(wtData.collaborators) : [];
+    const qaWatcher = collabs.find(
+      (c: any) => c.actor_id === QA_AGENT_ID && c.actor_type === "agent_watcher"
+    );
+    expect(qaWatcher).toBeTruthy();
+    await request.delete(`/api/tasks/${watcherTask.id}`).catch(() => {});
+
+    // 5. Verify project boards exist
     const boardsRes = await request.get(`/api/projects/${ORCHA_PROJECT_ID}/boards`);
     expect(boardsRes.ok()).toBeTruthy();
     const boards = (await boardsRes.json()).data;
     expect(boards.length).toBeGreaterThanOrEqual(3);
 
-    // 5. Submit feedback and verify task is created
+    // 6. Submit feedback and verify task is created
     const feedbackRes = await request.post("/api/feedback", {
       data: {
         feedback_type: "bug",
@@ -222,7 +283,7 @@ test.describe("10D: Full Pipeline Walkthrough", () => {
     const feedback = (await feedbackRes.json()).data;
     expect(feedback.task_id).toBeTruthy();
 
-    // 6. Verify task was created with correct project
+    // 7. Verify task was created with correct project
     const taskRes = await request.get(`/api/tasks/${feedback.task_id}`);
     expect(taskRes.ok()).toBeTruthy();
     const task = (await taskRes.json()).data;
