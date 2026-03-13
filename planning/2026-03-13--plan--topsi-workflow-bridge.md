@@ -60,7 +60,7 @@ Built `WorkflowLLMService` in `crates/services/src/services/workflow_llm.rs` (77
 
 ---
 
-## Phase 1: Topsi Reads the System — DONE ✅ (with gaps to close)
+## Phase 1: Topsi Reads the System — DONE ✅
 
 ### What shipped (7 new tools)
 | Tool | Description | Scope |
@@ -78,102 +78,31 @@ Built `WorkflowLLMService` in `crates/services/src/services/workflow_llm.rs` (77
 - Added AccessScope filtering to workflow definition tools
 - Added owner_id to list_workflow_definitions response
 
-### Gaps to close (Phase 1B)
+### Phase 1B: Gap Closures — DONE ✅
 
-#### 1B.1: CRM Org-Scope Validation
-**Problem:** CRM tools accept any `organization_id` without checking user membership.
-**Solution:** Before CRM queries, validate via `organization_members`:
-```rust
-// In each CRM tool, before executing the query:
-let is_member = sqlx::query_scalar::<_, i64>(
-    "SELECT COUNT(*) FROM organization_members WHERE organization_id = ?1 AND user_id = ?2"
-)
-.bind(org_id).bind(user_id).fetch_one(pool).await?;
-if *scope != AccessScope::Admin && is_member == 0 {
-    return Ok(json!({"error": "Access denied: not a member of this organization"}));
-}
-```
-**Infrastructure exists:** `organization_members` table with `(organization_id, user_id)` unique constraint. `Organization::get_user_role()` available but requires user_id which must come from `UserContext`.
-**Change needed:** Pass `user_context: &UserContext` to CRM tools (currently only `scope`).
+#### 1B.1: CRM Org-Scope Validation ✅
+Added `verify_org_membership()` helper that checks `organization_members` table. Admin bypasses. All CRM tools (`list_crm_contacts`, `list_crm_deals`, `list_crm_pipelines`, `search_entities`) now require `user_context` and validate org membership before executing queries.
 
-#### 1B.2: System Prompt Update
-**Problem:** `TOPSI_SYSTEM_PROMPT` (const in `agent.rs:41-156`) doesn't mention CRM/workflow tools. LLM won't proactively use them.
-**Solution:** Add a compact CRM/workflow tools section to the system prompt. Detailed but minimal to avoid context pollution.
+#### 1B.2: System Prompt Update ✅
+Added CRM & Data tools section to `TOPSI_SYSTEM_PROMPT` with descriptions for all 7 tools. Added CRM query examples to the "Gather data first" section.
 
-**New section to add:**
-```
-## CRM & Workflow Tools
-When users ask about contacts, leads, deals, pipelines, or CRM data:
-- `list_crm_contacts` — search contacts by name/email/company, filter by lifecycle stage
-- `list_crm_deals` — view deals in a pipeline or organization
-- `list_crm_pipelines` — see pipeline stages and structure
-- `get_project_detail` — project info with task breakdown
+#### 1B.3: Admin-Editable System Prompt with SudoLang Toggle ✅
+Added `get_effective_system_prompt()` method that loads from `system_settings`:
+- `topsi_system_prompt` — custom standard prompt (falls back to compiled-in const)
+- `topsi_prompt_mode` — `"standard"` (default) or `"sudolang"`
+- `topsi_system_prompt_sudolang` — SudoLang variant
 
-When users ask about workflows or automations:
-- `list_workflow_definitions` — see available workflow templates
-- `get_workflow_definition` — inspect a workflow's nodes and connections
-- `search_entities` — find anything by keyword across projects, contacts, deals, tasks
+No new migration needed — uses existing `system_settings` table. All 3 LLM call sites in the agentic loop now use the DB-backed prompt. Admin can edit via existing `PUT /api/config/system-settings/{key}` endpoint.
 
-All CRM tools require organization_id. Use list_organizations first if needed.
-```
+#### 1B.4: Node Output Mode (Configurable) ✅
+Added `output_mode` parameter to `execute_node_with_llm()`:
+- `"text"` — returns raw LLM text, no JSON parsing or repair
+- `"structured"` — forces JSON parsing + repair retry (previous default behavior)
+- `"auto"` (default) — structured if `target_schemas` present, text otherwise
 
-#### 1B.3: Admin-Editable System Prompt with SudoLang Toggle
-**Problem:** System prompt is hardcoded. Want admin-editable prompt with optional SudoLang mode.
-**Solution:** Use existing `system_settings` table (key-value store, already has `get()`/`set()` methods).
+System prompt also adapts: structured mode gets extraction-focused prompt, text mode gets general-purpose prompt.
 
-**No new migration needed.** Use these keys:
-| Key | Type | Default |
-|-----|------|---------|
-| `topsi_system_prompt` | TEXT | null (falls back to const) |
-| `topsi_prompt_mode` | TEXT | `"standard"` (`"standard"` or `"sudolang"`) |
-
-**Implementation:**
-1. On agent init, check `SystemSetting::get(pool, "topsi_system_prompt")`
-2. If set, use it instead of `TOPSI_SYSTEM_PROMPT` const
-3. If `topsi_prompt_mode` is `"sudolang"`, use the SudoLang version
-4. Add API endpoints: `GET/PUT /api/admin/topsi-prompt` for the settings UI
-5. TopsiConfig already has optional `system_prompt` field — wire it up
-
-**SudoLang example (compact):**
-```
-Topsi {
-  role: "Topological Super Intelligence — platform orchestrator"
-  constraints {
-    ALWAYS use tools to take action, never just describe
-    ALWAYS call respond_to_user for final replies
-    scope all CRM queries to user's organizations
-  }
-  tools {
-    project: [list_projects, get_project_detail, create_project, update_project]
-    task: [create_task, update_task, list_tasks, get_task_status, start_task_execution]
-    crm: [list_crm_contacts, list_crm_deals, list_crm_pipelines]
-    workflow: [list_workflow_definitions, get_workflow_definition]
-    search: [search_entities, search_web, fetch_web_page]
-    system: [list_organizations, list_agents, respond_to_user]
-  }
-}
-```
-
-#### 1B.4: Node Output Mode (Configurable)
-**Problem:** All LLM nodes use text completion + JSON repair retry. `completion_with_structured_output()` could eliminate repair retries for extraction nodes.
-**Solution:** Add `output_mode` to node parameters.
-
-**Node parameter schema addition:**
-```json
-{
-  "output_mode": "text" | "structured" | "auto",
-  "output_schema": { ... }
-}
-```
-
-- `"text"` (default) — current behavior: text completion + markdown stripping + repair retry
-- `"structured"` — use `completion_with_structured_output()` with `output_schema` as the JSON Schema
-- `"auto"` — use structured if `output_schema` is present and non-empty, text otherwise
-
-**Changes:**
-- `execute_node_with_llm()` checks `node.parameters["output_mode"]`
-- If `"structured"`, calls `WorkflowLLMService::completion_with_structured_output()` with `node.parameters["output_schema"]`
-- Frontend workflow editor: add output_mode dropdown to LLM node config panel
+**Remaining for future:** Frontend workflow editor UI for output_mode dropdown.
 
 ---
 
