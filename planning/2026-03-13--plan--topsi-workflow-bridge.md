@@ -262,12 +262,12 @@ Consolidated into single `build_workflow` tool with `action: "create"|"modify"` 
 | `frontend/src/pages/settings/TopsiAdminSettings.tsx` | System prompt editor |
 | `frontend/src/pages/settings/TopsiUserSettings.tsx` | Per-user confirmation config |
 
-### Modified Files (11)
+### Modified Files (12)
 | File | Changes |
 |------|---------|
 | `frontend/src/components/topsi/TopsiWidget.tsx` | Store-driven state, tool call logging, workflow polling |
 | `frontend/src/types/activity.ts` | 3 new ActivityType variants |
-| `frontend/src/components/activity/ActivityFeed.tsx` | Icons + colors for agent types |
+| `frontend/src/components/activity/ActivityFeed.tsx` | Icons + colors for agent types, `filterTypes` prop |
 | `frontend/src/pages/project-tasks.tsx` | AskTopsiButton in header toolbar |
 | `frontend/src/components/tasks/TaskDetailsPanel.tsx` | AskTopsiButton in fullscreen sidebar |
 | `frontend/src/pages/crm-contact-detail.tsx` | AskTopsiButton in header |
@@ -276,6 +276,23 @@ Consolidated into single `build_workflow` tool with `action: "create"|"modify"` 
 | `frontend/src/components/layout/sidebar.tsx` | Topsi Activity nav item |
 | `frontend/src/App.tsx` | 3 new routes + lazy imports |
 | `crates/server/src/routes/topsi.rs` | 4 new endpoints (admin prompt GET/PUT, user settings GET/PUT) |
+| `e2e/health-check.spec.ts` | 9 new tests for Phase 5 features (see E2E Coverage below) |
+
+### E2E Test Coverage
+Added 9 tests to `e2e/health-check.spec.ts` covering all Phase 5 UI surfaces and API endpoints:
+
+**Settings pages (2 tests):**
+- Topsi admin settings page loads (`/settings/topsi` — checks "Topsi Configuration" + "System Prompt")
+- Topsi user preferences page loads (`/settings/topsi-preferences` — checks "Topsi Preferences" + "Confirmation Mode")
+
+**Topsi UI (7 tests):**
+- Topsi Activity page loads for admin (`/topsi-activity`)
+- Sidebar shows Topsi Activity link for admin
+- AskTopsiButton visible on project tasks page
+- AskTopsiButton opens popover with suggested questions ("What tasks are blocked?")
+- Topsi admin prompt API returns data (validates `mode` field type)
+- Topsi user settings API returns defaults (validates `default_confirmation_mode`)
+- Topsi user settings API accepts PUT with persistence verification
 
 ---
 

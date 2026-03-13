@@ -225,6 +225,20 @@ test.describe("Settings", () => {
     await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("body")).not.toBeEmpty();
   });
+
+  test("Topsi admin settings page loads", async ({ page }) => {
+    await page.goto("/settings/topsi");
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.getByText("Topsi Configuration")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("System Prompt")).toBeVisible();
+  });
+
+  test("Topsi user preferences page loads", async ({ page }) => {
+    await page.goto("/settings/topsi-preferences");
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.getByText("Topsi Preferences")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Confirmation Mode")).toBeVisible();
+  });
 });
 
 // ─── Workflows ───────────────────────────────────────────────────────────────
@@ -234,6 +248,70 @@ test.describe("Workflows", () => {
     await page.goto("/workflows");
     await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("body")).not.toBeEmpty();
+  });
+});
+
+// ─── Topsi UI (Phase 5) ─────────────────────────────────────────────────────
+
+test.describe("Topsi UI", () => {
+  test("Topsi Activity page loads for admin", async ({ page }) => {
+    await page.goto("/topsi-activity");
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.getByText("Topsi Activity")).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("sidebar shows Topsi Activity link for admin", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.getByRole("link", { name: "Topsi Activity" })).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("AskTopsiButton visible on project tasks page", async ({ page }) => {
+    await navigateToFirstProjectTasks(page);
+    await expect(page.getByRole("button", { name: "Ask Topsi" })).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("AskTopsiButton opens popover with suggested questions", async ({ page }) => {
+    await navigateToFirstProjectTasks(page);
+    await page.getByRole("button", { name: "Ask Topsi" }).click();
+    await expect(page.getByText("Ask Topsi about this project")).toBeVisible({ timeout: 5_000 });
+    // Verify at least one suggestion is rendered
+    await expect(page.getByText("What tasks are blocked?")).toBeVisible();
+  });
+
+  test("Topsi admin prompt API returns data", async ({ request }) => {
+    await apiLogin(request);
+    const res = await request.get("/api/topsi/admin/prompt");
+    expect(res.ok()).toBeTruthy();
+    const data = await res.json();
+    // mode should be a string (standard or sudolang)
+    expect(typeof data.mode).toBe("string");
+  });
+
+  test("Topsi user settings API returns defaults", async ({ request }) => {
+    await apiLogin(request);
+    const res = await request.get("/api/topsi/user-settings");
+    expect(res.ok()).toBeTruthy();
+    const data = await res.json();
+    expect(data.default_confirmation_mode).toBeTruthy();
+  });
+
+  test("Topsi user settings API accepts PUT", async ({ request }) => {
+    await apiLogin(request);
+    const res = await request.put("/api/topsi/user-settings", {
+      data: {
+        default_confirmation_mode: "confirm_destructive",
+        auto_approve_timeout_minutes: 5,
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+
+    // Verify the update persisted
+    const getRes = await request.get("/api/topsi/user-settings");
+    expect(getRes.ok()).toBeTruthy();
+    const data = await getRes.json();
+    expect(data.default_confirmation_mode).toBe("confirm_destructive");
+    expect(data.auto_approve_timeout_minutes).toBe(5);
   });
 });
 
