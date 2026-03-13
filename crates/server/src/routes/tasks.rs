@@ -218,6 +218,24 @@ pub async fn create_task(
         TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, image_ids).await?;
     }
 
+    // Auto-register agent watchers based on assigned agent's config
+    if let Some(ref agent_id) = task.agent_id {
+        if let Ok(agent_uuid) = Uuid::parse_str(agent_id) {
+            if let Ok(Some(config)) =
+                db::models::agent_execution_config::AgentExecutionConfig::find_by_agent_id(
+                    &deployment.db().pool,
+                    agent_uuid,
+                )
+                .await
+            {
+                for watcher_id in config.get_auto_watch_agent_ids() {
+                    let _ = Task::add_agent_watcher(&deployment.db().pool, &task.id, &watcher_id)
+                        .await;
+                }
+            }
+        }
+    }
+
     deployment
         .track_if_analytics_allowed(
             "task_created",
@@ -296,6 +314,24 @@ pub async fn create_task_and_start(
     if let Some(image_ids) = &task_payload.image_ids {
         let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
         TaskImage::associate_many(&deployment.db().pool, task_uuid, image_ids).await?;
+    }
+
+    // Auto-register agent watchers based on assigned agent's config
+    if let Some(ref agent_id) = task.agent_id {
+        if let Ok(agent_uuid) = Uuid::parse_str(agent_id) {
+            if let Ok(Some(config)) =
+                db::models::agent_execution_config::AgentExecutionConfig::find_by_agent_id(
+                    &deployment.db().pool,
+                    agent_uuid,
+                )
+                .await
+            {
+                for watcher_id in config.get_auto_watch_agent_ids() {
+                    let _ = Task::add_agent_watcher(&deployment.db().pool, &task.id, &watcher_id)
+                        .await;
+                }
+            }
+        }
     }
 
     deployment

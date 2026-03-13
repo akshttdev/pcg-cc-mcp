@@ -886,6 +886,27 @@ pub async fn auto_start_agent_execution(
         .await
         .map_err(|e| format!("Failed to find agent execution config: {e}"))?;
 
+    // Auto-register agent watchers (e.g., QA agent watches tasks assigned to Dev agent)
+    if let Some(ref cfg) = config {
+        for watcher_id in cfg.get_auto_watch_agent_ids() {
+            if let Err(e) =
+                Task::add_agent_watcher(pool, &task_id.to_string(), &watcher_id).await
+            {
+                tracing::warn!(
+                    "Failed to add agent watcher {} to task {}: {e}",
+                    watcher_id,
+                    task_id
+                );
+            } else {
+                tracing::info!(
+                    "Auto-registered agent watcher {} on task {}",
+                    watcher_id,
+                    task_id
+                );
+            }
+        }
+    }
+
     // Parse executor profile from config, default to CLAUDE_CODE
     let profile_str = config.and_then(|c| c.execution_profile_id);
     let executor_profile_id = if let Some(ref profile_str) = profile_str {
