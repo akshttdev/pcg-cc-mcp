@@ -41,6 +41,7 @@ pub enum ExecutionProcessRunReason {
     CleanupScript,
     CodingAgent,
     DevServer,
+    AgentReview,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
