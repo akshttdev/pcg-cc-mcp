@@ -91,6 +91,14 @@ pub struct LocalContainerService {
     flow_ids: Arc<RwLock<HashMap<Uuid, Uuid>>>,
 }
 
+/// Info about a PR that was auto-created, passed to QA review and audit comment functions.
+struct PrCreatedInfo {
+    number: i64,
+    url: String,
+    repo_owner: String,
+    repo_name: String,
+}
+
 impl LocalContainerService {
     // Max cumulative content bytes allowed per diff stream
     const MAX_CUMULATIVE_DIFF_BYTES: usize = 150 * 1024; // 150KB
@@ -200,7 +208,7 @@ impl LocalContainerService {
     }
 
     /// Finalize task execution by updating status to InReview, optionally creating a PR,
-    /// and sending notifications.
+    /// triggering QA review, and sending notifications.
     async fn finalize_task(
         db: &DBService,
         config: &Arc<RwLock<Config>>,
@@ -212,20 +220,36 @@ impl LocalContainerService {
         }
 
         // Auto-create PR if agent execution config says so
-        Self::try_auto_create_pr(db, config, git, ctx).await;
+        let pr_info = Self::try_auto_create_pr(db, config, git, ctx).await;
+
+        // Post dev agent audit comment on PR
+        if let Some(ref pr) = pr_info {
+            Self::post_dev_agent_pr_comment(db, config, git, ctx, pr).await;
+        }
+
+        // Trigger QA agent review if PR was created (only for non-QA tasks)
+        if let Some(ref pr) = pr_info {
+            if !ctx.task.title.starts_with("[QA]") {
+                Self::try_auto_qa_review(db, ctx, pr).await;
+            }
+        }
+
+        // Handle QA result if this was a QA review task
+        Self::handle_qa_result(db, config, git, ctx).await;
 
         let notify_cfg = config.read().await.notifications.clone();
         NotificationService::notify_execution_halted(notify_cfg, ctx).await;
     }
 
     /// Attempt to auto-create a GitHub PR if the agent's execution config has
-    /// `auto_create_pr_on_complete` enabled. Failures are logged but do not block finalization.
+    /// `auto_create_pr_on_complete` enabled. Returns PR info on success.
+    /// Failures are logged but do not block finalization.
     async fn try_auto_create_pr(
         db: &DBService,
         config: &Arc<RwLock<Config>>,
         git: &GitService,
         ctx: &ExecutionContext,
-    ) {
+    ) -> Option<PrCreatedInfo> {
         use db::models::agent_execution_config::AgentExecutionConfig;
         use services::services::github_service::{CreatePrRequest, GitHubService};
 
@@ -233,18 +257,18 @@ impl LocalContainerService {
         let agent_id = match ctx.task.agent_id {
             Some(ref id) => match Uuid::parse_str(id) {
                 Ok(uuid) => uuid,
-                Err(_) => return,
+                Err(_) => return None,
             },
-            None => return,
+            None => return None,
         };
 
         let agent_config = match AgentExecutionConfig::find_by_agent_id(&db.pool, agent_id).await {
             Ok(Some(cfg)) => cfg,
-            _ => return,
+            _ => return None,
         };
 
         if agent_config.auto_create_pr_on_complete != Some(true) {
-            return;
+            return None;
         }
 
         // Need a branch to create a PR from
@@ -252,7 +276,7 @@ impl LocalContainerService {
             Some(b) if !b.is_empty() => b.clone(),
             _ => {
                 tracing::warn!("Auto-PR skipped: no branch on task attempt {}", ctx.task_attempt.id);
-                return;
+                return None;
             }
         };
 
@@ -268,7 +292,7 @@ impl LocalContainerService {
             Some(t) => t,
             None => {
                 tracing::warn!("Auto-PR skipped: no GitHub token configured");
-                return;
+                return None;
             }
         };
 
@@ -277,7 +301,7 @@ impl LocalContainerService {
             Ok(Some(p)) => p,
             _ => {
                 tracing::warn!("Auto-PR skipped: project not found for task {}", ctx.task.id);
-                return;
+                return None;
             }
         };
 
@@ -286,14 +310,14 @@ impl LocalContainerService {
             Some(path) => PathBuf::from(path),
             None => {
                 tracing::warn!("Auto-PR skipped: no container_ref on attempt {}", ctx.task_attempt.id);
-                return;
+                return None;
             }
         };
 
         // Push branch to GitHub
         if let Err(e) = git.push_to_github(&workspace_path, &branch_name, &github_token) {
             tracing::error!("Auto-PR: failed to push branch '{}': {}", branch_name, e);
-            return;
+            return None;
         }
 
         // Create the PR
@@ -301,7 +325,7 @@ impl LocalContainerService {
             Ok(s) => s,
             Err(e) => {
                 tracing::error!("Auto-PR: failed to create GitHub service: {}", e);
-                return;
+                return None;
             }
         };
 
@@ -309,7 +333,7 @@ impl LocalContainerService {
             Ok(info) => info,
             Err(e) => {
                 tracing::error!("Auto-PR: failed to get repo info: {}", e);
-                return;
+                return None;
             }
         };
 
@@ -337,9 +361,341 @@ impl LocalContainerService {
                 {
                     tracing::error!("Auto-PR: failed to record PR in database: {}", e);
                 }
+                Some(PrCreatedInfo {
+                    number: pr_info.number,
+                    url: pr_info.url,
+                    repo_owner: repo_info.owner,
+                    repo_name: repo_info.repo_name,
+                })
             }
             Err(e) => {
                 tracing::error!("Auto-PR: failed to create PR: {}", e);
+                None
+            }
+        }
+    }
+
+    // ── Phase 8C: Post dev agent audit comment on PR ──────────────────────────
+
+    /// Post an audit trail comment on the PR identifying the dev agent and task.
+    async fn post_dev_agent_pr_comment(
+        db: &DBService,
+        config: &Arc<RwLock<Config>>,
+        git: &GitService,
+        ctx: &ExecutionContext,
+        pr: &PrCreatedInfo,
+    ) {
+        use services::services::github_service::GitHubService;
+
+        let github_config = config.read().await.github.clone();
+        let github_token = match github_config.token() {
+            Some(t) => t,
+            None => return,
+        };
+
+        let github_service = match GitHubService::new(&github_token) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let repo_info = services::services::github_service::GitHubRepoInfo {
+            owner: pr.repo_owner.clone(),
+            repo_name: pr.repo_name.clone(),
+        };
+
+        let agent_name = ctx.task.agent_id.as_deref().unwrap_or("unknown");
+        let comment = format!(
+            "Created by **ORCHA Dev Agent** for task `{}`: {}\n\n---\n*Automated by ORCHA Platform*",
+            ctx.task.id, ctx.task.title
+        );
+
+        if let Err(e) = github_service.add_pr_comment(&repo_info, pr.number, &comment).await {
+            tracing::warn!("Failed to post dev agent PR comment: {e}");
+        }
+    }
+
+    // ── Phase 8B: QA Agent Review Hook ──────────────────────────────────────
+
+    /// After a PR is created, look up the QA agent and create a QA review task.
+    /// The QA task auto-executes in analysis mode and posts findings as PR comments.
+    async fn try_auto_qa_review(
+        db: &DBService,
+        ctx: &ExecutionContext,
+        pr: &PrCreatedInfo,
+    ) {
+        use db::models::agent::Agent;
+        use db::models::task::{CreateTask, Priority, Task};
+
+        // Find the QA agent by short_name
+        let qa_agent = match Agent::find_by_short_name(&db.pool, "ORCHA QA").await {
+            Ok(Some(agent)) => agent,
+            _ => {
+                tracing::info!("Auto-QA skipped: ORCHA QA agent not found");
+                return;
+            }
+        };
+
+        // Build QA task
+        let completion_criteria = ctx.task.completion_criteria.clone().unwrap_or_default();
+        let qa_description = format!(
+            "## QA Review for PR #{}\n\n**PR URL**: {}\n**Original Task**: {} ({})\n\n\
+             ### Completion Criteria to Verify\n{}\n\n\
+             ### Instructions\n\
+             Review the PR diff and verify all completion criteria are met.\n\
+             Output a JSON verdict with this schema:\n\
+             ```json\n{{\n  \"verdict\": \"pass | needs_changes | fail\",\n  \
+             \"summary\": \"Brief assessment\",\n  \
+             \"criteria_checks\": [{{ \"criterion\": \"...\", \"met\": true, \"notes\": \"...\" }}],\n  \
+             \"issues\": [{{ \"file\": \"...\", \"line\": 0, \"severity\": \"error|warning\", \"description\": \"...\" }}],\n  \
+             \"iteration\": 1\n}}\n```",
+            pr.number, pr.url, ctx.task.title, ctx.task.id,
+            if completion_criteria.is_empty() { "No specific criteria defined." } else { &completion_criteria }
+        );
+
+        // Parse project_id as Uuid
+        let project_id = match Uuid::parse_str(&ctx.task.project_id) {
+            Ok(id) => id,
+            Err(_) => {
+                tracing::error!("QA review: invalid project_id on task {}", ctx.task.id);
+                return;
+            }
+        };
+
+        let board_id = ctx.task.board_id.as_deref()
+            .and_then(|s| Uuid::parse_str(s).ok());
+
+        let qa_task = CreateTask {
+            title: format!("[QA] Review PR #{}: {}", pr.number, ctx.task.title),
+            description: Some(qa_description),
+            project_id,
+            pod_id: None,
+            board_id,
+            parent_task_attempt: None,
+            image_ids: None,
+            priority: Some(Priority::Medium),
+            assignee_id: None,
+            assignee_type: None,
+            assigned_agent: Some("ORCHA QA".to_string()),
+            agent_id: Some(qa_agent.id),
+            assigned_mcps: None,
+            created_by: "system".to_string(),
+            requires_approval: Some(false),
+            parent_task_id: None,
+            tags: Some(vec!["qa-review".to_string(), "automated".to_string()]),
+            due_date: None,
+            custom_properties: Some(serde_json::json!({
+                "original_task_id": ctx.task.id,
+                "pr_number": pr.number,
+                "pr_url": pr.url,
+            })),
+            scheduled_start: None,
+            scheduled_end: None,
+            screenshot: None,
+            completion_criteria: Some(format!(
+                "Review PR #{} and output structured JSON verdict (pass/needs_changes/fail)",
+                pr.number
+            )),
+            output_format: Some("json".to_string()),
+        };
+
+        let qa_task_id = Uuid::new_v4().to_string();
+        match Task::create(&db.pool, &qa_task, &qa_task_id).await {
+            Ok(qa_task_record) => {
+                tracing::info!(
+                    "QA review task created: {} for PR #{} (original task {})",
+                    qa_task_record.id, pr.number, ctx.task.id
+                );
+                // The QA task will be auto-executed via the normal agent execution flow
+                // when it's committed from staging (or if created directly with agent_id)
+            }
+            Err(e) => {
+                tracing::error!("Failed to create QA review task for PR #{}: {e}", pr.number);
+            }
+        }
+    }
+
+    // ── Phase 9: QA Result Handler ──────────────────────────────────────────
+
+    /// Handle QA agent result: parse verdict, post PR comment, and optionally trigger iteration.
+    /// Called when a QA review task completes execution.
+    async fn handle_qa_result(
+        db: &DBService,
+        config: &Arc<RwLock<Config>>,
+        git: &GitService,
+        ctx: &ExecutionContext,
+    ) {
+        use db::models::task::Task;
+        use services::services::github_service::GitHubService;
+
+        // Only process QA review tasks (title starts with "[QA]")
+        if !ctx.task.title.starts_with("[QA]") {
+            return;
+        }
+
+        // Extract PR number from title: "[QA] Review PR #123: ..."
+        let pr_number = ctx.task.title
+            .split("PR #")
+            .nth(1)
+            .and_then(|s| s.split(':').next())
+            .and_then(|s| s.trim().parse::<i64>().ok());
+
+        let pr_number = match pr_number {
+            Some(n) => n,
+            None => {
+                tracing::warn!("QA handler: could not extract PR number from task title");
+                return;
+            }
+        };
+
+        // Try to find the latest execution artifact containing the QA verdict
+        let artifacts = db::models::execution_artifact::ExecutionArtifact::find_by_execution_process(
+            &db.pool,
+            ctx.execution_process.id,
+        )
+        .await
+        .unwrap_or_default();
+
+        let verdict_json = artifacts.iter()
+            .filter_map(|a| a.content.as_ref())
+            .find_map(|content| {
+                // Try to parse as JSON verdict
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(content) {
+                    if v.get("verdict").is_some() {
+                        return Some(v);
+                    }
+                }
+                // Try to extract JSON from markdown code blocks
+                if let Some(start) = content.find("```json") {
+                    if let Some(end) = content[start + 7..].find("```") {
+                        let json_str = &content[start + 7..start + 7 + end].trim();
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+                            if v.get("verdict").is_some() {
+                                return Some(v);
+                            }
+                        }
+                    }
+                }
+                None
+            });
+
+        let verdict = match verdict_json {
+            Some(v) => v,
+            None => {
+                tracing::warn!("QA handler: no verdict JSON found in artifacts for task {}", ctx.task.id);
+                return;
+            }
+        };
+
+        let verdict_str = verdict["verdict"].as_str().unwrap_or("unknown");
+        let summary = verdict["summary"].as_str().unwrap_or("No summary provided.");
+        let iteration = verdict["iteration"].as_i64().unwrap_or(1);
+
+        // Build PR comment in the structured format
+        let verdict_emoji = match verdict_str {
+            "pass" => "Pass",
+            "needs_changes" => "Needs Changes",
+            "fail" => "Fail",
+            _ => "Unknown",
+        };
+        let verdict_icon = match verdict_str {
+            "pass" => "\u{2705}",       // check mark
+            "needs_changes" => "\u{26a0}\u{fe0f}",  // warning
+            "fail" => "\u{274c}",       // cross mark
+            _ => "\u{2753}",            // question mark
+        };
+
+        let mut comment = format!(
+            "## QA Review — Iteration {}\n\n**Verdict**: {} {}\n\n",
+            iteration, verdict_icon, verdict_emoji
+        );
+
+        // Criteria checks
+        if let Some(checks) = verdict["criteria_checks"].as_array() {
+            comment.push_str("### Completion Criteria\n");
+            for check in checks {
+                let met = check["met"].as_bool().unwrap_or(false);
+                let criterion = check["criterion"].as_str().unwrap_or("?");
+                let notes = check["notes"].as_str().unwrap_or("");
+                let checkbox = if met { "[x]" } else { "[ ]" };
+                comment.push_str(&format!("- {} {} — {}\n", checkbox, criterion, notes));
+            }
+            comment.push('\n');
+        }
+
+        // Issues table
+        if let Some(issues) = verdict["issues"].as_array() {
+            if !issues.is_empty() {
+                comment.push_str("### Issues\n| File | Line | Severity | Description |\n|---|---|---|---|\n");
+                for issue in issues {
+                    comment.push_str(&format!(
+                        "| `{}` | {} | {} | {} |\n",
+                        issue["file"].as_str().unwrap_or("?"),
+                        issue["line"].as_i64().unwrap_or(0),
+                        issue["severity"].as_str().unwrap_or("warning"),
+                        issue["description"].as_str().unwrap_or("?"),
+                    ));
+                }
+                comment.push('\n');
+            }
+        }
+
+        comment.push_str(&format!("### Summary\n{}\n\n", summary));
+        comment.push_str(&format!(
+            "---\n*ORCHA QA Agent • Task {} • Iteration {}/2*",
+            ctx.task.id, iteration
+        ));
+
+        // Post the comment on the PR
+        let github_config = config.read().await.github.clone();
+        if let Some(github_token) = github_config.token() {
+            if let Ok(github_service) = GitHubService::new(&github_token) {
+                // Get repo info from the project
+                let project = Project::find_by_id(&db.pool, &ctx.task.project_id).await;
+                if let Ok(Some(project)) = project {
+                    if let Ok(repo_info) = git.get_github_repo_info(&project.git_repo_path) {
+                        if let Err(e) = github_service.add_pr_comment(&repo_info, pr_number, &comment).await {
+                            tracing::warn!("QA handler: failed to post PR comment: {e}");
+                        } else {
+                            tracing::info!("QA handler: posted review comment on PR #{}", pr_number);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle verdict: update original task approval_status
+        // Original task ID stored in custom_properties during QA task creation
+        let original_task_id = ctx.task.custom_properties
+            .as_ref()
+            .and_then(|v| v["original_task_id"].as_str().map(|s| s.to_string()));
+
+        if let Some(original_id) = original_task_id {
+            match verdict_str {
+                "pass" => {
+                    // QA passed — original task stays InReview, approval_status stays Pending
+                    // Human will make final decision
+                    tracing::info!(
+                        "QA passed for task {} — awaiting human approval",
+                        original_id
+                    );
+                }
+                "needs_changes" if iteration < 2 => {
+                    // Send back to dev agent for iteration
+                    if let Err(e) = Task::update_status(&db.pool, &original_id, TaskStatus::InProgress).await {
+                        tracing::error!("QA handler: failed to set task back to InProgress: {e}");
+                    }
+                    tracing::info!(
+                        "QA needs changes for task {} — iteration {} (sending back to dev)",
+                        original_id, iteration
+                    );
+                }
+                _ => {
+                    // fail or max iterations — leave for human
+                    tracing::info!(
+                        "QA verdict '{}' for task {} — leaving for human review",
+                        verdict_str, original_id
+                    );
+                }
             }
         }
     }
