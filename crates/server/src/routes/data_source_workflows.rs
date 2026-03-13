@@ -3200,9 +3200,24 @@ async fn execute_node_with_llm(
         prompt
     };
 
+    // Determine output mode: "text", "structured", or "auto" (default)
+    let output_mode = node.parameters.get("output_mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("auto");
+    let expect_json = match output_mode {
+        "text" => false,
+        "structured" => true,
+        _ /* auto */ => !target_schemas.is_empty(),
+    };
+
     // Route through WorkflowLLMService — handles multi-provider fallback
+    let system_msg = if expect_json {
+        "You are a precise data extraction assistant. Your task is to extract REAL entities (people, companies, deals, tasks) that are explicitly mentioned in the source content provided. Rules:\n1. Only extract entities that are clearly and explicitly named in the source text.\n2. NEVER use document metadata (titles, dates, section headings) as entity names.\n3. NEVER fabricate or hallucinate entities that are not in the source.\n4. If no entities of the requested type exist in the source, return an empty array.\n5. Always output valid JSON without markdown formatting or preamble."
+    } else {
+        "You are a helpful assistant that analyzes content and provides clear, well-structured responses."
+    };
     let messages = vec![
-        WorkflowLLMService::system_message("You are a precise data extraction assistant. Your task is to extract REAL entities (people, companies, deals, tasks) that are explicitly mentioned in the source content provided. Rules:\n1. Only extract entities that are clearly and explicitly named in the source text.\n2. NEVER use document metadata (titles, dates, section headings) as entity names.\n3. NEVER fabricate or hallucinate entities that are not in the source.\n4. If no entities of the requested type exist in the source, return an empty array.\n5. Always output valid JSON without markdown formatting or preamble."),
+        WorkflowLLMService::system_message(system_msg),
         WorkflowLLMService::user_message(&prompt),
     ];
 
@@ -3227,7 +3242,12 @@ async fn execute_node_with_llm(
                 "estimated_cost_micros": metadata.estimated_cost_micros,
             });
             if !text.is_empty() {
-                // Try to parse the response as JSON — if it fails, attempt one repair retry
+                // Text mode: return raw text without JSON parsing
+                if !expect_json {
+                    return (text, Some(usage_meta));
+                }
+
+                // Structured mode: try to parse as JSON, repair if needed
                 let trimmed = text.trim();
                 // Strip markdown code fences if present
                 let json_text = if trimmed.starts_with("```") {
