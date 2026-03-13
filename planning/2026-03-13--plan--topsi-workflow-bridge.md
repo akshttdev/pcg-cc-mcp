@@ -1,6 +1,6 @@
 # Topsi–Workflow Bridge Implementation Plan
 
-**Date:** 2026-03-13 (updated after Phase 4 completion + auto-approve encapsulation)
+**Date:** 2026-03-13 (updated after Phase 5 completion — all phases done)
 **Branch:** `feature/topsi-workflow-bridge`
 **PR:** #22
 **Depends on:** PR #21 (LLM dogfooding infrastructure), PR #23 (dogfood pipeline), PR #24 (QA review fixes) — all merged to main
@@ -207,19 +207,75 @@ Consolidated into single `build_workflow` tool with `action: "create"|"modify"` 
 
 ---
 
-## Phase 5: Bidirectional UI
+## Phase 5: Bidirectional UI — DONE ✅
 
-1. **Topsi action feed** — tool calls appear as activity in project/CRM feeds
-2. **"Ask Topsi" context button** — from project/task/CRM views, pre-loads entity context
-3. **Workflow progress in chat** — SSE events for workflow execution status
-4. **Admin settings UI** — System prompt editor with SudoLang toggle, confirmation preferences
-5. **Topsi settings per-user** — per-tool confirmation overrides
+### What shipped
 
-### Files
-- **MODIFY** frontend components (project detail, task detail, CRM views)
-- **MODIFY** `crates/topsi/src/agent.rs` — emit SSE events for tool executions
-- **NEW** frontend admin settings page for Topsi prompt + confirmation config
-- **REUSE** existing SSE infrastructure (`/api/events/...`)
+**Step 1: useAgentChatStore — Global Widget Control ✅**
+- New `frontend/src/stores/useAgentChatStore.ts` — Zustand store (no persist)
+- State: `widgetState`, `activeAgent` (default `'topsi'`), `pendingMessage`, `pendingContext`
+- Actions: `openChat(message?, context?, agent?)`, `collapse()`, `clearPending()`, `setWidgetState()`
+- TopsiWidget refactored: internal `useState<WidgetState>` replaced by store subscription
+- Auto-sends pending messages when widget opens (via polling ref pattern)
+
+**Step 2: Activity Type Extension + Tool Call Logging ✅**
+- 3 new `ActivityType` variants: `agent_tool_call`, `agent_workflow_triggered`, `agent_workflow_completed`
+- ActivityFeed icon map (robot/gear/check) and color map (cyan-500) updated
+- TopsiWidget logs tool calls to ActivityStore after each chat response
+
+**Step 3: "Ask Topsi" Context Button ✅**
+- New `frontend/src/components/topsi/AskTopsiButton.tsx`
+- Popover with entity-specific suggested questions + free-text input
+- 4 entity types: project (4 questions), task (4), crm_contact (3), crm_deal (3)
+- Injected into: project-tasks header, TaskDetailsPanel sidebar, crm-contact-detail header, CrmDealDetailPanel quick actions
+
+**Step 4: Admin Settings — System Prompt Editor ✅**
+- Backend: `GET/PUT /topsi/admin/prompt` in `topsi.rs` — admin-only, no debug gate
+  - Keys: `topsi_system_prompt`, `topsi_prompt_mode`, `topsi_system_prompt_sudolang`
+- Frontend: `TopsiAdminSettings.tsx` — Standard/SudoLang toggle, monospace textarea, reset/save
+- Settings nav entry: "Topsi" under system admin scope
+
+**Step 5: Per-User Topsi Settings ✅**
+- Backend: `GET/PUT /topsi/user-settings` in `topsi.rs` — uses AccessContext.user_id
+  - Delegates to `TopsiUserSettings::get_or_default()` / `upsert()`
+- Frontend: `TopsiUserSettings.tsx` — confirmation mode select, per-tool override table (grouped by risk), auto-approve timeout
+- Settings nav entry: "Topsi Preferences" under user scope
+
+**Step 6: Workflow Progress in Chat (Poll-Based) ✅**
+- TopsiWidget detects `trigger_workflow`/`build_workflow` tool calls with `workflow_run_id`
+- Polls `GET /api/workflows/runs/{id}` every 5 seconds
+- Shows progress and completion/failure summary in chat
+- Logs `agent_workflow_triggered`/`agent_workflow_completed` to ActivityStore
+- Cleans up poll intervals on unmount
+
+**Topsi Activity Page ✅**
+- New `frontend/src/pages/topsi-activity.tsx` — filters ActivityFeed to `agent_*` types
+- Route: `/topsi-activity` (admin-only)
+- Sidebar entry: "Topsi Activity" in admin nav section
+
+### New Files (5)
+| File | Purpose |
+|------|---------|
+| `frontend/src/stores/useAgentChatStore.ts` | Global widget state + openChat() (agent-agnostic) |
+| `frontend/src/components/topsi/AskTopsiButton.tsx` | Context button + popover |
+| `frontend/src/pages/topsi-activity.tsx` | Dedicated Topsi activity log |
+| `frontend/src/pages/settings/TopsiAdminSettings.tsx` | System prompt editor |
+| `frontend/src/pages/settings/TopsiUserSettings.tsx` | Per-user confirmation config |
+
+### Modified Files (11)
+| File | Changes |
+|------|---------|
+| `frontend/src/components/topsi/TopsiWidget.tsx` | Store-driven state, tool call logging, workflow polling |
+| `frontend/src/types/activity.ts` | 3 new ActivityType variants |
+| `frontend/src/components/activity/ActivityFeed.tsx` | Icons + colors for agent types |
+| `frontend/src/pages/project-tasks.tsx` | AskTopsiButton in header toolbar |
+| `frontend/src/components/tasks/TaskDetailsPanel.tsx` | AskTopsiButton in fullscreen sidebar |
+| `frontend/src/pages/crm-contact-detail.tsx` | AskTopsiButton in header |
+| `frontend/src/components/crm/CrmDealDetailPanel.tsx` | AskTopsiButton in quick actions |
+| `frontend/src/pages/settings/SettingsLayout.tsx` | 2 new nav entries (admin + user) |
+| `frontend/src/components/layout/sidebar.tsx` | Topsi Activity nav item |
+| `frontend/src/App.tsx` | 3 new routes + lazy imports |
+| `crates/server/src/routes/topsi.rs` | 4 new endpoints (admin prompt GET/PUT, user settings GET/PUT) |
 
 ---
 
@@ -235,8 +291,7 @@ Phase 3 (Confirmation system)             ── DONE ✅
 Phase 2F (Full service extraction)        ── DONE ✅
 Phase 4 (Topsi builds workflows)          ── DONE ✅ (build_workflow tool + specialist)
 Auto-approve encapsulation                ── DONE ✅ (post-Phase 2F cleanup)
-    ↓
-Phase 5 (Bidirectional UI + admin settings)
+Phase 5 (Bidirectional UI + admin settings) ── DONE ✅
 ```
 
 ---
