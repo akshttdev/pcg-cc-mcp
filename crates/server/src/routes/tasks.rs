@@ -493,10 +493,13 @@ pub async fn create_task_and_start(
 }
 
 pub async fn update_task(
+    Extension(access_context): Extension<AccessContext>,
     Extension(existing_task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdateTask>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &existing_task.project_id).await?;
+
     // Use existing values if not provided in update
     let title = payload.title.unwrap_or(existing_task.title.clone());
     let description = payload.description.or(existing_task.description.clone());
@@ -632,9 +635,12 @@ pub async fn update_task(
 }
 
 pub async fn delete_task(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<(StatusCode, ResponseJson<ApiResponse<()>>), ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     // Validate no running execution processes
     let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     if deployment
@@ -712,9 +718,12 @@ pub async fn delete_task(
 
 // Phase C: Approval workflow endpoints
 pub async fn approve_task(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     use db::models::task::ApprovalStatus;
 
     let approved_task = Task::update(
@@ -749,9 +758,12 @@ pub async fn approve_task(
 }
 
 pub async fn request_changes(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     use db::models::task::ApprovalStatus;
 
     let updated_task = Task::update(
@@ -909,9 +921,12 @@ pub async fn get_created_by_me(
 }
 
 pub async fn reject_task(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     use db::models::task::ApprovalStatus;
 
     let rejected_task = Task::update(
@@ -1029,11 +1044,13 @@ pub struct AgentWatcherInfo {
 
 /// POST /tasks/:task_id/agent-watchers — add an agent as a watcher
 pub async fn add_agent_watcher(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
-    Extension(_access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Json(body): Json<AddAgentWatcherRequest>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     Agent::find_by_id(&deployment.db().pool, body.agent_id)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to find agent: {e}")))?
@@ -1052,11 +1069,13 @@ struct AgentWatcherPath {
 
 /// DELETE /tasks/:task_id/agent-watchers/:agent_id — remove an agent watcher
 pub async fn remove_agent_watcher(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
-    Extension(_access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     axum::extract::Path(AgentWatcherPath { agent_id, .. }): axum::extract::Path<AgentWatcherPath>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     Task::remove_agent_watcher(&deployment.db().pool, &task.id, &agent_id).await?;
     Ok(ResponseJson(ApiResponse::success(())))
 }
