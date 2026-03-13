@@ -1460,15 +1460,9 @@ export const agentsApi = {
   },
 };
 
-// Agent Watcher APIs
-// Mirrors Rust AgentWatcherInfo (crates/server/src/routes/tasks.rs) — will be auto-generated after `npm run generate-types`
-export interface AgentWatcherInfo {
-  agent_id: string;
-  agent_name: string;
-  agent_designation: string;
-  last_action: string;
-  last_action_at: string;
-}
+// Agent Watcher APIs — type auto-generated from Rust via `npm run generate-types`
+import type { AgentWatcherInfo } from 'shared/types';
+export type { AgentWatcherInfo };
 
 export const agentWatchersApi = {
   list: async (taskId: string): Promise<AgentWatcherInfo[]> => {

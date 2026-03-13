@@ -260,6 +260,10 @@ export type UpdateFollowUpDraftRequest = { prompt: string | null, variant: strin
 
 export type CreateAndStartTaskRequest = { task: CreateTask, executor_profile_id: ExecutorProfileId, base_branch: string, };
 
+export type AgentWatcherInfo = { agent_id: string, agent_name: string, agent_designation: string, last_action: string, last_action_at: string, };
+
+export type AddAgentWatcherRequest = { agent_id: string, };
+
 export type CreateGitHubPrRequest = { title: string, body: string | null, base_branch: string | null, };
 
 export type ImageResponse = { id: string, file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, created_at: string, updated_at: string, };
@@ -438,7 +442,7 @@ dropped: boolean, started_at: string, completed_at: string | null, created_at: s
 
 export type ExecutionProcessStatus = "running" | "completed" | "failed" | "killed";
 
-export type ExecutionProcessRunReason = "setupscript" | "cleanupscript" | "codingagent" | "devserver";
+export type ExecutionProcessRunReason = "setupscript" | "cleanupscript" | "codingagent" | "devserver" | "agentreview";
 
 export type ExecutionSummary = { id: string, task_attempt_id: string, execution_process_id: string | null, files_modified: number, files_created: number, files_deleted: number, commands_run: number, commands_failed: number, 
 /**

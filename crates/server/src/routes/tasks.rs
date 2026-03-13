@@ -1043,7 +1043,7 @@ pub struct AgentWatcherInfo {
 }
 
 /// POST /tasks/:task_id/agent-watchers — add an agent as a watcher
-pub async fn add_agent_watcher(
+pub(crate) async fn add_agent_watcher(
     Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
@@ -1064,14 +1064,14 @@ pub async fn add_agent_watcher(
 /// `task_id` is required by the route pattern and consumed by `load_task_middleware`,
 /// but unused in the handler itself — the task is already available via `Extension<Task>`.
 #[derive(Deserialize)]
-struct AgentWatcherPath {
+pub(crate) struct AgentWatcherPath {
     #[allow(dead_code)]
     task_id: Uuid,
     agent_id: String,
 }
 
 /// DELETE /tasks/:task_id/agent-watchers/:agent_id — remove an agent watcher
-pub async fn remove_agent_watcher(
+pub(crate) async fn remove_agent_watcher(
     Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
@@ -1084,7 +1084,7 @@ pub async fn remove_agent_watcher(
 }
 
 /// GET /tasks/:task_id/agent-watchers — list agent watchers with agent info
-pub async fn list_agent_watchers(
+pub(crate) async fn list_agent_watchers(
     Extension(task): Extension<Task>,
     Extension(_access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
@@ -1092,7 +1092,9 @@ pub async fn list_agent_watchers(
     let watchers = Task::find_agent_watchers(&deployment.db().pool, &task.id).await?;
 
     // Batch-fetch agent info to avoid N+1 queries
-    let all_agents = Agent::find_all(&deployment.db().pool).await.unwrap_or_default();
+    let all_agents = Agent::find_all(&deployment.db().pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to fetch agents: {e}")))?;
     let agent_map: std::collections::HashMap<String, &Agent> = all_agents
         .iter()
         .map(|a| (a.id.to_string(), a))

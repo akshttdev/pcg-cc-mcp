@@ -68,7 +68,7 @@ pub(crate) struct TaskIdPath {
     task_id: Uuid,
 }
 
-pub async fn load_task_middleware(
+pub(crate) async fn load_task_middleware(
     State(deployment): State<DeploymentImpl>,
     Path(TaskIdPath { task_id }): Path<TaskIdPath>,
     request: Request,
