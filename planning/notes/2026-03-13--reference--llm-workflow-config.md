@@ -189,9 +189,10 @@ Or set `default_model` on the workflow definition itself.
 | `auto_approve` bypass | Done | Done | Wired in fire_triggers (Phase 8A) |
 | Batch commit → Task creation | Done | Done | commit_task() reads all fields |
 | Auto-execute on task creation | Done | Done | Dev/QA agents seeded (Phase 7A) |
+| Auto-register agent watchers | Done | Done | `auto_watch_agent_ids` on agent config (Phase 8D) |
 | Auto-PR on execution complete | Done | **Needs GitHub token** | try_auto_create_pr() in container.rs |
-| QA agent review hook | Done | Done | Auto-creates QA task after PR (Phase 8B) |
-| PR feedback loop | Done | Done | QA verdict → PR comment → iteration (Phase 9) |
+| QA watcher trigger | Done | Done | `trigger_agent_watchers()` in `qa_review.rs` — no separate QA task |
+| PR feedback loop | Done | Done | `finalize_review()` in `qa_review.rs` — server-side iteration count |
 
 ---
 
@@ -203,8 +204,9 @@ Or set `default_model` on the workflow definition itself.
 | `crates/server/src/routes/workflow_staging.rs` | Batch commit, task creation, auto-execute wiring |
 | `crates/server/src/routes/feedback.rs` | Feedback → Task + DataSource + trigger |
 | `crates/server/src/routes/webhooks.rs` | GitHub webhook → DataSource + trigger |
-| `crates/local-deployment/src/container.rs` | Agent execution, auto-PR |
-| `crates/db/src/models/agent_execution_config.rs` | Agent-to-profile mapping |
+| `crates/local-deployment/src/container.rs` | Agent execution, auto-PR, finalization routing |
+| `crates/services/src/services/qa_review.rs` | QA watcher trigger, review finalization, PR comments |
+| `crates/db/src/models/agent_execution_config.rs` | Agent-to-profile mapping, auto_watch_agent_ids |
 | `crates/db/migrations/20260329000000_seed_dogfood_project.sql` | Project, boards, trigger seed |
 | `crates/db/migrations/20260101000000_seed_pcg_router.sql` | PCG Router model seed |
 | `crates/local-deployment/src/default_profiles.json` | Executor profile definitions |

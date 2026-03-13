@@ -2,7 +2,10 @@
 
 **Date:** 2026-03-12 (updated 2026-03-13)
 **Branch:** `feature/blob-to-text-scoped` (commit `ff6b76654`)
-**Context:** All QA plan items (15/15) complete. All critical bugs fixed. Phases 7-11 (Dogfood Pipeline) code-complete. This doc captures remaining open items across planning docs.
+**Context:** All QA plan items (15/15) complete. All critical bugs fixed. Phases 7-11 (Dogfood Pipeline) code-complete. QA watcher refactor complete (2026-03-13). This doc captures remaining open items across planning docs.
+
+### Completed Since Last Update
+- **QA Agent Watcher Refactor** (2026-03-13): Replaced separate `[QA] Review PR #X` task creation with watcher-based model. QA agents now registered as `agent_watcher` collaborators on the original task. Extracted `qa_review.rs` service (~470 lines) from container.rs. Net -150 lines. See PR #23 commits `d3c9cb8..7af2cdc`.
 
 ---
 
@@ -80,13 +83,15 @@
 3. ACP MCP loading: Path depends on server working directory
 4. Task FTS search index: Auto-sync triggers dropped (C4 fix) — needs app-level reindexing
 
-### 11. QA Automation Review — Remaining UX Items
+### 11. QA Automation Review — Watcher-Based Redesign ✅ (core), UX items remaining
 **Source:** `archive/2026-03-12--review--qa-automation-loop.md` (archived, all core items addressed)
+**Core refactor complete:** Separate `[QA]` task model replaced with watcher-based model. QA agents are `agent_watcher` collaborators on the original task. `qa_review.rs` handles trigger/finalize/PR comments. `AgentReview` run reason distinguishes QA from dev executions. Agent watcher API endpoints (Phase 6) deferred to follow-up PR.
 **Minor polish leftover:**
 - Task detail: show Description/Completion Criteria in default view (not just Enhanced)
 - Template table: show Priority + Agent columns
 - Workflow triggers panel: expose in Builder tab
 - Agent terminal: show capabilities inline + VIBE cost estimate
+- Agent watcher API: `POST/DELETE/GET /api/projects/:id/tasks/:task_id/agent-watchers` (Phase 6, follow-up PR)
 
 ---
 

@@ -43,17 +43,19 @@ Using existing schema (5 statuses + `approval_status` + PR tracking):
 - **7A**: Seed ORCHA Dev Agent + QA Agent + execution configs — `20260330000000_seed_dogfood_agents.sql`
 - **7B**: Document runtime config (API keys, GitHub PAT) — `notes/2026-03-13--reference--llm-workflow-config.md`
 
-### Phase 8: Auto-Approve + QA Loop ✅
+### Phase 8: Auto-Approve + QA Watcher System ✅ (Refactored)
 
 - **8A**: Wire `auto_approve` in `fire_triggers_for_data_source()` — includes contact-to-company linking + auto-start agent execution
-- **8B**: QA agent review hook after PR creation — `try_auto_qa_review()` in container.rs
-- **8C**: Audit trail via PR comments — `post_dev_agent_pr_comment()` + structured QA review comments
+- **8B**: ~~QA agent review hook via separate `[QA]` tasks~~ → **Watcher-based model**: QA agents registered as `agent_watcher` collaborators on the original task. `trigger_agent_watchers()` in `qa_review.rs` replaces `try_auto_qa_review()`.
+- **8C**: Audit trail via PR comments — `post_dev_agent_pr_comment()` moved to `qa_review.rs` with improved debug logging
+- **8D**: Auto-register watchers on task creation — `auto_watch_agent_ids` column on `agent_execution_config`, wired into `auto_start_agent_execution()` + task creation routes
+- **8E**: `AgentReview` run reason added to `ExecutionProcessRunReason` enum — routes review completions to `finalize_review()` instead of `finalize_task()`
 
-### Phase 9: PR Feedback Loop ✅
+### Phase 9: PR Feedback Loop ✅ (Refactored)
 
-- **9A**: QA review output schema (verdict/criteria/issues) — JSON parsed from execution artifacts
-- **9B**: Feedback loop controller (max 2 dev↔QA iterations) — `handle_qa_result()` in container.rs
-- **9C**: Structured PR comment format — markdown with criteria checks + issues table
+- **9A**: QA review output schema (verdict/criteria/issues) — JSON parsed from execution artifacts in `qa_review::finalize_review()`
+- **9B**: ~~Feedback loop via `handle_qa_result()` checking `[QA]` title prefix~~ → **Server-side iteration count** of `AgentReview` execution processes. `finalize_review()` in `qa_review.rs` handles verdict routing.
+- **9C**: Structured PR comment format — markdown with criteria checks + issues table (unchanged)
 
 ### Phase 10: E2E Demonstration Tests ✅
 
