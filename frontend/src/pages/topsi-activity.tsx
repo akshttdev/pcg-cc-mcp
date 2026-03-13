@@ -1,18 +1,19 @@
 import { Network } from 'lucide-react';
 import { useActivityStore } from '@/stores/useActivityStore';
 import { ActivityFeed } from '@/components/activity/ActivityFeed';
+import type { ActivityType } from '@/types/activity';
 
-const AGENT_ACTIVITY_TYPES = [
+const AGENT_ACTIVITY_TYPES: ActivityType[] = [
   'agent_tool_call',
   'agent_workflow_triggered',
   'agent_workflow_completed',
-] as const;
+];
 
 export function TopsiActivityPage() {
   const { getFilteredActivities } = useActivityStore();
 
   const agentActivities = getFilteredActivities({
-    types: [...AGENT_ACTIVITY_TYPES] as any[],
+    types: AGENT_ACTIVITY_TYPES,
   });
 
   return (
@@ -38,7 +39,7 @@ export function TopsiActivityPage() {
           </p>
         </div>
       ) : (
-        <ActivityFeed limit={200} />
+        <ActivityFeed filterTypes={AGENT_ACTIVITY_TYPES} limit={200} />
       )}
     </div>
   );

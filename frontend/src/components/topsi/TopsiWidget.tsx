@@ -80,7 +80,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const hasSpokenRef = useRef(false);
   // Workflow polling
   const workflowPollsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
-  const sendPendingRef = useRef<string | null>(null);
+  // Ref to hold latest sendMessageDirect so effects never capture stale closures
+  const sendMessageDirectRef = useRef<(message: string, context?: typeof pendingContext) => Promise<void>>();
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -107,33 +108,31 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
   // Handle pending message from store (e.g. from AskTopsiButton)
   useEffect(() => {
-    if (pendingMessage && widgetState === 'chat') {
-      if (!isInitialized) {
-        initializeTopsi();
-      }
-      const msg = pendingMessage;
-      clearPending();
-      // Auto-send the pending message
-      sendPendingRef.current = msg;
-    }
-  }, [pendingMessage, widgetState]);
+    if (!pendingMessage || widgetState !== 'chat') return;
 
-  // Fire auto-send when pending ref is set
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (sendPendingRef.current && !isSending) {
-        const msg = sendPendingRef.current;
-        sendPendingRef.current = null;
-        setInputMessage('');
-        sendMessageDirect(msg);
+    // Capture context before clearing (C1 fix: don't rely on closure)
+    const msg = pendingMessage;
+    const ctx = pendingContext;
+    clearPending();
+
+    const sendPending = async () => {
+      // Wait for initialization if needed (C2 fix)
+      if (!isInitialized) {
+        await initializeTopsi();
       }
-    }, 150);
-    return () => clearInterval(interval);
-  }, [isSending]);
+      setInputMessage('');
+      // Use ref to get latest sendMessageDirect (C3 fix: no stale closure)
+      sendMessageDirectRef.current?.(msg, ctx);
+    };
+
+    sendPending();
+  }, [pendingMessage, widgetState]);
 
   const checkTopsiStatus = async () => {
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/status'));
+      const res = await fetch(resolveApiUrl('/api/topsi/status'), {
+        credentials: 'include',
+      });
       if (res.ok) {
         const data = await res.json();
         setIsInitialized(data.isActive);
@@ -176,8 +175,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     setMessages(prev => [...prev, message]);
   };
 
-  // Core message send logic
-  const sendMessageDirect = async (message: string) => {
+  // Core message send logic — context param avoids stale closure issues
+  const sendMessageDirect = async (message: string, context?: typeof pendingContext) => {
     if (!message.trim() || isSending) return;
 
     addMessage('user', message);
@@ -197,7 +196,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         body: JSON.stringify({
           message,
           sessionId,
-          ...(pendingContext ? { context: pendingContext } : {}),
+          ...(context ? { context } : {}),
         }),
       });
 
@@ -209,12 +208,12 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
         addMessage('assistant', responseText);
 
         // Log tool calls to activity store
+        const entityId = context?.entityId || 'agent-global';
         if (responseData.tool_calls && Array.isArray(responseData.tool_calls)) {
           for (const tc of responseData.tool_calls) {
             const toolName = tc.name || tc.tool || 'unknown';
-            const taskId = pendingContext?.entityId || 'agent-global';
             logActivity(
-              taskId,
+              entityId,
               'agent_tool_call',
               `Topsi: ${toolName}`,
               {
@@ -227,7 +226,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
             // Start workflow polling if a workflow was triggered
             if ((toolName === 'trigger_workflow' || toolName === 'build_workflow') && tc.result?.workflow_run_id) {
-              startWorkflowPolling(tc.result.workflow_run_id);
+              startWorkflowPolling(tc.result.workflow_run_id, entityId);
             }
           }
         }
@@ -247,6 +246,9 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     }
   };
 
+  // Keep ref updated for effects that need the latest version
+  sendMessageDirectRef.current = sendMessageDirect;
+
   // Text chat — reads from inputMessage state
   const sendTextMessage = async () => {
     if (!inputMessage.trim() || isSending) return;
@@ -256,8 +258,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   };
 
   // Workflow polling
-  const startWorkflowPolling = (runId: string) => {
-    const taskId = pendingContext?.entityId || 'agent-global';
+  const startWorkflowPolling = (runId: string, entityId: string = 'agent-global') => {
+    const taskId = entityId;
 
     logActivity(taskId, 'agent_workflow_triggered', `Workflow run ${runId} started`, {
       agent: 'topsi',

@@ -43,9 +43,12 @@ export function TopsiAdminSettings() {
       if (res.ok) {
         const json = await res.json();
         setData(json);
+      } else {
+        toast.error('Failed to load prompt settings');
       }
     } catch (err) {
       console.error('Failed to fetch admin prompt:', err);
+      toast.error('Failed to connect to server');
     } finally {
       setIsLoading(false);
     }

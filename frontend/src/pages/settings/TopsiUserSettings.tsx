@@ -85,9 +85,12 @@ export function TopsiUserSettings() {
             : {},
           auto_approve_timeout_minutes: json.auto_approve_timeout_minutes ?? null,
         });
+      } else {
+        toast.error('Failed to load preferences');
       }
     } catch (err) {
       console.error('Failed to fetch user settings:', err);
+      toast.error('Failed to connect to server');
     } finally {
       setIsLoading(false);
     }
@@ -246,11 +249,17 @@ export function TopsiUserSettings() {
               max={60}
               placeholder="Disabled"
               value={settings.auto_approve_timeout_minutes ?? ''}
-              onChange={(e) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  auto_approve_timeout_minutes: e.target.value ? Number(e.target.value) : null,
-                }))
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (!raw) {
+                  setSettings((prev) => ({ ...prev, auto_approve_timeout_minutes: null }));
+                  return;
+                }
+                const num = Math.max(1, Math.min(60, Math.round(Number(raw))));
+                if (!Number.isNaN(num)) {
+                  setSettings((prev) => ({ ...prev, auto_approve_timeout_minutes: num }));
+                }
+              }
               }
               className="w-32"
             />

@@ -9,6 +9,7 @@ import type { ActivityType } from '@/types/activity';
 interface ActivityFeedProps {
   taskId?: string;
   limit?: number;
+  filterTypes?: ActivityType[];
   className?: string;
 }
 
@@ -46,12 +47,14 @@ const activityColors: Record<ActivityType, string> = {
   agent_workflow_completed: 'bg-cyan-500',
 };
 
-export function ActivityFeed({ taskId, limit = 50, className }: ActivityFeedProps) {
-  const { getActivitiesForTask, getRecentActivities } = useActivityStore();
+export function ActivityFeed({ taskId, limit = 50, filterTypes, className }: ActivityFeedProps) {
+  const { getActivitiesForTask, getRecentActivities, getFilteredActivities } = useActivityStore();
 
-  const activities = taskId
-    ? getActivitiesForTask(taskId)
-    : getRecentActivities(limit);
+  let activities = filterTypes
+    ? getFilteredActivities({ types: filterTypes, taskIds: taskId ? [taskId] : undefined }).slice(0, limit)
+    : taskId
+      ? getActivitiesForTask(taskId)
+      : getRecentActivities(limit);
 
   if (activities.length === 0) {
     return (
