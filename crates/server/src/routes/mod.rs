@@ -111,6 +111,7 @@ pub mod oss_listener_bg;
 pub mod companies;
 pub mod data_sources;
 pub mod data_source_workflows;
+pub mod workflow_engine;
 pub mod workflow_staging;
 pub mod workflow_triggers;
 pub mod output_schemas;

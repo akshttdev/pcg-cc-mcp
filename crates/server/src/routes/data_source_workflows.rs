@@ -4,9 +4,9 @@ use axum::{
     routing::{get, post, put},
 };
 use db::models::data_source::DataSource;
-use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, ExecutionArtifact};
-use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun, UpdateWorkflowRunOnComplete};
-use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
+use db::models::execution_artifact::ExecutionArtifact;
+use db::models::workflow_run::{WorkflowRun, CreateWorkflowRun};
+use db::models::workflow_staging::WorkflowStagingRecord;
 use db::models::crm_contact::{CrmContact, UpdateCrmContact};
 use db::models::crm_deal::{CrmDeal, UpdateCrmDeal};
 use db::models::company::{Company, UpdateCompany};
@@ -495,7 +495,7 @@ fn serialize_workflow_data(wf: &WorkflowDefinition) -> String {
     data.to_string()
 }
 
-async fn seed_defaults(pool: &sqlx::SqlitePool) {
+pub(crate) async fn seed_defaults(pool: &sqlx::SqlitePool) {
     let workflows = vec![
         default_analysis_workflow(),
         bug_triage_workflow(),
@@ -560,7 +560,7 @@ fn parse_workflow_from_row(id: String, owner_type: String, owner_id: Option<Stri
     WorkflowDefinition { id, name, description, nodes, connections, is_system, owner_type, owner_id, default_model: None }
 }
 
-async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<WorkflowDefinition>, sqlx::Error> {
+pub(crate) async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<WorkflowDefinition>, sqlx::Error> {
     seed_defaults(pool).await;
 
     let rows = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, String, bool)>(
@@ -572,7 +572,7 @@ async fn load_all_workflows(pool: &sqlx::SqlitePool) -> Result<Vec<WorkflowDefin
     Ok(rows.into_iter().map(|(id, ot, oid, name, desc, steps, sys)| parse_workflow_from_row(id, ot, oid, name, desc, steps, sys)).collect())
 }
 
-async fn load_workflow(pool: &sqlx::SqlitePool, workflow_id: &str) -> Result<Option<WorkflowDefinition>, sqlx::Error> {
+pub(crate) async fn load_workflow(pool: &sqlx::SqlitePool, workflow_id: &str) -> Result<Option<WorkflowDefinition>, sqlx::Error> {
     seed_defaults(pool).await;
 
     let row = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, String, bool)>(
@@ -1322,7 +1322,7 @@ struct RunWorkflowRequest {
 }
 
 /// Extract individual records from LLM output JSON
-fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
+pub(crate) fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
     // Skip error responses from failed LLM calls
     if data.get("error").is_some() {
         tracing::warn!("[WORKFLOW] Skipping record extraction — node returned an error: {}", data);
@@ -1369,7 +1369,7 @@ fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value> {
 ///
 /// Records with real extracted data (valid emails, real names, real dollar amounts)
 /// should NOT be flagged as placeholders even if they come from the fallback engine.
-fn is_fallback_placeholder(record: &Value) -> bool {
+pub(crate) fn is_fallback_placeholder(record: &Value) -> bool {
     let obj = match record.as_object() {
         Some(o) => o,
         None => return false,
@@ -1451,7 +1451,7 @@ fn is_fallback_placeholder(record: &Value) -> bool {
 /// - Subtract 0.1 if more than half of all fields are null/empty
 /// - Cap at 0.1 if the record is a fallback placeholder (no LLM connected)
 /// - Floor at 0.0
-fn compute_confidence(record: &Value, target_type: &str, validation_errors: &[String], is_duplicate: bool) -> f64 {
+pub(crate) fn compute_confidence(record: &Value, target_type: &str, validation_errors: &[String], is_duplicate: bool) -> f64 {
     // If this record was produced by the mock/fallback engine, cap confidence very low
     if is_fallback_placeholder(record) {
         tracing::warn!(
@@ -1506,7 +1506,7 @@ fn compute_confidence(record: &Value, target_type: &str, validation_errors: &[St
 /// Build a schema prompt text dynamically from output_schemas definitions.
 /// Maps output node target types to their schema definitions and generates
 /// a human-readable prompt describing the expected JSON format.
-fn build_schema_prompt_text(target_type: &str) -> Option<String> {
+pub(crate) fn build_schema_prompt_text(target_type: &str) -> Option<String> {
     // Map output node types to schema target types
     let schema_target = match target_type {
         "crm_contacts" => "crm_contact",
@@ -1567,7 +1567,7 @@ fn build_schema_prompt_text(target_type: &str) -> Option<String> {
 
 /// Validate a single record (serde_json::Value) against the TargetSchema for the given target_type.
 /// Returns Ok(()) if valid, or Err(Vec<String>) with a list of human-readable validation errors.
-fn validate_record_against_schema(record: &Value, target_type: &str) -> Result<(), Vec<String>> {
+pub(crate) fn validate_record_against_schema(record: &Value, target_type: &str) -> Result<(), Vec<String>> {
     let schema = match super::output_schemas::get_schema_for_target(target_type) {
         Some(s) => s,
         None => return Ok(()), // unknown target type — skip validation
@@ -1721,7 +1721,7 @@ fn normalize_company_name(name: &str) -> String {
 
 /// Check if a CRM contact already exists by email, phone, linkedin, or fuzzy name match.
 /// Returns (existing_id, match_type) where match_type indicates what matched.
-async fn check_contact_duplicate(
+pub(crate) async fn check_contact_duplicate(
     pool: &sqlx::SqlitePool,
     record: &Value,
     project_id: Option<Uuid>,
@@ -1804,7 +1804,7 @@ async fn check_contact_duplicate(
 }
 
 /// Check if a company already exists by normalized name or website match
-async fn check_company_duplicate(
+pub(crate) async fn check_company_duplicate(
     pool: &sqlx::SqlitePool,
     record: &Value,
     _organization_id: Option<Uuid>,
@@ -1846,7 +1846,7 @@ async fn check_company_duplicate(
 }
 
 /// Check if a deal already exists by name + pipeline
-async fn check_deal_duplicate(
+pub(crate) async fn check_deal_duplicate(
     pool: &sqlx::SqlitePool,
     record: &Value,
     project_id: Option<Uuid>,
@@ -1871,7 +1871,7 @@ async fn check_deal_duplicate(
 }
 
 /// Check if a task already exists by title
-async fn check_task_duplicate(
+pub(crate) async fn check_task_duplicate(
     pool: &sqlx::SqlitePool,
     record: &Value,
     project_id: Option<Uuid>,
@@ -1896,7 +1896,7 @@ async fn check_task_duplicate(
 }
 
 /// Also check within the current staging batch for duplicates (same run producing duplicate records)
-async fn check_intra_batch_duplicate(
+pub(crate) async fn check_intra_batch_duplicate(
     pool: &sqlx::SqlitePool,
     workflow_run_id: Uuid,
     target_type: &str,
@@ -2064,302 +2064,41 @@ async fn run_workflow(
         tracing::error!("[WORKFLOW] Failed to create workflow run record: {e}");
     }
 
-    let title = &data_source.title;
+    // Execute workflow via shared engine
+    let opts = super::workflow_engine::ExecutionOptions {
+        model: model.clone(),
+        data_source_id: Some(data_source_id),
+        organization_id: ds_org_uuid,
+        project_id: ds_proj_uuid,
+        workflow_run_id: Some(workflow_run_id),
+        create_artifacts: true,
+        create_staging: true,
+        artifact_metadata_extra: None,
+    };
 
-    // Build dependency map from connections
-    let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for conn in &workflow.connections {
-        deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
-    }
+    let result = super::workflow_engine::execute_workflow_nodes(pool, &workflow, &content, &opts).await;
 
-    // Topological sort: process nodes in dependency order
-    let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut ordered_nodes: Vec<&WorkflowNode> = Vec::new();
-    let mut remaining: Vec<&WorkflowNode> = workflow.nodes.iter().collect();
-
-    while !remaining.is_empty() {
-        let mut progress = false;
-        remaining.retain(|node| {
-            let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-            if deps.iter().all(|d| processed.contains(d)) {
-                processed.insert(node.id.clone());
-                ordered_nodes.push(node);
-                progress = true;
-                false // remove from remaining
-            } else {
-                true // keep in remaining
-            }
-        });
-        if !progress {
-            // Circular dependency — just process remaining in order
-            for node in &remaining {
-                ordered_nodes.push(node);
-            }
-            break;
-        }
-    }
-
-    // Build downstream output target map: node_id → list of target types
-    let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for conn in &workflow.connections {
-        if let Some(target_node) = workflow.nodes.iter().find(|n| n.id == conn.target) {
-            if target_node.node_type.starts_with("output_") {
-                let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
-                downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
-            }
-        }
-    }
-
-    let mut step_results: Vec<StepResult> = Vec::new();
-    let mut step_outputs: Vec<(String, String, String)> = Vec::new(); // (node_id, output, schema_name)
-
-    let mut all_usage: Vec<Value> = Vec::new();
-
-    for node in &ordered_nodes {
-        let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-        let previous: Vec<(&str, &str, &str)> = step_outputs.iter()
-            .filter(|(sid, _, _)| deps.contains(sid))
-            .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
-
-            .collect();
-
-        let (output, usage_meta) = if node.node_type.starts_with("output_") {
-            // Output nodes pass through their input data unchanged
-            let input_data = previous.iter()
-                .map(|(_, result, _)| result.to_string())
-
-                .collect::<Vec<_>>()
-                .join("\n");
-            (input_data, None)
-        } else if let Some(action_result) = execute_action_node(pool, node, &previous, ds_proj_uuid, ds_org_uuid).await {
-            // Action nodes (conditional, send_notification, assign_to_agent, http_request, update_crm_*)
-            action_result
-        } else {
-            let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
-            execute_node_with_llm(pool, node, &content, &previous, &model, targets).await
-        };
-
-        // Extract schema name for this node (strip trailing "[]")
-        let schema_name = node.parameters.get("output_schema")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim_end_matches("[]")
-            .to_string();
-
-
-        let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
-        let mut artifact_metadata = json!({
-            "data_source_id": data_source_id.to_string(),
-            "workflow_id": workflow.id,
-            "step_id": node.id,
-            "step_index": step_index,
-        });
-        if let Some(usage) = &usage_meta {
-            artifact_metadata["usage"] = usage.clone();
-            all_usage.push(usage.clone());
-        }
-
-        let artifact = ExecutionArtifact::create(
-            pool,
-            CreateExecutionArtifact {
-                execution_process_id: None,
-                artifact_type: ArtifactType::ResearchReport,
-                title: format!("{} - {}", workflow.name, node.name),
-                content: Some(output.clone()),
-                file_path: None,
-                metadata: Some(artifact_metadata),
-            },
-        ).await.map_err(|e| ApiError::InternalError(format!("Failed to create artifact: {e}")))?;
-
-        step_results.push(StepResult {
-            step_id: node.id.clone(),
-            step_name: node.name.clone(),
-            artifact_id: artifact.id,
-        });
-        step_outputs.push((node.id.clone(), output, schema_name));
-
-    }
-
-    // Check if any LLM node failed (returned error JSON) — fail the run early
-    let llm_errors: Vec<String> = step_outputs.iter()
-        .filter_map(|(node_id, output, _)| {
-
-            serde_json::from_str::<Value>(output).ok()
-                .and_then(|v| v.get("error").and_then(|e| e.as_str().map(|s| format!("Node '{}': {}", node_id, s))))
-        })
-        .collect();
-
+    // Check for LLM errors
+    let llm_errors = super::workflow_engine::check_for_llm_errors(&result.node_results);
     if !llm_errors.is_empty() {
-        // Update run as failed
-        let _ = WorkflowRun::update_on_complete(pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
-            status: "failed".to_string(),
-            total_input_tokens: 0,
-            total_output_tokens: 0,
-            total_estimated_cost_micros: 0,
-            total_records_staged: 0,
-            total_duplicates_found: 0,
-            node_count: workflow.nodes.len() as i64,
-            llm_node_count: workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64,
-            duration_ms: run_start.elapsed().as_millis() as i64,
-        }).await;
-
+        let duration_ms = run_start.elapsed().as_millis() as i64;
+        super::workflow_engine::finalize_workflow_run(pool, workflow_run_id, &workflow, &result, duration_ms, "failed").await;
         return Err(ApiError::InternalError(format!(
             "Workflow failed — LLM calls returned errors. {}. Check that API keys are configured as environment variables (e.g. ANTHROPIC_API_KEY).",
             llm_errors.first().unwrap_or(&String::new())
         )));
     }
 
-    // Aggregate usage stats
-    let total_usage = if all_usage.is_empty() {
-        None
-    } else {
-        let mut total_input: i64 = 0;
-        let mut total_output: i64 = 0;
-        let mut total_cost: i64 = 0;
-        for u in &all_usage {
-            total_input += u["input_tokens"].as_i64().unwrap_or(0);
-            total_output += u["output_tokens"].as_i64().unwrap_or(0);
-            total_cost += u["estimated_cost_micros"].as_i64().unwrap_or(0);
-        }
-        Some(json!({
-            "total_input_tokens": total_input,
-            "total_output_tokens": total_output,
-            "total_estimated_cost_micros": total_cost,
-            "steps": all_usage.len(),
-        }))
-    };
-
-    // Create staging records for output nodes
-    let mut staged_records: i64 = 0;
-    for node in ordered_nodes.iter().filter(|n| n.node_type.starts_with("output_")) {
-        let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
-        let staging_target = match target_type {
-            "crm_contacts" => "crm_contact",
-            "crm_companies" => "company",
-            "crm_deals" => "crm_deal",
-            "tasks" => "task",
-            _ => continue,
-        };
-
-        // Find this node's output
-        if let Some((_, output, _)) = step_outputs.iter().find(|(id, _, _)| id == &node.id) {
-
-            if let Ok(parsed) = serde_json::from_str::<Value>(output) {
-                let records = extract_records_from_output(&parsed, staging_target);
-                for record in records {
-                    // Check for duplicates against existing records
-                    let dup = match staging_target {
-                        "crm_contact" => check_contact_duplicate(pool, &record, ds_proj_uuid).await,
-                        "company" => check_company_duplicate(pool, &record, ds_org_uuid).await,
-                        "crm_deal" => check_deal_duplicate(pool, &record, ds_proj_uuid).await,
-                        "task" => check_task_duplicate(pool, &record, ds_proj_uuid).await,
-                        _ => None,
-                    };
-
-                    // Also check within the current batch
-                    let dup = dup.or(
-                        check_intra_batch_duplicate(pool, workflow_run_id, staging_target, &record).await
-                    );
-
-                    let (dup_id, dup_type) = match dup {
-                        Some((id, t)) => (Some(id), Some(t)),
-                        None => (None, None),
-                    };
-
-                    // Validate the record against the target schema
-                    let mut validation_errors = match validate_record_against_schema(&record, staging_target) {
-
-                        Ok(()) => None,
-                        Err(errs) => {
-                            tracing::warn!(
-                                "[WORKFLOW] Validation errors for {} record in node '{}': {:?}",
-                                staging_target, node.id, errs
-                            );
-                            Some(errs)
-                        }
-                    };
-
-                    // Flag fallback placeholder records with an explanatory validation error
-                    if is_fallback_placeholder(&record) {
-                        validation_errors.get_or_insert_with(Vec::new).push(
-                            "Placeholder record generated without LLM — no real data extracted".to_string()
-                        );
-                    }
-
-                    // Run pre-commit business-rule validation
-                    let precommit_errs = super::workflow_staging::validate_staging_record(staging_target, &record);
-                    if !precommit_errs.is_empty() {
-                        validation_errors.get_or_insert_with(Vec::new).extend(precommit_errs);
-                    }
-
-
-                    let is_duplicate = dup_id.is_some();
-                    let confidence = compute_confidence(
-                        &record,
-                        staging_target,
-                        validation_errors.as_deref().unwrap_or(&[]),
-                        is_duplicate,
-                    );
-
-                    // NOTE: Records within a single run are processed sequentially in this
-                    // for loop, so intra-batch race conditions don't apply. The dedup check
-                    // + create sequence is only vulnerable to races across concurrent trigger
-                    // firings for the same data source — a known limitation with SQLite.
-                    match WorkflowStagingRecord::create(pool, CreateStagingRecord {
-                        workflow_run_id,
-                        workflow_id: workflow.id.clone(),
-                        node_id: node.id.clone(),
-                        data_source_id: Some(data_source_id),
-                        organization_id: ds_org_uuid,
-                        project_id: ds_proj_uuid,
-                        target_type: staging_target.to_string(),
-                        record_data: record,
-                        duplicate_of_id: dup_id,
-                        duplicate_of_type: dup_type,
-                        confidence: Some(confidence),
-                        validation_errors,
-                    }).await {
-                        Ok(_) => staged_records += 1,
-                        Err(e) => tracing::error!("[WORKFLOW] Failed to create staging record: {e}"),
-                    }
-                }
-            }
-        }
-    }
-
-    // Count duplicates and LLM nodes
-    let duplicates_found = {
-        let staging_records = WorkflowStagingRecord::find_by_run(pool, workflow_run_id).await.unwrap_or_default();
-        staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as i64
-    };
-    let node_count = workflow.nodes.len() as i64;
-    let llm_node_count = workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64;
+    // Finalize the run
     let duration_ms = run_start.elapsed().as_millis() as i64;
+    super::workflow_engine::finalize_workflow_run(pool, workflow_run_id, &workflow, &result, duration_ms, "completed").await;
 
-    let (total_input, total_output, total_cost) = if let Some(ref usage) = total_usage {
-        (
-            usage["total_input_tokens"].as_i64().unwrap_or(0),
-            usage["total_output_tokens"].as_i64().unwrap_or(0),
-            usage["total_estimated_cost_micros"].as_i64().unwrap_or(0),
-        )
-    } else {
-        (0, 0, 0)
-    };
-
-    // Update workflow run with final stats
-    if let Err(e) = WorkflowRun::update_on_complete(pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
-        status: "completed".to_string(),
-        total_input_tokens: total_input,
-        total_output_tokens: total_output,
-        total_estimated_cost_micros: total_cost,
-        total_records_staged: staged_records,
-        total_duplicates_found: duplicates_found,
-        node_count,
-        llm_node_count,
-        duration_ms,
-    }).await {
-        tracing::error!("[WORKFLOW] Failed to update workflow run on complete: {e}");
-    }
+    // Build step results from node results (artifact_id is not tracked by engine — use Uuid::nil as placeholder)
+    let step_results: Vec<StepResult> = result.node_results.iter().map(|nr| StepResult {
+        step_id: nr.node_id.clone(),
+        step_name: nr.node_name.clone(),
+        artifact_id: Uuid::nil(),
+    }).collect();
 
     Ok(Json(ApiResponse::success(WorkflowRunResult {
         workflow_run_id,
@@ -2367,8 +2106,8 @@ async fn run_workflow(
         workflow_name: workflow.name,
         data_source_id,
         steps: step_results,
-        total_usage,
-        staged_records,
+        total_usage: result.total_usage,
+        staged_records: result.staged_records,
         reused: None,
     })))
 }
@@ -2556,7 +2295,7 @@ async fn list_recent_artifacts(
 /// Returns `Some((output, None))` if this node type is an action node that was handled,
 /// or `None` if the node type is not an action and should fall through to LLM execution.
 /// `context_project_id` and `context_org_id` come from the data source / workflow context.
-async fn execute_action_node(
+pub(crate) async fn execute_action_node(
     pool: &sqlx::SqlitePool,
     node: &WorkflowNode,
     previous_results: &[(&str, &str, &str)],
@@ -3143,7 +2882,7 @@ fn build_company_update(template: &Value, record: &Value) -> UpdateCompany {
 /// Execute a workflow node's LLM prompt via the PCG Router.
 /// Routes through all configured providers with priority-based fallback.
 /// Returns an error string (instead of mock data) if no models are available.
-async fn execute_node_with_llm(
+pub(crate) async fn execute_node_with_llm(
     pool: &sqlx::SqlitePool,
     node: &WorkflowNode,
     content: &str,
@@ -3368,82 +3107,33 @@ async fn preview_workflow(
          The meeting covered AI integration services valued at approximately $50,000.".to_string()
     });
 
-    // Build dependency map
-    let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for conn in &req.connections {
-        deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
-    }
+    // Build an ad-hoc workflow definition from the request
+    let preview_workflow = WorkflowDefinition {
+        id: String::new(),
+        name: "Preview".to_string(),
+        description: None,
+        nodes: req.nodes,
+        connections: req.connections,
+        is_system: false,
+        owner_type: String::new(),
+        owner_id: None,
+        default_model: None,
+    };
 
-    // Build downstream output target map
-    let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for conn in &req.connections {
-        if let Some(target_node) = req.nodes.iter().find(|n| n.id == conn.target) {
-            if target_node.node_type.starts_with("output_") {
-                let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
-                downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
-            }
-        }
-    }
+    // Execute via shared engine — no artifacts, no staging
+    let opts = super::workflow_engine::ExecutionOptions {
+        model: String::new(),
+        create_artifacts: false,
+        create_staging: false,
+        ..Default::default()
+    };
 
-    // Topological sort
-    let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut ordered: Vec<&WorkflowNode> = Vec::new();
-    let mut remaining: Vec<&WorkflowNode> = req.nodes.iter().collect();
+    let result = super::workflow_engine::execute_workflow_nodes(pool, &preview_workflow, &content, &opts).await;
 
-    while !remaining.is_empty() {
-        let mut progress = false;
-        remaining.retain(|node| {
-            let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-            if deps.iter().all(|d| processed.contains(d)) {
-                processed.insert(node.id.clone());
-                ordered.push(node);
-                progress = true;
-                false
-            } else {
-                true
-            }
-        });
-        if !progress {
-            for node in &remaining { ordered.push(node); }
-            break;
-        }
-    }
-
-    let mut results: Vec<PreviewNodeResult> = Vec::new();
-    let mut outputs: Vec<(String, String, String)> = Vec::new(); // (node_id, output, schema_name)
-
-    for node in &ordered {
-        let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-        let previous: Vec<(&str, &str, &str)> = outputs.iter()
-            .filter(|(sid, _, _)| deps.contains(sid))
-            .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
-
-            .collect();
-
-        let (output, usage_meta) = if node.node_type.starts_with("output_") {
-            // Output nodes pass through their input data unchanged
-            let input_data = previous.iter()
-                .map(|(_, result, _)| result.to_string())
-
-                .collect::<Vec<_>>()
-                .join("\n");
-            (input_data, None)
-        } else if let Some(action_result) = execute_action_node(pool, node, &previous, None, None).await {
-            action_result
-        } else {
-            let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
-            execute_node_with_llm(pool, node, &content, &previous, "", targets).await
-        };
-
-        let schema_name = node.parameters.get("output_schema")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim_end_matches("[]")
-            .to_string();
-
-        // For output nodes, extract and validate records against schema
-        let records = if node.node_type.starts_with("output_") {
-            let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
+    // Convert node results to preview format with validation info
+    let results: Vec<PreviewNodeResult> = result.node_results.iter().map(|nr| {
+        let records = if nr.node_type.starts_with("output_") {
+            let target_type = nr.node_type.strip_prefix("output_").unwrap_or("");
             let staging_target = match target_type {
                 "crm_contacts" => Some("crm_contact"),
                 "crm_companies" => Some("company"),
@@ -3452,7 +3142,7 @@ async fn preview_workflow(
                 _ => None,
             };
             staging_target.and_then(|st| {
-                serde_json::from_str::<Value>(&output).ok().map(|parsed| {
+                serde_json::from_str::<Value>(&nr.output).ok().map(|parsed| {
                     extract_records_from_output(&parsed, st).iter().map(|record| {
                         let validation_errors = match validate_record_against_schema(record, st) {
                             Ok(()) => vec![],
@@ -3471,18 +3161,15 @@ async fn preview_workflow(
             None
         };
 
-
-        results.push(PreviewNodeResult {
-            node_id: node.id.clone(),
-            node_name: node.name.clone(),
-            node_type: node.node_type.clone(),
-            output: output.clone(),
-            usage: usage_meta,
+        PreviewNodeResult {
+            node_id: nr.node_id.clone(),
+            node_name: nr.node_name.clone(),
+            node_type: nr.node_type.clone(),
+            output: nr.output.clone(),
+            usage: nr.usage.clone(),
             records,
-        });
-        outputs.push((node.id.clone(), output, schema_name));
-
-    }
+        }
+    }).collect();
 
     Ok(Json(ApiResponse::success(results)))
 }
@@ -3714,232 +3401,26 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
             let ctx_org_id = data_source.organization_id.as_deref().and_then(|s| Uuid::parse_str(s).ok());
             let content = data_source.content.unwrap_or_default();
 
-            // Build dependency map
-            let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-            for conn in &workflow.connections {
-                deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
-            }
-
-            // Topological sort
-            let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut ordered_nodes: Vec<&WorkflowNode> = Vec::new();
-            let mut remaining: Vec<&WorkflowNode> = workflow.nodes.iter().collect();
-
-            while !remaining.is_empty() {
-                let mut progress = false;
-                remaining.retain(|node| {
-                    let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-                    if deps.iter().all(|d| processed.contains(d)) {
-                        processed.insert(node.id.clone());
-                        ordered_nodes.push(node);
-                        progress = true;
-                        false
-                    } else {
-                        true
-                    }
-                });
-                if !progress {
-                    for node in &remaining {
-                        ordered_nodes.push(node);
-                    }
-                    break;
-                }
-            }
-
-            // Build downstream output target map
-            let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-            for conn in &workflow.connections {
-                if let Some(target_node) = workflow.nodes.iter().find(|n| n.id == conn.target) {
-                    if target_node.node_type.starts_with("output_") {
-                        let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
-                        downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
-                    }
-                }
-            }
-
-            let mut step_outputs: Vec<(String, String, String)> = Vec::new(); // (node_id, output, schema_name)
-
-            let mut all_usage: Vec<serde_json::Value> = Vec::new();
-            let mut staged_records: i64 = 0;
-
-            for node in &ordered_nodes {
-                let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-                let previous: Vec<(&str, &str, &str)> = step_outputs.iter()
-                    .filter(|(sid, _, _)| deps.contains(sid))
-                    .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
-
-                    .collect();
-
-                let (output, usage_meta) = if node.node_type.starts_with("output_") {
-                    let input_data = previous.iter()
-                        .map(|(_, result, _)| result.to_string())
-
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    (input_data, None)
-                } else if let Some(action_result) = execute_action_node(&pool, node, &previous, ctx_project_id, ctx_org_id).await {
-                    action_result
-                } else {
-                    let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
-                    execute_node_with_llm(&pool, node, &content, &previous, &model, targets).await
-                };
-
-                let schema_name = node.parameters.get("output_schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .trim_end_matches("[]")
-                    .to_string();
-
-
-                let step_index = ordered_nodes.iter().position(|n| n.id == node.id).unwrap_or(0);
-                let mut artifact_metadata = serde_json::json!({
-                    "data_source_id": ds_id.to_string(),
-                    "workflow_id": workflow.id,
-                    "step_id": node.id,
-                    "step_index": step_index,
-                    "trigger_id": trigger_id,
-                });
-                if let Some(usage) = &usage_meta {
-                    artifact_metadata["usage"] = usage.clone();
-                    all_usage.push(usage.clone());
-                }
-
-                if let Err(e) = ExecutionArtifact::create(
-                    &pool,
-                    CreateExecutionArtifact {
-                        execution_process_id: None,
-                        artifact_type: ArtifactType::ResearchReport,
-                        title: format!("{} - {} [auto]", workflow.name, node.name),
-                        content: Some(output.clone()),
-                        file_path: None,
-                        metadata: Some(artifact_metadata),
-                    },
-                ).await {
-                    tracing::error!("[TRIGGER] Failed to create execution artifact for node '{}': {e}", node.id);
-                }
-
-                step_outputs.push((node.id.clone(), output, schema_name));
-
-            }
-
-            // Create staging records for output nodes
-            for node in ordered_nodes.iter().filter(|n| n.node_type.starts_with("output_")) {
-                let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
-                let staging_target = match target_type {
-                    "crm_contacts" => "crm_contact",
-                    "crm_companies" => "company",
-                    "crm_deals" => "crm_deal",
-                    "tasks" => "task",
-                    _ => continue,
-                };
-
-                if let Some((_, output, _)) = step_outputs.iter().find(|(id, _, _)| id == &node.id) {
-
-                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(output) {
-                        let records = extract_records_from_output(&parsed, staging_target);
-                        for record in records {
-                            let dup = match staging_target {
-                                "crm_contact" => check_contact_duplicate(&pool, &record, ctx_project_id).await,
-                                "company" => check_company_duplicate(&pool, &record, ctx_org_id).await,
-                                "crm_deal" => check_deal_duplicate(&pool, &record, ctx_project_id).await,
-                                "task" => check_task_duplicate(&pool, &record, ctx_project_id).await,
-                                _ => None,
-                            };
-                            let dup = dup.or(
-                                check_intra_batch_duplicate(&pool, workflow_run_id, staging_target, &record).await
-                            );
-                            let (dup_id, dup_type) = match dup {
-                                Some((id, t)) => (Some(id), Some(t)),
-                                None => (None, None),
-                            };
-                            let mut validation_errors = match validate_record_against_schema(&record, staging_target) {
-
-                                Ok(()) => None,
-                                Err(errs) => Some(errs),
-                            };
-
-                            // Flag fallback placeholder records with an explanatory validation error
-                            if is_fallback_placeholder(&record) {
-                                validation_errors.get_or_insert_with(Vec::new).push(
-                                    "Placeholder record generated without LLM — no real data extracted".to_string()
-                                );
-                            }
-
-                            // Run pre-commit business-rule validation
-                            let precommit_errs = super::workflow_staging::validate_staging_record(staging_target, &record);
-                            if !precommit_errs.is_empty() {
-                                validation_errors.get_or_insert_with(Vec::new).extend(precommit_errs);
-                            }
-
-
-                            let is_duplicate = dup_id.is_some();
-                            let confidence = compute_confidence(
-                                &record,
-                                staging_target,
-                                validation_errors.as_deref().unwrap_or(&[]),
-                                is_duplicate,
-                            );
-
-                            // NOTE: Records within a single trigger run are processed sequentially,
-                            // so intra-batch dedup races don't apply here. Cross-run races are a
-                            // known limitation with SQLite's limited concurrency.
-                            match WorkflowStagingRecord::create(&pool, CreateStagingRecord {
-                                workflow_run_id,
-                                workflow_id: workflow.id.clone(),
-                                node_id: node.id.clone(),
-                                data_source_id: Uuid::parse_str(&ds_id).ok(),
-                                organization_id: ctx_org_id,
-                                project_id: ctx_project_id,
-                                target_type: staging_target.to_string(),
-                                record_data: record,
-                                duplicate_of_id: dup_id,
-                                duplicate_of_type: dup_type,
-                                confidence: Some(confidence),
-                                validation_errors,
-                            }).await {
-                                Ok(_) => staged_records += 1,
-                                Err(e) => tracing::error!("[TRIGGER] Failed to create staging record: {e}"),
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Aggregate stats
-            let mut total_input: i64 = 0;
-            let mut total_output: i64 = 0;
-            let mut total_cost: i64 = 0;
-            for u in &all_usage {
-                total_input += u["input_tokens"].as_i64().unwrap_or(0);
-                total_output += u["output_tokens"].as_i64().unwrap_or(0);
-                total_cost += u["estimated_cost_micros"].as_i64().unwrap_or(0);
-            }
-
-            let duplicates_found = {
-                let staging_records = WorkflowStagingRecord::find_by_run(&pool, workflow_run_id).await.unwrap_or_default();
-                staging_records.iter().filter(|r| r.duplicate_of_id.is_some()).count() as i64
+            // Execute via shared engine
+            let opts = super::workflow_engine::ExecutionOptions {
+                model: model.clone(),
+                data_source_id: Uuid::parse_str(&ds_id).ok(),
+                organization_id: ctx_org_id,
+                project_id: ctx_project_id,
+                workflow_run_id: Some(workflow_run_id),
+                create_artifacts: true,
+                create_staging: true,
+                artifact_metadata_extra: Some(serde_json::json!({"trigger_id": trigger_id})),
             };
-            let node_count = workflow.nodes.len() as i64;
-            let llm_node_count = workflow.nodes.iter().filter(|n| n.node_type.starts_with("llm_")).count() as i64;
-            let duration_ms = run_start.elapsed().as_millis() as i64;
 
-            if let Err(e) = WorkflowRun::update_on_complete(&pool, &workflow_run_id.to_string(), UpdateWorkflowRunOnComplete {
-                status: "completed".to_string(),
-                total_input_tokens: total_input,
-                total_output_tokens: total_output,
-                total_estimated_cost_micros: total_cost,
-                total_records_staged: staged_records,
-                total_duplicates_found: duplicates_found,
-                node_count,
-                llm_node_count,
-                duration_ms,
-            }).await {
-                tracing::error!("[TRIGGER] Failed to update workflow run on complete: {e}");
-            }
+            let result = super::workflow_engine::execute_workflow_nodes(&pool, &workflow, &content, &opts).await;
+
+            let duration_ms = run_start.elapsed().as_millis() as i64;
+            super::workflow_engine::finalize_workflow_run(&pool, workflow_run_id, &workflow, &result, duration_ms, "completed").await;
 
             tracing::info!(
                 "[TRIGGER] Completed trigger '{}' workflow run {} ({} records staged, {}ms)",
-                trigger_id, workflow_run_id, staged_records, duration_ms
+                trigger_id, workflow_run_id, result.staged_records, duration_ms
             );
 
             // ── Phase 8A: Auto-approve + batch-commit when trigger has auto_approve enabled ──
@@ -4126,77 +3607,14 @@ pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool) {
 
                     // Schedule triggers run without source data — they rely on action nodes
                     // (like assign_to_agent, http_request, send_notification) rather than data extraction
-                    let content = String::new();
+                    let opts = super::workflow_engine::ExecutionOptions {
+                        model: model.clone(),
+                        create_artifacts: false,
+                        create_staging: false,
+                        ..Default::default()
+                    };
 
-                    // Build dependency map + topological sort + execute
-                    let mut deps_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-                    for conn in &workflow.connections {
-                        deps_map.entry(conn.target.clone()).or_default().push(conn.source.clone());
-                    }
-
-                    let mut processed: std::collections::HashSet<String> = std::collections::HashSet::new();
-                    let mut ordered_nodes: Vec<&WorkflowNode> = Vec::new();
-                    let mut remaining: Vec<&WorkflowNode> = workflow.nodes.iter().collect();
-
-                    while !remaining.is_empty() {
-                        let mut progress = false;
-                        remaining.retain(|node| {
-                            let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-                            if deps.iter().all(|d| processed.contains(d)) {
-                                processed.insert(node.id.clone());
-                                ordered_nodes.push(node);
-                                progress = true;
-                                false
-                            } else {
-                                true
-                            }
-                        });
-                        if !progress {
-                            for node in &remaining { ordered_nodes.push(node); }
-                            break;
-                        }
-                    }
-
-                    let mut downstream_targets: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-                    for conn in &workflow.connections {
-                        if let Some(target_node) = workflow.nodes.iter().find(|n| n.id == conn.target) {
-                            if target_node.node_type.starts_with("output_") {
-                                let target_type = target_node.node_type.strip_prefix("output_").unwrap_or("").to_string();
-                                downstream_targets.entry(conn.source.clone()).or_default().push(target_type);
-                            }
-                        }
-                    }
-
-                    let mut step_outputs: Vec<(String, String, String)> = Vec::new();
-
-                    for node in &ordered_nodes {
-                        let deps = deps_map.get(&node.id).cloned().unwrap_or_default();
-                        let previous: Vec<(&str, &str, &str)> = step_outputs.iter()
-                            .filter(|(sid, _, _)| deps.contains(sid))
-                            .map(|(sid, out, schema)| (sid.as_str(), out.as_str(), schema.as_str()))
-                            .collect();
-
-                        let (output, _usage_meta) = if node.node_type.starts_with("output_") {
-                            let input_data = previous.iter()
-                                .map(|(_, result, _)| result.to_string())
-                                .collect::<Vec<_>>()
-                                .join("\n");
-                            (input_data, None)
-                        } else if let Some(action_result) = execute_action_node(&pool, node, &previous, None, None).await {
-                            action_result
-                        } else {
-                            let targets = downstream_targets.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]);
-                            execute_node_with_llm(&pool, node, &content, &previous, &model, targets).await
-                        };
-
-                        let schema_name = node.parameters.get("output_schema")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .trim_end_matches("[]")
-                            .to_string();
-
-                        step_outputs.push((node.id.clone(), output, schema_name));
-                    }
+                    let _result = super::workflow_engine::execute_workflow_nodes(&pool, &workflow, "", &opts).await;
 
                     tracing::info!(
                         "[SCHEDULE] Completed workflow '{}' (trigger '{}')",
