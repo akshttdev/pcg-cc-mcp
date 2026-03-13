@@ -3648,6 +3648,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
         let trigger_id = trigger.id.clone();
         let workflow_id = trigger.workflow_id.clone();
         let model_override = trigger.model_override.clone();
+        let trigger_auto_approve = trigger.auto_approve;
 
         tokio::spawn(async move {
             tracing::info!(
@@ -3936,6 +3937,68 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                 "[TRIGGER] Completed trigger '{}' workflow run {} ({} records staged, {}ms)",
                 trigger_id, workflow_run_id, staged_records, duration_ms
             );
+
+            // ── Phase 8A: Auto-approve + batch-commit when trigger has auto_approve enabled ──
+            if trigger_auto_approve && staged_records > 0 {
+                tracing::info!(
+                    "[TRIGGER] auto_approve enabled for trigger '{}' — approving valid records",
+                    trigger_id
+                );
+
+                // Step 1: auto-approve non-duplicate records with confidence >= 0.7
+                match WorkflowStagingRecord::auto_approve_valid(&pool, workflow_run_id).await {
+                    Ok(approved) => {
+                        tracing::info!(
+                            "[TRIGGER] Auto-approved {} record(s) for workflow run {}",
+                            approved, workflow_run_id
+                        );
+
+                        // Step 2: reject duplicates
+                        if let Err(e) = WorkflowStagingRecord::reject_duplicates(&pool, workflow_run_id).await {
+                            tracing::warn!("[TRIGGER] Failed to reject duplicates: {e}");
+                        }
+
+                        // Step 3: commit approved records (inline — same logic as batch_commit handler)
+                        if approved > 0 {
+                            let records = WorkflowStagingRecord::find_by_run(&pool, workflow_run_id)
+                                .await
+                                .unwrap_or_default();
+                            let mut approved_records: Vec<_> = records.into_iter()
+                                .filter(|r| r.status == "approved")
+                                .collect();
+
+                            // Sort: companies first, then contacts, then deals, then tasks
+                            approved_records.sort_by_key(|r| match r.target_type.as_str() {
+                                "company" => 0,
+                                "crm_contact" => 1,
+                                "crm_deal" => 2,
+                                "task" => 3,
+                                _ => 4,
+                            });
+
+                            let mut committed = 0u64;
+                            for record in &approved_records {
+                                let result = super::workflow_staging::commit_record_internal(&pool, record).await;
+                                match result {
+                                    Ok(_) => committed += 1,
+                                    Err(e) => tracing::warn!(
+                                        "[TRIGGER] Auto-commit failed for record {}: {e}",
+                                        record.id
+                                    ),
+                                }
+                            }
+
+                            tracing::info!(
+                                "[TRIGGER] Auto-committed {}/{} records for trigger '{}'",
+                                committed, approved, trigger_id
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("[TRIGGER] Auto-approve failed for workflow run {}: {e}", workflow_run_id);
+                    }
+                }
+            }
         });
     }
 }

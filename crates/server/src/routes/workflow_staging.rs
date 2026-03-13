@@ -379,6 +379,25 @@ async fn batch_commit(
 
 // ── Commit logic ────────────────────────────────────────────────────────────
 
+/// Public commit function for use by auto-approve trigger flow.
+/// Commits a single approved staging record and marks it committed/error in DB.
+pub async fn commit_record_internal(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Result<Uuid, String> {
+    let result = match record.target_type.as_str() {
+        "crm_contact" => commit_contact(pool, record).await,
+        "company" => commit_company(pool, record).await,
+        "crm_deal" => commit_deal(pool, record).await,
+        "task" => commit_task(pool, record).await,
+        _ => Err(format!("Unknown target type: {}", record.target_type)),
+    };
+
+    match &result {
+        Ok(_) => { let _ = WorkflowStagingRecord::mark_committed(pool, record.id).await; }
+        Err(err) => { let _ = WorkflowStagingRecord::mark_error(pool, record.id, err).await; }
+    }
+
+    result
+}
+
 async fn commit_record(pool: &SqlitePool, record: &WorkflowStagingRecord) -> CommitResult {
     let result = match record.target_type.as_str() {
         "crm_contact" => commit_contact(pool, record).await,
