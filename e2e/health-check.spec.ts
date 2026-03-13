@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { login, apiLogin, navigateToFirstProjectTasks, cleanupTestData, TEST_DATA_PREFIX } from "./helpers";
+import { login, apiLogin, navigateToFirstProjectTasks, cleanupTestData, TEST_DATA_PREFIX, TEST_USER } from "./helpers";
+
+// Most tests use storageState from auth.setup.ts — no per-test login needed.
+// Only the Authentication describe block tests login/logout flows directly.
 
 /**
  * ORCHA Dashboard — E2E Health Check Suite
@@ -29,6 +32,9 @@ test.afterAll(async ({ request }) => {
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 test.describe("Authentication", () => {
+  // These tests exercise the login flow itself — bypass stored auth
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test("login with valid credentials redirects to dashboard", async ({ page }) => {
     await login(page);
     await expect(page.getByText("My Workspace")).toBeVisible({ timeout: 10_000 });
@@ -53,7 +59,8 @@ test.describe("Authentication", () => {
 
 test.describe("Sidebar & Navigation", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
   });
 
   test("sidebar shows workspace sections", async ({ page }) => {
@@ -70,7 +77,7 @@ test.describe("Sidebar & Navigation", () => {
   test("My Projects link navigates to projects page", async ({ page }) => {
     await page.getByRole("link", { name: "My Projects" }).click();
     await expect(page).toHaveURL("/projects");
-    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
   });
 
   test("My Tasks link navigates to tasks page", async ({ page }) => {
@@ -88,7 +95,6 @@ test.describe("Sidebar & Navigation", () => {
 
 test.describe("Projects", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page);
     await page.goto("/projects");
     await page.waitForLoadState("domcontentloaded");
   });
@@ -120,9 +126,6 @@ test.describe("Projects", () => {
 // ─── Tasks & Kanban ──────────────────────────────────────────────────────────
 
 test.describe("Tasks & Kanban", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-  });
 
   test("kanban board renders with status columns", async ({ page }) => {
     await navigateToFirstProjectTasks(page);
@@ -141,7 +144,7 @@ test.describe("Tasks & Kanban", () => {
 
     // Core fields
     await expect(page.getByRole("textbox", { name: "Title" })).toBeVisible();
-    await expect(page.getByText("Priority")).toBeVisible();
+    await expect(page.getByText("Priority").first()).toBeVisible();
     await expect(page.getByText("Completion Criteria")).toBeVisible();
     await expect(page.getByText("Output Format")).toBeVisible();
   });
@@ -178,11 +181,9 @@ test.describe("Tasks & Kanban", () => {
 // ─── Organizations ───────────────────────────────────────────────────────────
 
 test.describe("Organizations", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-  });
-
   test("organization profile page loads", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
     // Navigate to first org from sidebar link
     const orgLink = page.locator("a[href*='/organizations/']").first();
     await expect(orgLink).toBeVisible({ timeout: 10_000 });
@@ -194,10 +195,6 @@ test.describe("Organizations", () => {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 test.describe("Settings", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-  });
-
   test("settings page loads", async ({ page }) => {
     await page.goto("/settings");
     await expect(page).toHaveURL(/\/settings/);
@@ -226,7 +223,6 @@ test.describe("Settings", () => {
 
 test.describe("Workflows", () => {
   test("workflows page loads", async ({ page }) => {
-    await login(page);
     await page.goto("/workflows");
     await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("body")).not.toBeEmpty();
@@ -237,7 +233,6 @@ test.describe("Workflows", () => {
 
 test.describe("Mission Control", () => {
   test("mission control page loads", async ({ page }) => {
-    await login(page);
     await page.goto("/mission-control");
     await page.waitForLoadState("domcontentloaded");
 
@@ -249,7 +244,6 @@ test.describe("Mission Control", () => {
 
 test.describe("My Tasks", () => {
   test("my tasks page loads", async ({ page }) => {
-    await login(page);
     await page.goto("/my-tasks");
     await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("body")).not.toBeEmpty();
@@ -261,7 +255,7 @@ test.describe("My Tasks", () => {
 test.describe("API Health", () => {
   test("login API returns session", async ({ request }) => {
     const res = await request.post("/api/auth/login", {
-      data: { username: "admin", password: "admin123" },
+      data: { username: TEST_USER.username, password: TEST_USER.password },
     });
     expect(res.ok()).toBeTruthy();
     const data = await res.json();
