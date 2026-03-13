@@ -70,6 +70,28 @@ Phases 1-5 of the QA Agent Watcher refactor are complete. The watcher system wor
 
 **E2E impact analysis:** Existing tests in 10C (lines 175-210) and 10D (lines 243-265) test auto-registration via `collaborators` JSON parsing — these are unaffected since we didn't change the auto-registration flow. The `health-check.spec.ts` task detail test (line 174-186) only checks Overview/Artifacts tabs — unaffected.
 
+### Step 9: RBAC Hardening — `access_control.rs` + `model_loaders.rs` + `tasks.rs`
+
+**Problem:** Task routes behind `load_task_middleware` had no project-level authorization — any authenticated user could access/modify any task if they knew the task ID.
+
+**Solution (two layers):**
+1. **Middleware (Viewer gate):** `load_task_middleware` now calls `require_viewer()` on the task's parent project. All routes (GET + mutations) require at least Viewer access.
+2. **Handler (Editor gate):** All mutation handlers explicitly call `require_editor()`:
+   - `update_task`, `delete_task`
+   - `approve_task`, `request_changes`, `reject_task`
+   - `add_agent_watcher`, `remove_agent_watcher`
+3. **Helper methods on `AccessContext`:** Added `require_viewer()`, `require_editor()`, `require_project_admin()` — one-line convenience wrappers around `check_project_access_hierarchical`. Also refactored `load_project_middleware` to use these.
+
+**Admin bypass:** `check_project_access_hierarchical` returns `Owner` for `is_admin` users automatically — admins never need to be added to projects.
+
+**Role hierarchy:**
+| Role | can_read | can_write | can_manage_members | can_delete |
+|------|----------|-----------|-------------------|------------|
+| Owner | yes | yes | yes | yes |
+| Admin | yes | yes | yes | no |
+| Editor | yes | yes | no | no |
+| Viewer | yes | no | no | no |
+
 ## QA Findings & Fixes
 
 | # | Severity | Issue | Resolution |
@@ -77,7 +99,7 @@ Phases 1-5 of the QA Agent Watcher refactor are complete. The watcher system wor
 | 1 | P0 | `load_task_middleware` `Path<Uuid>` fails with 2 path params | Fixed: struct-based `Path<TaskIdPath>` extractor |
 | 2 | P1 | `remove_agent_watcher` handler used tuple Path extraction | Fixed: struct-based `AgentWatcherPath` |
 | 3 | P1 | Silent error swallowing in AgentWatcherPanel mutations | Fixed: added sonner toast notifications |
-| 4 | P1 (pre-existing) | No explicit `check_project_access` on watcher routes | Not fixed: consistent with existing watch/unwatch pattern |
+| 4 | P1 | No project-level authorization on task routes | Fixed: Viewer check in middleware + Editor check in mutation handlers (Step 9) |
 | 5 | P1 (pre-existing) | `CollaborationTimeline` missing `chatMessages` dep in useMemo | Not fixed: pre-existing, out of scope |
 
 ## Verification
