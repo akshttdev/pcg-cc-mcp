@@ -33,7 +33,7 @@ export function CrmContactDetailPage() {
 
   const { data: contact, isLoading: contactLoading } = useQuery<CrmContactRecord>({
     queryKey: ['crm', 'contact', contactId],
-    queryFn: () => crmApi.getContact(contactId!),
+    queryFn: () => crmApi.getContact(contactId ?? ''),
     enabled: !!contactId,
   });
 
@@ -145,7 +145,7 @@ export function CrmContactDetailPage() {
         </div>
         <AskTopsiButton
           entityType="crm_contact"
-          entityId={contactId!}
+          entityId={contactId ?? ''}
           entityName={contact.full_name || contact.email || 'Contact'}
           className="ml-auto"
         />

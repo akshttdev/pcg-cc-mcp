@@ -46,6 +46,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const logActivity = useActivityStore((s) => s.logActivity);
 
   const [isInitialized, setIsInitialized] = useState(false);
+  const isInitializedRef = useRef(false);
   const [isInitializing, setIsInitializing] = useState(false);
 
   // Chat state
@@ -116,8 +117,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     clearPending();
 
     const sendPending = async () => {
-      // Wait for initialization if needed (C2 fix)
-      if (!isInitialized) {
+      // Wait for initialization if needed (C2 fix — use ref to avoid stale closure)
+      if (!isInitializedRef.current) {
         await initializeTopsi();
       }
       setInputMessage('');
@@ -134,6 +135,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
       if (res.ok) {
         const data = await res.json();
         setIsInitialized(data.isActive);
+        isInitializedRef.current = data.isActive;
       }
     } catch (error) {
       console.error('Failed to check Topsi status:', error);
@@ -149,6 +151,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
       });
       if (res.ok) {
         setIsInitialized(true);
+        isInitializedRef.current = true;
         addMessage('assistant', "Hello! I'm Topsi, your platform orchestrator. How can I help you today?");
       } else {
         toast.error('Failed to initialize Topsi');
@@ -163,7 +166,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
   const addMessage = (role: 'user' | 'assistant', content: string, hasAudio?: boolean) => {
     const message: ChatMessage = {
-      id: `${role}-${Date.now()}`,
+      id: crypto.randomUUID(),
       role,
       content,
       timestamp: new Date(),
@@ -238,7 +241,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   // Keep ref updated for effects that need the latest version
   useEffect(() => {
     sendMessageDirectRef.current = sendMessageDirect;
-  });
+  }, [sendMessageDirect]);
 
   // Text chat — reads from inputMessage state
   const sendTextMessage = async () => {
