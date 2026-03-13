@@ -92,6 +92,12 @@ Phases 1-5 of the QA Agent Watcher refactor are complete. The watcher system wor
 | Editor | yes | yes | no | no |
 | Viewer | yes | no | no | no |
 
+### Step 10: Follow-up Review Polish — `tasks.rs` + `AgentWatcherPanel.tsx`
+
+1. **`AgentWatcherPath.task_id` doc comment:** Explains `#[allow(dead_code)]` — field is required by route pattern but consumed by `load_task_middleware`, not the handler itself.
+2. **Optimistic remove UI:** Watcher row fades to 40% opacity with `pointer-events-none` while DELETE is in-flight, giving immediate visual feedback.
+3. **Agent search scaling note:** Comment documenting that client-side filtering is fine for typical agent counts (<50), with note to consider server-side search if the list grows.
+
 ## QA Findings & Fixes
 
 | # | Severity | Issue | Resolution |
@@ -100,7 +106,10 @@ Phases 1-5 of the QA Agent Watcher refactor are complete. The watcher system wor
 | 2 | P1 | `remove_agent_watcher` handler used tuple Path extraction | Fixed: struct-based `AgentWatcherPath` |
 | 3 | P1 | Silent error swallowing in AgentWatcherPanel mutations | Fixed: added sonner toast notifications |
 | 4 | P1 | No project-level authorization on task routes | Fixed: Viewer check in middleware + Editor check in mutation handlers (Step 9) |
-| 5 | P1 (pre-existing) | `CollaborationTimeline` missing `chatMessages` dep in useMemo | Not fixed: pre-existing, out of scope |
+| 5 | P2 | `AgentWatcherPath.task_id` unexplained `dead_code` allow | Fixed: added doc comment (Step 10) |
+| 6 | P2 | No optimistic UI on watcher remove | Fixed: opacity fade + pointer-events-none (Step 10) |
+| 7 | P2 | Client-side agent search scaling | Documented: comment noting threshold and future consideration (Step 10) |
+| 8 | P1 (pre-existing) | `CollaborationTimeline` missing `chatMessages` dep in useMemo | Not fixed: pre-existing, out of scope |
 
 ## Verification
 
