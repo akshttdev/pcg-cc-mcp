@@ -21,7 +21,7 @@ use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, Exec
 use db::models::workflow_run::{WorkflowRun, UpdateWorkflowRunOnComplete};
 use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
 
-use super::data_source_workflows::{
+use services::services::workflow_execution::{
     WorkflowDefinition, WorkflowNode,
     execute_node_with_llm, execute_action_node,
     extract_records_from_output, check_contact_duplicate, check_company_duplicate,
