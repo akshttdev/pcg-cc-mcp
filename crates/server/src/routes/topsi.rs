@@ -42,7 +42,7 @@ use nora::voice::{
 };
 
 use db::models::system_settings::SystemSetting;
-use db::models::topsi_user_settings::TopsiUserSettings;
+use db::models::topsi_user_settings::{TopsiUserSettings, classify_tool_risk};
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
 
@@ -231,6 +231,8 @@ pub fn topsi_routes() -> Router<DeploymentImpl> {
         .route("/topsi/admin/prompt", get(get_admin_prompt).put(update_admin_prompt))
         // Per-user settings
         .route("/topsi/user-settings", get(get_user_settings).put(update_user_settings))
+        // Tool metadata (risk classification)
+        .route("/topsi/tools", get(get_tool_risk_map))
 
         .layer(axum::middleware::from_fn(
             crate::middleware::request_id_middleware,
@@ -2683,4 +2685,28 @@ pub async fn update_user_settings(
     .map_err(|e| ApiError::InternalError(format!("Failed to save settings: {}", e)))?;
 
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+/// GET /topsi/tools — returns all Topsi tools grouped by risk level
+pub async fn get_tool_risk_map() -> Json<serde_json::Value> {
+    let tool_names = topsi::tools::get_tool_names();
+
+    let mut red = Vec::new();
+    let mut yellow = Vec::new();
+    let mut green = Vec::new();
+
+    for name in tool_names {
+        let risk = classify_tool_risk(&name);
+        match risk {
+            db::models::topsi_user_settings::ToolRisk::Red => red.push(name),
+            db::models::topsi_user_settings::ToolRisk::Yellow => yellow.push(name),
+            db::models::topsi_user_settings::ToolRisk::Green => green.push(name),
+        }
+    }
+
+    Json(serde_json::json!({
+        "red": { "label": "Destructive", "tools": red },
+        "yellow": { "label": "Create / Update", "tools": yellow },
+        "green": { "label": "Read-only", "tools": green },
+    }))
 }

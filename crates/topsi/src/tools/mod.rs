@@ -857,6 +857,24 @@ pub fn get_tool_schemas() -> Vec<Value> {
     ]
 }
 
+/// Get all tool names from the canonical schema definitions.
+///
+/// Extracts the `"name"` field from each tool in `get_tool_schemas()`,
+/// excluding `respond_to_user` (internal plumbing, not a real tool).
+pub fn get_tool_names() -> Vec<String> {
+    get_tool_schemas()
+        .iter()
+        .filter_map(|schema| {
+            schema
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(|n| n.as_str())
+                .filter(|&name| name != "respond_to_user")
+                .map(|s| s.to_string())
+        })
+        .collect()
+}
+
 /// Get all available Topsi tools
 pub fn get_topsi_tools() -> Vec<ToolDefinition> {
     vec![

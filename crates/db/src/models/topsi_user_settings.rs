@@ -36,7 +36,8 @@ impl ConfirmationMode {
 }
 
 /// Tool risk classification
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ToolRisk {
     /// Read-only tools — never need confirmation
     Green,
