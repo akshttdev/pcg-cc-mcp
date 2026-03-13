@@ -296,6 +296,23 @@ test.describe("Topsi UI", () => {
     expect(data.default_confirmation_mode).toBeTruthy();
   });
 
+  test("Topsi tools API returns risk-grouped tools", async ({ request }) => {
+    await apiLogin(request);
+    const res = await request.get("/api/topsi/tools");
+    expect(res.ok()).toBeTruthy();
+    const data = await res.json();
+    // Should have red, yellow, green groups with tool arrays
+    expect(Array.isArray(data.red.tools)).toBe(true);
+    expect(Array.isArray(data.yellow.tools)).toBe(true);
+    expect(Array.isArray(data.green.tools)).toBe(true);
+    // Known red tools
+    expect(data.red.tools).toContain("delete_task");
+    // Known yellow tools
+    expect(data.yellow.tools).toContain("create_task");
+    // Green should have read-only tools
+    expect(data.green.tools.length).toBeGreaterThan(0);
+  });
+
   test("Topsi user settings API accepts PUT", async ({ request }) => {
     await apiLogin(request);
     const res = await request.put("/api/topsi/user-settings", {

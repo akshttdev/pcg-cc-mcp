@@ -3,7 +3,6 @@ import { Bot, Save, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// Label removed — not currently needed
 import {
   Select,
   SelectContent,
@@ -15,11 +14,17 @@ import { makeRequest } from '@/lib/api';
 import { toast } from 'sonner';
 
 type ConfirmationMode = 'always_confirm' | 'confirm_destructive' | 'autonomous';
+type RiskLevel = 'red' | 'yellow' | 'green';
 
 interface UserSettings {
   default_confirmation_mode: ConfirmationMode;
   per_tool_overrides: Record<string, ConfirmationMode>;
   auto_approve_timeout_minutes: number | null;
+}
+
+interface ToolRiskGroup {
+  label: string;
+  tools: string[];
 }
 
 const CONFIRMATION_MODE_LABELS: Record<ConfirmationMode, string> = {
@@ -28,31 +33,10 @@ const CONFIRMATION_MODE_LABELS: Record<ConfirmationMode, string> = {
   autonomous: 'Autonomous',
 };
 
-// Tool risk classification mirroring backend classify_tool_risk()
-const TOOL_RISK_MAP: Record<'red' | 'yellow' | 'green', { label: string; color: string; tools: string[] }> = {
-  red: {
-    label: 'Destructive',
-    color: 'text-red-600',
-    tools: ['delete_task', 'bulk_update_tasks'],
-  },
-  yellow: {
-    label: 'Create / Update',
-    color: 'text-yellow-600',
-    tools: [
-      'create_project', 'update_project',
-      'create_task', 'update_task', 'start_task_execution',
-      'create_crm_contact', 'create_crm_deal', 'update_crm_deal',
-      'approve_staged_records', 'build_workflow',
-    ],
-  },
-  green: {
-    label: 'Read-only',
-    color: 'text-green-600',
-    tools: [
-      'list_projects', 'list_tasks', 'get_topology',
-      'search_contacts', 'list_workflows',
-    ],
-  },
+const RISK_COLORS: Record<RiskLevel, string> = {
+  red: 'text-red-600',
+  yellow: 'text-yellow-600',
+  green: 'text-green-600',
 };
 
 export function TopsiUserSettings() {
@@ -61,15 +45,15 @@ export function TopsiUserSettings() {
     per_tool_overrides: {},
     auto_approve_timeout_minutes: null,
   });
+  const [toolRiskMap, setToolRiskMap] = useState<Record<RiskLevel, ToolRiskGroup> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    fetchSettings();
+    Promise.all([fetchSettings(), fetchToolRiskMap()]).finally(() => setIsLoading(false));
   }, []);
 
   const fetchSettings = async () => {
-    setIsLoading(true);
     try {
       const res = await makeRequest('/api/topsi/user-settings');
       if (res.ok) {
@@ -89,8 +73,20 @@ export function TopsiUserSettings() {
     } catch (err) {
       console.error('Failed to fetch user settings:', err);
       toast.error('Failed to connect to server');
-    } finally {
-      setIsLoading(false);
+    }
+  };
+
+  const fetchToolRiskMap = async () => {
+    try {
+      const res = await makeRequest('/api/topsi/tools');
+      if (res.ok) {
+        const json = await res.json();
+        setToolRiskMap(json);
+      } else {
+        console.error('Failed to fetch tool risk map');
+      }
+    } catch (err) {
+      console.error('Failed to fetch tool risk map:', err);
     }
   };
 
@@ -187,45 +183,51 @@ export function TopsiUserSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {(Object.entries(TOOL_RISK_MAP) as [string, typeof TOOL_RISK_MAP.red][]).map(
-              ([risk, { label, color, tools }]) => (
-                <div key={risk}>
-                  <h4 className={`text-sm font-medium mb-2 ${color}`}>
-                    {label} Tools
-                  </h4>
-                  <div className="space-y-2">
-                    {tools.map((tool) => (
-                      <div
-                        key={tool}
-                        className="flex items-center justify-between px-3 py-2 rounded-md border"
-                      >
-                        <code className="text-sm">{tool}</code>
-                        <Select
-                          value={settings.per_tool_overrides[tool] ?? 'default'}
-                          onValueChange={(v) =>
-                            setToolOverride(tool, v as ConfirmationMode | 'default')
-                          }
+          {toolRiskMap ? (
+            <div className="space-y-4">
+              {(Object.entries(toolRiskMap) as [RiskLevel, ToolRiskGroup][]).map(
+                ([risk, { label, tools }]) => (
+                  <div key={risk}>
+                    <h4 className={`text-sm font-medium mb-2 ${RISK_COLORS[risk] ?? ''}`}>
+                      {label} Tools
+                    </h4>
+                    <div className="space-y-2">
+                      {tools.map((tool) => (
+                        <div
+                          key={tool}
+                          className="flex items-center justify-between px-3 py-2 rounded-md border"
                         >
-                          <SelectTrigger className="w-48 h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="default">Use Default</SelectItem>
-                            {Object.entries(CONFIRMATION_MODE_LABELS).map(([value, lbl]) => (
-                              <SelectItem key={value} value={value}>
-                                {lbl}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
+                          <code className="text-sm">{tool}</code>
+                          <Select
+                            value={settings.per_tool_overrides[tool] ?? 'default'}
+                            onValueChange={(v) =>
+                              setToolOverride(tool, v as ConfirmationMode | 'default')
+                            }
+                          >
+                            <SelectTrigger className="w-48 h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="default">Use Default</SelectItem>
+                              {Object.entries(CONFIRMATION_MODE_LABELS).map(([value, lbl]) => (
+                                <SelectItem key={value} value={value}>
+                                  {lbl}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )
-            )}
-          </div>
+                )
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Could not load tool definitions from server.
+            </p>
+          )}
         </CardContent>
       </Card>
 
