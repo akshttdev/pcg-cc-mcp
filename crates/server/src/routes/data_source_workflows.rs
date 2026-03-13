@@ -3609,7 +3609,7 @@ async fn get_run_stats(
 
 /// Check for matching workflow triggers and run them in the background.
 /// Called after a new data source is created. Non-blocking — spawns tokio tasks.
-pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_id: String) {
+pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_id: String, deployment: crate::DeploymentImpl) {
     use db::models::workflow_trigger::WorkflowTrigger;
 
     let ds = match DataSource::find_by_id(&pool, &data_source_id).await {
@@ -3644,6 +3644,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 
     for trigger in triggers {
         let pool = pool.clone();
+        let deployment = deployment.clone();
         let ds_id = data_source_id.clone();
         let trigger_id = trigger.id.clone();
         let workflow_id = trigger.workflow_id.clone();
@@ -3977,14 +3978,21 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                             });
 
                             let mut committed = 0u64;
+                            let mut commit_results: Vec<(uuid::Uuid, String, Option<uuid::Uuid>)> = Vec::new();
                             for record in &approved_records {
                                 let result = super::workflow_staging::commit_record_internal(&pool, record).await;
                                 match result {
-                                    Ok(_) => committed += 1,
-                                    Err(e) => tracing::warn!(
-                                        "[TRIGGER] Auto-commit failed for record {}: {e}",
-                                        record.id
-                                    ),
+                                    Ok(created_id) => {
+                                        committed += 1;
+                                        commit_results.push((record.id, record.target_type.clone(), Some(created_id)));
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "[TRIGGER] Auto-commit failed for record {}: {e}",
+                                            record.id
+                                        );
+                                        commit_results.push((record.id, record.target_type.clone(), None));
+                                    }
                                 }
                             }
 
@@ -3992,6 +4000,46 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                                 "[TRIGGER] Auto-committed {}/{} records for trigger '{}'",
                                 committed, approved, trigger_id
                             );
+
+                            // Post-commit: link contacts to companies by matching company_name
+                            let org_id = approved_records.first().and_then(|r| r.organization_id);
+                            if let Some(org_id) = org_id {
+                                for (_, target_type, created_id) in &commit_results {
+                                    if target_type == "crm_contact" {
+                                        if let Some(contact_id) = created_id {
+                                            if let Ok(contact) = db::models::crm_contact::CrmContact::find_by_id(&pool, *contact_id).await {
+                                                if let Some(company_name) = &contact.company_name {
+                                                    if let Ok(Some(company)) = db::models::company::Company::find_by_name_and_org(&pool, company_name, org_id).await {
+                                                        let _ = super::workflow_staging::store_company_id_in_custom_fields(&pool, contact.id, company.id).await;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Post-commit: auto-start agent execution for tasks with agent_id
+                            for (idx, (_, target_type, created_id)) in commit_results.iter().enumerate() {
+                                if target_type == "task" {
+                                    if let Some(task_id) = created_id {
+                                        let data: serde_json::Value = match serde_json::from_str(&approved_records[idx].record_data) {
+                                            Ok(v) => v,
+                                            Err(_) => continue,
+                                        };
+                                        if data["agent_id"].as_str().is_some() {
+                                            let pool = pool.clone();
+                                            let dep = deployment.clone();
+                                            let tid = *task_id;
+                                            tokio::spawn(async move {
+                                                if let Err(e) = super::workflow_staging::auto_start_agent_execution(&pool, &dep, tid).await {
+                                                    tracing::warn!("Auto-execute for task {tid} failed: {e}");
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     Err(e) => {

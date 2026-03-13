@@ -91,6 +91,9 @@ pub struct LocalContainerService {
     flow_ids: Arc<RwLock<HashMap<Uuid, Uuid>>>,
 }
 
+/// Maximum QA review iterations before escalating to human.
+const MAX_QA_ITERATIONS: i64 = 2;
+
 /// Info about a PR that was auto-created, passed to QA review and audit comment functions.
 struct PrCreatedInfo {
     number: i64,
@@ -222,13 +225,9 @@ impl LocalContainerService {
         // Auto-create PR if agent execution config says so
         let pr_info = Self::try_auto_create_pr(db, config, git, ctx).await;
 
-        // Post dev agent audit comment on PR
+        // Post dev agent audit comment on PR + trigger QA review
         if let Some(ref pr) = pr_info {
             Self::post_dev_agent_pr_comment(db, config, git, ctx, pr).await;
-        }
-
-        // Trigger QA agent review if PR was created (only for non-QA tasks)
-        if let Some(ref pr) = pr_info {
             if !ctx.task.title.starts_with("[QA]") {
                 Self::try_auto_qa_review(db, ctx, pr).await;
             }
@@ -379,9 +378,9 @@ impl LocalContainerService {
 
     /// Post an audit trail comment on the PR identifying the dev agent and task.
     async fn post_dev_agent_pr_comment(
-        db: &DBService,
+        _db: &DBService,
         config: &Arc<RwLock<Config>>,
-        git: &GitService,
+        _git: &GitService,
         ctx: &ExecutionContext,
         pr: &PrCreatedInfo,
     ) {
@@ -403,7 +402,6 @@ impl LocalContainerService {
             repo_name: pr.repo_name.clone(),
         };
 
-        let agent_name = ctx.task.agent_id.as_deref().unwrap_or("unknown");
         let comment = format!(
             "Created by **ORCHA Dev Agent** for task `{}`: {}\n\n---\n*Automated by ORCHA Platform*",
             ctx.task.id, ctx.task.title
@@ -532,17 +530,18 @@ impl LocalContainerService {
             return;
         }
 
-        // Extract PR number from title: "[QA] Review PR #123: ..."
-        let pr_number = ctx.task.title
-            .split("PR #")
-            .nth(1)
-            .and_then(|s| s.split(':').next())
-            .and_then(|s| s.trim().parse::<i64>().ok());
+        // Extract PR number from custom_properties (set during QA task creation)
+        let custom_props = ctx.task.custom_properties
+            .as_ref()
+            .and_then(|v| Some(v.clone()));
+
+        let pr_number = custom_props.as_ref()
+            .and_then(|v| v["pr_number"].as_i64());
 
         let pr_number = match pr_number {
             Some(n) => n,
             None => {
-                tracing::warn!("QA handler: could not extract PR number from task title");
+                tracing::warn!("QA handler: no pr_number in custom_properties for task {}", ctx.task.id);
                 return;
             }
         };
@@ -641,8 +640,8 @@ impl LocalContainerService {
 
         comment.push_str(&format!("### Summary\n{}\n\n", summary));
         comment.push_str(&format!(
-            "---\n*ORCHA QA Agent • Task {} • Iteration {}/2*",
-            ctx.task.id, iteration
+            "---\n*ORCHA QA Agent • Task {} • Iteration {}/{}*",
+            ctx.task.id, iteration, MAX_QA_ITERATIONS
         ));
 
         // Post the comment on the PR

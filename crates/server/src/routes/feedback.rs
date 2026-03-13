@@ -156,8 +156,9 @@ pub async fn submit_feedback(
     if let Ok(ds) = DataSource::create(pool, create_ds).await {
         let trigger_pool = pool.clone();
         let ds_id = ds.id.clone();
+        let trigger_dep = deployment.clone();
         tokio::spawn(async move {
-            super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, ds_id).await;
+            super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, ds_id, trigger_dep).await;
         });
     }
 

@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Bot, Play, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { Bot, Play, CheckCircle, XCircle, Clock, RefreshCw, AlertCircle } from 'lucide-react';
 import { agentsApi } from '@/lib/api';
 
 function statusBadge(status: string) {
@@ -57,24 +57,18 @@ export function AgentExecutionsPage() {
     queryFn: () => agentsApi.list(),
   });
 
-  const { data: recentAttempts = [], isLoading: attemptsLoading, refetch } = useQuery({
-    queryKey: ['recent-attempts'],
+  const { data: recentAttempts = [], isLoading: attemptsLoading, isError: attemptsError, refetch } = useQuery({
+    queryKey: ['task-attempts-all'],
     queryFn: async () => {
-      // Fetch recent task attempts across all projects
-      const res = await fetch('/api/task-attempts/recent?limit=50');
-      if (!res.ok) return [];
+      const res = await fetch('/api/task-attempts');
+      if (!res.ok) throw new Error(`Failed to fetch attempts: ${res.status}`);
       const json = await res.json();
-      return json.data || json || [];
+      return (json.data || json || []) as Array<Record<string, any>>;
     },
     refetchInterval: 10_000,
   });
 
-  const agentMap = new Map<string, any>();
-  for (const agent of agents) {
-    agentMap.set(agent.id, agent);
-  }
-
-  const filtered = recentAttempts.filter((a: any) => {
+  const filtered = recentAttempts.filter((a) => {
     if (statusFilter === 'all') return true;
     const status = (a.status || '').toLowerCase();
     if (statusFilter === 'running') return status.includes('running');
@@ -84,9 +78,15 @@ export function AgentExecutionsPage() {
   });
 
   // Summary stats
-  const running = recentAttempts.filter((a: any) => (a.status || '').toLowerCase().includes('running')).length;
-  const completed = recentAttempts.filter((a: any) => (a.status || '').toLowerCase().includes('complete')).length;
-  const failed = recentAttempts.filter((a: any) => (a.status || '').toLowerCase().includes('failed')).length;
+  const running = recentAttempts.filter((a) => (a.status || '').toLowerCase().includes('running')).length;
+  const completed = recentAttempts.filter((a) => (a.status || '').toLowerCase().includes('complete')).length;
+  const failed = recentAttempts.filter((a) => (a.status || '').toLowerCase().includes('failed')).length;
+
+  // Build agent lookup map for displaying agent names
+  const agentsMap = new Map<string, string>();
+  for (const agent of agents) {
+    agentsMap.set(agent.id, agent.short_name || agent.designation || agent.id);
+  }
 
   const isLoading = agentsLoading || attemptsLoading;
 
@@ -109,7 +109,7 @@ export function AgentExecutionsPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Active Agents</CardTitle>
@@ -159,6 +159,16 @@ export function AgentExecutionsPage() {
         </Select>
       </div>
 
+      {/* Error state */}
+      {attemptsError && (
+        <Card className="border-destructive">
+          <CardContent className="flex items-center gap-2 py-4 text-destructive">
+            <AlertCircle className="w-4 h-4" />
+            Failed to load task attempts. Check that the backend is running.
+          </CardContent>
+        </Card>
+      )}
+
       {/* Attempts table */}
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader /></div>
@@ -183,16 +193,20 @@ export function AgentExecutionsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((attempt: any) => (
+                filtered.map((attempt) => (
                   <TableRow key={attempt.id}>
                     <TableCell className="font-medium max-w-[300px] truncate">
                       {attempt.task_title || attempt.task_id || '—'}
                     </TableCell>
                     <TableCell>
-                      {attempt.agent_name || attempt.agent_id
-                        ? <Badge variant="secondary">{attempt.agent_name || 'Agent'}</Badge>
-                        : <span className="text-muted-foreground">—</span>
-                      }
+                      {attempt.agent_id ? (
+                        <Badge variant="outline" className="text-xs">
+                          <Bot className="w-3 h-3 mr-1" />
+                          {agentsMap.get(attempt.agent_id) || attempt.agent_id.slice(0, 8)}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <code className="text-xs">{attempt.executor || '—'}</code>

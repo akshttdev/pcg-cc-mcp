@@ -399,33 +399,19 @@ pub async fn commit_record_internal(pool: &SqlitePool, record: &WorkflowStagingR
 }
 
 async fn commit_record(pool: &SqlitePool, record: &WorkflowStagingRecord) -> CommitResult {
-    let result = match record.target_type.as_str() {
-        "crm_contact" => commit_contact(pool, record).await,
-        "company" => commit_company(pool, record).await,
-        "crm_deal" => commit_deal(pool, record).await,
-        "task" => commit_task(pool, record).await,
-        _ => Err(format!("Unknown target type: {}", record.target_type)),
-    };
-
-    match result {
-        Ok(created_id) => {
-            let _ = WorkflowStagingRecord::mark_committed(pool, record.id).await;
-            CommitResult {
-                id: record.id,
-                target_type: record.target_type.clone(),
-                created_id: Some(created_id),
-                error: None,
-            }
-        }
-        Err(err) => {
-            let _ = WorkflowStagingRecord::mark_error(pool, record.id, &err).await;
-            CommitResult {
-                id: record.id,
-                target_type: record.target_type.clone(),
-                created_id: None,
-                error: Some(err),
-            }
-        }
+    match commit_record_internal(pool, record).await {
+        Ok(created_id) => CommitResult {
+            id: record.id,
+            target_type: record.target_type.clone(),
+            created_id: Some(created_id),
+            error: None,
+        },
+        Err(err) => CommitResult {
+            id: record.id,
+            target_type: record.target_type.clone(),
+            created_id: None,
+            error: Some(err),
+        },
     }
 }
 
@@ -858,7 +844,7 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
 /// When a workflow creates a task with an `agent_id`, automatically start
 /// execution: look up the agent's execution config for the executor profile,
 /// create a TaskAttempt, and start the container.
-async fn auto_start_agent_execution(
+pub async fn auto_start_agent_execution(
     pool: &SqlitePool,
     deployment: &DeploymentImpl,
     task_id: Uuid,
@@ -1033,7 +1019,7 @@ async fn auto_link_company(
 
 /// Persist a company_id inside the contact's custom_fields JSON.
 /// Merges with any existing custom_fields rather than overwriting them.
-async fn store_company_id_in_custom_fields(
+pub async fn store_company_id_in_custom_fields(
     pool: &SqlitePool,
     contact_id: Uuid,
     company_id: Uuid,

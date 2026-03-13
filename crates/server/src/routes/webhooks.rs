@@ -377,7 +377,7 @@ async fn github_webhook_handler(
         .unwrap_or("unknown");
 
     match event_type {
-        "issues" => handle_github_issue_event(pool, &body).await,
+        "issues" => handle_github_issue_event(pool, &body, deployment.clone()).await,
         "ping" => {
             info!("GitHub webhook ping received");
             Ok(StatusCode::OK)
@@ -392,6 +392,7 @@ async fn github_webhook_handler(
 async fn handle_github_issue_event(
     pool: &sqlx::SqlitePool,
     body: &[u8],
+    deployment: crate::DeploymentImpl,
 ) -> Result<StatusCode, StatusCode> {
     use db::models::data_source::{CreateDataSource, DataSource};
 
@@ -519,7 +520,7 @@ async fn handle_github_issue_event(
     let trigger_pool = pool.clone();
     let ds_id = ds.id.clone();
     tokio::spawn(async move {
-        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, ds_id).await;
+        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, ds_id, deployment).await;
     });
 
     info!(

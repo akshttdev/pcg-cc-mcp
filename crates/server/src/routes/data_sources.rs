@@ -132,8 +132,9 @@ async fn create_data_source(
     // Fire any matching workflow triggers in the background
     let trigger_pool = pool.clone();
     let trigger_ds_id = source.id.clone();
+    let trigger_dep = deployment.clone();
     tokio::spawn(async move {
-        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id).await;
+        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id, trigger_dep).await;
     });
 
     Ok(Json(ApiResponse::success(source)))
@@ -321,8 +322,9 @@ async fn upload_data_source(
         // Fire any matching workflow triggers in the background
         let trigger_pool = pool.clone();
         let trigger_ds_id = updated.id.clone();
+        let trigger_dep = deployment.clone();
         tokio::spawn(async move {
-            super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id).await;
+            super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id, trigger_dep).await;
         });
 
         return Ok(Json(ApiResponse::success(updated)));
@@ -349,8 +351,9 @@ async fn upload_data_source(
     // Fire any matching workflow triggers in the background
     let trigger_pool = pool.clone();
     let trigger_ds_id = updated.id.clone();
+    let trigger_dep = deployment.clone();
     tokio::spawn(async move {
-        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id).await;
+        super::data_source_workflows::fire_triggers_for_data_source(trigger_pool, trigger_ds_id, trigger_dep).await;
     });
 
     Ok(Json(ApiResponse::success(updated)))
