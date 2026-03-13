@@ -137,6 +137,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: 'Mission Control', icon: Rocket, to: '/mission-control', id: 'mission-control', adminOnly: true },
   { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse', adminOnly: true },
   { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
+  { label: 'Agent Executions', icon: Bot, to: '/agent-executions', id: 'agent-executions', adminOnly: true },
 ];
 
 // Primary navigation - workspace destinations (user-level pages)
