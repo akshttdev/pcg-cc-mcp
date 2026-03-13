@@ -3,7 +3,7 @@
 **Date:** 2026-03-13
 **Depends on:** PR #21 (merged), PR #22 (WIP, Topsi-Workflow Bridge)
 **Companion:** `notes/2026-03-13--reference--llm-workflow-config.md`
-**Status:** CODE COMPLETE — all phases implemented, pending runtime configuration
+**Status:** CODE COMPLETE (Phases 7-11). Phase 6 (Agent Watcher API + UI) in progress on `feature/qa-watcher-phase6`.
 
 ---
 
@@ -70,6 +70,17 @@ Using existing schema (5 statuses + `approval_status` + PR tracking):
 - **11B**: Agent execution dashboard — `frontend/src/pages/agent-executions.tsx` with summary cards, filters, agent badges
 - **11C**: Project scaffolding UI — already implemented (4 templates)
 - **11D**: ORCHA Task Server in MCP carousel — already in default_mcp.json
+
+---
+
+### Phase 6: Agent Watcher API + UI (In Progress)
+
+**Branch:** `feature/qa-watcher-phase6` | **Depends on:** Phases 8-9 (merged in PR #23 + PR #24)
+
+- **6A**: Agent watcher API endpoints — `POST/DELETE/GET /api/tasks/:task_id/agent-watchers` (task-scoped, project_id as query param, access verified)
+- **6B**: Available agents endpoint — `GET /api/agents` with filtering for agent picker UI
+- **6C**: Frontend watcher management — UI components on task detail for adding/removing specialist review agents
+- **6D**: QA review instructions injection — close the retrieval gap so QA agents receive structured review prompts during execution setup
 
 ---
 

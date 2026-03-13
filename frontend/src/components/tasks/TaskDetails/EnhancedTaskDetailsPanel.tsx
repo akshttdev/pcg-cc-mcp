@@ -30,6 +30,7 @@ import type { TaskCardMode } from '../EnhancedTaskCard';
 import { EnhancedTaskHeader } from './EnhancedTaskHeader';
 import { ArtifactGallery } from './ArtifactGallery';
 import { CollaborationTimeline } from './CollaborationTimeline';
+import { AgentWatcherPanel } from '../AgentWatcherPanel';
 import { EnhancedWorkflowView } from './EnhancedWorkflowView';
 import { ActivityTimeline } from '../ActivityTimeline';
 import { agentFlowsApi, taskArtifactsApi, agentsApi, artifactContentApi } from '@/lib/api';
@@ -181,7 +182,8 @@ export function EnhancedTaskDetailsPanel({
       .then((agent) => {
         setExecutingAgentId(agent.id);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error(`Failed to look up agent "${agentName}":`, err);
       });
   }, [task.assigned_agent, executingAgentId]);
 
@@ -196,7 +198,8 @@ export function EnhancedTaskDetailsPanel({
           setChatMessages(result.messages);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Failed to fetch conversation history:', err);
       });
   }, [executingAgentId, task.id]);
 
@@ -484,7 +487,7 @@ export function EnhancedTaskDetailsPanel({
         throw error;
       }
     },
-    [task, projectId, executingAgentName]
+    [task, projectId, executingAgentName, executingAgentId]
   );
 
   // Generate initial prompt for assigned agent
@@ -798,6 +801,11 @@ export function EnhancedTaskDetailsPanel({
                     className="h-64 border rounded-lg overflow-hidden"
                   />
                 )}
+              </div>
+
+              {/* Agent Watchers */}
+              <div>
+                <AgentWatcherPanel taskId={task.id} />
               </div>
 
               {/* Recent Activity */}

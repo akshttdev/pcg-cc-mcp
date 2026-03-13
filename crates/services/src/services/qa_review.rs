@@ -171,6 +171,7 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
             &attempt,
             executor_profile_id,
             Some(ExecutionProcessRunReason::AgentReview),
+            Some(review_description.clone()),
         )
         .await
         .map_err(|e| format!("Failed to start QA execution: {e}"))?;

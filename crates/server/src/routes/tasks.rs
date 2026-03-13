@@ -10,9 +10,10 @@ use axum::{
     http::StatusCode,
     middleware::from_fn_with_state,
     response::{IntoResponse, Json as ResponseJson},
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use db::models::{
+    agent::Agent,
     agent_wallet::{AgentWallet, AgentWalletTransaction, CreateWalletTransaction},
     image::TaskImage,
     project::Project,
@@ -492,10 +493,13 @@ pub async fn create_task_and_start(
 }
 
 pub async fn update_task(
+    Extension(access_context): Extension<AccessContext>,
     Extension(existing_task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<UpdateTask>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &existing_task.project_id).await?;
+
     // Use existing values if not provided in update
     let title = payload.title.unwrap_or(existing_task.title.clone());
     let description = payload.description.or(existing_task.description.clone());
@@ -631,9 +635,12 @@ pub async fn update_task(
 }
 
 pub async fn delete_task(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<(StatusCode, ResponseJson<ApiResponse<()>>), ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     // Validate no running execution processes
     let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     if deployment
@@ -711,9 +718,12 @@ pub async fn delete_task(
 
 // Phase C: Approval workflow endpoints
 pub async fn approve_task(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     use db::models::task::ApprovalStatus;
 
     let approved_task = Task::update(
@@ -748,9 +758,12 @@ pub async fn approve_task(
 }
 
 pub async fn request_changes(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     use db::models::task::ApprovalStatus;
 
     let updated_task = Task::update(
@@ -908,9 +921,12 @@ pub async fn get_created_by_me(
 }
 
 pub async fn reject_task(
+    Extension(access_context): Extension<AccessContext>,
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
     use db::models::task::ApprovalStatus;
 
     let rejected_task = Task::update(
@@ -1010,6 +1026,99 @@ pub async fn get_watched_tasks(
     Ok(ResponseJson(ApiResponse::success(watched)))
 }
 
+// ── Agent watcher management ─────────────────────────────────────────────────
+
+#[derive(Deserialize, TS)]
+pub struct AddAgentWatcherRequest {
+    pub agent_id: Uuid,
+}
+
+#[derive(serde::Serialize, TS)]
+pub struct AgentWatcherInfo {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub agent_designation: String,
+    pub last_action: String,
+    pub last_action_at: String,
+}
+
+/// POST /tasks/:task_id/agent-watchers — add an agent as a watcher
+pub(crate) async fn add_agent_watcher(
+    Extension(access_context): Extension<AccessContext>,
+    Extension(task): Extension<Task>,
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<AddAgentWatcherRequest>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
+    Agent::find_by_id(&deployment.db().pool, body.agent_id)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to find agent: {e}")))?
+        .ok_or_else(|| ApiError::NotFound(format!("Agent {} not found", body.agent_id)))?;
+
+    Task::add_agent_watcher(&deployment.db().pool, &task.id, &body.agent_id.to_string()).await?;
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
+/// Path extractor for `/tasks/{task_id}/agent-watchers/{agent_id}`.
+/// `task_id` is required by the route pattern and consumed by `load_task_middleware`,
+/// but unused in the handler itself — the task is already available via `Extension<Task>`.
+#[derive(Deserialize)]
+pub(crate) struct AgentWatcherPath {
+    #[allow(dead_code)]
+    task_id: Uuid,
+    agent_id: String,
+}
+
+/// DELETE /tasks/:task_id/agent-watchers/:agent_id — remove an agent watcher
+pub(crate) async fn remove_agent_watcher(
+    Extension(access_context): Extension<AccessContext>,
+    Extension(task): Extension<Task>,
+    State(deployment): State<DeploymentImpl>,
+    axum::extract::Path(AgentWatcherPath { agent_id, .. }): axum::extract::Path<AgentWatcherPath>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
+
+    Task::remove_agent_watcher(&deployment.db().pool, &task.id, &agent_id).await?;
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
+/// GET /tasks/:task_id/agent-watchers — list agent watchers with agent info
+pub(crate) async fn list_agent_watchers(
+    Extension(task): Extension<Task>,
+    Extension(_access_context): Extension<AccessContext>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<AgentWatcherInfo>>>, ApiError> {
+    let watchers = Task::find_agent_watchers(&deployment.db().pool, &task.id).await?;
+
+    // Batch-fetch agent info to avoid N+1 queries
+    let all_agents = Agent::find_all(&deployment.db().pool)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to fetch agents: {e}")))?;
+    let agent_map: std::collections::HashMap<String, &Agent> = all_agents
+        .iter()
+        .map(|a| (a.id.to_string(), a))
+        .collect();
+
+    let mut result = Vec::with_capacity(watchers.len());
+    for w in watchers {
+        let (name, designation) = agent_map
+            .get(&w.actor_id)
+            .map(|a| (a.short_name.clone(), a.designation.clone()))
+            .unwrap_or_else(|| (w.actor_id.clone(), String::new()));
+
+        result.push(AgentWatcherInfo {
+            agent_id: w.actor_id,
+            agent_name: name,
+            agent_designation: designation,
+            last_action: w.last_action,
+            last_action_at: w.last_action_at.to_rfc3339(),
+        });
+    }
+
+    Ok(ResponseJson(ApiResponse::success(result)))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     // Task-ID routes with load_task_middleware — defined as explicit routes
     // instead of .nest() to avoid Axum 0.8 path parameter shadowing static routes
@@ -1020,6 +1129,8 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/{task_id}/request-changes", post(request_changes))
         .route("/{task_id}/reject", post(reject_task))
         .route("/{task_id}/watch", post(watch_task).delete(unwatch_task))
+        .route("/{task_id}/agent-watchers", get(list_agent_watchers).post(add_agent_watcher))
+        .route("/{task_id}/agent-watchers/{agent_id}", delete(remove_agent_watcher))
         .layer(from_fn_with_state(deployment.clone(), load_task_middleware));
 
     let inner = Router::new()

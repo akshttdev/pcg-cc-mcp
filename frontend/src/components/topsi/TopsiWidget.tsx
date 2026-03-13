@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { makeRequest } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -94,18 +94,6 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     checkTopsiStatus();
   }, []);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopRecording();
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-      }
-      // Cleanup workflow polls
-      workflowPollsRef.current.forEach((interval) => clearInterval(interval));
-      workflowPollsRef.current.clear();
-    };
-  }, []);
 
   // Handle pending message from store (e.g. from AskTopsiButton)
   useEffect(() => {
@@ -228,6 +216,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
           detail: { responseText, timestamp: new Date() }
         }));
       } else {
+        const errorBody = await res.text().catch(() => '');
+        console.error('Topsi message failed:', res.status, errorBody);
         addMessage('assistant', 'Sorry, I encountered an error processing your request.');
       }
     } catch (error) {
@@ -335,7 +325,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
@@ -356,7 +346,20 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
       cancelAnimationFrame(animationRef.current);
       animationRef.current = null;
     }
-  };
+  }, [isRecording]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopRecording();
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+      }
+      // Cleanup workflow polls
+      workflowPollsRef.current.forEach((interval) => clearInterval(interval));
+      workflowPollsRef.current.clear();
+    };
+  }, [stopRecording]);
 
   // Start (or restart) the MediaRecorder on the existing call stream.
   // Does NOT call getUserMedia — the stream stays open for the whole call.

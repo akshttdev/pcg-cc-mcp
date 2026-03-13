@@ -9,11 +9,12 @@ use db::models::{
     task_template::TaskTemplate,
 };
 use deployment::Deployment;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
     DeploymentImpl,
-    middleware::access_control::{AccessContext, ProjectRole},
+    middleware::access_control::AccessContext,
 };
 
 pub async fn load_project_middleware(
@@ -35,36 +36,25 @@ pub async fn load_project_middleware(
         }
     };
 
-    // Check if user has access to this project
+    // Check if user has at least viewer access to this project
     if let Some(access_context) = request.extensions().get::<AccessContext>() {
         tracing::debug!(
             "Checking project access for user {} (is_admin={}) on project {}",
             access_context.user_id, access_context.is_admin, project_id
         );
-        // Check if user has at least viewer access to this project (hierarchical: project_members → org → client)
-        match access_context
-            .check_project_access_hierarchical(
-                &deployment.db().pool,
-                &project.id,
-                ProjectRole::Viewer,
-            )
-            .await
-        {
-            Ok(_role) => {
-                tracing::debug!("User {} granted {:?} access to project {}", access_context.user_id, _role, project_id);
+        match access_context.require_viewer(&deployment.db().pool, &project.id).await {
+            Ok(role) => {
+                tracing::debug!("User {} granted {:?} access to project {}", access_context.user_id, role, project_id);
             }
             Err(e) => {
                 tracing::warn!(
                     "User {} denied access to project {}: {:?}",
-                    access_context.user_id,
-                    project_id,
-                    e
+                    access_context.user_id, project_id, e
                 );
                 return Err(StatusCode::FORBIDDEN);
             }
         }
     } else {
-        // No auth context means user is not authenticated
         tracing::warn!("Unauthenticated request to project {}", project_id);
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -77,9 +67,15 @@ pub async fn load_project_middleware(
     Ok(next.run(request).await)
 }
 
-pub async fn load_task_middleware(
+/// Helper struct for extracting task_id from routes that may have additional path params.
+#[derive(Deserialize)]
+pub(crate) struct TaskIdPath {
+    task_id: Uuid,
+}
+
+pub(crate) async fn load_task_middleware(
     State(deployment): State<DeploymentImpl>,
-    Path(task_id): Path<Uuid>,
+    Path(TaskIdPath { task_id }): Path<TaskIdPath>,
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
@@ -96,7 +92,21 @@ pub async fn load_task_middleware(
         }
     };
 
-    // Insert both models as extensions
+    // Verify the user has at least Viewer access to the task's project
+    if let Some(access_context) = request.extensions().get::<AccessContext>() {
+        if let Err(e) = access_context.require_viewer(&deployment.db().pool, &task.project_id).await {
+            tracing::warn!(
+                "User {} denied access to task {} (project {}): {:?}",
+                access_context.user_id, task_id, task.project_id, e
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+    } else {
+        tracing::warn!("Unauthenticated request to task {}", task_id);
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Insert the task as an extension
     let mut request = request;
     request.extensions_mut().insert(task);
 

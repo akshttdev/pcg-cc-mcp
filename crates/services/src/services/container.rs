@@ -465,16 +465,18 @@ pub trait ContainerService {
         task_attempt: &TaskAttempt,
         executor_profile_id: ExecutorProfileId,
     ) -> Result<ExecutionProcess, ContainerError> {
-        self.start_attempt_with_reason(task_attempt, executor_profile_id, None).await
+        self.start_attempt_with_reason(task_attempt, executor_profile_id, None, None).await
     }
 
-    /// Start execution with an explicit run_reason override.
+    /// Start execution with an explicit run_reason override and optional prompt suffix.
     /// If `run_reason_override` is None, defaults to SetupScript or CodingAgent.
+    /// If `prompt_suffix` is Some, it is appended to the task prompt before execution.
     async fn start_attempt_with_reason(
         &self,
         task_attempt: &TaskAttempt,
         executor_profile_id: ExecutorProfileId,
         run_reason_override: Option<ExecutionProcessRunReason>,
+        prompt_suffix: Option<String>,
     ) -> Result<ExecutionProcess, ContainerError> {
         // Create container
         self.create(task_attempt).await?;
@@ -503,7 +505,11 @@ pub trait ContainerService {
                 .as_ref()
                 .ok_or_else(|| ContainerError::Other(anyhow!("Container ref not found")))?,
         );
-        let prompt = ImageService::canonicalise_image_paths(&task.to_prompt(), &worktree_path);
+        let mut prompt = ImageService::canonicalise_image_paths(&task.to_prompt(), &worktree_path);
+        if let Some(suffix) = &prompt_suffix {
+            prompt.push_str("\n\n");
+            prompt.push_str(suffix);
+        }
 
         let cleanup_action = project.cleanup_script.map(|script| {
             Box::new(ExecutorAction::new(

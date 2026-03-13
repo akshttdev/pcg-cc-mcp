@@ -1,11 +1,13 @@
 # Remaining Work — Post-Sprint Summary
 
 **Date:** 2026-03-12 (updated 2026-03-13)
-**Branch:** `feature/blob-to-text-scoped` (commit `ff6b76654`)
-**Context:** All QA plan items (15/15) complete. All critical bugs fixed. Phases 7-11 (Dogfood Pipeline) code-complete. QA watcher refactor complete (2026-03-13). This doc captures remaining open items across planning docs.
+**Branch:** `main` (all PRs merged)
+**Context:** All QA plan items (15/15) complete. All critical bugs fixed. Phases 7-11 (Dogfood Pipeline) code-complete. QA watcher refactor complete. Topsi-Workflow Bridge merged. This doc captures remaining open items across planning docs.
 
 ### Completed Since Last Update
-- **QA Agent Watcher Refactor** (2026-03-13): Replaced separate `[QA] Review PR #X` task creation with watcher-based model. QA agents now registered as `agent_watcher` collaborators on the original task. Extracted `qa_review.rs` service (~470 lines) from container.rs. Net -150 lines. See PR #23 commits `d3c9cb8..7af2cdc`.
+- **QA Agent Watcher Refactor** (2026-03-13): Replaced separate `[QA] Review PR #X` task creation with watcher-based model. QA agents now registered as `agent_watcher` collaborators on the original task. Extracted `qa_review.rs` service (~470 lines) from container.rs. See PR #23.
+- **PR #24 QA Review Fixes** (2026-03-13): `start_attempt_with_reason()` on ContainerService trait, `MAX_AUTO_APPROVE_RECORDS` rate limiting, artifact linking to execution process, safe `u64::try_from` casts. Squash merged to main.
+- **Topsi-Workflow Bridge** (2026-03-13): PR #22 merged. Extracted ~3000 lines from `data_source_workflows.rs` into `workflow_engine.rs` + `workflow_execution.rs`. Added Topsi tools, CRM read/write, workflow builder.
 
 ---
 
@@ -83,15 +85,19 @@
 3. ACP MCP loading: Path depends on server working directory
 4. Task FTS search index: Auto-sync triggers dropped (C4 fix) — needs app-level reindexing
 
-### 11. QA Automation Review — Watcher-Based Redesign ✅ (core), UX items remaining
+### 11. QA Automation Review — Watcher-Based Redesign ✅ (core), Phase 6 in progress
 **Source:** `archive/2026-03-12--review--qa-automation-loop.md` (archived, all core items addressed)
-**Core refactor complete:** Separate `[QA]` task model replaced with watcher-based model. QA agents are `agent_watcher` collaborators on the original task. `qa_review.rs` handles trigger/finalize/PR comments. `AgentReview` run reason distinguishes QA from dev executions. Agent watcher API endpoints (Phase 6) deferred to follow-up PR.
+**Core refactor complete:** Separate `[QA]` task model replaced with watcher-based model. QA agents are `agent_watcher` collaborators on the original task. `qa_review.rs` handles trigger/finalize/PR comments. `AgentReview` run reason distinguishes QA from dev executions.
+**Phase 6 — Agent Watcher API + UI (in progress on `feature/qa-watcher-phase6`):**
+- Agent watcher API: `POST/DELETE/GET /api/tasks/:task_id/agent-watchers` (task-scoped, project_id as param)
+- Available agents endpoint: `GET /api/agents?type=reviewer` for UI agent picker
+- Frontend: watcher management UI components on task detail
+- QA review instructions injection into agent prompt (closing the retrieval gap)
 **Minor polish leftover:**
 - Task detail: show Description/Completion Criteria in default view (not just Enhanced)
 - Template table: show Priority + Agent columns
 - Workflow triggers panel: expose in Builder tab
 - Agent terminal: show capabilities inline + VIBE cost estimate
-- Agent watcher API: `POST/DELETE/GET /api/projects/:id/tasks/:task_id/agent-watchers` (Phase 6, follow-up PR)
 
 ---
 
@@ -113,7 +119,8 @@
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `2026-03-13--plan--dogfood-pipeline-activation.md` | Dogfood pipeline phases 7-11 | ✅ Code complete |
+| `2026-03-13--plan--dogfood-pipeline-activation.md` | Dogfood pipeline phases 7-11 | ✅ Code complete (Phase 6 in progress) |
+| `2026-03-13--plan--topsi-workflow-bridge.md` | Topsi workflow extraction | ✅ Merged (PR #22) |
 | `2026-03-12--plan--agent-task-mcp-wiring.md` | Agent-task integration plan | Phase 3H open |
 | `2026-03-12--review--ui-backend-capability-gaps.md` | Usability/functionality gap analysis | Polish items open |
 | `2026-03-12--tracker--sprint1-issues.md` | Implementation issues tracker | 5 limitations noted |

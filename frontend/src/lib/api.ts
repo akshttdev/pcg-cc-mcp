@@ -1460,6 +1460,40 @@ export const agentsApi = {
   },
 };
 
+// Agent Watcher APIs — type auto-generated from Rust via `npm run generate-types`
+import type { AgentWatcherInfo } from 'shared/types';
+export type { AgentWatcherInfo };
+
+export const agentWatchersApi = {
+  list: async (taskId: string): Promise<AgentWatcherInfo[]> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/agent-watchers`);
+    if (!response.ok) {
+      throw new ApiError('Failed to list agent watchers', response.status, response);
+    }
+    const result = await response.json();
+    return result.data;
+  },
+
+  add: async (taskId: string, agentId: string): Promise<void> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/agent-watchers`, {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    });
+    if (!response.ok) {
+      throw new ApiError('Failed to add agent watcher', response.status, response);
+    }
+  },
+
+  remove: async (taskId: string, agentId: string): Promise<void> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/agent-watchers/${agentId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new ApiError('Failed to remove agent watcher', response.status, response);
+    }
+  },
+};
+
 // File System APIs
 export const fileSystemApi = {
   list: async (path?: string): Promise<DirectoryListResponse> => {
