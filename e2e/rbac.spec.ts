@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { setViewAsRole, clearViewAsRole, getViewAsRole, settingsTab } from "./helpers";
+import { setViewAsRole, clearViewAsRole, getViewAsRole, settingsTab, waitForSettingsReady } from "./helpers";
 
 /**
  * ORCHA Dashboard — RBAC & View-As E2E Tests
@@ -38,7 +38,7 @@ test.describe("Sidebar User Card", () => {
 
   test("popover shows grouped role options", async ({ page }) => {
     await page.locator("button", { hasText: "Administrator" }).click();
-    await page.waitForTimeout(300);
+    await expect(page.getByText("View as...")).toBeVisible({ timeout: 3_000 });
 
     // Check group headers exist
     await expect(page.getByText("Platform", { exact: true }).first()).toBeVisible();
@@ -68,12 +68,11 @@ test.describe("View-As Banner", () => {
 
   test("selecting a role shows the override banner", async ({ page }) => {
     await page.locator("button", { hasText: "Administrator" }).click();
-    await page.waitForTimeout(300);
-    await page.getByRole("button", { name: "Org Editor" }).first().click();
-    await page.waitForTimeout(500);
+    await expect(page.getByText("View as...")).toBeVisible({ timeout: 3_000 });
+    await page.locator("button", { hasText: "Org Editor" }).first().click();
 
     const banner = page.getByTestId("view-as-banner");
-    await expect(banner).toBeVisible({ timeout: 3_000 });
+    await expect(banner).toBeVisible({ timeout: 10_000 });
     await expect(banner.getByText("Viewing as")).toBeVisible();
     await expect(banner.getByText("Org Editor")).toBeVisible();
   });
@@ -82,12 +81,11 @@ test.describe("View-As Banner", () => {
     await setViewAsRole(page, "org_editor");
 
     const banner = page.getByTestId("view-as-banner");
-    await expect(banner).toBeVisible({ timeout: 3_000 });
+    await expect(banner).toBeVisible({ timeout: 10_000 });
 
     await banner.getByText("Reset").click();
-    await page.waitForTimeout(500);
 
-    await expect(banner).not.toBeVisible();
+    await expect(banner).not.toBeVisible({ timeout: 5_000 });
     const role = await getViewAsRole(page);
     expect(role).toBeNull();
   });
@@ -155,12 +153,12 @@ test.describe("View-As Persistence", () => {
     await page.waitForLoadState("domcontentloaded");
     await setViewAsRole(page, "org_editor");
 
-    await expect(page.getByTestId("view-as-banner")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByTestId("view-as-banner")).toBeVisible({ timeout: 10_000 });
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2500);
+    await page.waitForLoadState("networkidle");
 
-    await expect(page.getByTestId("view-as-banner")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId("view-as-banner")).toBeVisible({ timeout: 10_000 });
     const role = await getViewAsRole(page);
     expect(role).toBe("org_editor");
   });
@@ -176,7 +174,7 @@ test.describe("Settings Scope Tabs", () => {
 
   test("admin sees all 4 scope tabs", async ({ page }) => {
     await page.goto("/settings/general");
-    await page.waitForTimeout(2000);
+    await waitForSettingsReady(page);
 
     await expect(settingsTab(page, "User")).toBeVisible();
     await expect(settingsTab(page, "Admin")).toBeVisible();
@@ -186,7 +184,7 @@ test.describe("Settings Scope Tabs", () => {
 
   test("switching tabs changes visible settings items", async ({ page }) => {
     await page.goto("/settings/general");
-    await page.waitForTimeout(2000);
+    await waitForSettingsReady(page);
 
     // User tab should show General, Wallet, Profile
     await expect(page.locator("aside").getByText("General")).toBeVisible();
@@ -195,35 +193,31 @@ test.describe("Settings Scope Tabs", () => {
 
     // Click Org tab
     await settingsTab(page, "Org").click();
-    await page.waitForTimeout(500);
 
     // Org tab should show Agents, Models, MCP Servers
-    await expect(page.locator("aside").getByText("Agents")).toBeVisible();
+    await expect(page.locator("aside").getByText("Agents")).toBeVisible({ timeout: 5_000 });
     await expect(page.locator("aside").getByText("Models")).toBeVisible();
     await expect(page.locator("aside").getByText("MCP Servers")).toBeVisible();
   });
 
   test("tab selection persists in URL as ?scope param", async ({ page }) => {
     await page.goto("/settings/general");
-    await page.waitForTimeout(2000);
+    await waitForSettingsReady(page);
 
     await settingsTab(page, "Admin").click();
-    await page.waitForTimeout(300);
-    await expect(page).toHaveURL(/scope=system/);
+    await expect(page).toHaveURL(/scope=system/, { timeout: 5_000 });
 
     await settingsTab(page, "Org").click();
-    await page.waitForTimeout(300);
-    await expect(page).toHaveURL(/scope=org/);
+    await expect(page).toHaveURL(/scope=org/, { timeout: 5_000 });
 
     await settingsTab(page, "User").click();
-    await page.waitForTimeout(300);
-    const url = page.url();
-    expect(url).not.toContain("scope=");
+    // Wait for URL to update — User tab clears the scope param
+    await expect(page).not.toHaveURL(/scope=/, { timeout: 5_000 });
   });
 
   test("direct URL ?scope=org loads correct tab", async ({ page }) => {
     await page.goto("/settings/general?scope=org");
-    await page.waitForTimeout(2000);
+    await waitForSettingsReady(page);
 
     await expect(page.locator("aside").getByText("Agents")).toBeVisible();
     await expect(page.locator("aside").getByText("MCP Servers")).toBeVisible();
@@ -233,7 +227,7 @@ test.describe("Settings Scope Tabs", () => {
     await setViewAsRole(page, "org_editor");
 
     await page.goto("/settings/general");
-    await page.waitForTimeout(2000);
+    await waitForSettingsReady(page);
 
     // Admin tab should not exist in aside
     await expect(settingsTab(page, "Admin")).toHaveCount(0);
@@ -247,7 +241,7 @@ test.describe("Settings Scope Tabs", () => {
     await setViewAsRole(page, "org_editor");
 
     await page.goto("/settings/general?scope=system");
-    await page.waitForTimeout(2000);
+    await waitForSettingsReady(page);
 
     // Should fall back to User tab content
     await expect(page.locator("aside").getByText("Wallet")).toBeVisible({ timeout: 3_000 });
@@ -259,7 +253,7 @@ test.describe("Settings Scope Tabs", () => {
 
   test("planned items show Coming soon badge", async ({ page }) => {
     await page.goto("/settings/general");
-    await page.waitForTimeout(2000);
+    await waitForSettingsReady(page);
 
     await expect(page.getByText("Coming soon").first()).toBeVisible();
   });
@@ -286,7 +280,6 @@ test.describe("Mobile Navbar Avatar", () => {
 
   test("avatar popover opens with view-as options", async ({ page }) => {
     await page.locator('button[aria-label="User menu"]').click();
-    await page.waitForTimeout(300);
 
     await expect(page.getByText("View as...")).toBeVisible({ timeout: 3_000 });
     await expect(page.getByText("Platform Member")).toBeVisible();

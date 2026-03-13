@@ -57,12 +57,18 @@ async function ensureOnApp(page: Page) {
   }
 }
 
+/** Wait for the app to finish rendering after navigation/reload */
+async function waitForAppReady(page: Page) {
+  // Wait for network to settle first, then check for a known DOM landmark
+  await page.waitForLoadState("networkidle");
+}
+
 /** Set a view-as role override via localStorage and reload */
 export async function setViewAsRole(page: Page, role: string) {
   await ensureOnApp(page);
   await page.evaluate((r) => localStorage.setItem("pcg:view-as-role", r), role);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2500);
+  await waitForAppReady(page);
 }
 
 /** Clear view-as override via localStorage and reload */
@@ -70,7 +76,7 @@ export async function clearViewAsRole(page: Page) {
   await ensureOnApp(page);
   await page.evaluate(() => localStorage.removeItem("pcg:view-as-role"));
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2500);
+  await waitForAppReady(page);
 }
 
 /** Locate a settings scope tab button by exact label (scoped to settings aside) */
@@ -81,6 +87,11 @@ export function settingsTab(page: Page, label: string) {
 /** Get the current view-as role from localStorage */
 export async function getViewAsRole(page: Page): Promise<string | null> {
   return page.evaluate(() => localStorage.getItem("pcg:view-as-role"));
+}
+
+/** Wait for the settings page to be ready (scope tabs mounted in aside) */
+export async function waitForSettingsReady(page: Page) {
+  await expect(page.locator("aside button").first()).toBeVisible({ timeout: 10_000 });
 }
 
 // ─── Cleanup ────────────────────────────────────────────────────────────────
