@@ -102,7 +102,7 @@ Added `output_mode` parameter to `execute_node_with_llm()`:
 
 System prompt also adapts: structured mode gets extraction-focused prompt, text mode gets general-purpose prompt.
 
-**Remaining for future:** Frontend workflow editor UI for output_mode dropdown.
+**Frontend UI:** Output mode button panel added in Phase 5 follow-up (3-option toggle: Auto/Structured/Text).
 
 ---
 
@@ -323,7 +323,52 @@ Phase 2F (Full service extraction)        ── DONE ✅
 Phase 4 (Topsi builds workflows)          ── DONE ✅ (build_workflow tool + specialist)
 Auto-approve encapsulation                ── DONE ✅ (post-Phase 2F cleanup)
 Phase 5 (Bidirectional UI + admin settings) ── DONE ✅
+Phase 5 Follow-ups                           ── DONE ✅
 ```
+
+---
+
+## Phase 5 Follow-ups — DONE ✅
+
+### Follow-up 1: Output Mode Button Panel ✅
+
+Added UI control for the `output_mode` parameter that was backend-only (Phase 1B.4).
+
+- `WorkflowEditor.tsx`: Added `output_mode: 'auto'` to `defaultParameters` for `llm_extract`, `llm_analyze`, `llm_summarize`
+- 3-button toggle (Auto / Structured / Text) below Output Schema input, using `onUpdateParameter` + `cn()` patterns
+- Auto = JSON when output schema defined, text otherwise; Structured = always JSON; Text = raw response
+
+### Follow-up 2: Autonomy Level Hierarchy ✅
+
+Wired `TopsiConfig.autonomy_level` as an instance-wide floor that constrains user confirmation settings.
+
+**Backend:**
+- `AutonomyLevel::max_confirmation_mode()` — maps each level to most permissive `ConfirmationMode` allowed
+- `ConfirmationMode::restrictiveness()` + `most_restrictive()` — ordering helpers
+- Confirmation gate in `agent.rs` computes `effective = most_restrictive(user_mode, instance_floor)`
+- `GET/PUT /topsi/admin/prompt` includes `autonomy_level` field
+- Persisted in `system_settings` table (key: `topsi_autonomy_level`), loaded on startup
+
+**Frontend:**
+- `TopsiAdminSettings.tsx` — 4-button panel (Manual / Approval Required / Supervised / Full) with descriptions
+- Saves via existing PUT endpoint alongside system prompt settings
+
+**Mapping:** Manual → AlwaysConfirm, ApprovalRequired → ConfirmDestructive, Supervised/Full → Autonomous (no constraint)
+
+### Follow-up 3: PR Review Fixes ✅
+
+Addressed all items from PR #25 QA reviews #1–#3:
+
+| # | Fix |
+|---|-----|
+| W1/W2/W11 | Input validation on `mode`, `confirmation_mode`, `autonomy_level` — returns 400 on invalid |
+| W4 | Workflow polling capped at 60 polls (5 min timeout) with user-facing message |
+| W10 | Activity store capped at 1000 entries via `.slice(0, 1000)` |
+| W12 | `per_tool_overrides` validated as flat `Record<string, string>` JSON object |
+| W3/W8 | `isInitializedRef` avoids stale closure in pending message effect |
+| I1 | `crypto.randomUUID()` replaces `Date.now()` for message IDs |
+| I2 | `sendMessageDirectRef` effect given `[sendMessageDirect]` dep array |
+| I3 | `contactId!` non-null assertions replaced with `contactId ?? ''` |
 
 ---
 
@@ -334,7 +379,7 @@ Phase 5 (Bidirectional UI + admin settings) ── DONE ✅
 | `organization_members` table | Migration 20251004000000 | Exists — `(org_id, user_id, role)` |
 | `Organization::get_user_role()` | `db/models/user.rs` | Exists — returns role for user in org |
 | `system_settings` table | Migration 20260327000000 | Exists — key-value store with `get()`/`set()` |
-| `TopsiConfig.autonomy_level` | `topsi/src/config.rs` | Exists — `Full/Supervised/ApprovalRequired/Manual` — NOT enforced |
+| `TopsiConfig.autonomy_level` | `topsi/src/config.rs` | Enforced — instance floor constrains user ConfirmationMode (Phase 5 follow-up) |
 | `TopsiConfig.system_prompt` | `topsi/src/config.rs` | Now wired to DB via `get_effective_system_prompt()` (Phase 1B.3) |
 | `AccessScope` enum | `topsi/src/agent/access_control.rs` | Project-scoped; org validation via `verify_org_membership()` (Phase 1B.1) |
 | `WorkflowNode.parameters` | `workflow_execution.rs` | Untyped JSON — `output_mode` added (Phase 1B.4) |
