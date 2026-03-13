@@ -3940,10 +3940,17 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
             );
 
             // ── Phase 8A: Auto-approve + batch-commit when trigger has auto_approve enabled ──
+            const MAX_AUTO_APPROVE_RECORDS: i64 = 50;
             if trigger_auto_approve && staged_records > 0 {
+                if staged_records > MAX_AUTO_APPROVE_RECORDS {
+                    tracing::warn!(
+                        "[TRIGGER] auto_approve capped: {} records staged but limit is {} for trigger '{}' — skipping auto-approve, requires manual review",
+                        staged_records, MAX_AUTO_APPROVE_RECORDS, trigger_id
+                    );
+                } else {
                 tracing::info!(
-                    "[TRIGGER] auto_approve enabled for trigger '{}' — approving valid records",
-                    trigger_id
+                    "[TRIGGER] auto_approve enabled for trigger '{}' — approving valid records ({} staged)",
+                    trigger_id, staged_records
                 );
 
                 // Step 1: auto-approve non-duplicate records with confidence >= 0.7
@@ -4046,6 +4053,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
                         tracing::error!("[TRIGGER] Auto-approve failed for workflow run {}: {e}", workflow_run_id);
                     }
                 }
+                } // end else (within rate limit)
             }
         });
     }
