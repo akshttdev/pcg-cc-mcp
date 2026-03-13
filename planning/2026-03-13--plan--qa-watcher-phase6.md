@@ -109,7 +109,14 @@ Phases 1-5 of the QA Agent Watcher refactor are complete. The watcher system wor
 | 5 | P2 | `AgentWatcherPath.task_id` unexplained `dead_code` allow | Fixed: added doc comment (Step 10) |
 | 6 | P2 | No optimistic UI on watcher remove | Fixed: opacity fade + pointer-events-none (Step 10) |
 | 7 | P2 | Client-side agent search scaling | Documented: comment noting threshold and future consideration (Step 10) |
-| 8 | P1 (pre-existing) | `CollaborationTimeline` missing `chatMessages` dep in useMemo | Not fixed: pre-existing, out of scope |
+| 8 | P1 (pre-existing) | `CollaborationTimeline` missing `chatMessages` dep in useMemo | Fixed: added to deps array |
+| 9 | P2 | `AgentWatcherInfo` hand-written in TS instead of auto-generated | Fixed: added to generate_types, import from `shared/types` |
+| 10 | P2 | `Agent::find_all().unwrap_or_default()` silently swallows DB errors | Fixed: propagate error via `?` |
+| 11 | P2 | `AgentWatcherPath` private but used in public handler | Fixed: made `pub(crate)` |
+| 12 | P1 (pre-existing) | `executingAgentId` missing from useCallback deps | Fixed |
+| 13 | P2 (pre-existing) | `stopRecording` stale closure in cleanup effect | Fixed: useCallback + dep |
+| 14 | P2 (pre-existing) | Silent error swallowing in EnhancedTaskDetailsPanel catch blocks | Fixed: console.error |
+| 15 | P2 (pre-existing) | Topsi send error body discarded | Fixed: log status + body |
 
 ## Verification
 
