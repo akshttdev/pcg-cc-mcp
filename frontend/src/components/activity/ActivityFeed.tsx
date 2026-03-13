@@ -10,6 +10,7 @@ interface ActivityFeedProps {
   taskId?: string;
   limit?: number;
   filterTypes?: ActivityType[];
+  emptyMessage?: React.ReactNode;
   className?: string;
 }
 
@@ -47,7 +48,7 @@ const activityColors: Record<ActivityType, string> = {
   agent_workflow_completed: 'bg-cyan-500',
 };
 
-export function ActivityFeed({ taskId, limit = 50, filterTypes, className }: ActivityFeedProps) {
+export function ActivityFeed({ taskId, limit = 50, filterTypes, emptyMessage, className }: ActivityFeedProps) {
   const { getActivitiesForTask, getRecentActivities, getFilteredActivities } = useActivityStore();
 
   const activities = filterTypes
@@ -66,9 +67,9 @@ export function ActivityFeed({ taskId, limit = 50, filterTypes, className }: Act
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No activity yet
-          </p>
+          <div className="text-sm text-muted-foreground text-center py-4">
+            {emptyMessage ?? 'No activity yet'}
+          </div>
         </CardContent>
       </Card>
     );

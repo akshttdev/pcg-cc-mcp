@@ -8,6 +8,16 @@ const AGENT_ACTIVITY_TYPES: ActivityType[] = [
   'agent_workflow_completed',
 ];
 
+const EMPTY_STATE = (
+  <>
+    <Network className="h-12 w-12 mx-auto mb-4 opacity-30" />
+    <p>No agent activity yet</p>
+    <p className="text-sm mt-1">
+      Activity will appear here when Topsi executes tool calls or triggers workflows.
+    </p>
+  </>
+);
+
 export function TopsiActivityPage() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -23,7 +33,11 @@ export function TopsiActivityPage() {
         </div>
       </div>
 
-      <ActivityFeed filterTypes={AGENT_ACTIVITY_TYPES} limit={200} />
+      <ActivityFeed
+        filterTypes={AGENT_ACTIVITY_TYPES}
+        emptyMessage={EMPTY_STATE}
+        limit={200}
+      />
     </div>
   );
 }

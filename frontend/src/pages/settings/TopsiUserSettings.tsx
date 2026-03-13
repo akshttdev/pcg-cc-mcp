@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest } from '@/lib/api';
 import { toast } from 'sonner';
 
 type ConfirmationMode = 'always_confirm' | 'confirm_destructive' | 'autonomous';
@@ -71,9 +71,7 @@ export function TopsiUserSettings() {
   const fetchSettings = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/user-settings'), {
-        credentials: 'include',
-      });
+      const res = await makeRequest('/api/topsi/user-settings');
       if (res.ok) {
         const json = await res.json();
         setSettings({
@@ -99,10 +97,8 @@ export function TopsiUserSettings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/user-settings'), {
+      const res = await makeRequest('/api/topsi/user-settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           default_confirmation_mode: settings.default_confirmation_mode,
           per_tool_overrides: settings.per_tool_overrides,

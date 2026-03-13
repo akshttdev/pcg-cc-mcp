@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest } from '@/lib/api';
 import { toast } from 'sonner';
 
 type PromptMode = 'standard' | 'sudolang';
@@ -37,9 +37,7 @@ export function TopsiAdminSettings() {
   const fetchPrompt = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/admin/prompt'), {
-        credentials: 'include',
-      });
+      const res = await makeRequest('/api/topsi/admin/prompt');
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -57,10 +55,8 @@ export function TopsiAdminSettings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/admin/prompt'), {
+      const res = await makeRequest('/api/topsi/admin/prompt', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           prompt: data.prompt,
           mode: data.mode,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { resolveApiUrl } from '@/lib/api';
+import { makeRequest } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -130,9 +130,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
   const checkTopsiStatus = async () => {
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/status'), {
-        credentials: 'include',
-      });
+      const res = await makeRequest('/api/topsi/status');
       if (res.ok) {
         const data = await res.json();
         setIsInitialized(data.isActive);
@@ -145,10 +143,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   const initializeTopsi = async () => {
     setIsInitializing(true);
     try {
-      const res = await fetch(resolveApiUrl('/api/topsi/initialize'), {
+      const res = await makeRequest('/api/topsi/initialize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ activateImmediately: true }),
       });
       if (res.ok) {
@@ -184,16 +180,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     setIsSending(true);
 
     try {
-      const sessionToken = localStorage.getItem('session_id') || sessionStorage.getItem('session_id');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
-      }
-
-      const res = await fetch(resolveApiUrl('/api/topsi/chat'), {
+      const res = await makeRequest('/api/topsi/chat', {
         method: 'POST',
-        headers,
-        credentials: 'include',
         body: JSON.stringify({
           message,
           sessionId,
@@ -248,7 +236,9 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
   };
 
   // Keep ref updated for effects that need the latest version
-  sendMessageDirectRef.current = sendMessageDirect;
+  useEffect(() => {
+    sendMessageDirectRef.current = sendMessageDirect;
+  });
 
   // Text chat — reads from inputMessage state
   const sendTextMessage = async () => {
@@ -271,9 +261,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(resolveApiUrl(`/api/workflows/runs/${runId}`), {
-          credentials: 'include',
-        });
+        const res = await makeRequest(`/api/workflows/runs/${runId}`);
         if (!res.ok) return;
         const run = await res.json();
         const status = run.status || run.data?.status;
@@ -436,17 +424,8 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
     try {
       const base64Audio = await blobToBase64(audioBlob);
 
-      // Get session token from localStorage (fallback for when cookies don't work)
-      const sessionToken = localStorage.getItem('session_id') || sessionStorage.getItem('session_id');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
-      }
-
-      const res = await fetch(resolveApiUrl('/api/topsi/voice/interaction'), {
+      const res = await makeRequest('/api/topsi/voice/interaction', {
         method: 'POST',
-        headers,
-        credentials: 'include', // Send auth cookies
         body: JSON.stringify({
           sessionId,
           audioInput: base64Audio,
