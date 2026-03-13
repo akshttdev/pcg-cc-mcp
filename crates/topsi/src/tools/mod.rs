@@ -457,6 +457,156 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        // ==================== CRM & WORKFLOW TOOLS ====================
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_project_detail",
+                "description": "Get detailed project info including task counts, recent activity, organization, and client info.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {
+                            "type": "string",
+                            "description": "UUID of the project to get details for"
+                        }
+                    },
+                    "required": ["project_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_crm_contacts",
+                "description": "List CRM contacts for an organization. Returns names, emails, companies, lifecycle stage, lead score.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": {
+                            "type": "string",
+                            "description": "UUID of the organization to list contacts for"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max number of contacts to return (default: 50)"
+                        },
+                        "lifecycle_stage": {
+                            "type": "string",
+                            "description": "Filter by lifecycle stage: 'subscriber', 'lead', 'mql', 'sql', 'opportunity', 'customer'"
+                        },
+                        "search_query": {
+                            "type": "string",
+                            "description": "Search by name, email, or company name"
+                        }
+                    },
+                    "required": ["organization_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_crm_deals",
+                "description": "List CRM deals for an organization or pipeline. Returns deal names, amounts, stages, contacts.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": {
+                            "type": "string",
+                            "description": "UUID of the organization to list deals for"
+                        },
+                        "pipeline_id": {
+                            "type": "string",
+                            "description": "UUID of a specific pipeline to list deals for"
+                        },
+                        "stage_id": {
+                            "type": "string",
+                            "description": "UUID of a specific stage to list deals for"
+                        }
+                    }
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_crm_pipelines",
+                "description": "List CRM pipelines and their stages for an organization.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": {
+                            "type": "string",
+                            "description": "UUID of the organization to list pipelines for"
+                        },
+                        "pipeline_type": {
+                            "type": "string",
+                            "description": "Filter by pipeline type: 'sales', 'clients', 'conferences', 'delivery', 'custom'"
+                        }
+                    },
+                    "required": ["organization_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_workflow_definitions",
+                "description": "List saved workflow definitions. Returns names, descriptions, owner info.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_workflow_definition",
+                "description": "Get a full workflow definition including all nodes and connections.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "UUID of the workflow definition to retrieve"
+                        }
+                    },
+                    "required": ["workflow_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "search_entities",
+                "description": "Search across projects, contacts, deals, and tasks by keyword.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search keyword to match against entity names, titles, emails, descriptions"
+                        },
+                        "entity_types": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Entity types to search: 'projects', 'contacts', 'deals', 'tasks'"
+                        },
+                        "organization_id": {
+                            "type": "string",
+                            "description": "Optional org UUID to scope contacts and deals search"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results per entity type (default: 20)"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
         // Chat/response tool for conversational replies
         json!({
             "type": "function",

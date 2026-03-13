@@ -28,6 +28,9 @@ use nora::brain::{ConversationMessage, ToolResult as NoraToolResult};
 use db::models::project::Project;
 use db::models::agent::Agent;
 use db::models::task::Task;
+use db::models::crm_contact::{CrmContact, ContactSearchParams, LifecycleStage};
+use db::models::crm_deal::CrmDeal;
+use db::models::crm_pipeline::{CrmPipeline, CrmPipelineStage, PipelineType};
 
 // Import Nora's LLM infrastructure
 use nora::brain::{
@@ -834,6 +837,13 @@ impl TopsiAgent {
                 "respond_to_user" => self.tool_respond_to_user(&call.arguments).await,
                 "search_web" => self.tool_search_web(&call.arguments).await,
                 "fetch_web_page" => self.tool_fetch_web_page(&call.arguments).await,
+                "get_project_detail" => self.tool_get_project_detail(&call.arguments, scope).await,
+                "list_crm_contacts" => self.tool_list_crm_contacts(&call.arguments, scope).await,
+                "list_crm_deals" => self.tool_list_crm_deals(&call.arguments, scope).await,
+                "list_crm_pipelines" => self.tool_list_crm_pipelines(&call.arguments, scope).await,
+                "list_workflow_definitions" => self.tool_list_workflow_definitions(&call.arguments, scope).await,
+                "get_workflow_definition" => self.tool_get_workflow_definition(&call.arguments, scope).await,
+                "search_entities" => self.tool_search_entities(&call.arguments, scope).await,
                 _ => Err(TopsiError::ToolError(format!(
                     "Unknown tool: {}",
                     call.name
@@ -2319,6 +2329,528 @@ impl TopsiAgent {
             "allowed": allowed,
             "scope": format!("{:?}", scope)
         }))
+    }
+
+    // ==================== CRM & WORKFLOW TOOL IMPLEMENTATIONS ====================
+
+    /// Get detailed project info including task counts
+    async fn tool_get_project_detail(
+        &self,
+        args: &serde_json::Value,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let project_id = match args.get("project_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(serde_json::json!({"error": "project_id is required"})),
+        };
+
+        let project = match Project::find_by_id(pool, project_id).await {
+            Ok(Some(p)) => p,
+            Ok(None) => return Ok(serde_json::json!({"error": "Project not found"})),
+            Err(e) => return Ok(serde_json::json!({"error": format!("Database error: {}", e)})),
+        };
+
+        let total: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND deleted_at IS NULL"
+        )
+        .bind(project_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+        let todo: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'todo' AND deleted_at IS NULL"
+        )
+        .bind(project_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+        let in_progress: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'inprogress' AND deleted_at IS NULL"
+        )
+        .bind(project_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+        let done: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'done' AND deleted_at IS NULL"
+        )
+        .bind(project_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
+        Ok(serde_json::json!({
+            "id": project.id,
+            "name": project.name,
+            "path": project.git_repo_path.display().to_string(),
+            "vibe_spent": project.vibe_spent_amount,
+            "vibe_budget": project.vibe_budget_limit,
+            "organization_id": project.organization_id,
+            "client_id": project.client_id,
+            "task_counts": {
+                "total": total,
+                "todo": todo,
+                "in_progress": in_progress,
+                "done": done
+            },
+            "created_at": project.created_at.to_rfc3339()
+        }))
+    }
+
+    /// List CRM contacts for an organization
+    async fn tool_list_crm_contacts(
+        &self,
+        args: &serde_json::Value,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let org_id_str = match args.get("organization_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(serde_json::json!({"error": "organization_id is required"})),
+        };
+
+        let org_uuid = match Uuid::parse_str(org_id_str) {
+            Ok(u) => u,
+            Err(_) => return Ok(serde_json::json!({"error": "Invalid organization_id UUID"})),
+        };
+
+        let limit = args.get("limit").and_then(|v| v.as_i64()).map(|v| v as i32).unwrap_or(50);
+        let search_query = args.get("search_query").and_then(|v| v.as_str());
+        let lifecycle_stage_str = args.get("lifecycle_stage").and_then(|v| v.as_str());
+
+        let lifecycle_stage = lifecycle_stage_str.and_then(|s| s.parse::<LifecycleStage>().ok());
+
+        let contacts = if search_query.is_some() || lifecycle_stage.is_some() {
+            let params = ContactSearchParams {
+                organization_id: Some(org_uuid),
+                client_id: None,
+                query: search_query.map(|s| s.to_string()),
+                lifecycle_stage,
+                company_name: None,
+                tags: None,
+                min_lead_score: None,
+                limit: Some(limit),
+                offset: None,
+            };
+            CrmContact::search(pool, params).await.unwrap_or_default()
+        } else {
+            CrmContact::find_by_organization(pool, org_uuid, Some(limit))
+                .await
+                .unwrap_or_default()
+        };
+
+        let contact_list: Vec<serde_json::Value> = contacts
+            .iter()
+            .map(|c| {
+                serde_json::json!({
+                    "id": c.id.to_string(),
+                    "first_name": c.first_name,
+                    "last_name": c.last_name,
+                    "email": c.email,
+                    "company_name": c.company_name,
+                    "job_title": c.job_title,
+                    "lifecycle_stage": c.lifecycle_stage,
+                    "lead_score": c.lead_score,
+                    "last_activity_at": c.last_activity_at.map(|d| d.to_rfc3339())
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "contacts": contact_list,
+            "total": contacts.len()
+        }))
+    }
+
+    /// List CRM deals for an organization, pipeline, or stage
+    async fn tool_list_crm_deals(
+        &self,
+        args: &serde_json::Value,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let pipeline_id = args.get("pipeline_id").and_then(|v| v.as_str());
+        let stage_id = args.get("stage_id").and_then(|v| v.as_str());
+        let org_id = args.get("organization_id").and_then(|v| v.as_str());
+
+        let deals = if let Some(pid) = pipeline_id {
+            match Uuid::parse_str(pid) {
+                Ok(uuid) => CrmDeal::find_by_pipeline(pool, uuid).await.unwrap_or_default(),
+                Err(_) => return Ok(serde_json::json!({"error": "Invalid pipeline_id UUID"})),
+            }
+        } else if let Some(sid) = stage_id {
+            match Uuid::parse_str(sid) {
+                Ok(uuid) => CrmDeal::find_by_stage(pool, uuid).await.unwrap_or_default(),
+                Err(_) => return Ok(serde_json::json!({"error": "Invalid stage_id UUID"})),
+            }
+        } else if let Some(oid) = org_id {
+            match Uuid::parse_str(oid) {
+                Ok(uuid) => CrmDeal::find_by_organization(pool, uuid).await.unwrap_or_default(),
+                Err(_) => return Ok(serde_json::json!({"error": "Invalid organization_id UUID"})),
+            }
+        } else {
+            return Ok(serde_json::json!({"error": "Must provide organization_id, pipeline_id, or stage_id"}));
+        };
+
+        let deal_list: Vec<serde_json::Value> = deals
+            .iter()
+            .map(|d| {
+                serde_json::json!({
+                    "id": d.id.to_string(),
+                    "name": d.name,
+                    "amount": d.amount,
+                    "currency": d.currency,
+                    "stage": d.stage,
+                    "pipeline": d.pipeline,
+                    "probability": d.probability,
+                    "expected_close_date": d.expected_close_date.map(|d| d.to_rfc3339()),
+                    "contact_id": d.crm_contact_id.map(|id| id.to_string()),
+                    "created_at": d.created_at.to_rfc3339()
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "deals": deal_list,
+            "total": deals.len()
+        }))
+    }
+
+    /// List CRM pipelines and their stages for an organization
+    async fn tool_list_crm_pipelines(
+        &self,
+        args: &serde_json::Value,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let org_id_str = match args.get("organization_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(serde_json::json!({"error": "organization_id is required"})),
+        };
+
+        let org_uuid = match Uuid::parse_str(org_id_str) {
+            Ok(u) => u,
+            Err(_) => return Ok(serde_json::json!({"error": "Invalid organization_id UUID"})),
+        };
+
+        let pipeline_type_filter = args
+            .get("pipeline_type")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<PipelineType>().ok());
+
+        let pipelines = CrmPipeline::find_by_organization(pool, org_uuid, pipeline_type_filter)
+            .await
+            .unwrap_or_default();
+
+        let mut pipeline_list: Vec<serde_json::Value> = Vec::new();
+        for p in &pipelines {
+            let stages = CrmPipelineStage::find_by_pipeline(pool, p.id)
+                .await
+                .unwrap_or_default();
+
+            let stage_list: Vec<serde_json::Value> = stages
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "id": s.id.to_string(),
+                        "name": s.name,
+                        "color": s.color,
+                        "position": s.position,
+                        "probability": s.probability
+                    })
+                })
+                .collect();
+
+            pipeline_list.push(serde_json::json!({
+                "id": p.id.to_string(),
+                "name": p.name,
+                "pipeline_type": p.pipeline_type,
+                "stages": stage_list
+            }));
+        }
+
+        Ok(serde_json::json!({
+            "pipelines": pipeline_list,
+            "total": pipelines.len()
+        }))
+    }
+
+    /// List saved workflow definitions (system definitions visible to all, org-owned filtered by scope)
+    async fn tool_list_workflow_definitions(
+        &self,
+        _args: &serde_json::Value,
+        scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let rows = sqlx::query(
+            "SELECT id, name, description, owner_id, owner_type, is_system FROM workflow_definitions ORDER BY is_system DESC, name ASC"
+        )
+        .fetch_all(pool)
+        .await;
+
+        match rows {
+            Ok(rows) => {
+                use sqlx::Row;
+                let definitions: Vec<serde_json::Value> = rows
+                    .iter()
+                    .filter(|row| {
+                        // System workflows are visible to everyone
+                        let is_system = row.get::<bool, _>("is_system");
+                        if is_system {
+                            return true;
+                        }
+                        // Admin can see all
+                        if matches!(scope, AccessScope::Admin) {
+                            return true;
+                        }
+                        // Non-system: only show if user has access to the owner project/org
+                        // For now, non-admin users see system workflows only
+                        // (will be refined when org-scoped workflow ownership is fully wired)
+                        false
+                    })
+                    .map(|row| {
+                        let owner_id: Option<String> = row.get::<Option<Vec<u8>>, _>("owner_id")
+                            .and_then(|bytes| Uuid::from_slice(&bytes).ok())
+                            .map(|u| u.to_string());
+                        serde_json::json!({
+                            "id": row.get::<String, _>("id"),
+                            "name": row.get::<String, _>("name"),
+                            "description": row.get::<Option<String>, _>("description"),
+                            "owner_type": row.get::<Option<String>, _>("owner_type"),
+                            "owner_id": owner_id,
+                            "is_system": row.get::<bool, _>("is_system")
+                        })
+                    })
+                    .collect();
+
+                Ok(serde_json::json!({
+                    "definitions": definitions,
+                    "total": definitions.len()
+                }))
+            }
+            Err(e) => Ok(serde_json::json!({"error": format!("Failed to query workflow definitions: {}", e)})),
+        }
+    }
+
+    /// Get a full workflow definition including steps
+    async fn tool_get_workflow_definition(
+        &self,
+        args: &serde_json::Value,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let workflow_id = match args.get("workflow_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(serde_json::json!({"error": "workflow_id is required"})),
+        };
+
+        let row = sqlx::query(
+            "SELECT id, name, description, steps, owner_type, owner_id, is_system FROM workflow_definitions WHERE id = ?"
+        )
+        .bind(workflow_id)
+        .fetch_optional(pool)
+        .await;
+
+        match row {
+            Ok(Some(row)) => {
+                use sqlx::Row;
+                let steps_str = row.get::<Option<String>, _>("steps");
+                let steps: serde_json::Value = steps_str
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or(serde_json::json!([]));
+
+                let owner_id: Option<String> = row.get::<Option<Vec<u8>>, _>("owner_id")
+                    .and_then(|bytes| Uuid::from_slice(&bytes).ok())
+                    .map(|u| u.to_string());
+
+                Ok(serde_json::json!({
+                    "id": row.get::<String, _>("id"),
+                    "name": row.get::<String, _>("name"),
+                    "description": row.get::<Option<String>, _>("description"),
+                    "steps": steps,
+                    "owner_type": row.get::<Option<String>, _>("owner_type"),
+                    "owner_id": owner_id,
+                    "is_system": row.get::<bool, _>("is_system")
+                }))
+            }
+            Ok(None) => Ok(serde_json::json!({"error": "Workflow definition not found"})),
+            Err(e) => Ok(serde_json::json!({"error": format!("Database error: {}", e)})),
+        }
+    }
+
+    /// Search across projects, contacts, deals, and tasks by keyword
+    async fn tool_search_entities(
+        &self,
+        args: &serde_json::Value,
+        _scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let query = match args.get("query").and_then(|v| v.as_str()) {
+            Some(q) => q,
+            None => return Ok(serde_json::json!({"error": "query is required"})),
+        };
+
+        let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20) as i32;
+        let org_id = args
+            .get("organization_id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok());
+
+        let entity_types: Vec<String> = args
+            .get("entity_types")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_else(|| vec!["projects".to_string(), "contacts".to_string(), "deals".to_string(), "tasks".to_string()]);
+
+        let like_pattern = format!("%{}%", query);
+        let mut results = serde_json::json!({});
+
+        // Search projects
+        if entity_types.contains(&"projects".to_string()) {
+            let projects = sqlx::query(
+                "SELECT id, name FROM projects WHERE name LIKE ?1 AND deleted_at IS NULL LIMIT ?2"
+            )
+            .bind(&like_pattern)
+            .bind(limit)
+            .fetch_all(pool)
+            .await;
+
+            if let Ok(rows) = projects {
+                use sqlx::Row;
+                let list: Vec<serde_json::Value> = rows
+                    .iter()
+                    .map(|r| serde_json::json!({
+                        "id": r.get::<String, _>("id"),
+                        "name": r.get::<String, _>("name")
+                    }))
+                    .collect();
+                results["projects"] = serde_json::json!(list);
+            }
+        }
+
+        // Search contacts (requires organization_id)
+        if entity_types.contains(&"contacts".to_string()) {
+            if let Some(oid) = org_id {
+                let params = ContactSearchParams {
+                    organization_id: Some(oid),
+                    client_id: None,
+                    query: Some(query.to_string()),
+                    lifecycle_stage: None,
+                    company_name: None,
+                    tags: None,
+                    min_lead_score: None,
+                    limit: Some(limit),
+                    offset: None,
+                };
+                let contacts = CrmContact::search(pool, params).await.unwrap_or_default();
+                let list: Vec<serde_json::Value> = contacts
+                    .iter()
+                    .map(|c| serde_json::json!({
+                        "id": c.id.to_string(),
+                        "first_name": c.first_name,
+                        "last_name": c.last_name,
+                        "email": c.email,
+                        "company_name": c.company_name
+                    }))
+                    .collect();
+                results["contacts"] = serde_json::json!(list);
+            } else {
+                results["contacts"] = serde_json::json!([]);
+            }
+        }
+
+        // Search deals (requires organization_id)
+        if entity_types.contains(&"deals".to_string()) {
+            if let Some(oid) = org_id {
+                let deals = sqlx::query(
+                    "SELECT id, name, amount, currency, stage FROM crm_deals WHERE name LIKE ?1 AND organization_id = ?2 LIMIT ?3"
+                )
+                .bind(&like_pattern)
+                .bind(oid)
+                .bind(limit)
+                .fetch_all(pool)
+                .await;
+
+                if let Ok(rows) = deals {
+                    use sqlx::Row;
+                    let list: Vec<serde_json::Value> = rows
+                        .iter()
+                        .map(|r| {
+                            let id_bytes = r.get::<Vec<u8>, _>("id");
+                            let id_str = Uuid::from_slice(&id_bytes)
+                                .map(|u| u.to_string())
+                                .unwrap_or_else(|_| id_bytes.iter().map(|b| format!("{:02x}", b)).collect());
+                            serde_json::json!({
+                                "id": id_str,
+                                "name": r.get::<String, _>("name"),
+                                "amount": r.get::<Option<f64>, _>("amount"),
+                                "currency": r.get::<String, _>("currency"),
+                                "stage": r.get::<String, _>("stage")
+                            })
+                        })
+                        .collect();
+                    results["deals"] = serde_json::json!(list);
+                }
+            } else {
+                results["deals"] = serde_json::json!([]);
+            }
+        }
+
+        // Search tasks
+        if entity_types.contains(&"tasks".to_string()) {
+            let tasks = sqlx::query(
+                "SELECT id, title, status, project_id FROM tasks WHERE (title LIKE ?1 OR description LIKE ?1) AND deleted_at IS NULL LIMIT ?2"
+            )
+            .bind(&like_pattern)
+            .bind(limit)
+            .fetch_all(pool)
+            .await;
+
+            if let Ok(rows) = tasks {
+                use sqlx::Row;
+                let list: Vec<serde_json::Value> = rows
+                    .iter()
+                    .map(|r| serde_json::json!({
+                        "id": r.get::<String, _>("id"),
+                        "title": r.get::<String, _>("title"),
+                        "status": r.get::<String, _>("status"),
+                        "project_id": r.get::<Option<String>, _>("project_id")
+                    }))
+                    .collect();
+                results["tasks"] = serde_json::json!(list);
+            }
+        }
+
+        Ok(results)
     }
 
     /// Handle topology requests
