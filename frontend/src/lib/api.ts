@@ -172,7 +172,7 @@ export function resolveWsUrl(path: string): string {
   return `${protocol}//${window.location.host}${path}`;
 }
 
-const makeRequest = async (url: string, options: RequestInit = {}) => {
+export const makeRequest = async (url: string, options: RequestInit = {}) => {
   // In Tauri mode, cookies don't work cross-origin (tauri:// → http://localhost).
   // Send the session_id as a Bearer token instead.
   const authHeaders: Record<string, string> = {};

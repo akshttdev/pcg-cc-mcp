@@ -9,7 +9,10 @@ export type ActivityType =
   | 'dependency_added'
   | 'dependency_removed'
   | 'time_logged'
-  | 'file_attached';
+  | 'file_attached'
+  | 'agent_tool_call'
+  | 'agent_workflow_triggered'
+  | 'agent_workflow_completed';
 
 export interface ActivityEntry {
   id: string;

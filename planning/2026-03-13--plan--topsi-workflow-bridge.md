@@ -1,6 +1,6 @@
 # Topsi–Workflow Bridge Implementation Plan
 
-**Date:** 2026-03-13 (updated after Phase 4 completion + auto-approve encapsulation)
+**Date:** 2026-03-13 (updated after Phase 5 completion — all phases done)
 **Branch:** `feature/topsi-workflow-bridge`
 **PR:** #22
 **Depends on:** PR #21 (LLM dogfooding infrastructure), PR #23 (dogfood pipeline), PR #24 (QA review fixes) — all merged to main
@@ -102,7 +102,7 @@ Added `output_mode` parameter to `execute_node_with_llm()`:
 
 System prompt also adapts: structured mode gets extraction-focused prompt, text mode gets general-purpose prompt.
 
-**Remaining for future:** Frontend workflow editor UI for output_mode dropdown.
+**Frontend UI:** Output mode button panel added in Phase 5 follow-up (3-option toggle: Auto/Structured/Text).
 
 ---
 
@@ -207,19 +207,106 @@ Consolidated into single `build_workflow` tool with `action: "create"|"modify"` 
 
 ---
 
-## Phase 5: Bidirectional UI
+## Phase 5: Bidirectional UI — DONE ✅
 
-1. **Topsi action feed** — tool calls appear as activity in project/CRM feeds
-2. **"Ask Topsi" context button** — from project/task/CRM views, pre-loads entity context
-3. **Workflow progress in chat** — SSE events for workflow execution status
-4. **Admin settings UI** — System prompt editor with SudoLang toggle, confirmation preferences
-5. **Topsi settings per-user** — per-tool confirmation overrides
+### What shipped
 
-### Files
-- **MODIFY** frontend components (project detail, task detail, CRM views)
-- **MODIFY** `crates/topsi/src/agent.rs` — emit SSE events for tool executions
-- **NEW** frontend admin settings page for Topsi prompt + confirmation config
-- **REUSE** existing SSE infrastructure (`/api/events/...`)
+**Step 1: useAgentChatStore — Global Widget Control ✅**
+- New `frontend/src/stores/useAgentChatStore.ts` — Zustand store (no persist)
+- State: `widgetState`, `activeAgent` (default `'topsi'`), `pendingMessage`, `pendingContext`
+- Actions: `openChat(message?, context?, agent?)`, `collapse()`, `clearPending()`, `setWidgetState()`
+- TopsiWidget refactored: internal `useState<WidgetState>` replaced by store subscription
+- Auto-sends pending messages when widget opens (via `useEffect` + `sendMessageDirectRef` pattern)
+
+**Step 2: Activity Type Extension + Tool Call Logging ✅**
+- 3 new `ActivityType` variants: `agent_tool_call`, `agent_workflow_triggered`, `agent_workflow_completed`
+- ActivityFeed icon map (robot/gear/check) and color map (cyan-500) updated
+- TopsiWidget logs tool calls to ActivityStore after each chat response
+
+**Step 3: "Ask Topsi" Context Button ✅**
+- New `frontend/src/components/topsi/AskTopsiButton.tsx`
+- Popover with entity-specific suggested questions + free-text input
+- 4 entity types: project (4 questions), task (4), crm_contact (3), crm_deal (3)
+- Injected into: project-tasks header, TaskDetailsPanel sidebar, crm-contact-detail header, CrmDealDetailPanel quick actions
+
+**Step 4: Admin Settings — System Prompt Editor ✅**
+- Backend: `GET/PUT /topsi/admin/prompt` in `topsi.rs` — admin-only, no debug gate
+  - Keys: `topsi_system_prompt`, `topsi_prompt_mode`, `topsi_system_prompt_sudolang`
+- Frontend: `TopsiAdminSettings.tsx` — Standard/SudoLang toggle, monospace textarea, reset/save
+- Settings nav entry: "Topsi" under system admin scope
+
+**Step 5: Per-User Topsi Settings ✅**
+- Backend: `GET/PUT /topsi/user-settings` in `topsi.rs` — uses AccessContext.user_id
+  - Delegates to `TopsiUserSettings::get_or_default()` / `upsert()`
+- Backend: `GET /topsi/tools` — returns all tools grouped by risk (red/yellow/green), derived dynamically from `get_tool_names()` + `classify_tool_risk()`
+- Frontend: `TopsiUserSettings.tsx` — confirmation mode select, per-tool override table (fetched from API, grouped by risk), auto-approve timeout
+- Settings nav entry: "Topsi Preferences" under user scope
+
+**Step 6: Workflow Progress in Chat (Poll-Based) ✅**
+- TopsiWidget detects `trigger_workflow`/`build_workflow` tool calls with `workflow_run_id`
+- Polls `GET /api/workflows/runs/{id}` every 5 seconds
+- Shows progress and completion/failure summary in chat
+- Logs `agent_workflow_triggered`/`agent_workflow_completed` to ActivityStore
+- Cleans up poll intervals on unmount
+
+**Topsi Activity Page ✅**
+- New `frontend/src/pages/topsi-activity.tsx` — filters ActivityFeed to `agent_*` types via `filterTypes` prop
+- Custom empty state via `emptyMessage` prop on ActivityFeed
+- Route: `/topsi-activity` (admin-only)
+- Sidebar entry: "Topsi Activity" in admin nav section
+
+**Post-Review Improvements ✅**
+- Migrated all raw `fetch()` calls to `makeRequest()` from `@/lib/api` (9 calls across TopsiWidget, TopsiAdminSettings, TopsiUserSettings) — consistent auth, Tauri support, URL resolution
+- Exported `makeRequest` from `api.ts` for use outside the module
+- Added `emptyMessage` prop to `ActivityFeed` component for custom empty state copy
+- Moved `sendMessageDirectRef` assignment into `useEffect` for React concurrent mode safety
+- Replaced hardcoded `TOOL_RISK_MAP` with dynamic fetch from `GET /api/topsi/tools` — tool list stays in sync with backend automatically
+- Added `get_tool_names()` to `topsi::tools` (extracts from canonical `get_tool_schemas()`)
+- Added `Serialize` to `ToolRisk` enum for JSON responses
+
+### New Files (5)
+| File | Purpose |
+|------|---------|
+| `frontend/src/stores/useAgentChatStore.ts` | Global widget state + openChat() (agent-agnostic) |
+| `frontend/src/components/topsi/AskTopsiButton.tsx` | Context button + popover |
+| `frontend/src/pages/topsi-activity.tsx` | Dedicated Topsi activity log |
+| `frontend/src/pages/settings/TopsiAdminSettings.tsx` | System prompt editor |
+| `frontend/src/pages/settings/TopsiUserSettings.tsx` | Per-user confirmation config |
+
+### Modified Files (14)
+| File | Changes |
+|------|---------|
+| `frontend/src/components/topsi/TopsiWidget.tsx` | Store-driven state, tool call logging, workflow polling, migrated to `makeRequest` |
+| `frontend/src/types/activity.ts` | 3 new ActivityType variants |
+| `frontend/src/components/activity/ActivityFeed.tsx` | Icons + colors for agent types, `filterTypes` + `emptyMessage` props |
+| `frontend/src/pages/project-tasks.tsx` | AskTopsiButton in header toolbar |
+| `frontend/src/components/tasks/TaskDetailsPanel.tsx` | AskTopsiButton in fullscreen sidebar |
+| `frontend/src/pages/crm-contact-detail.tsx` | AskTopsiButton in header |
+| `frontend/src/components/crm/CrmDealDetailPanel.tsx` | AskTopsiButton in quick actions |
+| `frontend/src/pages/settings/SettingsLayout.tsx` | 2 new nav entries (admin + user) |
+| `frontend/src/components/layout/sidebar.tsx` | Topsi Activity nav item |
+| `frontend/src/App.tsx` | 3 new routes + lazy imports |
+| `frontend/src/lib/api.ts` | Exported `makeRequest` for use by Topsi components |
+| `crates/server/src/routes/topsi.rs` | 5 new endpoints (admin prompt GET/PUT, user settings GET/PUT, tools GET) |
+| `crates/topsi/src/tools/mod.rs` | `get_tool_names()` for dynamic tool registry |
+| `crates/db/src/models/topsi_user_settings.rs` | `Serialize` on `ToolRisk` enum |
+
+### E2E Test Coverage
+Added 10 tests to `e2e/health-check.spec.ts` covering all Phase 5 UI surfaces and API endpoints:
+
+**Settings pages (2 tests):**
+- Topsi admin settings page loads (`/settings/topsi` — checks "Topsi Configuration" + "System Prompt")
+- Topsi user preferences page loads (`/settings/topsi-preferences` — checks "Topsi Preferences" + "Confirmation Mode")
+
+**Topsi UI (8 tests):**
+- Topsi Activity page loads for admin (`/topsi-activity`)
+- Sidebar shows Topsi Activity link for admin
+- AskTopsiButton visible on project tasks page
+- AskTopsiButton opens popover with suggested questions ("What tasks are blocked?")
+- Topsi admin prompt API returns data (validates `mode` field type)
+- Topsi tools API returns risk-grouped tools (validates red/yellow/green structure + known tool entries)
+- Topsi user settings API returns defaults (validates `default_confirmation_mode`)
+- Topsi user settings API accepts PUT with persistence verification
 
 ---
 
@@ -235,9 +322,53 @@ Phase 3 (Confirmation system)             ── DONE ✅
 Phase 2F (Full service extraction)        ── DONE ✅
 Phase 4 (Topsi builds workflows)          ── DONE ✅ (build_workflow tool + specialist)
 Auto-approve encapsulation                ── DONE ✅ (post-Phase 2F cleanup)
-    ↓
-Phase 5 (Bidirectional UI + admin settings)
+Phase 5 (Bidirectional UI + admin settings) ── DONE ✅
+Phase 5 Follow-ups                           ── DONE ✅
 ```
+
+---
+
+## Phase 5 Follow-ups — DONE ✅
+
+### Follow-up 1: Output Mode Button Panel ✅
+
+Added UI control for the `output_mode` parameter that was backend-only (Phase 1B.4).
+
+- `WorkflowEditor.tsx`: Added `output_mode: 'auto'` to `defaultParameters` for `llm_extract`, `llm_analyze`, `llm_summarize`
+- 3-button toggle (Auto / Structured / Text) below Output Schema input, using `onUpdateParameter` + `cn()` patterns
+- Auto = JSON when output schema defined, text otherwise; Structured = always JSON; Text = raw response
+
+### Follow-up 2: Autonomy Level Hierarchy ✅
+
+Wired `TopsiConfig.autonomy_level` as an instance-wide floor that constrains user confirmation settings.
+
+**Backend:**
+- `AutonomyLevel::max_confirmation_mode()` — maps each level to most permissive `ConfirmationMode` allowed
+- `ConfirmationMode::restrictiveness()` + `most_restrictive()` — ordering helpers
+- Confirmation gate in `agent.rs` computes `effective = most_restrictive(user_mode, instance_floor)`
+- `GET/PUT /topsi/admin/prompt` includes `autonomy_level` field
+- Persisted in `system_settings` table (key: `topsi_autonomy_level`), loaded on startup
+
+**Frontend:**
+- `TopsiAdminSettings.tsx` — 4-button panel (Manual / Approval Required / Supervised / Full) with descriptions
+- Saves via existing PUT endpoint alongside system prompt settings
+
+**Mapping:** Manual → AlwaysConfirm, ApprovalRequired → ConfirmDestructive, Supervised/Full → Autonomous (no constraint)
+
+### Follow-up 3: PR Review Fixes ✅
+
+Addressed all items from PR #25 QA reviews #1–#3:
+
+| # | Fix |
+|---|-----|
+| W1/W2/W11 | Input validation on `mode`, `confirmation_mode`, `autonomy_level` — returns 400 on invalid |
+| W4 | Workflow polling capped at 60 polls (5 min timeout) with user-facing message |
+| W10 | Activity store capped at 1000 entries via `.slice(0, 1000)` |
+| W12 | `per_tool_overrides` validated as flat `Record<string, string>` JSON object |
+| W3/W8 | `isInitializedRef` avoids stale closure in pending message effect |
+| I1 | `crypto.randomUUID()` replaces `Date.now()` for message IDs |
+| I2 | `sendMessageDirectRef` effect given `[sendMessageDirect]` dep array |
+| I3 | `contactId!` non-null assertions replaced with `contactId ?? ''` |
 
 ---
 
@@ -248,7 +379,7 @@ Phase 5 (Bidirectional UI + admin settings)
 | `organization_members` table | Migration 20251004000000 | Exists — `(org_id, user_id, role)` |
 | `Organization::get_user_role()` | `db/models/user.rs` | Exists — returns role for user in org |
 | `system_settings` table | Migration 20260327000000 | Exists — key-value store with `get()`/`set()` |
-| `TopsiConfig.autonomy_level` | `topsi/src/config.rs` | Exists — `Full/Supervised/ApprovalRequired/Manual` — NOT enforced |
+| `TopsiConfig.autonomy_level` | `topsi/src/config.rs` | Enforced — instance floor constrains user ConfirmationMode (Phase 5 follow-up) |
 | `TopsiConfig.system_prompt` | `topsi/src/config.rs` | Now wired to DB via `get_effective_system_prompt()` (Phase 1B.3) |
 | `AccessScope` enum | `topsi/src/agent/access_control.rs` | Project-scoped; org validation via `verify_org_membership()` (Phase 1B.1) |
 | `WorkflowNode.parameters` | `workflow_execution.rs` | Untyped JSON — `output_mode` added (Phase 1B.4) |
@@ -265,11 +396,11 @@ Phase 5 (Bidirectional UI + admin settings)
 | `crates/server/src/routes/data_source_workflows.rs` | ~1349 | Thin HTTP handlers + trigger/schedule loops |
 | `crates/server/src/routes/pcg_router.rs` | — | Model registry, direct API route (KEEP) |
 | `crates/db/src/models/pcg_router_model.rs` | — | Model registry DB model |
-| `crates/topsi/src/tools/mod.rs` | ~1005 | Topsi tool schemas (31 tools + respond_to_user) |
+| `crates/topsi/src/tools/mod.rs` | ~1020 | Topsi tool schemas (36 tools + respond_to_user) + `get_tool_names()` |
 | `crates/topsi/src/agent.rs` | ~2455 | Topsi agent loop, tool dispatch, confirmation gate |
 | `crates/topsi/src/platform_data.rs` | ~1974 | PlatformDataService — 22 CRUD tools |
 | `crates/topsi/src/workflow_builder.rs` | ~378 | Workflow Builder specialist agent |
-| `crates/db/src/models/topsi_user_settings.rs` | — | Per-user confirmation settings model |
+| `crates/db/src/models/topsi_user_settings.rs` | — | Per-user confirmation settings + `classify_tool_risk()` + `ToolRisk` enum |
 | `crates/server/src/routes/workflow_staging.rs` | — | Staging commit logic, agent auto-start |
 | `crates/topsi/src/agent/access_control.rs` | — | AccessScope + verify_org_membership |
 | `crates/topsi/src/config.rs` | — | TopsiConfig with autonomy_level + DB-backed system prompt |

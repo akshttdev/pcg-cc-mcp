@@ -40,6 +40,7 @@ import { useTaskViewManager } from '@/hooks/useTaskViewManager.ts';
 import { useExecutionSummary } from '@/hooks';
 import { ExecutionSummaryCard } from './ExecutionSummaryCard';
 import { AirtableRecordLinkBadge } from './AirtableRecordLinkBadge';
+import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { TaskArtifactsPanel } from './TaskArtifactsPanel';
 import { WorkflowTerminal } from './WorkflowTerminal';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -452,6 +453,11 @@ export function TaskDetailsPanel({
                             <AirtableRecordLinkBadge
                               taskId={task.id}
                               hasExecutionSummary={!!executionSummary}
+                            />
+                            <AskTopsiButton
+                              entityType="task"
+                              entityId={task.id}
+                              entityName={task.title}
                             />
                           </div>
 

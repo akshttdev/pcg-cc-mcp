@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { NavLink, Outlet, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2, Key, Code2, Plug, CreditCard, Palette, Layout } from 'lucide-react';
+import { Settings, Cpu, Server, ArrowLeft, User, Shield, Activity, Wallet, Users, FolderKanban, Boxes, Network, Building2, Key, Code2, Plug, CreditCard, Palette, Layout, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -65,6 +65,13 @@ const settingsNavigation: SettingsNavItem[] = [
     description: 'LLM provider API keys',
     scopes: ['user', 'org', 'system'],
   },
+  {
+    path: 'topsi-preferences',
+    icon: Bot,
+    label: 'Topsi Preferences',
+    description: 'Tool confirmation and autonomy',
+    scopes: ['user'],
+  },
   // ─── System Admin scope ──────────────────────────────────────
   {
     path: 'users',
@@ -87,6 +94,14 @@ const settingsNavigation: SettingsNavItem[] = [
     icon: FolderKanban,
     label: 'Projects',
     description: 'Manage project access and permissions',
+    adminOnly: true,
+    scopes: ['system'],
+  },
+  {
+    path: 'topsi',
+    icon: Bot,
+    label: 'Topsi',
+    description: 'System prompt and agent configuration',
     adminOnly: true,
     scopes: ['system'],
   },

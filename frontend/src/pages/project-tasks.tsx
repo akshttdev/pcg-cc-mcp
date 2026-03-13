@@ -10,6 +10,7 @@ import type { UserListItem } from '@/lib/api';
 import type { AgentChatRequest } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { ViewSwitcher } from '@/components/views/ViewSwitcher';
+import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { TableView } from '@/components/views/TableView';
 import { GalleryView } from '@/components/views/GalleryView';
 import { TimelineView } from '@/components/views/TimelineView';
@@ -785,6 +786,13 @@ export function ProjectTasks() {
                 </Button>
                 <TagManager projectId={projectId} />
                 <ViewSwitcher />
+                {project && (
+                  <AskTopsiButton
+                    entityType="project"
+                    entityId={projectId}
+                    entityName={project.name}
+                  />
+                )}
               </div>
             </div>
           )}

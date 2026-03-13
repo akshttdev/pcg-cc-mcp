@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import {
   Sheet,
   SheetContent,
@@ -676,6 +677,12 @@ function DetailsTab({
             Delete
           </Button>
         </div>
+        <AskTopsiButton
+          entityType="crm_deal"
+          entityId={deal.id}
+          entityName={deal.name}
+          className="w-full"
+        />
       </div>
     </div>
   );
