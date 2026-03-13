@@ -1051,6 +1051,112 @@ impl PlatformDataService {
         }))
     }
 
+    /// Delete a task by ID
+    pub async fn delete_task(
+        &self,
+        args: &serde_json::Value,
+        _user_context: &UserContext,
+        scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let task_id_str = match args.get("task_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(json!({"error": "task_id is required"})),
+        };
+
+        // Verify task exists and user has access
+        let task = match Task::find_by_id(&self.pool, task_id_str).await {
+            Ok(Some(t)) => t,
+            Ok(None) => return Ok(json!({"error": format!("Task '{}' not found", task_id_str)})),
+            Err(e) => return Err(TopsiError::ToolError(format!("Failed to look up task: {}", e))),
+        };
+
+        // Check scope
+        let project_uuid = Uuid::parse_str(&task.project_id)
+            .map_err(|_| TopsiError::ToolError("Invalid project_id on task".to_string()))?;
+        match scope {
+            AccessScope::Admin => {}
+            AccessScope::Projects(ids) => {
+                if !ids.contains(&project_uuid) {
+                    return Ok(json!({"error": "Access denied: task belongs to a project outside your scope"}));
+                }
+            }
+            AccessScope::SingleProject(id) => {
+                if *id != project_uuid {
+                    return Ok(json!({"error": "Access denied: task belongs to a different project"}));
+                }
+            }
+            AccessScope::None => {
+                return Ok(json!({"error": "Access denied: no project access"}));
+            }
+        }
+
+        let rows = Task::delete(&self.pool, task_id_str)
+            .await
+            .map_err(|e| TopsiError::ToolError(format!("Failed to delete task: {}", e)))?;
+
+        Ok(json!({
+            "success": rows > 0,
+            "task_id": task_id_str,
+            "title": task.title,
+            "message": format!("Task '{}' deleted successfully", task.title)
+        }))
+    }
+
+    /// Bulk update multiple tasks at once
+    pub async fn bulk_update_tasks(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+        scope: &AccessScope,
+    ) -> Result<serde_json::Value> {
+        let task_ids = match args.get("task_ids").and_then(|v| v.as_array()) {
+            Some(ids) => ids
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>(),
+            None => return Ok(json!({"error": "task_ids array is required"})),
+        };
+
+        if task_ids.is_empty() {
+            return Ok(json!({"error": "task_ids must not be empty"}));
+        }
+        if task_ids.len() > 100 {
+            return Ok(json!({"error": "Cannot bulk update more than 100 tasks at once"}));
+        }
+
+        // Build the update args for each task (same fields applied to all)
+        let mut updated = 0;
+        let mut errors: Vec<String> = vec![];
+
+        for task_id in &task_ids {
+            let single_args = json!({
+                "task_id": task_id,
+                "status": args.get("status"),
+                "priority": args.get("priority"),
+                "assigned_agent": args.get("assigned_agent"),
+            });
+
+            match self.update_task(&single_args, user_context, scope).await {
+                Ok(result) => {
+                    if result.get("error").is_some() {
+                        errors.push(format!("{}: {}", task_id, result["error"]));
+                    } else {
+                        updated += 1;
+                    }
+                }
+                Err(e) => errors.push(format!("{}: {}", task_id, e)),
+            }
+        }
+
+        Ok(json!({
+            "success": errors.is_empty(),
+            "updated": updated,
+            "total": task_ids.len(),
+            "errors": errors,
+            "message": format!("Updated {} of {} tasks", updated, task_ids.len())
+        }))
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
     //  CRM TOOLS
     // ══════════════════════════════════════════════════════════════════════════

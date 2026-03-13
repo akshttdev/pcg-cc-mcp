@@ -270,6 +270,47 @@ pub struct TopsiAgent {
     platform_data: Option<crate::platform_data::PlatformDataService>,
 }
 
+/// Generate a human-readable description of what a tool call will do.
+fn describe_tool_action(tool_name: &str, args: &serde_json::Value) -> String {
+    match tool_name {
+        "delete_task" => {
+            let id = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            format!("Delete task {}", id)
+        }
+        "bulk_update_tasks" => {
+            let count = args.get("task_ids").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+            let fields: Vec<&str> = ["status", "priority", "assigned_agent"]
+                .iter()
+                .filter(|f| args.get(**f).is_some())
+                .copied()
+                .collect();
+            format!("Bulk update {} tasks (changing: {})", count, fields.join(", "))
+        }
+        "create_task" => {
+            let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("untitled");
+            format!("Create task '{}'", title)
+        }
+        "create_project" => {
+            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+            format!("Create project '{}'", name)
+        }
+        "create_crm_contact" => {
+            let name = args.get("first_name").and_then(|v| v.as_str()).unwrap_or("");
+            let last = args.get("last_name").and_then(|v| v.as_str()).unwrap_or("");
+            format!("Create CRM contact '{} {}'", name, last)
+        }
+        "create_crm_deal" => {
+            let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+            format!("Create CRM deal '{}'", name)
+        }
+        "approve_staged_records" => {
+            let run_id = args.get("run_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            format!("Approve staged records for workflow run {}", run_id)
+        }
+        _ => format!("Execute {} with args: {}", tool_name, args),
+    }
+}
+
 impl TopsiAgent {
     /// Create a new TopsiAgent with configuration
     pub async fn new(config: TopsiConfig) -> Result<Self> {
@@ -845,6 +886,15 @@ impl TopsiAgent {
         user_context: &UserContext,
         scope: &AccessScope,
     ) -> Vec<serde_json::Value> {
+        use db::models::topsi_user_settings::{TopsiUserSettings, classify_tool_risk, ToolRisk};
+
+        // Load user confirmation settings once per batch
+        let user_settings = if let Some(pool) = &self.db {
+            Some(TopsiUserSettings::get_or_default(pool, &user_context.user_id).await)
+        } else {
+            None
+        };
+
         let mut results = Vec::new();
 
         for call in calls {
@@ -853,6 +903,26 @@ impl TopsiAgent {
                 call.name,
                 call.arguments
             );
+
+            // ── Confirmation gate ────────────────────────────────────────
+            if let Some(ref settings) = user_settings {
+                let risk = classify_tool_risk(&call.name);
+                if risk != ToolRisk::Green && settings.requires_confirmation(&call.name) {
+                    let action_desc = describe_tool_action(&call.name, &call.arguments);
+                    results.push(serde_json::json!({
+                        "pending_confirmation": true,
+                        "tool_name": call.name,
+                        "arguments": call.arguments,
+                        "risk_level": format!("{:?}", risk),
+                        "action": action_desc,
+                        "message": format!(
+                            "This action requires confirmation: {}. Please confirm to proceed.",
+                            action_desc
+                        )
+                    }));
+                    continue;
+                }
+            }
 
             let result = match call.name.as_str() {
                 // ── Topology tools (stay in agent) ──────────────────────────
@@ -877,6 +947,7 @@ impl TopsiAgent {
                 "list_projects" | "create_project" | "update_project" | "list_organizations"
                 | "get_project_detail" | "create_task" | "start_task_execution"
                 | "get_task_status" | "update_task" | "list_tasks"
+                | "delete_task" | "bulk_update_tasks"
                 | "list_crm_contacts" | "list_crm_deals" | "list_crm_pipelines"
                 | "create_crm_contact" | "create_crm_deal" | "update_crm_deal"
                 | "list_workflow_definitions" | "get_workflow_definition"
@@ -895,6 +966,8 @@ impl TopsiAgent {
                             "get_task_status" => pds.get_task_status(&call.arguments, scope).await,
                             "update_task" => pds.update_task(&call.arguments, user_context, scope).await,
                             "list_tasks" => pds.list_tasks(&call.arguments, user_context, scope).await,
+                            "delete_task" => pds.delete_task(&call.arguments, user_context, scope).await,
+                            "bulk_update_tasks" => pds.bulk_update_tasks(&call.arguments, user_context, scope).await,
                             "list_crm_contacts" => pds.list_crm_contacts(&call.arguments, user_context, scope).await,
                             "list_crm_deals" => pds.list_crm_deals(&call.arguments, user_context, scope).await,
                             "list_crm_pipelines" => pds.list_crm_pipelines(&call.arguments, user_context, scope).await,

@@ -418,6 +418,54 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        // ==================== DESTRUCTIVE / BULK TOOLS ====================
+        json!({
+            "type": "function",
+            "function": {
+                "name": "delete_task",
+                "description": "Delete a task permanently. This is destructive — it cannot be undone. Consider cancelling instead (update_task with status='cancelled').",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "UUID of the task to delete"
+                        }
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "bulk_update_tasks",
+                "description": "Update multiple tasks at once with the same field values. Useful for batch status changes, priority updates, or reassignments.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_ids": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Array of task UUIDs to update (max 100)"
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "New status for all tasks: 'todo', 'in_progress', 'done', 'cancelled'"
+                        },
+                        "priority": {
+                            "type": "string",
+                            "description": "New priority: 'low', 'medium', 'high', 'critical'"
+                        },
+                        "assigned_agent": {
+                            "type": "string",
+                            "description": "Agent name to assign all tasks to"
+                        }
+                    },
+                    "required": ["task_ids"]
+                }
+            }
+        }),
         // Web access tools
         json!({
             "type": "function",
