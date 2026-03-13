@@ -125,6 +125,9 @@ You HAVE full internet access. NEVER say you can't browse URLs or search the web
 - `get_workflow_run_status` - Get detailed status of a workflow run including staged record counts. Requires run_id.
 - `review_staged_data` - Show staged CRM/task records pending review. Requires run_id or organization_id.
 - `approve_staged_records` - Approve valid staged records and reject duplicates for a workflow run. Requires run_id.
+- `create_crm_contact` - Create a CRM contact. Requires organization_id. Optional: first_name, last_name, email, phone, company_name, job_title, linkedin_url, lifecycle_stage.
+- `create_crm_deal` - Create a CRM deal. Requires organization_id and name. Optional: amount, currency, pipeline_id, stage_id, contact_id, description, expected_close_date.
+- `update_crm_deal` - Update a CRM deal. Requires deal_id. Optional: name, amount, currency, stage_id, description, expected_close_date, lost_reason, win_reason.
 - `build_workflow` - Delegate to the Workflow Builder specialist to create or modify a workflow. Provide user_request (what they want) and context (data you've gathered about their org, schemas, existing workflows). The specialist handles node graph generation.
 
 ### Communication
@@ -874,6 +877,9 @@ impl TopsiAgent {
                 "get_workflow_run_status" => self.tool_get_workflow_run_status(&call.arguments, scope).await,
                 "review_staged_data" => self.tool_review_staged_data(&call.arguments, user_context, scope).await,
                 "approve_staged_records" => self.tool_approve_staged_records(&call.arguments, user_context, scope).await,
+                "create_crm_contact" => self.tool_create_crm_contact(&call.arguments, user_context).await,
+                "create_crm_deal" => self.tool_create_crm_deal(&call.arguments, user_context).await,
+                "update_crm_deal" => self.tool_update_crm_deal(&call.arguments, user_context).await,
                 "build_workflow" => self.tool_build_workflow(&call.arguments, user_context).await,
                 _ => Err(TopsiError::ToolError(format!(
                     "Unknown tool: {}",
@@ -3212,6 +3218,171 @@ impl TopsiAgent {
             "remaining_pending": remaining,
             "message": format!("Approved {} records, rejected {} duplicates. {} records still pending review.", approved, rejected, remaining)
         }))
+    }
+
+    // ── CRM write tools ───────────────────────────────────────────────────────
+
+    /// Create a new CRM contact
+    async fn tool_create_crm_contact(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+    ) -> Result<serde_json::Value> {
+        use db::models::crm_contact::{CrmContact, CreateCrmContact, ContactSource};
+
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let org_id_str = match args.get("organization_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(serde_json::json!({"error": "organization_id is required"})),
+        };
+        let org_uuid = Uuid::parse_str(org_id_str)
+            .map_err(|_| TopsiError::ToolError("Invalid organization_id".to_string()))?;
+
+        self.verify_org_membership(pool, user_context, org_uuid).await?;
+
+        let lifecycle_stage = args.get("lifecycle_stage")
+            .and_then(|v| v.as_str())
+            .and_then(|s| serde_json::from_value(serde_json::json!(s)).ok());
+
+        let contact = CrmContact::create(pool, CreateCrmContact {
+            organization_id: org_uuid,
+            client_id: None,
+            first_name: args.get("first_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            last_name: args.get("last_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            email: args.get("email").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            phone: args.get("phone").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            mobile: None,
+            avatar_url: None,
+            company_name: args.get("company_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            job_title: args.get("job_title").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            department: None,
+            linkedin_url: args.get("linkedin_url").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            twitter_handle: None,
+            website: None,
+            source: Some(ContactSource::Api),
+            lifecycle_stage,
+            tags: None,
+            custom_fields: None,
+            zoho_contact_id: None,
+            gmail_contact_id: None,
+        }).await;
+
+        match contact {
+            Ok(c) => Ok(serde_json::json!({
+                "id": c.id.to_string(),
+                "first_name": c.first_name,
+                "last_name": c.last_name,
+                "email": c.email,
+                "message": "Contact created successfully"
+            })),
+            Err(e) => Ok(serde_json::json!({"error": format!("Failed to create contact: {}", e)})),
+        }
+    }
+
+    /// Create a new CRM deal
+    async fn tool_create_crm_deal(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+    ) -> Result<serde_json::Value> {
+        use db::models::crm_deal::{CrmDeal, CreateCrmDeal};
+
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let org_id_str = match args.get("organization_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(serde_json::json!({"error": "organization_id is required"})),
+        };
+        let org_uuid = Uuid::parse_str(org_id_str)
+            .map_err(|_| TopsiError::ToolError("Invalid organization_id".to_string()))?;
+
+        self.verify_org_membership(pool, user_context, org_uuid).await?;
+
+        let name = match args.get("name").and_then(|v| v.as_str()) {
+            Some(n) => n.to_string(),
+            None => return Ok(serde_json::json!({"error": "name is required"})),
+        };
+
+        let deal = CrmDeal::create(pool, CreateCrmDeal {
+            organization_id: org_uuid,
+            client_id: None,
+            crm_contact_id: args.get("contact_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()),
+            crm_pipeline_id: args.get("pipeline_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()),
+            crm_stage_id: args.get("stage_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()),
+            name,
+            description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            amount: args.get("amount").and_then(|v| v.as_f64()),
+            currency: args.get("currency").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            expected_close_date: args.get("expected_close_date").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            tags: None,
+            custom_fields: None,
+        }).await;
+
+        match deal {
+            Ok(d) => Ok(serde_json::json!({
+                "id": d.id.to_string(),
+                "name": d.name,
+                "amount": d.amount,
+                "message": "Deal created successfully"
+            })),
+            Err(e) => Ok(serde_json::json!({"error": format!("Failed to create deal: {}", e)})),
+        }
+    }
+
+    /// Update an existing CRM deal
+    async fn tool_update_crm_deal(
+        &self,
+        args: &serde_json::Value,
+        user_context: &UserContext,
+    ) -> Result<serde_json::Value> {
+        use db::models::crm_deal::{CrmDeal, UpdateCrmDeal};
+
+        let Some(pool) = &self.db else {
+            return Ok(serde_json::json!({"error": "Database not connected"}));
+        };
+
+        let deal_id_str = match args.get("deal_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return Ok(serde_json::json!({"error": "deal_id is required"})),
+        };
+        let deal_uuid = Uuid::parse_str(deal_id_str)
+            .map_err(|_| TopsiError::ToolError("Invalid deal_id".to_string()))?;
+
+        // Verify access by checking the deal's org membership
+        if !user_context.is_admin {
+            if let Ok(existing) = CrmDeal::find_by_id(pool, deal_uuid).await {
+                if let Some(ref org_id) = existing.organization_id {
+                    self.verify_org_membership(pool, user_context, *org_id).await?;
+                }
+            }
+        }
+
+        let update = UpdateCrmDeal {
+            name: args.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            amount: args.get("amount").and_then(|v| v.as_f64()),
+            currency: args.get("currency").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            crm_stage_id: args.get("stage_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()),
+            description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            expected_close_date: args.get("expected_close_date").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            lost_reason: args.get("lost_reason").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            win_reason: args.get("win_reason").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            ..Default::default()
+        };
+
+        match CrmDeal::update(pool, deal_uuid, update).await {
+            Ok(d) => Ok(serde_json::json!({
+                "id": d.id.to_string(),
+                "name": d.name,
+                "amount": d.amount,
+                "message": "Deal updated successfully"
+            })),
+            Err(e) => Ok(serde_json::json!({"error": format!("Failed to update deal: {}", e)})),
+        }
     }
 
     // ── Workflow builder delegation ─────────────────────────────────────────

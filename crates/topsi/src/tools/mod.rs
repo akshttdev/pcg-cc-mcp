@@ -686,6 +686,73 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        // ── CRM write tools ───────────────────────────────────────────────────────
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_crm_contact",
+                "description": "Create a new CRM contact in an organization.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": { "type": "string", "description": "Organization UUID (required)" },
+                        "first_name": { "type": "string" },
+                        "last_name": { "type": "string" },
+                        "email": { "type": "string" },
+                        "phone": { "type": "string" },
+                        "company_name": { "type": "string" },
+                        "job_title": { "type": "string" },
+                        "linkedin_url": { "type": "string" },
+                        "lifecycle_stage": { "type": "string", "enum": ["subscriber","lead","mql","sql","opportunity","customer","evangelist"] }
+                    },
+                    "required": ["organization_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_crm_deal",
+                "description": "Create a new CRM deal in an organization.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": { "type": "string", "description": "Organization UUID (required)" },
+                        "name": { "type": "string", "description": "Deal name (required)" },
+                        "amount": { "type": "number" },
+                        "currency": { "type": "string", "description": "e.g. USD, EUR" },
+                        "pipeline_id": { "type": "string", "description": "Pipeline UUID" },
+                        "stage_id": { "type": "string", "description": "Stage UUID" },
+                        "contact_id": { "type": "string", "description": "Associated CRM contact UUID" },
+                        "description": { "type": "string" },
+                        "expected_close_date": { "type": "string", "description": "ISO date, e.g. 2026-06-01" }
+                    },
+                    "required": ["organization_id", "name"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "update_crm_deal",
+                "description": "Update fields on an existing CRM deal.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "deal_id": { "type": "string", "description": "Deal UUID (required)" },
+                        "name": { "type": "string" },
+                        "amount": { "type": "number" },
+                        "currency": { "type": "string" },
+                        "stage_id": { "type": "string" },
+                        "description": { "type": "string" },
+                        "expected_close_date": { "type": "string" },
+                        "lost_reason": { "type": "string" },
+                        "win_reason": { "type": "string" }
+                    },
+                    "required": ["deal_id"]
+                }
+            }
+        }),
         // ── Workflow builder delegation ──────────────────────────────────────────
         json!({
             "type": "function",
