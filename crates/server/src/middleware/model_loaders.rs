@@ -9,6 +9,7 @@ use db::models::{
     task_template::TaskTemplate,
 };
 use deployment::Deployment;
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
@@ -77,9 +78,15 @@ pub async fn load_project_middleware(
     Ok(next.run(request).await)
 }
 
+/// Helper struct for extracting task_id from routes that may have additional path params.
+#[derive(Deserialize)]
+pub(crate) struct TaskIdPath {
+    task_id: Uuid,
+}
+
 pub async fn load_task_middleware(
     State(deployment): State<DeploymentImpl>,
-    Path(task_id): Path<Uuid>,
+    Path(TaskIdPath { task_id }): Path<TaskIdPath>,
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
