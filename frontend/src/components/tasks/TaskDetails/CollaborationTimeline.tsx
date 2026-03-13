@@ -337,7 +337,7 @@ export function CollaborationTimeline({
 
     // Sort by timestamp (newest first for display)
     return items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }, [events]);
+  }, [events, chatMessages]);
 
   // Get unique collaborators for summary
   const collaboratorSummary = useMemo(() => {

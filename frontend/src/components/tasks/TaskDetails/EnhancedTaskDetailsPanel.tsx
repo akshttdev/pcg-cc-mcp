@@ -182,7 +182,8 @@ export function EnhancedTaskDetailsPanel({
       .then((agent) => {
         setExecutingAgentId(agent.id);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error(`Failed to look up agent "${agentName}":`, err);
       });
   }, [task.assigned_agent, executingAgentId]);
 
@@ -197,7 +198,8 @@ export function EnhancedTaskDetailsPanel({
           setChatMessages(result.messages);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Failed to fetch conversation history:', err);
       });
   }, [executingAgentId, task.id]);
 
@@ -485,7 +487,7 @@ export function EnhancedTaskDetailsPanel({
         throw error;
       }
     },
-    [task, projectId, executingAgentName]
+    [task, projectId, executingAgentName, executingAgentId]
   );
 
   // Generate initial prompt for assigned agent
