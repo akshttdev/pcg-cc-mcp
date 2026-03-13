@@ -9,6 +9,7 @@ import { CustomPropertiesPanel } from '@/components/custom-properties/CustomProp
 import { TaskCommentThread } from './TaskCommentThread';
 import { ActivityTimeline } from './ActivityTimeline';
 import { ApprovalPanel } from './ApprovalPanel';
+import { AgentWatcherPanel } from './AgentWatcherPanel';
 import type {
   AgentFlowEvent,
   ArtifactType,
@@ -509,6 +510,11 @@ export function TaskDetailsPanel({
                               <ApprovalPanel task={task} />
                             </div>
                           )}
+
+                          {/* Agent Watchers */}
+                          <div className="p-3">
+                            <AgentWatcherPanel taskId={task.id} />
+                          </div>
 
                           {/* Activity Timeline (new collaboration feature) */}
                           <div className="p-3">

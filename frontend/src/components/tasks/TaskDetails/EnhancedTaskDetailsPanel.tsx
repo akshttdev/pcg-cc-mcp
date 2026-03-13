@@ -30,6 +30,7 @@ import type { TaskCardMode } from '../EnhancedTaskCard';
 import { EnhancedTaskHeader } from './EnhancedTaskHeader';
 import { ArtifactGallery } from './ArtifactGallery';
 import { CollaborationTimeline } from './CollaborationTimeline';
+import { AgentWatcherPanel } from '../AgentWatcherPanel';
 import { EnhancedWorkflowView } from './EnhancedWorkflowView';
 import { ActivityTimeline } from '../ActivityTimeline';
 import { agentFlowsApi, taskArtifactsApi, agentsApi, artifactContentApi } from '@/lib/api';
@@ -798,6 +799,11 @@ export function EnhancedTaskDetailsPanel({
                     className="h-64 border rounded-lg overflow-hidden"
                   />
                 )}
+              </div>
+
+              {/* Agent Watchers */}
+              <div>
+                <AgentWatcherPanel taskId={task.id} />
               </div>
 
               {/* Recent Activity */}
