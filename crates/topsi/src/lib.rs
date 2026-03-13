@@ -17,6 +17,7 @@ pub mod agent;
 pub mod config;
 pub mod context;
 pub mod meeting;
+pub mod platform_data;
 pub mod prioritization;
 pub mod topology;
 pub mod tools;
@@ -26,6 +27,7 @@ pub use agent::{
     TopsiAgent, TopsiRequest, TopsiRequestType, TaskExecutionBridge,
     access_control::{AccessControl, AccessScope, UserContext, ProjectAccess, ProjectRole},
 };
+pub use platform_data::PlatformDataService;
 pub use config::TopsiConfig;
 pub use context::TopologyContext;
 pub use topology::{
