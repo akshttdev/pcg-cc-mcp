@@ -24,6 +24,9 @@ const activityIcons: Record<ActivityType, string> = {
   dependency_removed: '🔓',
   time_logged: '⏱️',
   file_attached: '📎',
+  agent_tool_call: '🤖',
+  agent_workflow_triggered: '⚙️',
+  agent_workflow_completed: '✅',
 };
 
 const activityColors: Record<ActivityType, string> = {
@@ -38,6 +41,9 @@ const activityColors: Record<ActivityType, string> = {
   dependency_removed: 'bg-pink-500',
   time_logged: 'bg-teal-500',
   file_attached: 'bg-gray-500',
+  agent_tool_call: 'bg-cyan-500',
+  agent_workflow_triggered: 'bg-cyan-500',
+  agent_workflow_completed: 'bg-cyan-500',
 };
 
 export function ActivityFeed({ taskId, limit = 50, className }: ActivityFeedProps) {
