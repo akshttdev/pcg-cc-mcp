@@ -93,6 +93,7 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     defaultParameters: {
       prompt_template: '',
       output_schema: '',
+      output_mode: 'auto',
     },
   },
   {
@@ -104,6 +105,7 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     defaultParameters: {
       prompt_template: '',
       output_schema: '',
+      output_mode: 'auto',
     },
   },
   {
@@ -115,6 +117,7 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     defaultParameters: {
       prompt_template: '',
       output_schema: '',
+      output_mode: 'auto',
     },
   },
   {
@@ -1662,6 +1665,33 @@ function NodeConfigPanel({
                     placeholder="e.g. companies[], contacts[], opportunities[]"
                     className="h-8 text-sm mt-1"
                   />
+                </div>
+                <div>
+                  <Label className="text-xs">Output Mode</Label>
+                  <div className="flex gap-1 mt-1">
+                    {([
+                      { value: 'auto', label: 'Auto', desc: 'JSON if schema set' },
+                      { value: 'structured', label: 'Structured', desc: 'Always JSON' },
+                      { value: 'text', label: 'Text', desc: 'Raw response' },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => onUpdateParameter('output_mode', opt.value)}
+                        className={cn(
+                          'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-all border',
+                          (node.parameters.output_mode || 'auto') === opt.value
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-transparent border-border/60 hover:bg-accent text-muted-foreground'
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Auto uses JSON when output schema is defined, text otherwise.
+                  </p>
                 </div>
               </div>
             )}
