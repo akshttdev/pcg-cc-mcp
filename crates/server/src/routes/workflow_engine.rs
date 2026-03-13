@@ -21,6 +21,10 @@ use db::models::execution_artifact::{ArtifactType, CreateExecutionArtifact, Exec
 use db::models::workflow_run::{WorkflowRun, UpdateWorkflowRunOnComplete};
 use db::models::workflow_staging::{WorkflowStagingRecord, CreateStagingRecord};
 
+/// Maximum number of records that can be auto-approved in a single workflow run.
+/// Acts as a safety guard against runaway auto-approve on large batches.
+pub const MAX_AUTO_APPROVE_RECORDS: i64 = 50;
+
 use services::services::workflow_execution::{
     WorkflowDefinition, WorkflowNode,
     execute_node_with_llm, execute_action_node,
@@ -60,6 +64,9 @@ pub struct ExecutionOptions {
     pub create_staging: bool,
     /// Extra metadata to add to artifacts (e.g. trigger_id)
     pub artifact_metadata_extra: Option<Value>,
+    /// If true, auto-approve valid staged records after execution completes.
+    /// Only effective when `create_staging` is also true.
+    pub auto_approve: bool,
 }
 
 impl Default for ExecutionOptions {
@@ -73,6 +80,7 @@ impl Default for ExecutionOptions {
             create_artifacts: true,
             create_staging: true,
             artifact_metadata_extra: None,
+            auto_approve: false,
         }
     }
 }
@@ -448,4 +456,135 @@ pub fn check_for_llm_errors(results: &[NodeResult]) -> Vec<String> {
                 })
         })
         .collect()
+}
+
+/// Auto-approve, commit, and post-process staged records for a workflow run.
+///
+/// This encapsulates the full auto-approve pipeline:
+/// 1. Approve non-duplicate records with confidence >= 0.7 (via `auto_approve_valid`)
+/// 2. Reject duplicate records
+/// 3. Commit approved records in dependency order (companies → contacts → deals → tasks)
+/// 4. Post-commit: link contacts to companies by matching `company_name`
+/// 5. Post-commit: auto-start agent execution for tasks with `agent_id`
+///
+/// Respects `MAX_AUTO_APPROVE_RECORDS` as a safety guard.
+pub async fn auto_approve_staged_records(
+    pool: &SqlitePool,
+    workflow_run_id: Uuid,
+    staged_records: i64,
+    deployment: &crate::DeploymentImpl,
+    trigger_label: &str,
+) {
+    if staged_records == 0 {
+        return;
+    }
+
+    if staged_records > MAX_AUTO_APPROVE_RECORDS {
+        tracing::warn!(
+            "[WORKFLOW] Skipping auto-approve for {trigger_label}: {staged_records} records exceeds limit of {MAX_AUTO_APPROVE_RECORDS}"
+        );
+        return;
+    }
+
+    tracing::info!(
+        "[WORKFLOW] auto_approve enabled for {trigger_label} — approving valid records"
+    );
+
+    // Step 1: auto-approve non-duplicate records with confidence >= 0.7
+    match WorkflowStagingRecord::auto_approve_valid(pool, workflow_run_id).await {
+        Ok(approved) => {
+            tracing::info!(
+                "[WORKFLOW] Auto-approved {} record(s) for workflow run {}",
+                approved, workflow_run_id
+            );
+
+            // Step 2: reject duplicates
+            if let Err(e) = WorkflowStagingRecord::reject_duplicates(pool, workflow_run_id).await {
+                tracing::warn!("[WORKFLOW] Failed to reject duplicates: {e}");
+            }
+
+            // Step 3: commit approved records
+            if approved > 0 {
+                let records = WorkflowStagingRecord::find_by_run(pool, workflow_run_id)
+                    .await
+                    .unwrap_or_default();
+                let mut approved_records: Vec<_> = records.into_iter()
+                    .filter(|r| r.status == "approved")
+                    .collect();
+
+                // Sort: companies first, then contacts, then deals, then tasks
+                approved_records.sort_by_key(|r| match r.target_type.as_str() {
+                    "company" => 0,
+                    "crm_contact" => 1,
+                    "crm_deal" => 2,
+                    "task" => 3,
+                    _ => 4,
+                });
+
+                let mut committed = 0u64;
+                let mut commit_results: Vec<(Uuid, String, Option<Uuid>)> = Vec::new();
+                for record in &approved_records {
+                    match super::workflow_staging::commit_record_internal(pool, record).await {
+                        Ok(created_id) => {
+                            committed += 1;
+                            commit_results.push((record.id, record.target_type.clone(), Some(created_id)));
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "[WORKFLOW] Auto-commit failed for record {}: {e}",
+                                record.id
+                            );
+                            commit_results.push((record.id, record.target_type.clone(), None));
+                        }
+                    }
+                }
+
+                tracing::info!(
+                    "[WORKFLOW] Auto-committed {}/{} records for {trigger_label}",
+                    committed, approved
+                );
+
+                // Post-commit: link contacts to companies by matching company_name
+                let org_id = approved_records.first().and_then(|r| r.organization_id);
+                if let Some(org_id) = org_id {
+                    for (_, target_type, created_id) in &commit_results {
+                        if target_type == "crm_contact" {
+                            if let Some(contact_id) = created_id {
+                                if let Ok(contact) = db::models::crm_contact::CrmContact::find_by_id(pool, *contact_id).await {
+                                    if let Some(company_name) = &contact.company_name {
+                                        if let Ok(Some(company)) = db::models::company::Company::find_by_name_and_org(pool, company_name, org_id).await {
+                                            let _ = super::workflow_staging::store_company_id_in_custom_fields(pool, contact.id, company.id).await;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Post-commit: auto-start agent execution for tasks with agent_id
+                for (idx, (_, target_type, created_id)) in commit_results.iter().enumerate() {
+                    if target_type == "task" {
+                        if let Some(task_id) = created_id {
+                            if let Ok(data) = serde_json::from_str::<Value>(&approved_records[idx].record_data) {
+                                if data["agent_id"].as_str().is_some() {
+                                    let pool = pool.clone();
+                                    let dep = deployment.clone();
+                                    let tid = *task_id;
+                                    tokio::spawn(async move {
+                                        if let Err(e) = super::workflow_staging::auto_start_agent_execution(&pool, &dep, tid).await {
+                                            tracing::warn!("Auto-execute for task {tid} failed: {e}");
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("[WORKFLOW] Auto-approve failed for workflow run {}: {e}", workflow_run_id);
+        }
+    }
 }
