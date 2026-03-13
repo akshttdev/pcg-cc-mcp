@@ -1,5 +1,4 @@
 import { Network } from 'lucide-react';
-import { useActivityStore } from '@/stores/useActivityStore';
 import { ActivityFeed } from '@/components/activity/ActivityFeed';
 import type { ActivityType } from '@/types/activity';
 
@@ -10,12 +9,6 @@ const AGENT_ACTIVITY_TYPES: ActivityType[] = [
 ];
 
 export function TopsiActivityPage() {
-  const { getFilteredActivities } = useActivityStore();
-
-  const agentActivities = getFilteredActivities({
-    types: AGENT_ACTIVITY_TYPES,
-  });
-
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
@@ -30,17 +23,7 @@ export function TopsiActivityPage() {
         </div>
       </div>
 
-      {agentActivities.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Network className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p>No agent activity yet</p>
-          <p className="text-sm mt-1">
-            Activity will appear here when Topsi executes tool calls or triggers workflows.
-          </p>
-        </div>
-      ) : (
-        <ActivityFeed filterTypes={AGENT_ACTIVITY_TYPES} limit={200} />
-      )}
+      <ActivityFeed filterTypes={AGENT_ACTIVITY_TYPES} limit={200} />
     </div>
   );
 }

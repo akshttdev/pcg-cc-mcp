@@ -50,7 +50,7 @@ const activityColors: Record<ActivityType, string> = {
 export function ActivityFeed({ taskId, limit = 50, filterTypes, className }: ActivityFeedProps) {
   const { getActivitiesForTask, getRecentActivities, getFilteredActivities } = useActivityStore();
 
-  let activities = filterTypes
+  const activities = filterTypes
     ? getFilteredActivities({ types: filterTypes, taskIds: taskId ? [taskId] : undefined }).slice(0, limit)
     : taskId
       ? getActivitiesForTask(taskId)

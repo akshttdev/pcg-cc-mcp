@@ -148,6 +148,7 @@ export function TopsiWidget({ className }: TopsiWidgetProps) {
       const res = await fetch(resolveApiUrl('/api/topsi/initialize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ activateImmediately: true }),
       });
       if (res.ok) {
