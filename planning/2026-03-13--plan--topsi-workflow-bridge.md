@@ -1,6 +1,6 @@
 # Topsi–Workflow Bridge Implementation Plan
 
-**Date:** 2026-03-13 (updated after Phase 0+1 completion)
+**Date:** 2026-03-13 (updated after Phase 4 completion + auto-approve encapsulation)
 **Branch:** `feature/topsi-workflow-bridge`
 **PR:** #22
 **Depends on:** PR #21 (LLM dogfooding infrastructure)
@@ -109,7 +109,9 @@ System prompt also adapts: structured mode gets extraction-focused prompt, text 
 ## Phase 2: Service Extraction + Topsi Triggers — DONE ✅
 
 ### 2A: Extract unified execution engine ✅
-Extracted `WorkflowExecutionResult`, `ExecutionOptions`, `execute_workflow_nodes()`, `finalize_workflow_run()`, and `check_for_llm_errors()` into `crates/server/src/routes/workflow_engine.rs`. This shared engine is used by run_workflow, preview_workflow, fire_triggers, and schedule triggers.
+Extracted `WorkflowExecutionResult`, `ExecutionOptions`, `execute_workflow_nodes()`, `finalize_workflow_run()`, `check_for_llm_errors()`, and `auto_approve_staged_records()` into `crates/server/src/routes/workflow_engine.rs`. This shared engine is used by run_workflow, preview_workflow, fire_triggers, and schedule triggers.
+
+**Auto-approve encapsulation (post-Phase 2F):** Moved ~105-line inline auto-approve block from `fire_triggers_for_data_source()` into `auto_approve_staged_records()` in the engine. Added `auto_approve: bool` field to `ExecutionOptions` and `MAX_AUTO_APPROVE_RECORDS = 50` rate limit guard. The full pipeline (approve valid → reject duplicates → commit in dependency order → link contacts to companies → auto-start agent execution) is now reusable by any caller.
 
 ### 2B: Topsi workflow trigger/review tools ✅
 Added 5 tools: `list_workflow_runs`, `get_workflow_run_status`, `review_staged_data`, `approve_staged_records`, and `build_workflow` (specialist delegation).
@@ -233,16 +235,15 @@ Consolidated into single `build_workflow` tool with `action: "create"|"modify"` 
 ## Updated Implementation Order
 
 ```
-Phase 0 (WorkflowLLMService)           ── DONE ✅
-Phase 1 (Topsi reads + 1B gaps)        ── DONE ✅
-Phase 2 (Triggers, builder, CRM write, ── DONE ✅
+Phase 0 (WorkflowLLMService)              ── DONE ✅
+Phase 1 (Topsi reads + 1B gaps)           ── DONE ✅
+Phase 2 (Triggers, builder, CRM write,    ── DONE ✅
          PlatformDataService extract,
          full service extraction)
-Phase 3 (Confirmation system)          ── DONE ✅
-    ↓
-Phase 2F (Full service extraction)       ── DONE ✅
-    ↓
-Phase 4 (Topsi builds workflows)         ── DONE ✅ (build_workflow tool + specialist)
+Phase 3 (Confirmation system)             ── DONE ✅
+Phase 2F (Full service extraction)        ── DONE ✅
+Phase 4 (Topsi builds workflows)          ── DONE ✅ (build_workflow tool + specialist)
+Auto-approve encapsulation                ── DONE ✅ (post-Phase 2F cleanup)
     ↓
 Phase 5 (Bidirectional UI + admin settings)
 ```
@@ -268,7 +269,7 @@ Phase 5 (Bidirectional UI + admin settings)
 | File | Role |
 |------|------|
 | `crates/services/src/services/workflow_llm.rs` | WorkflowLLMService (Phase 0 — DONE) |
-| `crates/server/src/routes/data_source_workflows.rs` | Workflow engine (~4070 lines, to be extracted in Phase 2A) |
+| `crates/server/src/routes/data_source_workflows.rs` | Thin route handlers (~1250 lines) |
 | `crates/server/src/routes/pcg_router.rs` | Model registry, direct API route (KEEP) |
 | `crates/db/src/models/pcg_router_model.rs` | Model registry DB model |
 | `crates/topsi/src/tools/mod.rs` | Topsi tool schemas (24 tools + respond_to_user) |
@@ -276,7 +277,7 @@ Phase 5 (Bidirectional UI + admin settings)
 | `crates/topsi/src/platform_data.rs` | PlatformDataService — 24 CRUD tools (~1970 lines) |
 | `crates/topsi/src/workflow_builder.rs` | Workflow Builder specialist agent |
 | `crates/db/src/models/topsi_user_settings.rs` | Per-user confirmation settings model |
-| `crates/server/src/routes/workflow_engine.rs` | Shared workflow execution engine |
+| `crates/server/src/routes/workflow_engine.rs` | Shared workflow execution engine + auto-approve |
 | `crates/topsi/src/agent/access_control.rs` | AccessScope (project-only, needs org extension) |
 | `crates/topsi/src/config.rs` | TopsiConfig with autonomy_level + system_prompt |
 | `crates/db/src/models/system_settings.rs` | Key-value settings store |
