@@ -106,7 +106,7 @@ System prompt also adapts: structured mode gets extraction-focused prompt, text 
 
 ---
 
-## Phase 2: Service Extraction + Topsi Triggers — PARTIAL ✅
+## Phase 2: Service Extraction + Topsi Triggers — DONE ✅
 
 ### 2A: Extract unified execution engine ✅
 Extracted `WorkflowExecutionResult`, `ExecutionOptions`, `execute_workflow_nodes()`, `finalize_workflow_run()`, and `check_for_llm_errors()` into `crates/server/src/routes/workflow_engine.rs`. This shared engine is used by run_workflow, preview_workflow, fire_triggers, and schedule triggers.
@@ -123,16 +123,8 @@ Added `create_crm_contact`, `create_crm_deal`, `update_crm_deal` tools.
 ### 2E: Platform Data Service extraction ✅
 Extracted all 22 database CRUD tools from `agent.rs` into `crates/topsi/src/platform_data.rs` (PlatformDataService). Agent.rs reduced from ~3420 to ~2382 lines. PlatformDataService is reusable by any agent.
 
-### 2F: Full service extraction — NOT YET STARTED
-**Full extraction** of workflow execution logic from `data_source_workflows.rs` (~2000+ lines) into `crates/services/src/services/workflow_execution.rs`.
-
-**What moves:**
-- `execute_node_with_llm()` and all node execution logic
-- Topological sort / dependency resolution
-- Staging record creation (`WorkflowStagingRecord`)
-- Commit logic (staging → CRM/task creation)
-- Mock/fallback extraction
-- Schema prompt generation (`build_schema_prompt_text()`)
+### 2F: Full service extraction ✅
+Extracted ~2200 lines of workflow execution logic from `data_source_workflows.rs` into `crates/services/src/services/workflow_execution.rs`. Includes text extraction, mock LLM generation, record helpers, dedup checks, schema validation, action node execution, and LLM node execution. Route handler reduced from 3523 to 1337 lines (thin handlers only). `workflow_engine.rs` imports directly from the service.
 
 **What stays in route handler:**
 - HTTP endpoint handlers (thin wrappers)
@@ -243,11 +235,12 @@ Tools: `create_workflow`, `modify_workflow`.
 ```
 Phase 0 (WorkflowLLMService)           ── DONE ✅
 Phase 1 (Topsi reads + 1B gaps)        ── DONE ✅
-Phase 2 (Triggers, builder, CRM write, ── DONE ✅ (partial: 2F service extraction pending)
-         PlatformDataService extract)
+Phase 2 (Triggers, builder, CRM write, ── DONE ✅
+         PlatformDataService extract,
+         full service extraction)
 Phase 3 (Confirmation system)          ── DONE ✅
     ↓
-Phase 2F (Full service extraction ~2000 lines from data_source_workflows.rs)
+Phase 2F (Full service extraction)       ── DONE ✅
     ↓
 Phase 4 (Topsi builds workflows — NL → node graph)
     ↓
