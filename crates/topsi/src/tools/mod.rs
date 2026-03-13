@@ -418,6 +418,54 @@ pub fn get_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        // ==================== DESTRUCTIVE / BULK TOOLS ====================
+        json!({
+            "type": "function",
+            "function": {
+                "name": "delete_task",
+                "description": "Delete a task permanently. This is destructive — it cannot be undone. Consider cancelling instead (update_task with status='cancelled').",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "UUID of the task to delete"
+                        }
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "bulk_update_tasks",
+                "description": "Update multiple tasks at once with the same field values. Useful for batch status changes, priority updates, or reassignments.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_ids": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Array of task UUIDs to update (max 100)"
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "New status for all tasks: 'todo', 'in_progress', 'done', 'cancelled'"
+                        },
+                        "priority": {
+                            "type": "string",
+                            "description": "New priority: 'low', 'medium', 'high', 'critical'"
+                        },
+                        "assigned_agent": {
+                            "type": "string",
+                            "description": "Agent name to assign all tasks to"
+                        }
+                    },
+                    "required": ["task_ids"]
+                }
+            }
+        }),
         // Web access tools
         json!({
             "type": "function",
@@ -454,6 +502,337 @@ pub fn get_tool_schemas() -> Vec<Value> {
                         }
                     },
                     "required": ["url"]
+                }
+            }
+        }),
+        // ==================== CRM & WORKFLOW TOOLS ====================
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_project_detail",
+                "description": "Get detailed project info including task counts, recent activity, organization, and client info.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {
+                            "type": "string",
+                            "description": "UUID of the project to get details for"
+                        }
+                    },
+                    "required": ["project_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_crm_contacts",
+                "description": "List CRM contacts for an organization. Returns names, emails, companies, lifecycle stage, lead score.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": {
+                            "type": "string",
+                            "description": "UUID of the organization to list contacts for"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max number of contacts to return (default: 50)"
+                        },
+                        "lifecycle_stage": {
+                            "type": "string",
+                            "description": "Filter by lifecycle stage: 'subscriber', 'lead', 'mql', 'sql', 'opportunity', 'customer'"
+                        },
+                        "search_query": {
+                            "type": "string",
+                            "description": "Search by name, email, or company name"
+                        }
+                    },
+                    "required": ["organization_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_crm_deals",
+                "description": "List CRM deals for an organization or pipeline. Returns deal names, amounts, stages, contacts.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": {
+                            "type": "string",
+                            "description": "UUID of the organization to list deals for"
+                        },
+                        "pipeline_id": {
+                            "type": "string",
+                            "description": "UUID of a specific pipeline to list deals for"
+                        },
+                        "stage_id": {
+                            "type": "string",
+                            "description": "UUID of a specific stage to list deals for"
+                        }
+                    }
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_crm_pipelines",
+                "description": "List CRM pipelines and their stages for an organization.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": {
+                            "type": "string",
+                            "description": "UUID of the organization to list pipelines for"
+                        },
+                        "pipeline_type": {
+                            "type": "string",
+                            "description": "Filter by pipeline type: 'sales', 'clients', 'conferences', 'delivery', 'custom'"
+                        }
+                    },
+                    "required": ["organization_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_workflow_definitions",
+                "description": "List saved workflow definitions. Returns names, descriptions, owner info.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_workflow_definition",
+                "description": "Get a full workflow definition including all nodes and connections.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "UUID of the workflow definition to retrieve"
+                        }
+                    },
+                    "required": ["workflow_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "search_entities",
+                "description": "Search across projects, contacts, deals, and tasks by keyword.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search keyword to match against entity names, titles, emails, descriptions"
+                        },
+                        "entity_types": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Entity types to search: 'projects', 'contacts', 'deals', 'tasks'"
+                        },
+                        "organization_id": {
+                            "type": "string",
+                            "description": "Optional org UUID to scope contacts and deals search"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results per entity type (default: 20)"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
+        // ── Workflow execution tools ──────────────────────────────────────────
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_workflow_runs",
+                "description": "List recent workflow execution runs. Filter by workflow_id or organization_id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "Filter runs by workflow definition ID"
+                        },
+                        "organization_id": {
+                            "type": "string",
+                            "description": "Filter runs by organization UUID"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results (default: 20)"
+                        }
+                    }
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "get_workflow_run_status",
+                "description": "Get status and details of a specific workflow run, including staged record counts.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "run_id": {
+                            "type": "string",
+                            "description": "UUID of the workflow run"
+                        }
+                    },
+                    "required": ["run_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "review_staged_data",
+                "description": "Show staged CRM/task records pending review for a workflow run or organization.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "run_id": {
+                            "type": "string",
+                            "description": "UUID of the workflow run to review staged records for"
+                        },
+                        "organization_id": {
+                            "type": "string",
+                            "description": "UUID of the organization to show all pending staged records"
+                        }
+                    }
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "approve_staged_records",
+                "description": "Approve staged records from a workflow run. Approves valid non-duplicate records and rejects duplicates.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "run_id": {
+                            "type": "string",
+                            "description": "UUID of the workflow run whose records to approve"
+                        }
+                    },
+                    "required": ["run_id"]
+                }
+            }
+        }),
+        // ── CRM write tools ───────────────────────────────────────────────────────
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_crm_contact",
+                "description": "Create a new CRM contact in an organization.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": { "type": "string", "description": "Organization UUID (required)" },
+                        "first_name": { "type": "string" },
+                        "last_name": { "type": "string" },
+                        "email": { "type": "string" },
+                        "phone": { "type": "string" },
+                        "company_name": { "type": "string" },
+                        "job_title": { "type": "string" },
+                        "linkedin_url": { "type": "string" },
+                        "lifecycle_stage": { "type": "string", "enum": ["subscriber","lead","mql","sql","opportunity","customer","evangelist"] }
+                    },
+                    "required": ["organization_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_crm_deal",
+                "description": "Create a new CRM deal in an organization.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "organization_id": { "type": "string", "description": "Organization UUID (required)" },
+                        "name": { "type": "string", "description": "Deal name (required)" },
+                        "amount": { "type": "number" },
+                        "currency": { "type": "string", "description": "e.g. USD, EUR" },
+                        "pipeline_id": { "type": "string", "description": "Pipeline UUID" },
+                        "stage_id": { "type": "string", "description": "Stage UUID" },
+                        "contact_id": { "type": "string", "description": "Associated CRM contact UUID" },
+                        "description": { "type": "string" },
+                        "expected_close_date": { "type": "string", "description": "ISO date, e.g. 2026-06-01" }
+                    },
+                    "required": ["organization_id", "name"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "update_crm_deal",
+                "description": "Update fields on an existing CRM deal.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "deal_id": { "type": "string", "description": "Deal UUID (required)" },
+                        "name": { "type": "string" },
+                        "amount": { "type": "number" },
+                        "currency": { "type": "string" },
+                        "stage_id": { "type": "string" },
+                        "description": { "type": "string" },
+                        "expected_close_date": { "type": "string" },
+                        "lost_reason": { "type": "string" },
+                        "win_reason": { "type": "string" }
+                    },
+                    "required": ["deal_id"]
+                }
+            }
+        }),
+        // ── Workflow builder delegation ──────────────────────────────────────────
+        json!({
+            "type": "function",
+            "function": {
+                "name": "build_workflow",
+                "description": "Delegate workflow creation or modification to the Workflow Builder specialist agent. Provide the user's request and any context you've gathered (existing workflows, CRM schema info, project details). The specialist will generate the node graph and save it. Use this when the user wants to create a new workflow or modify an existing one.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["create", "modify"],
+                            "description": "'create' for new workflows, 'modify' to update existing"
+                        },
+                        "user_request": {
+                            "type": "string",
+                            "description": "The user's natural language description of what they want the workflow to do"
+                        },
+                        "context": {
+                            "type": "string",
+                            "description": "Any context you've gathered: existing workflow definitions, CRM data shapes, project info, org details. Include anything that helps the builder make good decisions."
+                        },
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "For 'modify' action: the ID of the existing workflow to update"
+                        },
+                        "owner_id": {
+                            "type": "string",
+                            "description": "Organization UUID that should own this workflow"
+                        }
+                    },
+                    "required": ["action", "user_request"]
                 }
             }
         }),

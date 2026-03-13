@@ -39,3 +39,5 @@ pub mod editron;
 pub mod recap_assembly;
 pub mod user_onboarding;
 pub mod qa_review;
+pub mod workflow_execution;
+pub mod workflow_llm;

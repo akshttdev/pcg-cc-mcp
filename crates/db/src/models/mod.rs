@@ -126,6 +126,7 @@ pub mod workflow_run;
 pub mod workflow_staging;
 pub mod workflow_trigger;
 pub mod system_settings;
+pub mod topsi_user_settings;
 
 #[cfg(test)]
 pub(crate) mod test_utils;
