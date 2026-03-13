@@ -1060,6 +1060,9 @@ pub async fn add_agent_watcher(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+/// Path extractor for `/tasks/{task_id}/agent-watchers/{agent_id}`.
+/// `task_id` is required by the route pattern and consumed by `load_task_middleware`,
+/// but unused in the handler itself — the task is already available via `Extension<Task>`.
 #[derive(Deserialize)]
 struct AgentWatcherPath {
     #[allow(dead_code)]

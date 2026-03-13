@@ -72,6 +72,8 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
     [watchers]
   );
 
+  // Client-side filtering is fine for typical agent counts (<50).
+  // If the agent list grows large, consider server-side search.
   const filteredAgents = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return availableAgents.filter(
@@ -171,7 +173,10 @@ export function AgentWatcherPanel({ taskId }: AgentWatcherPanelProps) {
             return (
               <div
                 key={w.agent_id}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/50 group"
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/50 group transition-opacity',
+                  removing === w.agent_id && 'opacity-40 pointer-events-none'
+                )}
               >
                 <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center flex-shrink-0">
                   <Bot className="h-3 w-3 text-blue-700 dark:text-blue-300" />
