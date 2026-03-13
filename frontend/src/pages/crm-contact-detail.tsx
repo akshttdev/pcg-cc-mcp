@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -142,6 +143,12 @@ export function CrmContactDetailPage() {
             </div>
           </div>
         </div>
+        <AskTopsiButton
+          entityType="crm_contact"
+          entityId={contactId!}
+          entityName={contact.full_name || contact.email || 'Contact'}
+          className="ml-auto"
+        />
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
