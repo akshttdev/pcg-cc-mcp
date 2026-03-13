@@ -193,6 +193,10 @@ Or set `default_model` on the workflow definition itself.
 | Auto-PR on execution complete | Done | **Needs GitHub token** | try_auto_create_pr() in container.rs |
 | QA watcher trigger | Done | Done | `trigger_agent_watchers()` in `qa_review.rs` — no separate QA task |
 | PR feedback loop | Done | Done | `finalize_review()` in `qa_review.rs` — server-side iteration count |
+| `start_attempt_with_reason()` | Done | Done | ContainerService trait — routes QA to `AgentReview` run_reason (PR #24) |
+| Auto-approve rate limiting | Done | Done | `MAX_AUTO_APPROVE_RECORDS = 50` guard (PR #24) |
+| QA review artifact linking | Done | Done | Artifact created with `execution_process_id` after process starts (PR #24) |
+| Agent watcher API + UI | **In Progress** | — | Phase 6 on `feature/qa-watcher-phase6` |
 
 ---
 
