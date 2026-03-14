@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -44,6 +45,7 @@ export function BulkActionMenu({
   selectedCount,
   onComplete,
 }: BulkActionMenuProps) {
+  const queryClient = useQueryClient();
   const { getSelectedIds } = useBulkSelectionStore();
   const { getTagsForProject } = useTagStore();
   const projectTags = getTagsForProject(projectId);
@@ -84,6 +86,8 @@ export function BulkActionMenu({
 
     setIsProcessing(false);
     setDialogType(null);
+
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
 
     if (results.failed === 0) {
       toast.success(
@@ -128,6 +132,8 @@ export function BulkActionMenu({
 
     setIsProcessing(false);
     setDialogType(null);
+
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
 
     if (results.failed === 0) {
       toast.success(

@@ -118,6 +118,18 @@ export function ResizableDrawer({
     [sidebarCollapsed, minWidth]
   );
 
+  // Close drawer on Escape key
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
   // Close drawer when clicking outside it (but not on portaled overlays like
   // popovers, dialogs, selects, or toasts that originate from within the drawer)
   const drawerRef = useRef<HTMLDivElement>(null);

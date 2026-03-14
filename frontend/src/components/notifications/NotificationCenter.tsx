@@ -19,7 +19,13 @@ import { InboxNotificationItem } from './InboxNotificationItem';
 export function NotificationCenter() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [dismissedAt, setDismissedAt] = useState<string | null>(null);
+  const [dismissedAt, setDismissedAt] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('orcha:activity-dismissed-at');
+    } catch {
+      return null;
+    }
+  });
 
   const { data: activityNotifications = [], isLoading: activityLoading } = useQuery({
     queryKey: ['notifications'],
@@ -56,8 +62,13 @@ export function NotificationCenter() {
     : activityNotifications;
   const unreadCount = visibleNotifications.length + unreadInbox.length;
 
+  const persistDismissedAt = useCallback((ts: string) => {
+    setDismissedAt(ts);
+    try { localStorage.setItem('orcha:activity-dismissed-at', ts); } catch {}
+  }, []);
+
   const handleMarkAllRead = useCallback(async () => {
-    setDismissedAt(new Date().toISOString());
+    persistDismissedAt(new Date().toISOString());
     try {
       await fetch(resolveApiUrl('/api/notifications/mark-all-read'), {
         method: 'PUT',
@@ -67,7 +78,7 @@ export function NotificationCenter() {
     } catch {
       // Non-fatal
     }
-  }, [queryClient]);
+  }, [queryClient, persistDismissedAt]);
 
   const handleActivityClick = useCallback(
     (item: ActivityItem) => {
@@ -77,9 +88,9 @@ export function NotificationCenter() {
       } else if (item.task_id) {
         navigate('/my-tasks');
       }
-      setDismissedAt(new Date().toISOString());
+      persistDismissedAt(new Date().toISOString());
     },
-    [navigate],
+    [navigate, persistDismissedAt],
   );
 
   const handleInboxClick = useCallback(

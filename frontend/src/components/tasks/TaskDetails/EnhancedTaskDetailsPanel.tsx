@@ -579,6 +579,12 @@ export function EnhancedTaskDetailsPanel({
     document.body.removeChild(a);
   }, []);
 
+  // Stable callback wrapper for BreadcrumbNav (expects (fs: boolean) => void)
+  const handleToggleFullscreen = useMemo(
+    () => onToggleFullscreen ? (_fs: boolean) => onToggleFullscreen() : undefined,
+    [onToggleFullscreen]
+  );
+
   // Tab counts
   const artifactCount = artifacts.length;
   const eventCount = workflowEvents.length;
@@ -592,7 +598,7 @@ export function EnhancedTaskDetailsPanel({
     >
       {/* Breadcrumb nav in fullscreen mode (panel covers AppShell) */}
       {isFullscreen && (
-        <BreadcrumbNav onToggleFullscreen={onToggleFullscreen ? (_fs: boolean) => onToggleFullscreen() : undefined} isFullscreen={isFullscreen} />
+        <BreadcrumbNav onToggleFullscreen={handleToggleFullscreen} isFullscreen={isFullscreen} />
       )}
 
       {/* Header */}
