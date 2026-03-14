@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,6 +8,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import {
   Terminal,
@@ -30,7 +37,9 @@ import {
   Calendar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { TaskWithAttemptStatus } from 'shared/types';
+import { tasksApi } from '@/lib/api';
+import { toast } from 'sonner';
+import type { TaskWithAttemptStatus, TaskStatus } from 'shared/types';
 import type { TaskCardMode } from '../EnhancedTaskCard';
 
 interface EnhancedTaskHeaderProps {
@@ -43,6 +52,7 @@ interface EnhancedTaskHeaderProps {
   onToggleExpand?: () => void;
   isExpanded?: boolean;
   hideClose?: boolean;
+  onStatusChange?: (newStatus: string) => void;
 }
 
 // Mode display configuration
@@ -91,6 +101,15 @@ const priorityConfig: Record<string, { color: string; label: string }> = {
   low: { color: 'bg-gray-400 text-white', label: 'Low' },
 };
 
+// Status options for dropdown
+const STATUS_OPTIONS = [
+  { value: 'todo', label: 'To Do' },
+  { value: 'inprogress', label: 'In Progress' },
+  { value: 'inreview', label: 'In Review' },
+  { value: 'done', label: 'Done' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
 export function EnhancedTaskHeader({
   task,
   mode,
@@ -101,7 +120,9 @@ export function EnhancedTaskHeader({
   onToggleExpand,
   isExpanded,
   hideClose,
+  onStatusChange,
 }: EnhancedTaskHeaderProps) {
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const modeInfo = modeConfig[mode];
   const statusInfo = statusConfig[task.status] || statusConfig.todo;
   const priorityInfo = priorityConfig[task.priority] || priorityConfig.medium;
@@ -216,17 +237,47 @@ export function EnhancedTaskHeader({
 
       {/* Bottom row: Metadata badges */}
       <div className="flex items-center gap-2 px-4 pb-3 flex-wrap">
-        {/* Status */}
-        <Badge variant="outline" className={cn('text-xs', statusInfo.color)}>
-          {task.has_in_progress_attempt ? (
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          ) : task.has_merged_attempt ? (
-            <CheckCircle className="h-3 w-3 mr-1" />
-          ) : task.last_attempt_failed ? (
-            <XCircle className="h-3 w-3 mr-1" />
-          ) : null}
-          {statusInfo.label}
-        </Badge>
+        {/* Status dropdown */}
+        <Select
+          value={task.status}
+          onValueChange={async (newStatus) => {
+            if (newStatus === task.status) return;
+            setUpdatingStatus(true);
+            try {
+              await tasksApi.update(task.id, { status: newStatus as TaskStatus });
+              toast.success(`Status changed to ${statusConfig[newStatus]?.label || newStatus}`);
+              onStatusChange?.(newStatus);
+            } catch (err) {
+              toast.error('Failed to update status');
+            } finally {
+              setUpdatingStatus(false);
+            }
+          }}
+          disabled={updatingStatus}
+        >
+          <SelectTrigger className={cn('h-7 text-xs gap-1 border-0 w-auto', statusInfo.color)}>
+            {updatingStatus ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : task.has_in_progress_attempt ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : task.has_merged_attempt ? (
+              <CheckCircle className="h-3 w-3" />
+            ) : task.last_attempt_failed ? (
+              <XCircle className="h-3 w-3" />
+            ) : null}
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {STATUS_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                <span className="flex items-center gap-1.5">
+                  <span className={cn('h-2 w-2 rounded-full', statusConfig[opt.value]?.color.split(' ')[0] || 'bg-gray-300')} />
+                  {opt.label}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* Priority */}
         <Badge className={cn('text-xs', priorityInfo.color)}>
