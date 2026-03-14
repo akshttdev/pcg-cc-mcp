@@ -384,3 +384,40 @@ Audit found **109 model files** in `crates/db/src/models/` still using `uuid::Uu
 **H — Skeletons:**
 - [x] My Tasks → skeleton code in place (Skeleton components)
 - [ ] Agent Settings → skeleton rows during load
+
+---
+
+## Playwright MCP Demo Replay — Findings (2026-03-14)
+
+Manually replayed `workflow-crm-pipeline.spec.ts` Parts 1-4 using Playwright MCP browser automation.
+
+### Part 1: Build CRM Extraction Workflow ✅
+
+Successfully built a 7-node workflow: Data Source → 3 Extract nodes → 3 Output nodes.
+
+**Bug found: Connection combobox pre-selects first option**
+- The "Add input connection" combobox pre-marks the first option as `[active][selected]`
+- Clicking a pre-selected option is a no-op (doesn't trigger `onValueChange`)
+- This means the *first* connection for a new node silently fails if "Data Source" is the intended target
+- Workaround: select a *different* option first, disconnect, then select Data Source
+- **Impact on E2E tests**: Playwright's `.click()` via the test framework may handle this differently than the MCP tool, but this is a real UX bug — users clicking "Data Source" when it's already highlighted will think they connected but didn't
+- **Fix**: Either clear the combobox's `defaultValue`/initial selection, or use `onSelect` instead of `onValueChange` to fire even on re-selection
+- **File**: `frontend/src/components/workflows/WorkflowEditor.tsx` — connection combobox `onValueChange` handler
+
+**Functionality gap: No default prompt template**
+- LLM Extract nodes start with an empty `prompt_template` field
+- The textarea shows placeholder text (`"Analyze the following content and..."`) but no actual default content
+- Users must write prompts from scratch instead of customizing a sensible default
+- **Expected**: Nodes should ship with a pre-filled default template (e.g., `"Analyze the following content and extract structured data:\n\n{{content}}"`) that users can modify
+- **File**: `frontend/src/components/workflows/WorkflowEditor.tsx` — node type defaults (lines 90-120)
+
+### PR #27 — Round 7 Review
+
+| Finding | Status |
+|---------|--------|
+| C1-R: `Task` struct missing `collaborators` | ✅ Already fixed — `pub collaborators: Option<String>` at line 188 of `task.rs`. Reviewer checked commit before fix landed. |
+| C2: `multi_extract` using empty `output_schema` | ✅ Fixed |
+| W1: `search_agents` not wrapped in `ApiResponse` | ✅ Fixed |
+| W2: Silent `.catch(() => {})` in E2E | ✅ Fixed |
+| W4: Inbox task click ignoring `source_id` | ⏭️ Deferred |
+| W5: Composite `schema_name` with `_` join | ⏭️ Deferred — cosmetic |
