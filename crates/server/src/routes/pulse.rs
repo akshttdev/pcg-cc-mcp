@@ -96,7 +96,7 @@ async fn list_sources(
     Path(project_id): Path<Uuid>,
 ) -> Result<ResponseJson<ApiResponse<Vec<PulseSource>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let sources = PulseSource::find_by_project(pool, project_id).await.map_err(|e| {
+    let sources = PulseSource::find_by_project(pool, &project_id.to_string()).await.map_err(|e| {
         ApiError::InternalError(format!("Failed to fetch sources: {}", e))
     })?;
     Ok(ResponseJson(ApiResponse::success(sources)))
@@ -107,7 +107,7 @@ async fn create_source(
     Path(project_id): Path<Uuid>,
     ResponseJson(mut data): ResponseJson<CreatePulseSource>,
 ) -> Result<ResponseJson<ApiResponse<PulseSource>>, ApiError> {
-    data.project_id = project_id;
+    data.project_id = project_id.to_string();
     let pool = &deployment.db().pool;
     let source = PulseSource::create(pool, &data).await.map_err(|e| {
         ApiError::InternalError(format!("Failed to create source: {}", e))
@@ -422,7 +422,7 @@ async fn dashboard_stats(
         .unwrap_or(0);
 
     // Try project-scoped sources first; if empty, fall back to organization-scoped
-    let mut sources = PulseSource::find_by_project(pool, project_id)
+    let mut sources = PulseSource::find_by_project(pool, &project_id.to_string())
         .await
         .unwrap_or_default();
 
@@ -430,11 +430,9 @@ async fn dashboard_stats(
         // Look up the project's organization_id and query org-scoped sources
         if let Ok(Some(project)) = db::models::project::Project::find_by_id(pool, &project_id.to_string()).await {
             if let Some(ref org_id) = project.organization_id {
-                if let Ok(org_uuid) = Uuid::parse_str(org_id) {
-                    sources = PulseSource::find_by_organization(pool, org_uuid)
-                        .await
-                        .unwrap_or_default();
-                }
+                sources = PulseSource::find_by_organization(pool, org_id)
+                    .await
+                    .unwrap_or_default();
             }
         }
     }
