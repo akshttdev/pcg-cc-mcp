@@ -3012,6 +3012,7 @@ impl TaskServer {
 
         // Load active edges
         #[derive(Debug, sqlx::FromRow, Clone)]
+        #[allow(dead_code)]
         struct EdgeRow {
             id: String,
             from_node_id: String,

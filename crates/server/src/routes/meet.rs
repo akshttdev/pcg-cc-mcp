@@ -671,6 +671,7 @@ async fn detect_and_link_attendees(
     for name in raw_names {
         // Look up person or user by name (case-insensitive partial match)
         #[derive(sqlx::FromRow)]
+        #[allow(dead_code)]
         struct PersonRow { id: Vec<u8> }
 
         // Try persons table first
