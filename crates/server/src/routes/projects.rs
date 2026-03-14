@@ -491,7 +491,8 @@ pub async fn create_project(
             // Set owner_id on the project
             let user_id = db::DbUuid::from(access_context.user_id);
             // BLOB columns: convert string→blob at the bind boundary
-            let user_id_blob = db::bind_uuid_blob(&user_id);
+            let user_id_blob = db::bind_uuid_blob(&user_id)
+                .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
             let _ = sqlx::query(
                 "UPDATE projects SET owner_id = ? WHERE id = ?"
             )

@@ -124,6 +124,11 @@ export const useViewStore = create<ViewStore>()(
     }),
     {
       name: 'pcg-view-storage',
+      partialize: (state) => {
+        // Exclude contentFullscreen from persistence — session-only state
+        const { contentFullscreen, ...persisted } = state;
+        return persisted;
+      },
     }
   )
 );

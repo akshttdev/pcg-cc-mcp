@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -122,6 +123,7 @@ export function EnhancedTaskHeader({
   hideClose,
   onStatusChange,
 }: EnhancedTaskHeaderProps) {
+  const queryClient = useQueryClient();
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const modeInfo = modeConfig[mode];
   const statusInfo = statusConfig[task.status] || statusConfig.todo;
@@ -245,6 +247,7 @@ export function EnhancedTaskHeader({
             setUpdatingStatus(true);
             try {
               await tasksApi.update(task.id, { status: newStatus as TaskStatus });
+              queryClient.invalidateQueries({ queryKey: ['tasks'] });
               toast.success(`Status changed to ${statusConfig[newStatus]?.label || newStatus}`);
               onStatusChange?.(newStatus);
             } catch (err) {
