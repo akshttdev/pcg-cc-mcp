@@ -687,40 +687,26 @@ pub async fn update_task(
 
     // Trigger agent watchers on manual status change to InReview
     if old_status != task.status && task.status == db::models::task::TaskStatus::InReview {
-        let pool = deployment.db().pool.clone();
+        let dep = deployment.clone();
         let task_id = task.id.clone();
         tokio::spawn(async move {
-            // Find pending agent watchers for this task
-            let pending = match Task::find_pending_agent_watchers(&pool, &task_id).await {
-                Ok(w) => w,
-                Err(e) => {
-                    tracing::warn!("Failed to find agent watchers for manual InReview on task {task_id}: {e}");
-                    return;
-                }
-            };
-            if pending.is_empty() {
-                tracing::debug!("No pending agent watchers for manual InReview on task {task_id}");
-                return;
-            }
-
-            // Check if there's a PR associated with any task attempt
+            let pool = &dep.db().pool;
+            // Find PR associated with this task's attempts
             let task_uuid = match Uuid::parse_str(&task_id) {
                 Ok(u) => u,
                 Err(_) => return,
             };
-            let attempts = TaskAttempt::fetch_all(&pool, Some(task_uuid)).await.unwrap_or_default();
+            let attempts = TaskAttempt::fetch_all(pool, Some(task_uuid)).await.unwrap_or_default();
             let mut pr_info = None;
             for attempt in &attempts {
-                if let Ok(Some(merge)) = db::models::merge::Merge::find_latest_by_task_attempt_id(&pool, attempt.id).await {
+                if let Ok(Some(merge)) = db::models::merge::Merge::find_latest_by_task_attempt_id(pool, attempt.id).await {
                     if let db::models::merge::Merge::Pr(pr_merge) = &merge {
                         let url = &pr_merge.pr_info.url;
                         let number = pr_merge.pr_info.number;
-                        // Extract owner/repo from PR URL (e.g. https://github.com/owner/repo/pull/123)
                         let (owner, repo) = url::Url::parse(url)
                             .ok()
                             .and_then(|parsed| {
                                 let segments: Vec<&str> = parsed.path_segments()?.collect();
-                                // path segments: ["owner", "repo", "pull", "123"]
                                 if segments.len() >= 2 {
                                     Some((segments[0].to_string(), segments[1].to_string()))
                                 } else {
@@ -741,27 +727,13 @@ pub async fn update_task(
 
             match pr_info {
                 Some(pr) => {
-                    tracing::info!(
-                        "Manual InReview: triggering {} watcher(s) for task {task_id} with PR #{}",
-                        pending.len(), pr.number
-                    );
-                    // We can't easily call trigger_agent_watchers here because it requires
-                    // ExecutionContext. Instead, log the trigger intent — the full
-                    // watcher execution will be handled by the existing pipeline.
-                    // For now, mark watchers as triggered so they don't fire twice.
-                    for watcher in &pending {
-                        if let Err(e) = Task::update_collaborator(
-                            &pool, &task_id, &watcher.actor_id,
-                            "agent_watcher", "triggered",
-                        ).await {
-                            tracing::warn!("Failed to mark watcher {} as triggered: {e}", watcher.actor_id);
-                        }
-                    }
+                    services::services::qa_review::spawn_watcher_reviews(
+                        pool, dep.container(), &task_id, &pr,
+                    ).await;
                 }
                 None => {
                     tracing::warn!(
-                        "Manual InReview on task {task_id}: {} watcher(s) pending but no PR found — watchers not triggered",
-                        pending.len()
+                        "Manual InReview on task {task_id}: watchers pending but no PR found — watchers not triggered"
                     );
                 }
             }
