@@ -221,18 +221,16 @@ pub async fn create_task(
 
     // Auto-register agent watchers based on assigned agent's config
     if let Some(ref agent_id) = task.agent_id {
-        if let Ok(agent_uuid) = Uuid::parse_str(agent_id) {
-            if let Ok(Some(config)) =
-                db::models::agent_execution_config::AgentExecutionConfig::find_by_agent_id(
-                    &deployment.db().pool,
-                    agent_uuid,
-                )
-                .await
-            {
-                for watcher_id in config.get_auto_watch_agent_ids() {
-                    let _ = Task::add_agent_watcher(&deployment.db().pool, &task.id, &watcher_id)
-                        .await;
-                }
+        if let Ok(Some(config)) =
+            db::models::agent_execution_config::AgentExecutionConfig::find_by_agent_id(
+                &deployment.db().pool,
+                agent_id,
+            )
+            .await
+        {
+            for watcher_id in config.get_auto_watch_agent_ids() {
+                let _ = Task::add_agent_watcher(&deployment.db().pool, &task.id, &watcher_id)
+                    .await;
             }
         }
     }
@@ -319,18 +317,16 @@ pub async fn create_task_and_start(
 
     // Auto-register agent watchers based on assigned agent's config
     if let Some(ref agent_id) = task.agent_id {
-        if let Ok(agent_uuid) = Uuid::parse_str(agent_id) {
-            if let Ok(Some(config)) =
-                db::models::agent_execution_config::AgentExecutionConfig::find_by_agent_id(
-                    &deployment.db().pool,
-                    agent_uuid,
-                )
-                .await
-            {
-                for watcher_id in config.get_auto_watch_agent_ids() {
-                    let _ = Task::add_agent_watcher(&deployment.db().pool, &task.id, &watcher_id)
-                        .await;
-                }
+        if let Ok(Some(config)) =
+            db::models::agent_execution_config::AgentExecutionConfig::find_by_agent_id(
+                &deployment.db().pool,
+                agent_id,
+            )
+            .await
+        {
+            for watcher_id in config.get_auto_watch_agent_ids() {
+                let _ = Task::add_agent_watcher(&deployment.db().pool, &task.id, &watcher_id)
+                    .await;
             }
         }
     }
@@ -1030,7 +1026,7 @@ pub async fn get_watched_tasks(
 
 #[derive(Deserialize, TS)]
 pub struct AddAgentWatcherRequest {
-    pub agent_id: Uuid,
+    pub agent_id: String,
 }
 
 #[derive(serde::Serialize, TS)]
@@ -1051,12 +1047,12 @@ pub(crate) async fn add_agent_watcher(
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     access_context.require_editor(&deployment.db().pool, &task.project_id).await?;
 
-    Agent::find_by_id(&deployment.db().pool, body.agent_id)
+    Agent::find_by_id(&deployment.db().pool, &body.agent_id)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to find agent: {e}")))?
         .ok_or_else(|| ApiError::NotFound(format!("Agent {} not found", body.agent_id)))?;
 
-    Task::add_agent_watcher(&deployment.db().pool, &task.id, &body.agent_id.to_string()).await?;
+    Task::add_agent_watcher(&deployment.db().pool, &task.id, &body.agent_id).await?;
     Ok(ResponseJson(ApiResponse::success(())))
 }
 

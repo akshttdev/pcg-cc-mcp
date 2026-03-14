@@ -1,10 +1,10 @@
 {
   "db_name": "SQLite",
-  "query": "UPDATE agents SET\n                wallet_address = COALESCE($2, wallet_address),\n                short_name = COALESCE($3, short_name),\n                designation = COALESCE($4, designation),\n                description = COALESCE($5, description),\n                personality = COALESCE($6, personality),\n                voice_style = COALESCE($7, voice_style),\n                avatar_url = COALESCE($8, avatar_url),\n                capabilities = COALESCE($9, capabilities),\n                tools = COALESCE($10, tools),\n                functions = COALESCE($11, functions),\n                default_model = COALESCE($12, default_model),\n                fallback_models = COALESCE($13, fallback_models),\n                model_config = COALESCE($14, model_config),\n                status = COALESCE($15, status),\n                autonomy_level = COALESCE($16, autonomy_level),\n                max_concurrent_tasks = COALESCE($17, max_concurrent_tasks),\n                priority_weight = COALESCE($18, priority_weight),\n                updated_at = datetime('now', 'subsec')\n            WHERE id = $1\n            RETURNING\n                id as \"id!: Uuid\",\n                wallet_address,\n                short_name,\n                designation,\n                description,\n                personality,\n                voice_style,\n                avatar_url,\n                capabilities,\n                tools,\n                functions,\n                default_model,\n                fallback_models,\n                model_config,\n                status as \"status!: AgentStatus\",\n                autonomy_level as \"autonomy_level!: AutonomyLevel\",\n                max_concurrent_tasks,\n                priority_weight,\n                tasks_completed,\n                tasks_failed,\n                total_execution_time_ms,\n                average_rating,\n                version,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\",\n                created_by,\n                parent_agent_id as \"parent_agent_id: Uuid\",\n                team_id,\n                owner_id as \"owner_id: Uuid\",\n                agent_tier",
+  "query": "SELECT\n                id as \"id!: DbUuid\",\n                wallet_address,\n                short_name,\n                designation,\n                description,\n                personality,\n                voice_style,\n                avatar_url,\n                capabilities,\n                tools,\n                functions,\n                default_model,\n                fallback_models,\n                model_config,\n                status as \"status!: AgentStatus\",\n                autonomy_level as \"autonomy_level!: AutonomyLevel\",\n                max_concurrent_tasks,\n                priority_weight,\n                tasks_completed,\n                tasks_failed,\n                total_execution_time_ms,\n                average_rating,\n                version,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\",\n                created_by,\n                parent_agent_id as \"parent_agent_id: DbUuid\",\n                team_id,\n                owner_id as \"owner_id: DbUuid\",\n                agent_tier\n            FROM agents\n            WHERE id = $1",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
+        "name": "id!: DbUuid",
         "ordinal": 0,
         "type_info": "Text"
       },
@@ -134,7 +134,7 @@
         "type_info": "Text"
       },
       {
-        "name": "parent_agent_id: Uuid",
+        "name": "parent_agent_id: DbUuid",
         "ordinal": 26,
         "type_info": "Text"
       },
@@ -144,7 +144,7 @@
         "type_info": "Text"
       },
       {
-        "name": "owner_id: Uuid",
+        "name": "owner_id: DbUuid",
         "ordinal": 28,
         "type_info": "Blob"
       },
@@ -155,7 +155,7 @@
       }
     ],
     "parameters": {
-      "Right": 18
+      "Right": 1
     },
     "nullable": [
       false,
@@ -190,5 +190,5 @@
       false
     ]
   },
-  "hash": "ac78db8751b76b5a221b7636f05e2480af87f064046bd780995bf80fc0cfee48"
+  "hash": "25d0b92e4dbeebe5517f42df5a0f2756ab3266695159a8467e753998ffb06aa3"
 }

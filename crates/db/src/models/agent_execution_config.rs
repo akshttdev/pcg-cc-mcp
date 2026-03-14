@@ -9,6 +9,7 @@ use sqlx::{FromRow, SqlitePool, Type};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
+use crate::DbUuid;
 
 // ============================================================================
 // ENUMS
@@ -227,7 +228,7 @@ pub struct ProjectTypeBackpressure {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct AgentExecutionConfig {
     pub id: String,
-    pub agent_id: Uuid,
+    pub agent_id: DbUuid,
 
     // Base profile
     pub execution_profile_id: Option<String>,
@@ -294,7 +295,7 @@ impl AgentExecutionConfig {
     /// Find config by agent ID
     pub async fn find_by_agent_id(
         pool: &SqlitePool,
-        agent_id: Uuid,
+        agent_id: &str,
     ) -> Result<Option<Self>, AgentExecutionConfigError> {
         let config = sqlx::query_as::<_, Self>(
             "SELECT * FROM agent_execution_config WHERE agent_id = ?1 AND is_active = TRUE",
@@ -343,7 +344,7 @@ impl AgentExecutionConfig {
             "#,
         )
         .bind(&id)
-        .bind(data.agent_id)
+        .bind(data.agent_id.as_str())
         .bind(&data.execution_profile_id)
         .bind(&data.execution_mode_override)
         .bind(data.max_iterations_override)
@@ -357,7 +358,7 @@ impl AgentExecutionConfig {
         .execute(pool)
         .await?;
 
-        Self::find_by_agent_id(pool, data.agent_id)
+        Self::find_by_agent_id(pool, data.agent_id.as_str())
             .await?
             .ok_or(AgentExecutionConfigError::ConfigNotFound(data.agent_id.to_string()))
     }
@@ -409,7 +410,7 @@ impl AgentExecutionConfig {
 
 #[derive(Debug, Deserialize, TS)]
 pub struct CreateAgentExecutionConfig {
-    pub agent_id: Uuid,
+    pub agent_id: DbUuid,
     pub execution_profile_id: Option<String>,
     pub execution_mode_override: Option<ExecutionMode>,
     pub max_iterations_override: Option<i32>,

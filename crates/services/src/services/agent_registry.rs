@@ -981,7 +981,7 @@ impl AgentDefinitions {
             parent_agent_id: None,
             team_id: None,
             created_by: Some("system".to_string()),
-            owner_id: Some(user_id),
+            owner_id: Some(user_id.into()),
             agent_tier: Some("user".to_string()),
         }
     }
@@ -1133,7 +1133,7 @@ impl AgentRegistryService {
                         max_concurrent_tasks: None,
                         priority_weight: None,
                     };
-                    match Agent::update(pool, existing.id, &update_data).await {
+                    match Agent::update(pool, existing.id.as_str(), &update_data).await {
                         Ok(updated) => {
                             info!(
                                 "Agent '{}' model config updated: {} -> {}",
@@ -1221,7 +1221,7 @@ impl AgentRegistryService {
     /// Assign Aptos wallet address to an agent
     pub async fn assign_wallet(
         pool: &SqlitePool,
-        agent_id: Uuid,
+        agent_id: &str,
         wallet_address: &str,
     ) -> anyhow::Result<Agent> {
         use db::models::agent::UpdateAgent;

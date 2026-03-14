@@ -878,7 +878,6 @@ pub async fn auto_start_agent_execution(
     let agent_id = task
         .agent_id
         .as_ref()
-        .and_then(|id| Uuid::parse_str(id).ok())
         .ok_or("No agent_id on task")?;
 
     // Look up execution config for the agent

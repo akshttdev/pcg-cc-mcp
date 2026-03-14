@@ -250,10 +250,7 @@ impl LocalContainerService {
 
         // Check if the task has an agent_id with auto_create_pr_on_complete enabled
         let agent_id = match ctx.task.agent_id {
-            Some(ref id) => match Uuid::parse_str(id) {
-                Ok(uuid) => uuid,
-                Err(_) => return None,
-            },
+            Some(ref id) => id.as_str(),
             None => return None,
         };
 

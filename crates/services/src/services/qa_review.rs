@@ -114,15 +114,12 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
     .map_err(|e| format!("Failed to mark watcher as triggered: {e}"))?;
 
     // Look up agent and config
-    let agent_uuid = Uuid::parse_str(agent_id)
-        .map_err(|e| format!("Invalid agent UUID {agent_id}: {e}"))?;
-
-    let agent = Agent::find_by_id(pool, agent_uuid)
+    let agent = Agent::find_by_id(pool, agent_id)
         .await
         .map_err(|e| format!("Failed to find agent {agent_id}: {e}"))?
         .ok_or_else(|| format!("Agent {agent_id} not found"))?;
 
-    let config = AgentExecutionConfig::find_by_agent_id(pool, agent_uuid)
+    let config = AgentExecutionConfig::find_by_agent_id(pool, agent_id)
         .await
         .map_err(|e| format!("Failed to find config for agent {agent_id}: {e}"))?;
 

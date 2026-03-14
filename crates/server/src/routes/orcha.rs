@@ -24,7 +24,7 @@ pub struct OrchaStatusResponse {
     /// Orchestrator display name (e.g. "NORA" or "ORCHA-alice")
     pub orchestrator_name: String,
     /// Agent ID in the database
-    pub agent_id: Uuid,
+    pub agent_id: String,
     /// Device / session info
     pub device: String,
     /// Whether this is the admin orchestrator
@@ -37,7 +37,7 @@ pub struct OrchaStatusResponse {
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SubAgentBrief {
-    pub id: Uuid,
+    pub id: String,
     pub short_name: String,
     pub designation: String,
     pub status: String,
@@ -99,24 +99,23 @@ pub async fn get_orcha_status(
     })?;
 
     // Fetch sub-agents (agents whose parent_agent_id matches this orchestrator)
-    let sub_agents: Vec<SubAgentBrief> = sqlx::query_as::<_, (Vec<u8>, String, String, String)>(
+    let sub_agents: Vec<SubAgentBrief> = sqlx::query_as::<_, (String, String, String, String)>(
         r#"SELECT id, short_name, designation, status FROM agents
            WHERE parent_agent_id = ? AND status != 'inactive'
            ORDER BY short_name"#,
     )
-    .bind(agent.id)
+    .bind(agent.id.as_str())
     .fetch_all(pool)
     .await
     .unwrap_or_default()
     .into_iter()
-    .filter_map(|(id_bytes, short_name, designation, status)| {
-        let id = Uuid::from_slice(&id_bytes).ok()?;
-        Some(SubAgentBrief {
+    .map(|(id, short_name, designation, status)| {
+        SubAgentBrief {
             id,
             short_name,
             designation,
             status,
-        })
+        }
     })
     .collect();
 
@@ -127,7 +126,7 @@ pub async fn get_orcha_status(
 
     Ok(Json(OrchaStatusResponse {
         orchestrator_name,
-        agent_id: agent.id,
+        agent_id: agent.id.into_string(),
         device,
         is_admin: access_ctx.is_admin,
         sub_agents,

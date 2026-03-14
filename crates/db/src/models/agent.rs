@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{FromRow, SqlitePool, Type};
 use ts_rs::TS;
-use uuid::Uuid;
+
+use crate::DbUuid;
 
 /// Agent status in the platform
 #[derive(Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS)]
@@ -88,7 +89,7 @@ pub struct AgentFunction {
 /// Full Agent entity
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct Agent {
-    pub id: Uuid,
+    pub id: DbUuid,
     pub wallet_address: Option<String>,
     pub short_name: String,
     pub designation: String,
@@ -128,18 +129,18 @@ pub struct Agent {
     pub created_by: Option<String>,
 
     // Relationships
-    pub parent_agent_id: Option<Uuid>,
+    pub parent_agent_id: Option<DbUuid>,
     pub team_id: Option<String>,
 
     // Tier system
-    pub owner_id: Option<Uuid>,
+    pub owner_id: Option<DbUuid>,
     pub agent_tier: Option<String>,
 }
 
 /// Agent with parsed JSON fields for API responses
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct AgentWithParsedFields {
-    pub id: Uuid,
+    pub id: DbUuid,
     pub wallet_address: Option<String>,
     pub short_name: String,
     pub designation: String,
@@ -163,7 +164,7 @@ pub struct AgentWithParsedFields {
     pub version: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub owner_id: Option<Uuid>,
+    pub owner_id: Option<DbUuid>,
     pub agent_tier: Option<String>,
 }
 
@@ -220,11 +221,11 @@ pub struct CreateAgent {
     pub autonomy_level: Option<AutonomyLevel>,
     pub max_concurrent_tasks: Option<i64>,
     pub priority_weight: Option<i64>,
-    pub parent_agent_id: Option<Uuid>,
+    pub parent_agent_id: Option<DbUuid>,
     pub team_id: Option<String>,
     pub created_by: Option<String>,
     #[serde(default)]
-    pub owner_id: Option<Uuid>,
+    pub owner_id: Option<DbUuid>,
     #[serde(default)]
     pub agent_tier: Option<String>,
 }
@@ -254,7 +255,7 @@ pub struct UpdateAgent {
 /// Brief agent info for lists
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct AgentBrief {
-    pub id: Uuid,
+    pub id: DbUuid,
     pub short_name: String,
     pub designation: String,
     pub avatar_url: Option<String>,
@@ -267,7 +268,7 @@ impl Agent {
         sqlx::query_as!(
             Agent,
             r#"SELECT
-                id as "id!: Uuid",
+                id as "id!: DbUuid",
                 wallet_address,
                 short_name,
                 designation,
@@ -293,9 +294,9 @@ impl Agent {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
-                parent_agent_id as "parent_agent_id: Uuid",
+                parent_agent_id as "parent_agent_id: DbUuid",
                 team_id,
-                owner_id as "owner_id: Uuid",
+                owner_id as "owner_id: DbUuid",
                 agent_tier
             FROM agents
             ORDER BY short_name ASC"#
@@ -309,7 +310,7 @@ impl Agent {
         sqlx::query_as!(
             Agent,
             r#"SELECT
-                id as "id!: Uuid",
+                id as "id!: DbUuid",
                 wallet_address,
                 short_name,
                 designation,
@@ -335,9 +336,9 @@ impl Agent {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
-                parent_agent_id as "parent_agent_id: Uuid",
+                parent_agent_id as "parent_agent_id: DbUuid",
                 team_id,
-                owner_id as "owner_id: Uuid",
+                owner_id as "owner_id: DbUuid",
                 agent_tier
             FROM agents
             WHERE status = 'active'
@@ -348,11 +349,11 @@ impl Agent {
     }
 
     /// Find agent by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Agent,
             r#"SELECT
-                id as "id!: Uuid",
+                id as "id!: DbUuid",
                 wallet_address,
                 short_name,
                 designation,
@@ -378,9 +379,9 @@ impl Agent {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
-                parent_agent_id as "parent_agent_id: Uuid",
+                parent_agent_id as "parent_agent_id: DbUuid",
                 team_id,
-                owner_id as "owner_id: Uuid",
+                owner_id as "owner_id: DbUuid",
                 agent_tier
             FROM agents
             WHERE id = $1"#,
@@ -395,7 +396,7 @@ impl Agent {
         sqlx::query_as!(
             Agent,
             r#"SELECT
-                id as "id!: Uuid",
+                id as "id!: DbUuid",
                 wallet_address,
                 short_name,
                 designation,
@@ -421,9 +422,9 @@ impl Agent {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
-                parent_agent_id as "parent_agent_id: Uuid",
+                parent_agent_id as "parent_agent_id: DbUuid",
                 team_id,
-                owner_id as "owner_id: Uuid",
+                owner_id as "owner_id: DbUuid",
                 agent_tier
             FROM agents
             WHERE LOWER(short_name) = LOWER($1)"#,
@@ -438,7 +439,7 @@ impl Agent {
         sqlx::query_as!(
             Agent,
             r#"SELECT
-                id as "id!: Uuid",
+                id as "id!: DbUuid",
                 wallet_address,
                 short_name,
                 designation,
@@ -464,9 +465,9 @@ impl Agent {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
-                parent_agent_id as "parent_agent_id: Uuid",
+                parent_agent_id as "parent_agent_id: DbUuid",
                 team_id,
-                owner_id as "owner_id: Uuid",
+                owner_id as "owner_id: DbUuid",
                 agent_tier
             FROM agents
             WHERE wallet_address = $1"#,
@@ -478,7 +479,7 @@ impl Agent {
 
     /// Create a new agent
     pub async fn create(pool: &SqlitePool, data: &CreateAgent) -> Result<Self, sqlx::Error> {
-        let id = Uuid::new_v4();
+        let id = DbUuid::new();
         let personality_json = data.personality.as_ref().map(|p| serde_json::to_string(p).unwrap());
         let capabilities_json = data.capabilities.as_ref().map(|c| serde_json::to_string(c).unwrap());
         let tools_json = data.tools.as_ref().map(|t| serde_json::to_string(t).unwrap());
@@ -508,7 +509,7 @@ impl Agent {
                 $22, $23
             )
             RETURNING
-                id as "id!: Uuid",
+                id as "id!: DbUuid",
                 wallet_address,
                 short_name,
                 designation,
@@ -534,9 +535,9 @@ impl Agent {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
-                parent_agent_id as "parent_agent_id: Uuid",
+                parent_agent_id as "parent_agent_id: DbUuid",
                 team_id,
-                owner_id as "owner_id: Uuid",
+                owner_id as "owner_id: DbUuid",
                 agent_tier"#,
             id,
             data.wallet_address,
@@ -567,7 +568,7 @@ impl Agent {
     }
 
     /// Update an existing agent
-    pub async fn update(pool: &SqlitePool, id: Uuid, data: &UpdateAgent) -> Result<Self, sqlx::Error> {
+    pub async fn update(pool: &SqlitePool, id: &str, data: &UpdateAgent) -> Result<Self, sqlx::Error> {
         let personality_json = data.personality.as_ref().map(|p| serde_json::to_string(p).unwrap());
         let capabilities_json = data.capabilities.as_ref().map(|c| serde_json::to_string(c).unwrap());
         let tools_json = data.tools.as_ref().map(|t| serde_json::to_string(t).unwrap());
@@ -598,7 +599,7 @@ impl Agent {
                 updated_at = datetime('now', 'subsec')
             WHERE id = $1
             RETURNING
-                id as "id!: Uuid",
+                id as "id!: DbUuid",
                 wallet_address,
                 short_name,
                 designation,
@@ -624,9 +625,9 @@ impl Agent {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
-                parent_agent_id as "parent_agent_id: Uuid",
+                parent_agent_id as "parent_agent_id: DbUuid",
                 team_id,
-                owner_id as "owner_id: Uuid",
+                owner_id as "owner_id: DbUuid",
                 agent_tier"#,
             id,
             data.wallet_address,
@@ -652,7 +653,7 @@ impl Agent {
     }
 
     /// Delete an agent
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn delete(pool: &SqlitePool, id: &str) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!("DELETE FROM agents WHERE id = $1", id)
             .execute(pool)
             .await?;
@@ -662,7 +663,7 @@ impl Agent {
     /// Update agent statistics after task completion
     pub async fn record_task_completion(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &str,
         success: bool,
         execution_time_ms: i64,
         rating: Option<f64>,
@@ -702,11 +703,11 @@ impl Agent {
     }
 
     /// Find agents visible to a specific user (system-tier + user's own agents)
-    pub async fn find_visible_for_user(pool: &SqlitePool, user_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_visible_for_user(pool: &SqlitePool, user_id: &str) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Agent,
             r#"SELECT
-                id as "id!: Uuid",
+                id as "id!: DbUuid",
                 wallet_address,
                 short_name,
                 designation,
@@ -732,9 +733,9 @@ impl Agent {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>",
                 created_by,
-                parent_agent_id as "parent_agent_id: Uuid",
+                parent_agent_id as "parent_agent_id: DbUuid",
                 team_id,
-                owner_id as "owner_id: Uuid",
+                owner_id as "owner_id: DbUuid",
                 agent_tier
             FROM agents
             WHERE agent_tier = 'system' OR owner_id = $1
@@ -746,7 +747,7 @@ impl Agent {
     }
 
     /// Update agent status
-    pub async fn update_status(pool: &SqlitePool, id: Uuid, status: AgentStatus) -> Result<(), sqlx::Error> {
+    pub async fn update_status(pool: &SqlitePool, id: &str, status: AgentStatus) -> Result<(), sqlx::Error> {
         sqlx::query!(
             "UPDATE agents SET status = $2, updated_at = datetime('now', 'subsec') WHERE id = $1",
             id,

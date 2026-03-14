@@ -12,7 +12,6 @@ use deployment::Deployment;
 use serde::Deserialize;
 use services::services::agent_registry::AgentRegistryService;
 use ts_rs::TS;
-use uuid::Uuid;
 
 use crate::{middleware::access_control::AccessContext, DeploymentImpl};
 
@@ -61,7 +60,7 @@ async fn list_agents(
         }
         Some(axum::Extension(ctx)) => {
             // Regular user sees system-tier + own agents
-            Agent::find_visible_for_user(pool, ctx.user_id).await
+            Agent::find_visible_for_user(pool, &ctx.user_id.to_string()).await
         }
         None => {
             // No auth context (shouldn't happen behind protected routes, but fallback)
@@ -185,9 +184,9 @@ async fn seed_agents(
 /// Get agent by ID
 async fn get_agent(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let agent = Agent::find_by_id(&deployment.db().pool, id)
+    let agent = Agent::find_by_id(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -234,11 +233,11 @@ async fn create_agent(
 /// Update an existing agent
 async fn update_agent(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(data): Json<UpdateAgent>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Check if agent exists
-    let existing = Agent::find_by_id(&deployment.db().pool, id)
+    let existing = Agent::find_by_id(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -246,7 +245,7 @@ async fn update_agent(
         return Err((StatusCode::NOT_FOUND, "Agent not found".to_string()));
     }
 
-    let agent = Agent::update(&deployment.db().pool, id, &data)
+    let agent = Agent::update(&deployment.db().pool, &id, &data)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -257,9 +256,9 @@ async fn update_agent(
 /// Delete an agent
 async fn delete_agent(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let rows = Agent::delete(&deployment.db().pool, id)
+    let rows = Agent::delete(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -278,10 +277,10 @@ struct AssignWalletRequest {
 /// Assign Aptos wallet address to an agent
 async fn assign_wallet(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(request): Json<AssignWalletRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let agent = AgentRegistryService::assign_wallet(&deployment.db().pool, id, &request.wallet_address)
+    let agent = AgentRegistryService::assign_wallet(&deployment.db().pool, &id, &request.wallet_address)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -297,11 +296,11 @@ struct UpdateStatusRequest {
 /// Update agent status
 async fn update_status(
     State(deployment): State<DeploymentImpl>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(request): Json<UpdateStatusRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     // Check if agent exists
-    let existing = Agent::find_by_id(&deployment.db().pool, id)
+    let existing = Agent::find_by_id(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -309,12 +308,12 @@ async fn update_status(
         return Err((StatusCode::NOT_FOUND, "Agent not found".to_string()));
     }
 
-    Agent::update_status(&deployment.db().pool, id, request.status)
+    Agent::update_status(&deployment.db().pool, &id, request.status)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Return updated agent
-    let agent = Agent::find_by_id(&deployment.db().pool, id)
+    let agent = Agent::find_by_id(&deployment.db().pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
@@ -325,12 +324,12 @@ async fn update_status(
 
 /// GET /api/agents/:id/profile — Agent capability profile with execution stats
 async fn get_agent_profile(
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let pool = &deployment.db().pool;
 
-    let agent = Agent::find_by_id(pool, id)
+    let agent = Agent::find_by_id(pool, &id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Agent not found".to_string()))?;
@@ -376,8 +375,8 @@ async fn get_agent_profile(
     // Get recent task attempt history
     #[derive(sqlx::FromRow, serde::Serialize)]
     struct RecentAttempt {
-        id: Uuid,
-        task_id: Uuid,
+        id: String,
+        task_id: String,
         status: String,
         created_at: String,
     }

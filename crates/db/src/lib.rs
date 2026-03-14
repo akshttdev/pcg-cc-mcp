@@ -8,9 +8,12 @@ use sqlx::{
 use utils::assets::asset_dir;
 
 pub mod constants;
+pub mod db_uuid;
 pub mod models;
 pub mod repositories;
 pub mod services;
+
+pub use db_uuid::DbUuid;
 
 #[derive(Clone)]
 pub struct DBService {
