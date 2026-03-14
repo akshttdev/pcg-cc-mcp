@@ -606,23 +606,35 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
 
 // ── Mock LLM: content-aware extraction ──────────────────────────────────────
 
-pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous_results: &[(&str, &str)], node_type: &str, output_schema: &str) -> String {
-    // Match on exact step_id first (system workflows), then use output_schema to determine mock data
+pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous_results: &[(&str, &str)], node_type: &str, output_schema: &str, target_schemas: &[String]) -> String {
+    // Match on exact step_id first (system workflows), then infer from downstream
+    // output nodes (target_schemas), output_schema parameter, or node title.
     let key = match step_id {
         "extract_companies" | "extract_contacts" | "identify_opportunities" | "identify_deals" => step_id.to_string(),
 
         _ => {
-            // For custom workflows, use output_schema to pick the right mock.
-            // Fall back to node title when output_schema is empty (e.g. user-created workflows).
-            let hint = if output_schema.is_empty() { title } else { output_schema };
-            let schema_lower = hint.to_lowercase();
-            let has_companies = schema_lower.contains("compan");
-            let has_contacts = schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people");
-            let has_deals = schema_lower.contains("deal") || schema_lower.contains("opportunit");
+            // Priority: downstream output node types → output_schema param → node title
+            let (has_companies, has_contacts, has_deals) = if !target_schemas.is_empty() {
+                // Infer from downstream output nodes (most reliable — always set by the DAG)
+                let joined = target_schemas.join(" ").to_lowercase();
+                (
+                    joined.contains("compan"),
+                    joined.contains("contact") || joined.contains("person"),
+                    joined.contains("deal"),
+                )
+            } else {
+                // Fall back to output_schema param, then node title
+                let hint = if output_schema.is_empty() { title } else { output_schema };
+                let schema_lower = hint.to_lowercase();
+                (
+                    schema_lower.contains("compan"),
+                    schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people"),
+                    schema_lower.contains("deal") || schema_lower.contains("opportunit"),
+                )
+            };
             let multi_type_count = [has_companies, has_contacts, has_deals].iter().filter(|&&b| b).count();
 
             if multi_type_count >= 2 {
-                // Multi-schema: generate combined output for all requested types
                 "multi_extract".to_string()
             } else if has_companies { "extract_companies".to_string() }
             else if has_contacts { "extract_contacts".to_string() }
@@ -2447,14 +2459,15 @@ pub async fn execute_node_with_llm(
         }
     }
 
-    // Fallback to content-aware mock extraction when no LLM is available
+    // Fallback to content-aware mock extraction when no LLM is available.
+    // Pass target_schemas so mock can infer output type from downstream output nodes.
     tracing::warn!("[WORKFLOW] Falling back to mock extraction for node '{}' ({})", node.id, node.name);
     let output_schema = node.parameters.get("output_schema")
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let node_type = &node.node_type;
     let prev_refs: Vec<(&str, &str)> = previous_results.iter().map(|(id, out, _)| (*id, *out)).collect();
-    let mock_result = generate_mock_step_result(&node.id, content, &node.name, &prev_refs, node_type, output_schema);
+    let mock_result = generate_mock_step_result(&node.id, content, &node.name, &prev_refs, node_type, output_schema, target_schemas);
     (mock_result, None)
 
 }
