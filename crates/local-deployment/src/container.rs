@@ -755,7 +755,7 @@ impl LocalContainerService {
                     if let Err(e) = ActivityLog::create(
                         &db.pool,
                         &CreateActivityLog {
-                            task_id: Uuid::parse_str(&ctx.task.id).unwrap(),
+                            task_id: ctx.task.id.clone(),
                             actor_id: ctx.task_attempt.executor.clone(),
                             actor_type: ActorType::Agent,
                             action: "execution_completed".to_string(),
@@ -1425,7 +1425,7 @@ impl ContainerService for LocalContainerService {
         if let Err(e) = ActivityLog::create(
             &self.db.pool,
             &CreateActivityLog {
-                task_id: task_attempt.task_id,
+                task_id: task_attempt.task_id.to_string(),
                 actor_id: task_attempt.executor.clone(),
                 actor_type: ActorType::Agent,
                 action: "execution_started".to_string(),
