@@ -59,10 +59,16 @@
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #12)
 **What:** Feature requests processed by "Bug Triage Pipeline" — should be "Feedback Triage Pipeline".
 
-### 11. No Success Toast for Feedback Submission
+### 11. ~~No Success Toast for Feedback Submission~~ → RESOLVED
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #4)
+**Resolution:** FeedbackDialog now uses toast (commit `7cd4b22c9`)
 
-### 12. Project Task Count Doesn't Auto-Refresh
+### 12. Manual InReview Watcher Doesn't Execute Review (W1)
+**Source:** PR #27 review
+**What:** Manual status change to InReview marks watchers as "triggered" but doesn't spawn the QA review process. Needs standalone `spawn_watcher_review()` function that creates TaskAttempt + starts execution without ExecutionContext.
+**Plan:** Option B in `2026-03-14--plan--dogfood-qa-p1-fixes.md`
+
+### 13. Project Task Count Doesn't Auto-Refresh
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #5)
 **What:** After feedback creates a task, the sidebar project task count is stale until page refresh.
 
@@ -140,3 +146,13 @@
 | BLOB binding for project creation | bind_uuid_blob helpers (commit `e6f34f140`) |
 | Drawer click-outside closes on portaled overlays | Radix overlay detection (commit `cb31ba595`) |
 | E2E demo script duplication + headed mode | Dedicated fixtures + shared helpers (commit `55d24889a`) |
+| PR #27 C1: notifications BLOB/TEXT mismatch | BLOB bytes bind for project_members query (commit `dd3f20388`) |
+| PR #27 C2: bind_uuid_blob panic | Returns Result (commit `1b65c73a1`) |
+| PR #27 C3: fragile GitHub URL parsing | url::Url parser (commit `dd3f20388`) |
+| PR #27 C4: contentFullscreen stuck in localStorage | partialize excludes it (commit `1b65c73a1`) |
+| PR #27 C5: status dropdown cache miss | queryClient.invalidateQueries (commit `1b65c73a1`) |
+| PR #27 W3: Notification/ActivityLog String→DbUuid | Consistency fix (commit `dd3f20388`) |
+| PR #27 W4: feedback agent arbitrary selection | Agent::find_default_assignee (commit `dd3f20388`) |
+| PR #27 W8: FeedbackDialog nested JSX | Success → toast notification (commit `7cd4b22c9`) |
+| PR #27 W14: DbUuid encoding undocumented | Module docs expanded (commit `dd3f20388`) |
+| No success toast for feedback submission (Bug #4) | Toast via sonner (commit `7cd4b22c9`) |

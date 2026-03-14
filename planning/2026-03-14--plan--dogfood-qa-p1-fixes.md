@@ -10,6 +10,13 @@
 - `55d24889a` — refactor: demo scripts always headed, shared helpers, dedicated fixtures
 - `fa6e7d6ba` — docs: E2E demo refactor planning doc
 
+**PR #27 review fixes (2026-03-14):**
+- `1b65c73a1` — fix(#27): C2 (bind_uuid_blob Result), C4 (fullscreen session-only), C5 (cache invalidation)
+- `01dae1e93` — revert(#27): keep BreadcrumbNav always rendered (has exit fullscreen control)
+- `de412a008` — fix(#27): revert W13, improve bind_optional_uuid_blob ergonomics
+- `dd3f20388` — fix(#27): C1 (notifications BLOB bind), C3 (URL parser), W3 (DbUuid consistency), W4 (find_default_assignee), W8 (FeedbackDialog DialogContent), W14 (db_uuid docs)
+- `7cd4b22c9` — fix(#27): FeedbackDialog success → toast notification
+
 ---
 
 ## Context
@@ -32,6 +39,43 @@ During E2E QA testing, 16 bugs were found. DbUuid Phase 1-2 fixed 6 (agent endpo
 | H | Loading skeletons (Backlog #11) | UX | P2 | **DONE** — code in place, loads too fast to visually verify |
 
 **Deferred:** MCP config unification (medium effort, not a bug)
+
+---
+
+## PR #27 Review Fixes
+
+QA review on PR #27 identified 5 Critical, 15 Warning, 11 Info items. Addressed as follows:
+
+| # | Item | Status |
+|---|------|--------|
+| C1 | Notifications BLOB/TEXT JOIN mismatch | **FIXED** — bind user_id as BLOB bytes for project_members query |
+| C2 | `bind_uuid_blob` unwrap panic | **FIXED** — returns `Result<Vec<u8>, uuid::Error>` |
+| C3 | GitHub URL parsing fragile | **FIXED** — replaced rsplitn with `url::Url` parser |
+| C4 | `contentFullscreen` persisted to localStorage | **FIXED** — excluded via `partialize` (session-only) |
+| C5 | Status dropdown no cache invalidation | **FIXED** — `queryClient.invalidateQueries(['tasks'])` |
+| W1 | Manual InReview watcher doesn't execute review | **DEFERRED** — see below |
+| W2 | `DbUuid::from_string()` no validation | Skip — intentional design, doc says use `::parse()` for untrusted input |
+| W3 | Notification/ActivityLog use String not DbUuid | **FIXED** — `Notification.id/user_id/organization_id` + `ActivityLog.actor_id` → DbUuid |
+| W4 | Feedback agent picks first system agent arbitrarily | **FIXED** — extracted `Agent::find_default_assignee()` |
+| W5 | Migration renamed | Already resolved — no action needed |
+| W6 | ResizableDrawer click-outside misses portals | Already fixed in `cb31ba595` |
+| W7 | Dual breadcrumb in fullscreen | False positive — BreadcrumbNav has exit fullscreen control, must always render |
+| W8 | FeedbackDialog nested JSX | **FIXED** — success state wrapped in DialogContent, then replaced with toast |
+| W9–W12 | E2E test hardening | Skip — acceptable for dogfood |
+| W13 | Port comment mismatch | False positive — backend=3001, frontend=3000, correct as-is |
+| W14 | DbUuid encoding strategy undocumented | **FIXED** — expanded module docs with strategy, bind helper table, BLOB column list |
+| W15 | Zustand stores lack size bounds | Skip — stores hold bounded preference data |
+
+### W1 — Manual InReview Watcher Execution (deferred)
+
+**Problem:** When a task is manually moved to InReview, watchers are marked as "triggered" but the QA review process doesn't spawn. The code acknowledges this gap — `trigger_agent_watchers()` requires `ExecutionContext` which isn't available in the status update handler.
+
+**Recommended fix: Option B — Standalone review-spawning function.**
+Extract the "spawn QA review for a watcher" logic from `trigger_agent_watchers()` into a new `spawn_watcher_review(pool, deployment, task_id, watcher, pr_info)` function that creates its own `TaskAttempt` with `run_reason = AgentReview` and starts execution without needing `ExecutionContext`.
+
+- Pro: Clean separation, manual trigger gets first-class support
+- Con: Some duplication with automatic path, need to keep in sync
+- Alternatives considered: (A) construct minimal ExecutionContext inline — fragile; (C) background polling — adds latency and complexity
 
 ---
 
