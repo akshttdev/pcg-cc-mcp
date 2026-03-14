@@ -4,6 +4,11 @@
 **Branch:** `qa/dogfood-pipeline-e2e-2026-03-13` (continue existing)
 **Status:** ALL 8 ITEMS COMPLETE — verified via Playwright MCP + code review
 **Triggered by:** E2E QA testing (see `archive/2026-03-13--review--dogfood-e2e-qa.md`)
+**Latest commits (2026-03-14):**
+- `e6f34f140` — fix: BLOB binding for owner_id/user_id in project creation (`bind_uuid_blob` helpers)
+- `cb31ba595` — fix: drawer click-outside ignores portaled overlays, empty workflow state in run dialog
+- `55d24889a` — refactor: demo scripts always headed, shared helpers, dedicated fixtures
+- `fa6e7d6ba` — docs: E2E demo refactor planning doc
 
 ---
 
@@ -190,6 +195,7 @@ Audit found **109 model files** in `crates/db/src/models/` still using `uuid::Uu
 - [x] `flox activate -- cargo check --workspace` — passes (warnings only)
 - [ ] `flox activate -- cargo test --workspace`
 - [x] `cd frontend && npx tsc --noEmit` — passes
+- [ ] `npx playwright test --project=demos` — 25 demo tests (pending first run)
 
 ### Manual QA per item (Playwright MCP)
 
