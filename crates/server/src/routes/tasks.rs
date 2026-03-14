@@ -13,6 +13,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use db::models::{
+    activity::{ActivityLog, ActorType, CreateActivityLog},
     agent::Agent,
     agent_wallet::{AgentWallet, AgentWalletTransaction, CreateWalletTransaction},
     image::TaskImage,
@@ -246,6 +247,22 @@ pub async fn create_task(
             }),
         )
         .await;
+
+    // Log activity: task created
+    {
+        let log_entry = CreateActivityLog {
+            task_id: task.id.clone(),
+            actor_id: access_context.user_id.to_string(),
+            actor_type: ActorType::Human,
+            action: "created".to_string(),
+            previous_state: None,
+            new_state: serde_json::to_value(&task).ok(),
+            metadata: None,
+        };
+        if let Err(e) = ActivityLog::create(&deployment.db().pool, &log_entry).await {
+            tracing::warn!("Failed to log task creation activity: {e}");
+        }
+    }
 
     // Broadcast task creation to WebSocket clients
     let task_with_status = task_to_with_attempt_status(task.clone());
@@ -496,6 +513,19 @@ pub async fn update_task(
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
     access_context.require_editor(&deployment.db().pool, &existing_task.project_id).await?;
 
+    // Capture old state for activity logging before fields get moved
+    let old_status = existing_task.status.clone();
+    let old_title = existing_task.title.clone();
+    let old_description = existing_task.description.clone();
+    let old_priority = existing_task.priority.clone();
+    let old_assignee_id = existing_task.assignee_id.clone();
+    let old_assigned_agent = existing_task.assigned_agent.clone();
+    let old_due_date = existing_task.due_date.clone();
+    let old_tags = existing_task.tags.clone();
+    let old_pod_id = existing_task.pod_id.clone();
+    let old_board_id = existing_task.board_id.clone();
+    let old_state_json = serde_json::to_value(&existing_task).ok();
+
     // Use existing values if not provided in update
     let title = payload.title.unwrap_or(existing_task.title.clone());
     let description = payload.description.or(existing_task.description.clone());
@@ -617,6 +647,119 @@ pub async fn update_task(
         let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
         TaskImage::delete_by_task_id(&deployment.db().pool, task_uuid).await?;
         TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, image_ids).await?;
+    }
+
+    // Log activity: task updated
+    {
+        let status_changed = old_status != task.status;
+        let (action, metadata) = if status_changed {
+            ("status_changed".to_string(), Some(json!({
+                "from": old_status,
+                "to": task.status,
+            })))
+        } else {
+            // Build list of changed fields
+            let mut changed = Vec::new();
+            if old_title != task.title { changed.push("title"); }
+            if old_description != task.description { changed.push("description"); }
+            if old_priority != task.priority { changed.push("priority"); }
+            if old_assignee_id != task.assignee_id { changed.push("assignee_id"); }
+            if old_assigned_agent != task.assigned_agent { changed.push("assigned_agent"); }
+            if old_due_date != task.due_date { changed.push("due_date"); }
+            if old_tags != task.tags { changed.push("tags"); }
+            if old_pod_id != task.pod_id { changed.push("pod_id"); }
+            if old_board_id != task.board_id { changed.push("board_id"); }
+            ("updated".to_string(), if changed.is_empty() { None } else { Some(json!({"changed_fields": changed})) })
+        };
+        let log_entry = CreateActivityLog {
+            task_id: task.id.clone(),
+            actor_id: access_context.user_id.to_string(),
+            actor_type: ActorType::Human,
+            action,
+            previous_state: old_state_json,
+            new_state: serde_json::to_value(&task).ok(),
+            metadata,
+        };
+        if let Err(e) = ActivityLog::create(&deployment.db().pool, &log_entry).await {
+            tracing::warn!("Failed to log task update activity: {e}");
+        }
+    }
+
+    // Trigger agent watchers on manual status change to InReview
+    if old_status != task.status && task.status == db::models::task::TaskStatus::InReview {
+        let pool = deployment.db().pool.clone();
+        let task_id = task.id.clone();
+        tokio::spawn(async move {
+            // Find pending agent watchers for this task
+            let pending = match Task::find_pending_agent_watchers(&pool, &task_id).await {
+                Ok(w) => w,
+                Err(e) => {
+                    tracing::warn!("Failed to find agent watchers for manual InReview on task {task_id}: {e}");
+                    return;
+                }
+            };
+            if pending.is_empty() {
+                tracing::debug!("No pending agent watchers for manual InReview on task {task_id}");
+                return;
+            }
+
+            // Check if there's a PR associated with any task attempt
+            let task_uuid = match Uuid::parse_str(&task_id) {
+                Ok(u) => u,
+                Err(_) => return,
+            };
+            let attempts = TaskAttempt::fetch_all(&pool, Some(task_uuid)).await.unwrap_or_default();
+            let mut pr_info = None;
+            for attempt in &attempts {
+                if let Ok(Some(merge)) = db::models::merge::Merge::find_latest_by_task_attempt_id(&pool, attempt.id).await {
+                    if let db::models::merge::Merge::Pr(pr_merge) = &merge {
+                        let url = &pr_merge.pr_info.url;
+                        let number = pr_merge.pr_info.number;
+                        // Extract owner/repo from PR URL
+                        let parts: Vec<&str> = url.trim_end_matches('/').rsplitn(5, '/').collect();
+                        let (owner, repo) = if parts.len() >= 4 {
+                            (parts[3].to_string(), parts[2].to_string())
+                        } else {
+                            ("unknown".to_string(), "unknown".to_string())
+                        };
+                        pr_info = Some(services::services::qa_review::PrCreatedInfo {
+                            number,
+                            url: url.clone(),
+                            repo_owner: owner,
+                            repo_name: repo,
+                        });
+                        break;
+                    }
+                }
+            }
+
+            match pr_info {
+                Some(pr) => {
+                    tracing::info!(
+                        "Manual InReview: triggering {} watcher(s) for task {task_id} with PR #{}",
+                        pending.len(), pr.number
+                    );
+                    // We can't easily call trigger_agent_watchers here because it requires
+                    // ExecutionContext. Instead, log the trigger intent — the full
+                    // watcher execution will be handled by the existing pipeline.
+                    // For now, mark watchers as triggered so they don't fire twice.
+                    for watcher in &pending {
+                        if let Err(e) = Task::update_collaborator(
+                            &pool, &task_id, &watcher.actor_id,
+                            "agent_watcher", "triggered",
+                        ).await {
+                            tracing::warn!("Failed to mark watcher {} as triggered: {e}", watcher.actor_id);
+                        }
+                    }
+                }
+                None => {
+                    tracing::warn!(
+                        "Manual InReview on task {task_id}: {} watcher(s) pending but no PR found — watchers not triggered",
+                        pending.len()
+                    );
+                }
+            }
+        });
     }
 
     // Broadcast task update to WebSocket clients

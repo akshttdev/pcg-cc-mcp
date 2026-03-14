@@ -649,6 +649,20 @@ ORDER BY t.created_at DESC"#,
         Ok(())
     }
 
+    /// Assign an agent to a task by updating its agent_id field.
+    pub async fn assign_agent(
+        pool: &SqlitePool,
+        task_id: &str,
+        agent_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE tasks SET agent_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1")
+            .bind(task_id)
+            .bind(agent_id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn delete(pool: &SqlitePool, id: &str) -> Result<u64, sqlx::Error> {
         let result = sqlx::query("DELETE FROM tasks WHERE id = $1")
             .bind(id)
