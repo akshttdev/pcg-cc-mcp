@@ -1716,11 +1716,17 @@ pub async fn execute_action_node(
             // Resolve recipient to user_id
             let resolved_user_id = match recipient {
                 "admin" => {
-                    // Look up admin user
+                    // Look up admin user — users.id is BLOB, format as hyphenated UUID text
                     match sqlx::query_scalar::<_, String>(
-                        "SELECT CAST(id AS TEXT) FROM users WHERE role = 'admin' LIMIT 1"
+                        r#"SELECT printf('%s-%s-%s-%s-%s',
+                            substr(hex(id),1,8),
+                            substr(hex(id),9,4),
+                            substr(hex(id),13,4),
+                            substr(hex(id),17,4),
+                            substr(hex(id),21,12))
+                        FROM users WHERE is_admin = 1 LIMIT 1"#
                     ).fetch_optional(pool).await {
-                        Ok(Some(uid)) => Some(uid),
+                        Ok(Some(uid)) => Some(uid.to_lowercase()),
                         _ => None,
                     }
                 }
@@ -1803,7 +1809,7 @@ pub async fn execute_action_node(
             let project_id = context_project_id.unwrap_or_else(Uuid::nil);
             let task_id = Uuid::new_v4();
             let create_task = CreateTask {
-                project_id,
+                project_id: project_id.to_string(),
                 pod_id: None,
                 board_id: None,
                 title: if title.len() > 200 { title[..200].to_string() } else { title },

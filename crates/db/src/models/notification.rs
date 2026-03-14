@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
-use uuid::Uuid;
 use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
@@ -32,7 +31,7 @@ pub struct CreateNotification {
 
 impl Notification {
     pub async fn create(pool: &SqlitePool, data: &CreateNotification) -> Result<Self, sqlx::Error> {
-        let id = Uuid::new_v4().to_string();
+        let id = DbUuid::new().to_string();
         sqlx::query_as::<_, Self>(
             r#"INSERT INTO notifications (id, user_id, organization_id, title, message, notification_type, source, source_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)

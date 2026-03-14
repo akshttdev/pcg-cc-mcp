@@ -714,6 +714,10 @@ pub async fn update_task(
                                 }
                             })
                             .unwrap_or_else(|| ("unknown".to_string(), "unknown".to_string()));
+                        if owner == "unknown" && repo == "unknown" {
+                            tracing::warn!("Skipping watcher review: could not parse owner/repo from PR URL: {url}");
+                            continue;
+                        }
                         pr_info = Some(services::services::qa_review::PrCreatedInfo {
                             number,
                             url: url.clone(),
