@@ -800,16 +800,16 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
     let assigned_agent = data["assigned_agent"].as_str().map(|s| s.to_string());
     let agent_id = data["agent_id"]
         .as_str()
-        .and_then(|s| Uuid::parse_str(s).ok());
+        .map(|s| s.to_string());
     let board_id = data["board_id"]
         .as_str()
-        .and_then(|s| Uuid::parse_str(s).ok());
+        .map(|s| s.to_string());
     let completion_criteria = data["completion_criteria"].as_str().map(|s| s.to_string());
     let output_format = data["output_format"].as_str().map(|s| s.to_string());
 
     let task_id = Uuid::new_v4();
     let create = CreateTask {
-        project_id,
+        project_id: project_id.to_string(),
         pod_id: None,
         board_id,
         title,

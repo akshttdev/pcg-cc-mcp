@@ -154,9 +154,9 @@ impl TaskExecutor {
             .map_err(|e| NoraError::ToolExecutionError(format!("Invalid project_id: {}", e)))?;
 
         let create_task = CreateTask {
-            project_id: project_uuid,
-            pod_id: definition.pod_id.and_then(|s| Uuid::parse_str(&s).ok()),
-            board_id: definition.board_id.and_then(|s| Uuid::parse_str(&s).ok()),
+            project_id: project_uuid.to_string(),
+            pod_id: definition.pod_id.clone(),
+            board_id: definition.board_id.clone(),
             title: definition.title,
             description: definition.description,
             parent_task_attempt: None,
@@ -591,9 +591,9 @@ impl TaskExecutor {
         let task_id = Uuid::new_v4().to_string();
 
         let create_task = CreateTask {
-            project_id,
+            project_id: project_id.to_string(),
             pod_id: None,
-            board_id: Some(board_id),
+            board_id: Some(board_id.to_string()),
             title,
             description,
             parent_task_attempt: None,
@@ -661,8 +661,7 @@ impl TaskExecutor {
         .map_err(|e| NoraError::DatabaseError(e))?;
 
         let board_id = match board_result {
-            Some((id,)) => Some(Uuid::parse_str(&id)
-                .map_err(|e| NoraError::ConfigError(format!("Invalid board UUID: {}", e)))?),
+            Some((id,)) => Some(id),
             None => None,
         };
 
@@ -671,7 +670,7 @@ impl TaskExecutor {
         let task_id = Uuid::new_v4().to_string();
 
         let create_task = CreateTask {
-            project_id,
+            project_id: project_id.to_string(),
             pod_id: None,
             board_id,
             title: title.clone(),
@@ -861,12 +860,8 @@ impl TaskCreator for TaskExecutor {
         .await
         .map_err(|e| format!("Failed to query boards: {}", e))?;
 
-        let (board_id, board_id_for_log) = match board_id_str {
-            Some(id) => {
-                let uuid = Uuid::parse_str(&id)
-                    .map_err(|e| format!("Invalid board UUID: {}", e))?;
-                (uuid, id)
-            }
+        let board_id_string = match board_id_str {
+            Some(id) => id,
             None => {
                 // Create a default "Agent Flows" board for workflow tasks
                 let board = db::models::project_board::CreateProjectBoard {
@@ -885,10 +880,7 @@ impl TaskCreator for TaskExecutor {
                     "[TASK_CREATOR] Created default Agent Flows board: {}",
                     created_board.id
                 );
-                let id_str = created_board.id.clone();
-                let uuid = Uuid::parse_str(&created_board.id)
-                    .map_err(|e| format!("Invalid board UUID: {}", e))?;
-                (uuid, id_str)
+                created_board.id
             }
         };
 
@@ -896,9 +888,9 @@ impl TaskCreator for TaskExecutor {
         let task_id = Uuid::new_v4();
         let task_id_str = task_id.to_string();
         let create_task = CreateTask {
-            project_id,
+            project_id: project_id.to_string(),
             pod_id: None,
-            board_id: Some(board_id),
+            board_id: Some(board_id_string.clone()),
             title: title.clone(),
             description,
             parent_task_attempt: None,
@@ -930,7 +922,7 @@ impl TaskCreator for TaskExecutor {
             "[TASK_CREATOR] Created workflow task: '{}' (ID: {}) on board {}",
             title,
             task_id,
-            board_id_for_log
+            board_id_string
         );
 
         Ok(task_id)

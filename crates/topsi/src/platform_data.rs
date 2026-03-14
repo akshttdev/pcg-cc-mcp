@@ -566,9 +566,9 @@ impl PlatformDataService {
             .and_then(|b| Uuid::parse_str(&b.id).ok());
 
         let create_task = CreateTask {
-            project_id,
+            project_id: project_id.to_string(),
             pod_id: None,
-            board_id: default_board_id,
+            board_id: default_board_id.map(|id| id.to_string()),
             title: title.to_string(),
             description: Some(description.to_string()),
             parent_task_attempt: None,

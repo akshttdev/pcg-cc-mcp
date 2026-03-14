@@ -559,9 +559,9 @@ impl ConferenceWorkflowEngine {
                     match Task::create(
                         &self.pool,
                         &CreateTask {
-                            project_id: board.project_id,
+                            project_id: board.project_id.clone(),
                             pod_id: None,
-                            board_id: Some(board.id),
+                            board_id: Some(board.id.clone()),
                             title: task_title,
                             description: Some(task_description),
                             parent_task_attempt: None,
@@ -651,9 +651,9 @@ impl ConferenceWorkflowEngine {
                     match Task::create(
                         &self.pool,
                         &CreateTask {
-                            project_id: board.project_id,
+                            project_id: board.project_id.clone(),
                             pod_id: None,
-                            board_id: Some(board.id),
+                            board_id: Some(board.id.clone()),
                             title: task_title,
                             description: Some(task_description),
                             parent_task_attempt: None,
@@ -760,9 +760,9 @@ impl ConferenceWorkflowEngine {
                     match Task::create(
                         &self.pool,
                         &CreateTask {
-                            project_id: board.project_id,
+                            project_id: board.project_id.clone(),
                             pod_id: None,
-                            board_id: Some(board.id),
+                            board_id: Some(board.id.clone()),
                             title: task_title,
                             description: Some(task_description),
                             parent_task_attempt: None,

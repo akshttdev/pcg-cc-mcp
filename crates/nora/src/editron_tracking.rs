@@ -208,12 +208,11 @@ pub async fn find_or_create_task(
     }
 
     // 3. Create new task if we have a project_id
-    // Convert to Uuid locally — CreateTask still requires Uuid for project_id
-    let project_uuid = project_id.and_then(|p| Uuid::parse_str(p).ok())?;
+    let project_id_str = project_id?.to_string();
 
     let task_id = Uuid::new_v4();
     let create = CreateTask {
-        project_id: project_uuid,
+        project_id: project_id_str.clone(),
         pod_id: None,
         board_id: None,
         title: title.to_string(),
@@ -248,11 +247,11 @@ pub async fn find_or_create_task(
             );
 
             // Try to assign to a board
-            if let Ok(Some(board)) = executor.get_default_board_for_tasks(&project_uuid.to_string()).await {
+            if let Ok(Some(board)) = executor.get_default_board_for_tasks(&project_id_str.clone()).await {
                 let _ = executor.add_task_to_board(&task.id, &board.id).await;
             }
 
-            Some((task.id, project_uuid.to_string()))
+            Some((task.id, project_id_str.clone()))
         }
         Err(e) => {
             tracing::error!("[EDITRON_TRACKING] Failed to create task: {}", e);

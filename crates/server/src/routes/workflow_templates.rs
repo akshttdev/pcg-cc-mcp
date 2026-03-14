@@ -173,9 +173,9 @@ async fn convert_deal(
             };
 
             let create_task = CreateTask {
-                project_id: project_id,
+                project_id: project_id.to_string(),
                 pod_id: None,
-                board_id: Uuid::parse_str(&board.id).ok(),
+                board_id: Some(board.id.clone()),
                 title: task_tmpl.title.clone(),
                 description: Some(task_tmpl.description.clone()),
                 parent_task_attempt: None,

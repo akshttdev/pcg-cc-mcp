@@ -90,9 +90,9 @@ pub async fn submit_feedback(
     let task_id = Uuid::new_v4();
     let task_id_str = task_id.to_string();
     let create_task = CreateTask {
-        project_id: BUGREPORTS_PROJECT_ID,
+        project_id: BUGREPORTS_PROJECT_ID.to_string(),
         pod_id: None,
-        board_id: Some(BUGREPORTS_BOARD_ID),
+        board_id: Some(BUGREPORTS_BOARD_ID.to_string()),
         title: full_title.clone(),
         description: Some(full_description.clone()),
         parent_task_attempt: None,

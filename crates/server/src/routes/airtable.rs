@@ -538,9 +538,9 @@ async fn import_records_from_table(
         // Create PCG task from Airtable record
         let task_id = Uuid::new_v4().to_string();
         let create_task = CreateTask {
-            project_id: payload.project_id,
+            project_id: payload.project_id.to_string(),
             pod_id: None,
-            board_id: payload.board_id,
+            board_id: payload.board_id.map(|u| u.to_string()),
             title,
             description,
             parent_task_attempt: None,
