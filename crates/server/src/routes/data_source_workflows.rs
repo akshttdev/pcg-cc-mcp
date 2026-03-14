@@ -1157,6 +1157,14 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
         let trigger_auto_approve = trigger.auto_approve;
 
         tokio::spawn(async move {
+            let trigger_start = std::time::Instant::now();
+            let span = tracing::info_span!("trigger_execution",
+                trigger_id = %trigger_id,
+                workflow_id = %workflow_id,
+                data_source_id = %ds_id,
+            );
+            let _enter = span.enter();
+
             tracing::info!(
                 "[TRIGGER] Firing trigger '{}' (workflow={}) for data source {}",
                 trigger_id, workflow_id, ds_id
@@ -1256,7 +1264,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
 
 /// Spawn a background task that checks for due schedule triggers every 5 minutes.
 /// Schedule triggers run workflows without a data source — they use an empty content string.
-pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool) {
+pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool, shutdown: tokio_util::sync::CancellationToken) {
     tokio::spawn(async move {
         use db::models::workflow_trigger::WorkflowTrigger;
         use std::time::Duration;
@@ -1267,7 +1275,13 @@ pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool) {
         ticker.tick().await; // discard immediate first tick
 
         loop {
-            ticker.tick().await;
+            tokio::select! {
+                _ = ticker.tick() => {}
+                _ = shutdown.cancelled() => {
+                    tracing::info!("[SCHEDULE] Workflow schedule loop shutting down");
+                    break;
+                }
+            }
 
             let due_triggers = match WorkflowTrigger::find_due_schedules(&pool).await {
                 Ok(triggers) => triggers,
@@ -1290,6 +1304,13 @@ pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool) {
                 let model_override = trigger.model_override.clone();
 
                 tokio::spawn(async move {
+                    let span = tracing::info_span!("schedule_trigger",
+                        trigger_id = %trigger_id,
+                        workflow_id = %workflow_id,
+                    );
+                    let _enter = span.enter();
+                    let start = std::time::Instant::now();
+
                     // Mark trigger as fired
                     if let Err(e) = WorkflowTrigger::increment_trigger_count(&pool, &trigger_id).await {
                         tracing::warn!("[SCHEDULE] Failed to update trigger count: {e}");
@@ -1321,11 +1342,11 @@ pub fn spawn_workflow_schedule_loop(pool: sqlx::SqlitePool) {
                         ..Default::default()
                     };
 
-                    let _result = super::workflow_engine::execute_workflow_nodes(&pool, &workflow, "", &opts).await;
-
+                    let result = super::workflow_engine::execute_workflow_nodes(&pool, &workflow, "", &opts).await;
+                    let duration_ms = start.elapsed().as_millis();
                     tracing::info!(
-                        "[SCHEDULE] Completed workflow '{}' (trigger '{}')",
-                        workflow_id, trigger_id
+                        "[SCHEDULE] Completed workflow '{}' (trigger '{}') in {}ms, {} records staged",
+                        workflow_id, trigger_id, duration_ms, result.staged_records
                     );
                 });
             }
