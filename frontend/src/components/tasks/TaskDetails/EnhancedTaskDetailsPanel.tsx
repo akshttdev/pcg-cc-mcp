@@ -28,6 +28,7 @@ import type {
 } from 'shared/types';
 import type { TaskCardMode } from '../EnhancedTaskCard';
 import { EnhancedTaskHeader } from './EnhancedTaskHeader';
+import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
 import { ArtifactGallery } from './ArtifactGallery';
 import { CollaborationTimeline } from './CollaborationTimeline';
 import { AgentWatcherPanel } from '../AgentWatcherPanel';
@@ -582,10 +583,14 @@ export function EnhancedTaskDetailsPanel({
     <div
       className={cn(
         'flex flex-col h-full bg-background border-l',
-        isFullscreen && 'fixed inset-0 z-50',
         className
       )}
     >
+      {/* Breadcrumb nav in fullscreen mode (panel covers AppShell) */}
+      {isFullscreen && (
+        <BreadcrumbNav onToggleFullscreen={onToggleFullscreen ? (_fs: boolean) => onToggleFullscreen() : undefined} isFullscreen={isFullscreen} />
+      )}
+
       {/* Header */}
       <EnhancedTaskHeader
         task={task}

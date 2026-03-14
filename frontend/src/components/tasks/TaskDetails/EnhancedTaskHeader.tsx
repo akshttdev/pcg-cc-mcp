@@ -167,7 +167,7 @@ export function EnhancedTaskHeader({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                {isFullscreen ? 'Exit fullscreen (f)' : 'Fullscreen (f)'}
               </TooltipContent>
             </Tooltip>
           )}
@@ -202,9 +202,14 @@ export function EnhancedTaskHeader({
           </DropdownMenu>
 
           {!hideClose && onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
-              <X className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
+                  <X className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Close (Esc)</TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>

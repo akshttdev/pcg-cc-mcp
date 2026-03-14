@@ -42,6 +42,7 @@ import { useExecutionSummary } from '@/hooks';
 import { ExecutionSummaryCard } from './ExecutionSummaryCard';
 import { AirtableRecordLinkBadge } from './AirtableRecordLinkBadge';
 import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
+import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
 import { TaskArtifactsPanel } from './TaskArtifactsPanel';
 import { WorkflowTerminal } from './WorkflowTerminal';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -430,6 +431,9 @@ export function TaskDetailsPanel({
                   }
                 >
                   <div className={getTaskPanelInnerClasses()}>
+                    {isFullScreen && (
+                      <BreadcrumbNav onToggleFullscreen={toggleFullscreen} isFullscreen={isFullScreen} />
+                    )}
                     {!inIframe() && (
                       <TaskDetailsHeader
                         task={task}

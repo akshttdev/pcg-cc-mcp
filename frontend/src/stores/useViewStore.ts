@@ -34,6 +34,9 @@ interface ViewStore {
   // Sidebar collapsed state
   sidebarCollapsed: boolean;
 
+  // Content fullscreen (hides navbar + sidebar, keeps breadcrumb)
+  contentFullscreen: boolean;
+
   // Saved views
   savedViews: Record<string, ViewConfig[]>; // projectId -> views[]
 
@@ -44,6 +47,8 @@ interface ViewStore {
   setSortOption: (sort: SortOption) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleContentFullscreen: () => void;
+  setContentFullscreen: (fullscreen: boolean) => void;
   saveView: (view: ViewConfig) => void;
   deleteView: (projectId: string, viewId: string) => void;
   getSavedViews: (projectId: string) => ViewConfig[];
@@ -58,6 +63,7 @@ export const useViewStore = create<ViewStore>()(
       useEnhancedCards: true, // Default to enhanced cards
       sortOption: { field: 'priority', direction: 'asc' },
       sidebarCollapsed: false,
+      contentFullscreen: false,
       savedViews: {},
 
       setViewType: (viewType) => set({ currentViewType: viewType }),
@@ -71,6 +77,10 @@ export const useViewStore = create<ViewStore>()(
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+
+      toggleContentFullscreen: () => set((state) => ({ contentFullscreen: !state.contentFullscreen })),
+
+      setContentFullscreen: (fullscreen) => set({ contentFullscreen: fullscreen }),
 
       saveView: (view) =>
         set((state) => {
