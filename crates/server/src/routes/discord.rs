@@ -67,7 +67,7 @@ pub struct PaginationQuery {
 
 // ─── Route builder ───────────────────────────────────────────────────────────
 
-pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/discord/sessions", get(list_active_sessions))
         .route("/discord/join", post(join_channel))

@@ -15,7 +15,6 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 

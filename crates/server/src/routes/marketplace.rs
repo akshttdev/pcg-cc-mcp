@@ -109,14 +109,14 @@ pub struct TopUpRequest {
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
-pub fn public_router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+pub fn public_router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/marketplace/listings", get(list_listings))
         .route("/marketplace/gateway", post(gateway))
         .route("/marketplace/stats", get(gateway_stats))
 }
 
-pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/marketplace/listings", post(create_listing))
         .route("/marketplace/listings/{id}", patch(update_listing))
@@ -293,7 +293,7 @@ async fn route_to_provider(
 
 /// Route via NATS task broadcast to APN nodes
 async fn route_via_nats(
-    deployment: &DeploymentImpl,
+    _deployment: &DeploymentImpl,
     listing: &MarketplaceListing,
     body: &GatewayServiceRequest,
 ) -> anyhow::Result<(serde_json::Value, i64)> {

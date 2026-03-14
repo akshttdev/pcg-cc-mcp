@@ -146,7 +146,7 @@ async fn create_org_invitation(
 
 /// GET /api/organizations/:org_id/invitations — list active invitations
 async fn list_org_invitations(
-    Extension(access_context): Extension<AccessContext>,
+    Extension(_access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path(org_id): Path<String>,
 ) -> Result<ResponseJson<ApiResponse<Vec<OrgInvitationResponse>>>, ApiError> {
@@ -211,7 +211,7 @@ async fn list_org_invitations(
 
 /// POST /api/organizations/:org_id/invitations/:id/revoke
 async fn revoke_org_invitation(
-    Extension(access_context): Extension<AccessContext>,
+    Extension(_access_context): Extension<AccessContext>,
     State(deployment): State<DeploymentImpl>,
     Path((org_id, id)): Path<(String, String)>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {

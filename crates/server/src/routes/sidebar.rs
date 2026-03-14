@@ -104,6 +104,7 @@ struct ClientRow {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 struct ProjectRow {
     id: String,
     name: String,

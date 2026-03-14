@@ -1419,6 +1419,7 @@ async fn run_brand_research(
 
     // Read current iteration count + previous knowledge after the increment above
     #[derive(sqlx::FromRow)]
+    #[allow(dead_code)]
     struct IterRow {
         research_iterations: i64,
         research_depth: i64,

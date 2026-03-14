@@ -4,7 +4,6 @@
 use db::models::{
     business_report::{BusinessReport, CreateBusinessReport},
     call_intake_item::CallIntakeItem,
-    crm_deal::CrmDeal,
     person::Person,
 };
 use reqwest::Client;

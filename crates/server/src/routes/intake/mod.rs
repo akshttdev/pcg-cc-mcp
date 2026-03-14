@@ -13,7 +13,7 @@ mod report;
 
 use axum::{
     Router,
-    routing::{get, patch, post},
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 

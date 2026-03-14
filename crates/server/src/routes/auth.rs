@@ -25,15 +25,16 @@ use utils::response::ApiResponse;
 
 use crate::{DeploymentImpl, error::ApiError};
 
-/// Returns true if the server is running in a context where Secure cookies are appropriate.
-fn is_secure_context() -> bool {
-    let host = std::env::var("HOST").unwrap_or_default();
-    let env = std::env::var("RUST_ENV").unwrap_or_default();
-    if env == "development" {
-        return false;
-    }
-    !matches!(host.as_str(), "localhost" | "127.0.0.1" | "0.0.0.0" | "")
-}
+// TODO: unused — comment out to suppress warning
+// /// Returns true if the server is running in a context where Secure cookies are appropriate.
+// fn is_secure_context() -> bool {
+//     let host = std::env::var("HOST").unwrap_or_default();
+//     let env = std::env::var("RUST_ENV").unwrap_or_default();
+//     if env == "development" {
+//         return false;
+//     }
+//     !matches!(host.as_str(), "localhost" | "127.0.0.1" | "0.0.0.0" | "")
+// }
 
 // Import SQLite auth handlers
 mod auth_sqlite;

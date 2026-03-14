@@ -155,6 +155,7 @@ pub async fn bio_page(
 
     // Get recent published posts
     #[derive(sqlx::FromRow)]
+    #[allow(dead_code)]
     struct PostRow {
         platform_post_id: Option<String>,
         platform_url: Option<String>,

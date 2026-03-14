@@ -100,7 +100,7 @@ impl VoiceTopology {
     /// Create a voice channel node
     pub fn create_channel_node(
         channel_id: &str,
-        channel_type: &str,
+        _channel_type: &str,
         caps: Vec<&str>,
     ) -> GraphNode {
         GraphNode::new(

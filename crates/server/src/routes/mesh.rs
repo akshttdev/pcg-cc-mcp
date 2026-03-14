@@ -648,7 +648,7 @@ pub async fn resolve_cloud_url(
     }
 }
 
-pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
+pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/mesh/stats", get(get_mesh_stats))
         .route("/mesh/peers", get(get_mesh_peers))

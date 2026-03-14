@@ -1524,13 +1524,13 @@ const LLM_TIMEOUT: Duration = Duration::from_secs(12);
 /// System prompt for PCG team members — Nora as internal orchestrator
 const NORA_PCG_TEAM_SYSTEM: &str = "\
 You are Nora, PCG's Executive AI Assistant speaking with a member of the PCG team on a phone call. \
-You are their intelligent operations assistant — you know their projects, tasks, and boards.\
+You are their intelligent operations assistant — you know their projects, tasks, and boards.
 
 You can help with: creating tasks, updating project status, checking what's in progress, \
 scheduling work, summarising project activity, capturing meeting notes, and orchestrating \
-agent workflows.\
+agent workflows.
 
-The caller's active projects and tasks will be provided in the context. Reference them naturally.\
+The caller's active projects and tasks will be provided in the context. Reference them naturally.
 
 Rules:\
 - Keep every response to 2-3 SHORT sentences maximum\
@@ -1543,15 +1543,15 @@ Rules:\
 const NORA_CLIENT_SYSTEM: &str = "\
 You are Nora, PCG's Executive AI Assistant. You are speaking on a phone call on behalf of \
 Power Club Global (PCG) — a premium AI-powered business platform that helps entrepreneurs, \
-executives, and growing teams run their operations with intelligent agents.\
+executives, and growing teams run their operations with intelligent agents.
 
 PCG's capabilities include: AI project management, autonomous agents that execute tasks, \
 CRM and client management, content creation, social media management, financial tracking \
-with VIBE tokens, team collaboration, and custom AI workflows.\
+with VIBE tokens, team collaboration, and custom AI workflows.
 
 Your role on this call is to represent PCG warmly and professionally — understand the caller's \
 goals, answer their questions, and help them see how PCG can help them. New callers can get \
-their own PCG environment and their own AI assistant (Topsi) to manage their work.\
+their own PCG environment and their own AI assistant (Topsi) to manage their work.
 
 Rules for phone calls:\
 - Keep every response to 2-3 SHORT sentences maximum\
@@ -1757,7 +1757,6 @@ pub async fn handle_incoming_sms(
             });
             let twiml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>\
                 <Message>Got it — I'll bring that into our conversation now.</Message>\
-
                 </Response>";
             return (StatusCode::OK, [("Content-Type", "application/xml")], twiml.to_string());
         }
@@ -1780,11 +1779,12 @@ pub async fn handle_incoming_sms(
 
     // Resolve sender identity (persons > CRM > pcg_team)
     let person_context = lookup_sms_sender_context(pool, &request.from).await;
-    let caller_name = person_context
-        .as_ref()
-        .and_then(|c| c.get("name").and_then(|v| v.as_str()))
-        .unwrap_or("there")
-        .to_string();
+    // TODO: caller_name was extracted but never used — person_context is still used below
+    // let caller_name = person_context
+    //     .as_ref()
+    //     .and_then(|c| c.get("name").and_then(|v| v.as_str()))
+    //     .unwrap_or("there")
+    //     .to_string();
 
     // Buffer message + media URLs immediately — image fetch happens inside the debounce
     // spawn so we don't block the webhook response (SignalWire times out after ~15s)
@@ -2206,14 +2206,15 @@ async fn process_sms_with_nora(
 }
 
 
-/// Escape special XML characters for TwiML body
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
-}
+// TODO: unused — comment out to suppress warning
+// /// Escape special XML characters for TwiML body
+// fn xml_escape(s: &str) -> String {
+//     s.replace('&', "&amp;")
+//         .replace('<', "&lt;")
+//         .replace('>', "&gt;")
+//         .replace('"', "&quot;")
+//         .replace('\'', "&apos;")
+// }
 
 /// Strip markdown formatting so TTS doesn't read symbols aloud.
 pub(crate) fn strip_markdown_for_tts(text: &str) -> String {
