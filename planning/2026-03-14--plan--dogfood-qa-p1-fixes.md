@@ -53,7 +53,7 @@ QA review on PR #27 identified 5 Critical, 15 Warning, 11 Info items. Addressed 
 | C3 | GitHub URL parsing fragile | **FIXED** — replaced rsplitn with `url::Url` parser |
 | C4 | `contentFullscreen` persisted to localStorage | **FIXED** — excluded via `partialize` (session-only) |
 | C5 | Status dropdown no cache invalidation | **FIXED** — `queryClient.invalidateQueries(['tasks'])` |
-| W1 | Manual InReview watcher doesn't execute review | **DEFERRED** — see below |
+| W1 | Manual InReview watcher doesn't execute review | **FIXED** — `spawn_watcher_reviews()` (commit `f03dab011`) |
 | W2 | `DbUuid::from_string()` no validation | Skip — intentional design, doc says use `::parse()` for untrusted input |
 | W3 | Notification/ActivityLog use String not DbUuid | **FIXED** — `Notification.id/user_id/organization_id` + `ActivityLog.actor_id` → DbUuid |
 | W4 | Feedback agent picks first system agent arbitrarily | **FIXED** — extracted `Agent::find_default_assignee()` |
@@ -66,16 +66,17 @@ QA review on PR #27 identified 5 Critical, 15 Warning, 11 Info items. Addressed 
 | W14 | DbUuid encoding strategy undocumented | **FIXED** — expanded module docs with strategy, bind helper table, BLOB column list |
 | W15 | Zustand stores lack size bounds | Skip — stores hold bounded preference data |
 
-### W1 — Manual InReview Watcher Execution (deferred)
+### W1 — Manual InReview Watcher Execution (FIXED)
 
-**Problem:** When a task is manually moved to InReview, watchers are marked as "triggered" but the QA review process doesn't spawn. The code acknowledges this gap — `trigger_agent_watchers()` requires `ExecutionContext` which isn't available in the status update handler.
+**Problem:** When a task is manually moved to InReview, watchers were marked as "triggered" but the QA review process didn't spawn. `trigger_agent_watchers()` requires `ExecutionContext` which isn't available in the status update handler.
 
-**Recommended fix: Option B — Standalone review-spawning function.**
-Extract the "spawn QA review for a watcher" logic from `trigger_agent_watchers()` into a new `spawn_watcher_review(pool, deployment, task_id, watcher, pr_info)` function that creates its own `TaskAttempt` with `run_reason = AgentReview` and starts execution without needing `ExecutionContext`.
+**Fix (Option B):** Added `spawn_watcher_reviews()` as a standalone entry point in `qa_review.rs`. It accepts `(pool, container, task_id, pr_info)` and handles:
+1. Loading the task from DB
+2. Finding pending watchers
+3. Resolving base branch from latest attempt
+4. For each watcher: mark triggered → look up agent/config → create TaskAttempt → start execution with `AgentReview` run reason → store review instructions artifact
 
-- Pro: Clean separation, manual trigger gets first-class support
-- Con: Some duplication with automatic path, need to keep in sync
-- Alternatives considered: (A) construct minimal ExecutionContext inline — fragile; (C) background polling — adds latency and complexity
+Also refactored `build_review_description()` to accept `(task_title, task_id)` directly instead of `&ExecutionContext`, shared by both the automatic and manual paths.
 
 ---
 

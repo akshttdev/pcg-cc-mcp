@@ -63,12 +63,7 @@
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #4)
 **Resolution:** FeedbackDialog now uses toast (commit `7cd4b22c9`)
 
-### 12. Manual InReview Watcher Doesn't Execute Review (W1)
-**Source:** PR #27 review
-**What:** Manual status change to InReview marks watchers as "triggered" but doesn't spawn the QA review process. Needs standalone `spawn_watcher_review()` function that creates TaskAttempt + starts execution without ExecutionContext.
-**Plan:** Option B in `2026-03-14--plan--dogfood-qa-p1-fixes.md`
-
-### 13. Project Task Count Doesn't Auto-Refresh
+### 12. Project Task Count Doesn't Auto-Refresh
 **Source:** `archive/2026-03-13--review--dogfood-e2e-qa.md` (Bug #5)
 **What:** After feedback creates a task, the sidebar project task count is stale until page refresh.
 
@@ -156,3 +151,4 @@
 | PR #27 W8: FeedbackDialog nested JSX | Success → toast notification (commit `7cd4b22c9`) |
 | PR #27 W14: DbUuid encoding undocumented | Module docs expanded (commit `dd3f20388`) |
 | No success toast for feedback submission (Bug #4) | Toast via sonner (commit `7cd4b22c9`) |
+| PR #27 W1: manual InReview doesn't spawn QA review | spawn_watcher_reviews() standalone (commit `f03dab011`) |
