@@ -185,9 +185,10 @@ pub async fn create_task(
         access_context.user_id
     );
 
-    if let Some(pod_id) = payload.pod_id {
-        match ProjectPod::find_by_id(&deployment.db().pool, pod_id).await? {
-            Some(pod) if pod.project_id == payload.project_id => {}
+    if let Some(ref pod_id) = payload.pod_id {
+        let pod_uuid = Uuid::parse_str(pod_id).map_err(|e| ApiError::BadRequest(format!("Invalid pod_id: {e}")))?;
+        match ProjectPod::find_by_id(&deployment.db().pool, pod_uuid).await? {
+            Some(pod) if pod.project_id.to_string() == payload.project_id => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
                     "Pod does not belong to this project".to_string(),
@@ -197,9 +198,9 @@ pub async fn create_task(
         }
     }
 
-    if let Some(board_id) = payload.board_id {
-        match ProjectBoard::find_by_id(&deployment.db().pool, &board_id.to_string()).await? {
-            Some(board) if board.project_id == payload.project_id.to_string() => {}
+    if let Some(ref board_id) = payload.board_id {
+        match ProjectBoard::find_by_id(&deployment.db().pool, board_id).await? {
+            Some(board) if board.project_id == payload.project_id => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
                     "Board does not belong to this project".to_string(),
@@ -217,7 +218,8 @@ pub async fn create_task(
 
     if let Some(image_ids) = &payload.image_ids {
         let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-        TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, image_ids).await?;
+        let image_uuids: Vec<Uuid> = image_ids.iter().map(|s| Uuid::parse_str(s)).collect::<Result<_, _>>().map_err(|e| ApiError::BadRequest(format!("Invalid image_id: {e}")))?;
+        TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, &image_uuids).await?;
     }
 
     // Auto-register agent watchers based on assigned agent's config
@@ -297,9 +299,10 @@ pub async fn create_task_and_start(
         base_branch,
     } = payload;
 
-    if let Some(pod_id) = task_payload.pod_id {
-        match ProjectPod::find_by_id(&deployment.db().pool, pod_id).await? {
-            Some(pod) if pod.project_id == task_payload.project_id => {}
+    if let Some(ref pod_id) = task_payload.pod_id {
+        let pod_uuid = Uuid::parse_str(pod_id).map_err(|e| ApiError::BadRequest(format!("Invalid pod_id: {e}")))?;
+        match ProjectPod::find_by_id(&deployment.db().pool, pod_uuid).await? {
+            Some(pod) if pod.project_id.to_string() == task_payload.project_id => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
                     "Pod does not belong to this project".to_string(),
@@ -309,9 +312,9 @@ pub async fn create_task_and_start(
         }
     }
 
-    if let Some(board_id) = task_payload.board_id {
-        match ProjectBoard::find_by_id(&deployment.db().pool, &board_id.to_string()).await? {
-            Some(board) if board.project_id == task_payload.project_id.to_string() => {}
+    if let Some(ref board_id) = task_payload.board_id {
+        match ProjectBoard::find_by_id(&deployment.db().pool, board_id).await? {
+            Some(board) if board.project_id == task_payload.project_id => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
                     "Board does not belong to this project".to_string(),
@@ -329,7 +332,8 @@ pub async fn create_task_and_start(
 
     if let Some(image_ids) = &task_payload.image_ids {
         let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
-        TaskImage::associate_many(&deployment.db().pool, task_uuid, image_ids).await?;
+        let image_uuids: Vec<Uuid> = image_ids.iter().map(|s| Uuid::parse_str(s)).collect::<Result<_, _>>().map_err(|e| ApiError::BadRequest(format!("Invalid image_id: {e}")))?;
+        TaskImage::associate_many(&deployment.db().pool, task_uuid, &image_uuids).await?;
     }
 
     // Auto-register agent watchers based on assigned agent's config
@@ -532,11 +536,11 @@ pub async fn update_task(
     let status = payload.status.unwrap_or(existing_task.status.clone());
     let parent_task_attempt = payload
         .parent_task_attempt
-        .map(|u| u.to_string())
         .or(existing_task.parent_task_attempt);
     let pod_change = payload.pod_id.clone();
-    if let Some(Some(pod_id)) = pod_change.as_ref() {
-        match ProjectPod::find_by_id(&deployment.db().pool, *pod_id).await? {
+    if let Some(Some(ref pod_id)) = pod_change {
+        let pod_uuid = Uuid::parse_str(pod_id).map_err(|e| ApiError::BadRequest(format!("Invalid pod_id: {e}")))?;
+        match ProjectPod::find_by_id(&deployment.db().pool, pod_uuid).await? {
             Some(pod) if pod.project_id.to_string() == existing_task.project_id => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
@@ -547,12 +551,12 @@ pub async fn update_task(
         }
     }
     let pod_id = match pod_change {
-        Some(opt) => opt.map(|u| u.to_string()),
+        Some(opt) => opt,
         None => existing_task.pod_id,
     };
     let board_change = payload.board_id.clone();
     if let Some(Some(board_id)) = board_change.as_ref() {
-        match ProjectBoard::find_by_id(&deployment.db().pool, &board_id.to_string()).await? {
+        match ProjectBoard::find_by_id(&deployment.db().pool, board_id).await? {
             Some(board) if board.project_id == existing_task.project_id => {}
             Some(_) => {
                 return Err(ApiError::BadRequest(
@@ -563,7 +567,7 @@ pub async fn update_task(
         }
     }
     let board_id = match board_change {
-        Some(opt) => opt.map(|u| u.to_string()),
+        Some(opt) => opt,
         None => existing_task.board_id,
     };
     let priority = payload.priority.unwrap_or(existing_task.priority.clone());
@@ -645,8 +649,9 @@ pub async fn update_task(
 
     if let Some(image_ids) = &payload.image_ids {
         let task_uuid = Uuid::parse_str(&task.id).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        let image_uuids: Vec<Uuid> = image_ids.iter().map(|s| Uuid::parse_str(s)).collect::<Result<_, _>>().map_err(|e| ApiError::BadRequest(format!("Invalid image_id: {e}")))?;
         TaskImage::delete_by_task_id(&deployment.db().pool, task_uuid).await?;
-        TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, image_ids).await?;
+        TaskImage::associate_many_dedup(&deployment.db().pool, task_uuid, &image_uuids).await?;
     }
 
     // Log activity: task updated
