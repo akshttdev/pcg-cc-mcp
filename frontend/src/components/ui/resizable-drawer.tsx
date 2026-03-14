@@ -123,6 +123,7 @@ export function ResizableDrawer({
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (e.defaultPrevented) return;
         onClose();
       }
     };

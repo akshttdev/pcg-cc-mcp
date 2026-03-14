@@ -173,6 +173,7 @@ pub struct CreateTask {
     pub assigned_agent: Option<String>,  // Legacy: agent name
     pub agent_id: Option<String>,           // New: foreign key to agents table
     pub assigned_mcps: Option<Vec<String>>,
+    #[serde(default)]
     pub created_by: String,
     pub requires_approval: Option<bool>,
     pub parent_task_id: Option<String>,

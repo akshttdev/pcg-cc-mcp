@@ -86,12 +86,12 @@ const modeConfig: Record<TaskCardMode, { icon: React.ReactNode; label: string; c
 };
 
 // Status configuration
-const statusConfig: Record<string, { color: string; label: string }> = {
-  todo: { color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', label: 'To Do' },
-  inprogress: { color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300', label: 'In Progress' },
-  inreview: { color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300', label: 'In Review' },
-  done: { color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300', label: 'Done' },
-  cancelled: { color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300', label: 'Cancelled' },
+const statusConfig: Record<string, { color: string; label: string; dot: string }> = {
+  todo: { color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', label: 'To Do', dot: 'bg-gray-400 dark:bg-gray-500' },
+  inprogress: { color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300', label: 'In Progress', dot: 'bg-blue-500 dark:bg-blue-400' },
+  inreview: { color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300', label: 'In Review', dot: 'bg-yellow-500 dark:bg-yellow-400' },
+  done: { color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300', label: 'Done', dot: 'bg-green-500 dark:bg-green-400' },
+  cancelled: { color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300', label: 'Cancelled', dot: 'bg-red-500 dark:bg-red-400' },
 };
 
 // Priority configuration
@@ -274,7 +274,7 @@ export function EnhancedTaskHeader({
             {STATUS_OPTIONS.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 <span className="flex items-center gap-1.5">
-                  <span className={cn('h-2 w-2 rounded-full', statusConfig[opt.value]?.color.split(' ')[0] || 'bg-gray-300')} />
+                  <span className={cn('h-2 w-2 rounded-full', statusConfig[opt.value]?.dot || 'bg-gray-300')} />
                   {opt.label}
                 </span>
               </SelectItem>

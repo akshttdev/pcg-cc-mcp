@@ -19,7 +19,9 @@ interface InboxNotificationItemProps {
 export function InboxNotificationItem({ item, onClick }: InboxNotificationItemProps) {
   return (
     <div
-      className="px-3 py-2 transition-colors cursor-pointer hover:bg-muted/50 bg-primary/5"
+      className={`px-3 py-2 transition-colors cursor-pointer hover:bg-muted/50 ${
+        item.read_at ? 'opacity-50' : 'bg-primary/5'
+      }`}
       onClick={() => onClick(item)}
     >
       <div className="flex items-start gap-2">
@@ -33,7 +35,9 @@ export function InboxNotificationItem({ item, onClick }: InboxNotificationItemPr
             {timeAgo(item.created_at)}
           </p>
         </div>
-        <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+        {!item.read_at && (
+          <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+        )}
       </div>
     </div>
   );

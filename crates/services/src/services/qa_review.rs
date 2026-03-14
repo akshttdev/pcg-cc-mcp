@@ -311,7 +311,8 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
     let task_uuid = Uuid::parse_str(&ctx.task.id)
         .map_err(|e| format!("Invalid task UUID: {e}"))?;
 
-    // Use the same base branch as the dev attempt
+    // ctx.task_attempt is always the dev attempt (not a QA attempt) — we reuse
+    // its base_branch so the QA review targets the same integration point.
     let base_branch = ctx.task_attempt.base_branch.clone();
 
     // Create TaskAttempt on the SAME task (no separate QA task)

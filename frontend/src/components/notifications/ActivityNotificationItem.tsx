@@ -30,12 +30,15 @@ function getActionIcon(action: string) {
 interface ActivityNotificationItemProps {
   item: ActivityItem;
   onClick: (item: ActivityItem) => void;
+  isRead?: boolean;
 }
 
-export function ActivityNotificationItem({ item, onClick }: ActivityNotificationItemProps) {
+export function ActivityNotificationItem({ item, onClick, isRead }: ActivityNotificationItemProps) {
   return (
     <div
-      className="px-3 py-2 transition-colors cursor-pointer hover:bg-muted/50 bg-blue-50/50 dark:bg-blue-950/20"
+      className={`px-3 py-2 transition-colors cursor-pointer hover:bg-muted/50 ${
+        isRead ? 'opacity-50' : 'bg-blue-50/50 dark:bg-blue-950/20'
+      }`}
       onClick={() => onClick(item)}
     >
       <div className="flex items-start gap-2">
@@ -46,7 +49,9 @@ export function ActivityNotificationItem({ item, onClick }: ActivityNotification
             {timeAgo(item.timestamp)}
           </p>
         </div>
-        <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+        {!isRead && (
+          <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+        )}
       </div>
     </div>
   );

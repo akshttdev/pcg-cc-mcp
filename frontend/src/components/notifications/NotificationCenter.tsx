@@ -16,6 +16,23 @@ import { getProjectId } from './utils';
 import { ActivityNotificationItem } from './ActivityNotificationItem';
 import { InboxNotificationItem } from './InboxNotificationItem';
 
+const READ_ACTIVITY_IDS_KEY = 'orcha:read-activity-ids';
+
+function loadReadActivityIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(READ_ACTIVITY_IDS_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function persistReadActivityIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(READ_ACTIVITY_IDS_KEY, JSON.stringify([...ids]));
+  } catch {}
+}
+
 export function NotificationCenter() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -26,6 +43,7 @@ export function NotificationCenter() {
       return null;
     }
   });
+  const [readActivityIds, setReadActivityIds] = useState<Set<string>>(loadReadActivityIds);
 
   const { data: activityNotifications = [], isLoading: activityLoading } = useQuery({
     queryKey: ['notifications'],
@@ -60,7 +78,8 @@ export function NotificationCenter() {
   const visibleNotifications = dismissedAt
     ? activityNotifications.filter((n) => new Date(n.timestamp) > new Date(dismissedAt))
     : activityNotifications;
-  const unreadCount = visibleNotifications.length + unreadInbox.length;
+  const unreadActivityCount = visibleNotifications.filter((n) => !readActivityIds.has(n.id)).length;
+  const unreadCount = unreadActivityCount + unreadInbox.length;
 
   const persistDismissedAt = useCallback((ts: string) => {
     setDismissedAt(ts);
@@ -68,7 +87,9 @@ export function NotificationCenter() {
   }, []);
 
   const handleMarkAllRead = useCallback(async () => {
+    // Mark all activity as dismissed
     persistDismissedAt(new Date().toISOString());
+    // Also mark all inbox as read via API
     try {
       await fetch(resolveApiUrl('/api/notifications/mark-all-read'), {
         method: 'PUT',
@@ -82,19 +103,28 @@ export function NotificationCenter() {
 
   const handleActivityClick = useCallback(
     (item: ActivityItem) => {
+      // Mark this individual activity as read
+      setReadActivityIds((prev) => {
+        const next = new Set(prev);
+        next.add(item.id);
+        persistReadActivityIds(next);
+        return next;
+      });
+
+      // Deep-link to the task
       const projectId = getProjectId(item);
       if (projectId && item.task_id) {
         navigate(`/projects/${projectId}/tasks/${item.task_id}`);
       } else if (item.task_id) {
         navigate('/my-tasks');
       }
-      persistDismissedAt(new Date().toISOString());
     },
-    [navigate, persistDismissedAt],
+    [navigate],
   );
 
   const handleInboxClick = useCallback(
     async (item: InboxNotification) => {
+      // Mark as read via API
       try {
         await fetch(resolveApiUrl(`/api/notifications/${item.id}/read`), {
           method: 'PUT',
@@ -104,7 +134,11 @@ export function NotificationCenter() {
       } catch {
         // Non-fatal
       }
+
+      // Deep-link based on source type
       if (item.source === 'task' && item.source_id) {
+        // Try to find a project context from the notification's organization
+        // Fall back to my-tasks if no project context available
         navigate('/my-tasks');
       } else if (item.source === 'workflow' && item.source_id) {
         navigate('/workflows');
@@ -165,6 +199,7 @@ export function NotificationCenter() {
                   key={item.id}
                   item={item}
                   onClick={handleActivityClick}
+                  isRead={readActivityIds.has(item.id)}
                 />
               ))}
             </>

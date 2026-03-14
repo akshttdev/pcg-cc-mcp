@@ -228,16 +228,16 @@ test.describe("Settings", () => {
 
   test("Topsi admin settings page loads", async ({ page }) => {
     await page.goto("/settings/topsi");
-    await page.waitForLoadState("domcontentloaded");
-    await expect(page.getByText("Topsi Configuration")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("System Prompt")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText("Topsi Configuration")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("System Prompt")).toBeVisible({ timeout: 10_000 });
   });
 
   test("Topsi user preferences page loads", async ({ page }) => {
     await page.goto("/settings/topsi-preferences");
-    await page.waitForLoadState("domcontentloaded");
-    await expect(page.getByText("Topsi Preferences")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Confirmation Mode")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText("Topsi Preferences")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Confirmation Mode")).toBeVisible({ timeout: 10_000 });
   });
 });
 
@@ -263,6 +263,11 @@ test.describe("Topsi UI", () => {
   test("sidebar shows Topsi Activity link for admin", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("domcontentloaded");
+    // Expand the Admin Platforms collapsible section first
+    const adminTrigger = page.getByRole("button", { name: /Admin Platforms/i });
+    if (await adminTrigger.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await adminTrigger.click();
+    }
     await expect(page.getByRole("link", { name: "Topsi Activity" })).toBeVisible({ timeout: 10_000 });
   });
 

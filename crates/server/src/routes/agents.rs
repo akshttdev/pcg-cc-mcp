@@ -13,6 +13,8 @@ use serde::Deserialize;
 use services::services::agent_registry::AgentRegistryService;
 use ts_rs::TS;
 
+use utils::response::ApiResponse;
+
 use crate::{middleware::access_control::AccessContext, DeploymentImpl};
 
 /// Query params for agent search/filter
@@ -70,7 +72,7 @@ async fn list_agents(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let parsed: Vec<AgentWithParsedFields> = agents.into_iter().map(|a| a.into()).collect();
-    Ok(Json(parsed))
+    Ok(Json(ApiResponse::<_, ()>::success(parsed)))
 }
 
 /// List only active agents
@@ -82,7 +84,7 @@ async fn list_active_agents(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let parsed: Vec<AgentWithParsedFields> = agents.into_iter().map(|a| a.into()).collect();
-    Ok(Json(parsed))
+    Ok(Json(ApiResponse::<_, ()>::success(parsed)))
 }
 
 /// Search and filter agents

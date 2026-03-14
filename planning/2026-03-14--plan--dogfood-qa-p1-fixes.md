@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-14
 **Branch:** `qa/dogfood-pipeline-e2e-2026-03-13` (continue existing)
-**Status:** ALL 8 ITEMS COMPLETE — verified via Playwright MCP + code review
+**Status:** ALL 8 ITEMS + 14 E2E FIXES + 4 PR REVIEW ITEMS COMPLETE — pending E2E verification run
 **Triggered by:** E2E QA testing (see `archive/2026-03-13--review--dogfood-e2e-qa.md`)
 **Latest commits (2026-03-14):**
 - `e6f34f140` — fix: BLOB binding for owner_id/user_id in project creation (`bind_uuid_blob` helpers)
@@ -42,7 +42,46 @@ During E2E QA testing, 16 bugs were found. DbUuid Phase 1-2 fixed 6 (agent endpo
 
 ---
 
-## PR #27 Review Fixes
+## E2E Failures Fix (14 remaining → 0 target)
+
+PR #27 E2E run: 96/110 passing, 14 failing (all pre-existing). This section tracks fixes for all 14.
+
+| # | Fix | Unblocks | Status |
+|---|-----|----------|--------|
+| 1A | `CreateTask.created_by` — `#[serde(default)]` | 6 tests in `workflow-pipeline.spec.ts` | **DONE** |
+| 1B | `/api/agents` — wrap response in `ApiResponse` | 2-3 tests (agents list) | **DONE** |
+| 1C | `RUST_ENV=development` in `backend:dev:watch` | 3 tests in `dogfood-workflows.spec.ts` | **DONE** |
+| 2A | Sidebar "Topsi Activity" — expand collapsible | 1 test in `health-check.spec.ts` | **DONE** |
+| 2B | Topsi settings pages — timing (`networkidle`) | 2 tests in `health-check.spec.ts` | **DONE** |
+
+### Files changed:
+- `crates/db/src/models/task.rs:176` — `#[serde(default)]` on `created_by`
+- `crates/server/src/routes/agents.rs:73,85` — `ApiResponse::success()` wrapper
+- `package.json` — `RUST_ENV=development` prepended to `backend:dev:watch`
+- `e2e/health-check.spec.ts:263` — click "Admin Platforms" trigger before link assertion
+- `e2e/health-check.spec.ts:229,236` — `networkidle` + longer timeouts
+
+---
+
+## PR #27 Review Rounds 5/5-Addendum (remaining items)
+
+| # | Item | Status |
+|---|------|--------|
+| V1 | ResizableDrawer Escape `defaultPrevented` guard | **DONE** — `resizable-drawer.tsx` |
+| R12 | Dark mode status dots in EnhancedTaskHeader | **DONE** — `dot` field in statusConfig |
+| R13+R14 | Notification improvements (per-item read, deep-link, mark all) | **DONE** — localStorage `Set<id>`, muted styling |
+| R4 | Code comment for `ctx.task_attempt` base_branch | **DONE** — `qa_review.rs:314` |
+
+### Notification changes detail:
+- **Per-item activity read**: `readActivityIds` stored in localStorage (`orcha:read-activity-ids`), read items shown with muted styling (opacity-50, no blue dot) instead of being hidden
+- **Mark All Read**: Unchanged — sets `dismissedAt` cursor to hide older items + API mark-all-read for inbox
+- **Individual click**: Adds activity ID to read Set, navigates to deep-link, does NOT dismiss all items
+- **InboxNotificationItem**: Now hides blue dot when `read_at` is set (already marked read via API)
+- **ActivityNotificationItem**: New `isRead` prop controls muted styling + dot visibility
+
+---
+
+## PR #27 Review Fixes (earlier rounds)
 
 QA review on PR #27 identified 5 Critical, 15 Warning, 11 Info items. Addressed as follows:
 
