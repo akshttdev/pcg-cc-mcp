@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader } from '@/components/ui/loader';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ListTodo, Clock, AlertCircle, CheckCircle2, ArrowRight, Eye, Bot, User, PenLine } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -84,8 +84,47 @@ export function MyTasksPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader message="Loading your tasks..." size={32} />
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-background">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-9 w-9 rounded-lg" />
+            <div>
+              <Skeleton className="h-5 w-24 mb-1" />
+              <Skeleton className="h-3 w-40" />
+            </div>
+          </div>
+          <Skeleton className="h-8 w-32" />
+        </div>
+        <div className="flex gap-1 px-6 pt-3 pb-2 border-b bg-background">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-8 w-24 rounded-md" />
+          ))}
+        </div>
+        <div className="flex-1 overflow-auto p-6 space-y-2">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="py-3 px-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-4 w-4 rounded-full" />
+                      <Skeleton className="h-4 w-48" />
+                    </div>
+                    <Skeleton className="h-3 w-64 ml-6" />
+                    <div className="flex items-center gap-2 ml-6">
+                      <Skeleton className="h-3 w-20" />
+                      <Skeleton className="h-3 w-16" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                    <Skeleton className="h-5 w-12 rounded-full" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
