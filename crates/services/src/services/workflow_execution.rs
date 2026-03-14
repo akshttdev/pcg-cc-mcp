@@ -6,6 +6,7 @@
 use db::models::crm_contact::{CrmContact, UpdateCrmContact};
 use db::models::crm_deal::{CrmDeal, UpdateCrmDeal};
 use db::models::company::{Company, UpdateCompany};
+use db::models::notification::{Notification, CreateNotification};
 use db::models::task::{Task, CreateTask, Priority};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -605,21 +606,35 @@ pub fn extract_contacts_from_text(text: &str) -> Vec<ExtractedContact> {
 
 // ── Mock LLM: content-aware extraction ──────────────────────────────────────
 
-pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous_results: &[(&str, &str)], node_type: &str, output_schema: &str) -> String {
-    // Match on exact step_id first (system workflows), then use output_schema to determine mock data
+pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, previous_results: &[(&str, &str)], node_type: &str, output_schema: &str, target_schemas: &[String]) -> String {
+    // Match on exact step_id first (system workflows), then infer from downstream
+    // output nodes (target_schemas), output_schema parameter, or node title.
     let key = match step_id {
         "extract_companies" | "extract_contacts" | "identify_opportunities" | "identify_deals" => step_id.to_string(),
 
         _ => {
-            // For custom workflows, use output_schema to pick the right mock
-            let schema_lower = output_schema.to_lowercase();
-            let has_companies = schema_lower.contains("compan");
-            let has_contacts = schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people");
-            let has_deals = schema_lower.contains("deal") || schema_lower.contains("opportunit");
+            // Priority: downstream output node types → output_schema param → node title
+            let (has_companies, has_contacts, has_deals) = if !target_schemas.is_empty() {
+                // Infer from downstream output nodes (most reliable — always set by the DAG)
+                let joined = target_schemas.join(" ").to_lowercase();
+                (
+                    joined.contains("compan"),
+                    joined.contains("contact") || joined.contains("person"),
+                    joined.contains("deal"),
+                )
+            } else {
+                // Fall back to output_schema param, then node title
+                let hint = if output_schema.is_empty() { title } else { output_schema };
+                let schema_lower = hint.to_lowercase();
+                (
+                    schema_lower.contains("compan"),
+                    schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people"),
+                    schema_lower.contains("deal") || schema_lower.contains("opportunit"),
+                )
+            };
             let multi_type_count = [has_companies, has_contacts, has_deals].iter().filter(|&&b| b).count();
 
             if multi_type_count >= 2 {
-                // Multi-schema: generate combined output for all requested types
                 "multi_extract".to_string()
             } else if has_companies { "extract_companies".to_string() }
             else if has_contacts { "extract_contacts".to_string() }
@@ -630,8 +645,15 @@ pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, prev
     };
     match key.as_str() {
         "multi_extract" => {
-            // Combined extraction: produce contacts, companies, and deals in one JSON object
-            let schema_lower = output_schema.to_lowercase();
+            // Combined extraction: produce contacts, companies, and deals in one JSON object.
+            // Use target_schemas (downstream output nodes) when output_schema is empty.
+            let schema_lower = if !target_schemas.is_empty() {
+                target_schemas.join(" ").to_lowercase()
+            } else if !output_schema.is_empty() {
+                output_schema.to_lowercase()
+            } else {
+                title.to_lowercase()
+            };
             let mut result = serde_json::Map::new();
             // Extract contacts first so we can filter person names from companies
             let contacts_extracted = extract_contacts_from_text(content);
@@ -946,9 +968,7 @@ pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, prev
             }
         }
         _ => {
-            let _ = title; // suppress unused warning
             json!({"result": format!("Analysis of {} chars of content", content.len()), "status": "completed"}).to_string()
-
         }
     }
 }
@@ -1621,6 +1641,7 @@ pub async fn execute_action_node(
     previous_results: &[(&str, &str, &str)],
     context_project_id: Option<Uuid>,
     context_org_id: Option<Uuid>,
+    workflow_run_id: Option<Uuid>,
 ) -> Option<(String, Option<Value>)> {
     match node.node_type.as_str() {
         // ── Conditional: evaluate a simple condition against upstream data ────
@@ -1681,7 +1702,14 @@ pub async fn execute_action_node(
         "send_notification" => {
             let notification_type = node.parameters.get("notification_type")
                 .and_then(|v| v.as_str())
-                .unwrap_or("in_app");
+                .map(|t| match t {
+                    "in_app" | "info" => "info",
+                    "warning" | "warn" => "warning",
+                    "success" => "success",
+                    "error" => "error",
+                    _ => "info",
+                })
+                .unwrap_or("info");
             let recipient = node.parameters.get("recipient")
                 .and_then(|v| v.as_str())
                 .unwrap_or("admin");
@@ -1699,16 +1727,71 @@ pub async fn execute_action_node(
                 .join("\n");
             let message = message_template.replace("{{previous_results}}", &prev_text);
 
-            // For now, log the notification. Full email/in-app integration is a future sprint.
             tracing::info!(
                 "[WORKFLOW] Notification node '{}': type={}, recipient={}, subject='{}'",
                 node.id, notification_type, recipient, subject
             );
 
+            // Resolve recipient to user_id
+            let resolved_user_id = match recipient {
+                "admin" => {
+                    // Look up admin user — users.id is BLOB, format as hyphenated UUID text
+                    match sqlx::query_scalar::<_, String>(
+                        r#"SELECT printf('%s-%s-%s-%s-%s',
+                            substr(hex(id),1,8),
+                            substr(hex(id),9,4),
+                            substr(hex(id),13,4),
+                            substr(hex(id),17,4),
+                            substr(hex(id),21,12))
+                        FROM users WHERE is_admin = 1 LIMIT 1"#
+                    ).fetch_optional(pool).await {
+                        Ok(Some(uid)) => Some(uid.to_lowercase()),
+                        _ => None,
+                    }
+                }
+                "assigned_user" | "assignee" => {
+                    // Try to find assignee from previous results context
+                    previous_results.iter()
+                        .find_map(|(_, result, _)| {
+                            serde_json::from_str::<Value>(result).ok()
+                                .and_then(|v| v["assignee_id"].as_str().map(|s| s.to_string()))
+                        })
+                }
+                other => {
+                    // Treat as a direct user_id or email
+                    Some(other.to_string())
+                }
+            };
+
+            let mut notification_created = false;
+            if let Some(user_id) = &resolved_user_id {
+                let create_data = CreateNotification {
+                    user_id: user_id.clone(),
+                    organization_id: context_org_id.map(|u| u.to_string()),
+                    title: subject.to_string(),
+                    message: message.clone(),
+                    notification_type: notification_type.to_string(),
+                    source: Some("workflow".to_string()),
+                    source_id: workflow_run_id.map(|id| id.to_string()),
+                };
+                match Notification::create(pool, &create_data).await {
+                    Ok(_) => {
+                        notification_created = true;
+                        tracing::info!("[WORKFLOW] Notification created for user '{}'", user_id);
+                    }
+                    Err(e) => {
+                        tracing::error!("[WORKFLOW] Failed to create notification: {e}");
+                    }
+                }
+            } else {
+                tracing::warn!("[WORKFLOW] Could not resolve recipient '{}' to a user_id", recipient);
+            }
+
             let output = json!({
-                "notification_sent": true,
+                "notification_sent": notification_created,
                 "type": notification_type,
                 "recipient": recipient,
+                "resolved_user_id": resolved_user_id,
                 "subject": subject,
                 "message": message,
             });
@@ -1745,7 +1828,7 @@ pub async fn execute_action_node(
             let project_id = context_project_id.unwrap_or_else(Uuid::nil);
             let task_id = Uuid::new_v4();
             let create_task = CreateTask {
-                project_id,
+                project_id: project_id.to_string(),
                 pod_id: None,
                 board_id: None,
                 title: if title.len() > 200 { title[..200].to_string() } else { title },
@@ -1769,6 +1852,7 @@ pub async fn execute_action_node(
                 scheduled_end: None,
                 completion_criteria: if completion_criteria.is_empty() { None } else { Some(completion_criteria.to_string()) },
                 output_format: None,
+                collaborators: None,
             };
 
             match Task::create(pool, &create_task, &task_id.to_string()).await {
@@ -2383,14 +2467,15 @@ pub async fn execute_node_with_llm(
         }
     }
 
-    // Fallback to content-aware mock extraction when no LLM is available
+    // Fallback to content-aware mock extraction when no LLM is available.
+    // Pass target_schemas so mock can infer output type from downstream output nodes.
     tracing::warn!("[WORKFLOW] Falling back to mock extraction for node '{}' ({})", node.id, node.name);
     let output_schema = node.parameters.get("output_schema")
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let node_type = &node.node_type;
     let prev_refs: Vec<(&str, &str)> = previous_results.iter().map(|(id, out, _)| (*id, *out)).collect();
-    let mock_result = generate_mock_step_result(&node.id, content, &node.name, &prev_refs, node_type, output_schema);
+    let mock_result = generate_mock_step_result(&node.id, content, &node.name, &prev_refs, node_type, output_schema, target_schemas);
     (mock_result, None)
 
 }

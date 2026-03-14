@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,6 +9,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import {
   Terminal,
@@ -19,8 +27,8 @@ import {
   Edit,
   Copy,
   Trash2,
-  Maximize2,
-  Minimize2,
+  ArrowLeftFromLine,
+  ArrowRightFromLine,
   X,
   Bot,
   User,
@@ -30,7 +38,9 @@ import {
   Calendar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { TaskWithAttemptStatus } from 'shared/types';
+import { tasksApi } from '@/lib/api';
+import { toast } from 'sonner';
+import type { TaskWithAttemptStatus, TaskStatus } from 'shared/types';
 import type { TaskCardMode } from '../EnhancedTaskCard';
 
 interface EnhancedTaskHeaderProps {
@@ -40,9 +50,10 @@ interface EnhancedTaskHeaderProps {
   onDelete?: () => void;
   onDuplicate?: () => void;
   onClose?: () => void;
-  onToggleFullscreen?: () => void;
-  isFullscreen?: boolean;
+  onToggleExpand?: () => void;
+  isExpanded?: boolean;
   hideClose?: boolean;
+  onStatusChange?: (newStatus: string) => void;
 }
 
 // Mode display configuration
@@ -75,12 +86,12 @@ const modeConfig: Record<TaskCardMode, { icon: React.ReactNode; label: string; c
 };
 
 // Status configuration
-const statusConfig: Record<string, { color: string; label: string }> = {
-  todo: { color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', label: 'To Do' },
-  inprogress: { color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300', label: 'In Progress' },
-  inreview: { color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300', label: 'In Review' },
-  done: { color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300', label: 'Done' },
-  cancelled: { color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300', label: 'Cancelled' },
+const statusConfig: Record<string, { color: string; label: string; dot: string }> = {
+  todo: { color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', label: 'To Do', dot: 'bg-gray-400 dark:bg-gray-500' },
+  inprogress: { color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300', label: 'In Progress', dot: 'bg-blue-500 dark:bg-blue-400' },
+  inreview: { color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300', label: 'In Review', dot: 'bg-yellow-500 dark:bg-yellow-400' },
+  done: { color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300', label: 'Done', dot: 'bg-green-500 dark:bg-green-400' },
+  cancelled: { color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300', label: 'Cancelled', dot: 'bg-red-500 dark:bg-red-400' },
 };
 
 // Priority configuration
@@ -91,6 +102,15 @@ const priorityConfig: Record<string, { color: string; label: string }> = {
   low: { color: 'bg-gray-400 text-white', label: 'Low' },
 };
 
+// Status options for dropdown
+const STATUS_OPTIONS = [
+  { value: 'todo', label: 'To Do' },
+  { value: 'inprogress', label: 'In Progress' },
+  { value: 'inreview', label: 'In Review' },
+  { value: 'done', label: 'Done' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
 export function EnhancedTaskHeader({
   task,
   mode,
@@ -98,10 +118,13 @@ export function EnhancedTaskHeader({
   onDelete,
   onDuplicate,
   onClose,
-  onToggleFullscreen,
-  isFullscreen,
+  onToggleExpand,
+  isExpanded,
   hideClose,
+  onStatusChange,
 }: EnhancedTaskHeaderProps) {
+  const queryClient = useQueryClient();
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const modeInfo = modeConfig[mode];
   const statusInfo = statusConfig[task.status] || statusConfig.todo;
   const priorityInfo = priorityConfig[task.priority] || priorityConfig.medium;
@@ -155,19 +178,19 @@ export function EnhancedTaskHeader({
 
         {/* Action buttons */}
         <div className="flex items-center gap-1 shrink-0">
-          {onToggleFullscreen && (
+          {onToggleExpand && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={onToggleFullscreen} className="h-8 w-8">
-                  {isFullscreen ? (
-                    <Minimize2 className="h-4 w-4" />
+                <Button variant="ghost" size="icon" onClick={onToggleExpand} className="h-8 w-8">
+                  {isExpanded ? (
+                    <ArrowRightFromLine className="h-4 w-4" />
                   ) : (
-                    <Maximize2 className="h-4 w-4" />
+                    <ArrowLeftFromLine className="h-4 w-4" />
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                {isExpanded ? 'Collapse panel' : 'Expand panel'}
               </TooltipContent>
             </Tooltip>
           )}
@@ -202,26 +225,62 @@ export function EnhancedTaskHeader({
           </DropdownMenu>
 
           {!hideClose && onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
-              <X className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
+                  <X className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Close (Esc)</TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>
 
       {/* Bottom row: Metadata badges */}
       <div className="flex items-center gap-2 px-4 pb-3 flex-wrap">
-        {/* Status */}
-        <Badge variant="outline" className={cn('text-xs', statusInfo.color)}>
-          {task.has_in_progress_attempt ? (
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          ) : task.has_merged_attempt ? (
-            <CheckCircle className="h-3 w-3 mr-1" />
-          ) : task.last_attempt_failed ? (
-            <XCircle className="h-3 w-3 mr-1" />
-          ) : null}
-          {statusInfo.label}
-        </Badge>
+        {/* Status dropdown */}
+        <Select
+          value={task.status}
+          onValueChange={async (newStatus) => {
+            if (newStatus === task.status) return;
+            setUpdatingStatus(true);
+            try {
+              await tasksApi.update(task.id, { status: newStatus as TaskStatus });
+              queryClient.invalidateQueries({ queryKey: ['tasks'] });
+              toast.success(`Status changed to ${statusConfig[newStatus]?.label || newStatus}`);
+              onStatusChange?.(newStatus);
+            } catch (err) {
+              toast.error('Failed to update status');
+            } finally {
+              setUpdatingStatus(false);
+            }
+          }}
+          disabled={updatingStatus}
+        >
+          <SelectTrigger className={cn('h-7 text-xs gap-1 border-0 w-auto', statusInfo.color)}>
+            {updatingStatus ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : task.has_in_progress_attempt ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : task.has_merged_attempt ? (
+              <CheckCircle className="h-3 w-3" />
+            ) : task.last_attempt_failed ? (
+              <XCircle className="h-3 w-3" />
+            ) : null}
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {STATUS_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                <span className="flex items-center gap-1.5">
+                  <span className={cn('h-2 w-2 rounded-full', statusConfig[opt.value]?.dot || 'bg-gray-300')} />
+                  {opt.label}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* Priority */}
         <Badge className={cn('text-xs', priorityInfo.color)}>

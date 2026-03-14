@@ -800,16 +800,16 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
     let assigned_agent = data["assigned_agent"].as_str().map(|s| s.to_string());
     let agent_id = data["agent_id"]
         .as_str()
-        .and_then(|s| Uuid::parse_str(s).ok());
+        .map(|s| s.to_string());
     let board_id = data["board_id"]
         .as_str()
-        .and_then(|s| Uuid::parse_str(s).ok());
+        .map(|s| s.to_string());
     let completion_criteria = data["completion_criteria"].as_str().map(|s| s.to_string());
     let output_format = data["output_format"].as_str().map(|s| s.to_string());
 
     let task_id = Uuid::new_v4();
     let create = CreateTask {
-        project_id,
+        project_id: project_id.to_string(),
         pod_id: None,
         board_id,
         title,
@@ -833,6 +833,7 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         screenshot: None,
         completion_criteria,
         output_format,
+        collaborators: None,
     };
 
     let task = Task::create(pool, &create, &task_id.to_string()).await.map_err(|e| e.to_string())?;
@@ -878,7 +879,6 @@ pub async fn auto_start_agent_execution(
     let agent_id = task
         .agent_id
         .as_ref()
-        .and_then(|id| Uuid::parse_str(id).ok())
         .ok_or("No agent_id on task")?;
 
     // Look up execution config for the agent

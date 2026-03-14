@@ -4064,7 +4064,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         db::models::execution_artifact::ArtifactType::MediaIngestManifest,
                                         &format!("Ingest: {}", batch.id),
                                         Some(serde_json::json!({
@@ -4081,7 +4081,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::log_editron_activity(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         "editron_ingest_completed",
                                         &format!("Ingested {} files from {}", batch.files.len() as u32, source_url),
                                         vibe_cost,
@@ -4091,8 +4091,8 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::record_editron_vibe(
                                         pool,
-                                        resolved_project_id,
-                                        resolved_task_id,
+                                        &resolved_project_id,
+                                        &resolved_task_id,
                                         vibe_cost,
                                         &format!("Editron ingest: {} files", batch.files.len() as u32),
                                         "ingest",
@@ -4183,7 +4183,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         db::models::execution_artifact::ArtifactType::MediaAnalysisReport,
                                         &format!("Analysis: {} hero moments", analysis.hero_moments.len()),
                                         Some(serde_json::json!({
@@ -4201,7 +4201,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::log_editron_activity(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         "editron_analyze_completed",
                                         &format!(
                                             "Batch analyzed: {} hero moments, {} passes",
@@ -4215,8 +4215,8 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::record_editron_vibe(
                                         pool,
-                                        resolved_project_id,
-                                        resolved_task_id,
+                                        &resolved_project_id,
+                                        &resolved_task_id,
                                         vibe_cost,
                                         &format!("Editron analyze: {} passes", passes),
                                         "analyze",
@@ -4312,7 +4312,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         db::models::execution_artifact::ArtifactType::VideoEditSession,
                                         &format!("Edit Session: {}", deliverable_type),
                                         Some(serde_json::json!({
@@ -4329,7 +4329,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::log_editron_activity(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         "editron_edits_generated",
                                         &format!(
                                             "Video edits generated: {} with {} ratios",
@@ -4343,8 +4343,8 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::record_editron_vibe(
                                         pool,
-                                        resolved_project_id,
-                                        resolved_task_id,
+                                        &resolved_project_id,
+                                        &resolved_task_id,
                                         vibe_cost,
                                         &format!("Editron edit: {} ratios", aspect_ratios.len()),
                                         "edit",
@@ -4447,7 +4447,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::create_and_link_artifact(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         db::models::execution_artifact::ArtifactType::RenderDeliverable,
                                         &format!("Render Job: {} formats", formats.len()),
                                         Some(serde_json::json!({
@@ -4465,7 +4465,7 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::log_editron_activity(
                                         pool,
-                                        resolved_task_id,
+                                        &resolved_task_id,
                                         "editron_render_started",
                                         &format!(
                                             "Render job queued: {} formats, {:?} priority",
@@ -4479,8 +4479,8 @@ impl ExecutiveTools {
 
                                     let _ = crate::editron_tracking::record_editron_vibe(
                                         pool,
-                                        resolved_project_id,
-                                        resolved_task_id,
+                                        &resolved_project_id,
+                                        &resolved_task_id,
                                         vibe_cost,
                                         &format!("Editron render: {} formats", formats.len()),
                                         "render",

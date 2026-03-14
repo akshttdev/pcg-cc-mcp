@@ -9,7 +9,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -18,8 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
+import { FormDialogBody } from '@/components/ui/form-dialog-body';
 import { templatesApi, agentsApi } from '@/lib/api';
 import type { AgentWithParsedFields } from 'shared/types';
 import type {
@@ -154,7 +153,23 @@ export const TaskTemplateEditDialog =
                 {isEditMode ? 'Edit Template' : 'Create Template'}
               </DialogTitle>
             </DialogHeader>
-            <ScrollArea className="flex-1 -mx-6 px-6">
+            <FormDialogBody
+              footer={
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSave} disabled={saving}>
+                    {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isEditMode ? 'Update' : 'Create'}
+                  </Button>
+                </>
+              }
+            >
               <div className="space-y-4 py-4">
                 <div>
                   <Label htmlFor="template-name">Template Name</Label>
@@ -299,20 +314,7 @@ export const TaskTemplateEditDialog =
 
                 {error && <Alert variant="destructive">{error}</Alert>}
               </div>
-            </ScrollArea>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={handleCancel}
-                disabled={saving}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isEditMode ? 'Update' : 'Create'}
-              </Button>
-            </DialogFooter>
+            </FormDialogBody>
           </DialogContent>
         </Dialog>
       );

@@ -39,10 +39,10 @@ export const PageLoader = () => (
 
 export function AppShell() {
   const { config, updateAndSaveConfig, loading } = useUserSystem();
-  const { isFullscreen } = useTaskViewManager();
+  const { isFullscreen, toggleFullscreen } = useTaskViewManager();
   const location = useLocation();
   const isVirtualEnv = location.pathname.startsWith('/virtual-environment');
-  const { sidebarCollapsed, toggleSidebar, setSidebarCollapsed } = useViewStore();
+  const { sidebarCollapsed, toggleSidebar, setSidebarCollapsed, contentFullscreen } = useViewStore();
 
   // On mobile, toggle sidebar means show/hide the overlay sidebar
   // We reuse sidebarCollapsed: collapsed=true means hidden on mobile
@@ -63,7 +63,7 @@ export function AppShell() {
   // Dynamic page title based on current route
   usePageTitle();
 
-  const showNavbar = !isFullscreen;
+  const showNavbar = !isFullscreen && !contentFullscreen;
 
   useEffect(() => {
     let cancelled = false;
@@ -170,7 +170,7 @@ export function AppShell() {
               <WebviewContextMenu />
               {showNavbar && <DevBanner />}
               {showNavbar && <Navbar onToggleSidebar={handleToggleSidebar} />}
-              {showNavbar && <BreadcrumbNav />}
+              <BreadcrumbNav onToggleFullscreen={toggleFullscreen} isFullscreen={isFullscreen} />
 
               <div className="flex-1 flex min-h-0 relative">
                 {/* Mobile/tablet backdrop overlay when sidebar is open */}
@@ -182,15 +182,17 @@ export function AppShell() {
                 )}
 
                 {/* Sidebar: hidden on small screens when collapsed, overlay when open; always visible on lg+ */}
-                <div className={`
-                  lg:relative lg:flex lg:shrink-0
-                  ${sidebarCollapsed
-                    ? 'hidden lg:flex'
-                    : 'absolute top-0 left-0 bottom-0 z-50 lg:relative lg:z-auto flex'
-                  }
-                `}>
-                  <Sidebar className="shrink-0 bg-background h-full" />
-                </div>
+                {!showNavbar ? null : (
+                  <div className={`
+                    lg:relative lg:flex lg:shrink-0
+                    ${sidebarCollapsed
+                      ? 'hidden lg:flex'
+                      : 'absolute top-0 left-0 bottom-0 z-50 lg:relative lg:z-auto flex'
+                    }
+                  `}>
+                    <Sidebar className="shrink-0 bg-background h-full" />
+                  </div>
+                )}
 
                 <div className="flex-1 overflow-y-auto">
                   <ViewAsBanner />

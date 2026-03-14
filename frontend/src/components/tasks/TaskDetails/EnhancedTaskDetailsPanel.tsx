@@ -28,6 +28,7 @@ import type {
 } from 'shared/types';
 import type { TaskCardMode } from '../EnhancedTaskCard';
 import { EnhancedTaskHeader } from './EnhancedTaskHeader';
+import { BreadcrumbNav } from '@/components/breadcrumb/BreadcrumbNav';
 import { ArtifactGallery } from './ArtifactGallery';
 import { CollaborationTimeline } from './CollaborationTimeline';
 import { AgentWatcherPanel } from '../AgentWatcherPanel';
@@ -46,6 +47,8 @@ interface EnhancedTaskDetailsPanelProps {
   onDuplicate?: () => void;
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
+  onToggleExpand?: () => void;
+  isExpanded?: boolean;
   hideClose?: boolean;
   className?: string;
 }
@@ -135,6 +138,8 @@ export function EnhancedTaskDetailsPanel({
   onDuplicate,
   onToggleFullscreen,
   isFullscreen,
+  onToggleExpand,
+  isExpanded,
   hideClose,
   className,
 }: EnhancedTaskDetailsPanelProps) {
@@ -574,6 +579,12 @@ export function EnhancedTaskDetailsPanel({
     document.body.removeChild(a);
   }, []);
 
+  // Stable callback wrapper for BreadcrumbNav (expects (fs: boolean) => void)
+  const handleToggleFullscreen = useMemo(
+    () => onToggleFullscreen ? (_fs: boolean) => onToggleFullscreen() : undefined,
+    [onToggleFullscreen]
+  );
+
   // Tab counts
   const artifactCount = artifacts.length;
   const eventCount = workflowEvents.length;
@@ -582,10 +593,14 @@ export function EnhancedTaskDetailsPanel({
     <div
       className={cn(
         'flex flex-col h-full bg-background border-l',
-        isFullscreen && 'fixed inset-0 z-50',
         className
       )}
     >
+      {/* Breadcrumb nav in fullscreen mode (panel covers AppShell) */}
+      {isFullscreen && (
+        <BreadcrumbNav onToggleFullscreen={handleToggleFullscreen} isFullscreen={isFullscreen} />
+      )}
+
       {/* Header */}
       <EnhancedTaskHeader
         task={task}
@@ -594,8 +609,8 @@ export function EnhancedTaskDetailsPanel({
         onDelete={onDelete}
         onDuplicate={onDuplicate}
         onClose={onClose}
-        onToggleFullscreen={onToggleFullscreen}
-        isFullscreen={isFullscreen}
+        onToggleExpand={onToggleExpand}
+        isExpanded={isExpanded}
         hideClose={hideClose}
       />
 

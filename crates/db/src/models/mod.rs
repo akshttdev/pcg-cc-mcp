@@ -45,6 +45,7 @@ pub mod media_batch;
 pub mod media_file_analysis;
 pub mod merge;
 pub mod nora_config;
+pub mod notification;
 pub mod project;
 pub mod project_asset;
 pub mod project_folder;

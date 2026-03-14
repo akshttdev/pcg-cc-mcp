@@ -51,7 +51,7 @@ impl EditronVibeCosts {
 
 pub async fn log_editron_activity(
     pool: &SqlitePool,
-    task_id: Uuid,
+    task_id: &str,
     action: &str,
     message: &str,
     vibe_cost: i64,
@@ -66,7 +66,7 @@ pub async fn log_editron_activity(
     ActivityLog::create(
         pool,
         &CreateActivityLog {
-            task_id,
+            task_id: task_id.to_string(),
             actor_id: "editron".to_string(),
             actor_type: ActorType::Agent,
             action: action.to_string(),
@@ -84,27 +84,30 @@ pub async fn log_editron_activity(
 
 pub async fn record_editron_vibe(
     pool: &SqlitePool,
-    project_id: Uuid,
-    task_id: Uuid,
+    project_id: &str,
+    task_id: &str,
     amount: i64,
     description: &str,
     operation_type: &str,
     extra_metadata: Value,
 ) -> Result<VibeTransaction, Box<dyn std::error::Error + Send + Sync>> {
     let cost_cents = amount; // 1 VIBE = $0.01 → 1 VIBE = 1 cent
+    // Convert string IDs to Uuid locally — downstream CreateVibeTransaction still requires Uuid
+    let project_uuid = Uuid::parse_str(project_id)?;
+    let task_uuid = Uuid::parse_str(task_id)?;
 
     let tx = VibeTransaction::create(
         pool,
         CreateVibeTransaction {
             source_type: VibeSourceType::Project,
-            source_id: project_id,
+            source_id: project_uuid,
             amount_vibe: amount,
             input_tokens: None,
             output_tokens: None,
             model: Some(format!("editron-{}", operation_type)),
             provider: Some("editron".to_string()),
             calculated_cost_cents: Some(cost_cents),
-            task_id: Some(task_id),
+            task_id: Some(task_uuid),
             task_attempt_id: None,
             process_id: None,
             description: Some(description.to_string()),
@@ -122,7 +125,7 @@ pub async fn record_editron_vibe(
 
 pub async fn create_and_link_artifact(
     pool: &SqlitePool,
-    task_id: Uuid,
+    task_id: &str,
     artifact_type: ArtifactType,
     title: &str,
     content: Option<String>,
@@ -149,11 +152,14 @@ pub async fn create_and_link_artifact(
     )
     .await?;
 
+    // Convert string ID to Uuid locally — downstream LinkArtifactToTask still requires Uuid
+    let task_uuid = Uuid::parse_str(task_id)?;
+
     // Link artifact to the task
     let _ = TaskArtifact::link(
         pool,
         LinkArtifactToTask {
-            task_id,
+            task_id: task_uuid,
             artifact_id: artifact.id,
             artifact_role: Some(role),
             display_order: None,
@@ -185,13 +191,11 @@ pub async fn find_or_create_task(
     title: &str,
     description: &str,
     custom_props: Value,
-) -> Option<(Uuid, Uuid)> {
+) -> Option<(String, String)> {
     // 1. Explicit task_id provided (workflow path)
     if let Some(tid) = task_id {
         if let Ok(Some(task)) = Task::find_by_id(pool, tid).await {
-            let task_uuid = Uuid::parse_str(&task.id).ok()?;
-            let proj_uuid = Uuid::parse_str(&task.project_id).ok()?;
-            return Some((task_uuid, proj_uuid));
+            return Some((task.id, task.project_id));
         }
         tracing::warn!("[EDITRON_TRACKING] task_id '{}' not found, falling through", tid);
     }
@@ -204,11 +208,11 @@ pub async fn find_or_create_task(
     }
 
     // 3. Create new task if we have a project_id
-    let project_uuid = project_id.and_then(|p| Uuid::parse_str(p).ok())?;
+    let project_id_str = project_id?.to_string();
 
     let task_id = Uuid::new_v4();
     let create = CreateTask {
-        project_id: project_uuid,
+        project_id: project_id_str.clone(),
         pod_id: None,
         board_id: None,
         title: title.to_string(),
@@ -232,6 +236,7 @@ pub async fn find_or_create_task(
         screenshot: None,
         completion_criteria: None,
         output_format: None,
+        collaborators: None,
     };
 
     match Task::create(pool, &create, &task_id.to_string()).await {
@@ -243,11 +248,11 @@ pub async fn find_or_create_task(
             );
 
             // Try to assign to a board
-            if let Ok(Some(board)) = executor.get_default_board_for_tasks(&project_uuid.to_string()).await {
+            if let Ok(Some(board)) = executor.get_default_board_for_tasks(&project_id_str.clone()).await {
                 let _ = executor.add_task_to_board(&task.id, &board.id).await;
             }
 
-            Some((task_id, project_uuid))
+            Some((task.id, project_id_str.clone()))
         }
         Err(e) => {
             tracing::error!("[EDITRON_TRACKING] Failed to create task: {}", e);
@@ -260,7 +265,7 @@ pub async fn find_or_create_task(
 async fn find_workflow_task_by_batch_id(
     pool: &SqlitePool,
     batch_id: &str,
-) -> Option<(Uuid, Uuid)> {
+) -> Option<(String, String)> {
     let row: Option<(String, String)> = sqlx::query_as(
         r#"SELECT id, project_id
            FROM tasks
@@ -272,8 +277,5 @@ async fn find_workflow_task_by_batch_id(
     .await
     .ok()?;
 
-    let (id_str, pid_str) = row?;
-    let id = Uuid::parse_str(&id_str).ok()?;
-    let pid = Uuid::parse_str(&pid_str).ok()?;
-    Some((id, pid))
+    row
 }

@@ -4,6 +4,7 @@
 
 use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
 use db::constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID};
+use db::models::agent::Agent;
 use db::models::data_source::{CreateDataSource, DataSource};
 use db::models::task::{CreateTask, Priority, Task};
 use deployment::Deployment;
@@ -89,9 +90,9 @@ pub async fn submit_feedback(
     let task_id = Uuid::new_v4();
     let task_id_str = task_id.to_string();
     let create_task = CreateTask {
-        project_id: BUGREPORTS_PROJECT_ID,
+        project_id: BUGREPORTS_PROJECT_ID.to_string(),
         pod_id: None,
-        board_id: Some(BUGREPORTS_BOARD_ID),
+        board_id: Some(BUGREPORTS_BOARD_ID.to_string()),
         title: full_title.clone(),
         description: Some(full_description.clone()),
         parent_task_attempt: None,
@@ -113,11 +114,29 @@ pub async fn submit_feedback(
         screenshot: req.screenshot.clone(),
         completion_criteria: None,
         output_format: None,
+        collaborators: None,
     };
 
     Task::create(pool, &create_task, &task_id_str)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create feedback task: {}", e)))?;
+
+    // Assign a default dev agent to the task
+    match Agent::find_default_assignee(pool).await {
+        Ok(Some(agent)) => {
+            if let Err(e) = Task::assign_agent(pool, &task_id_str, &agent.id).await {
+                tracing::warn!("Failed to assign dev agent to feedback task: {e}");
+            } else {
+                tracing::info!("Assigned dev agent '{}' to feedback task {}", agent.short_name, task_id_str);
+            }
+        }
+        Ok(None) => {
+            tracing::warn!("No active agents found for feedback task assignment");
+        }
+        Err(e) => {
+            tracing::warn!("Failed to look up dev agents for feedback task: {e}");
+        }
+    }
 
     // Also create a DataSource so workflow triggers (Bug Triage Pipeline) fire automatically
     let ds_metadata = json!({

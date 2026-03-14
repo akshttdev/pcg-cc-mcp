@@ -164,7 +164,7 @@ pub async fn execute_workflow_nodes(
                 .join("\n");
             (input_data, None)
         } else if let Some(action_result) =
-            execute_action_node(pool, node, &previous, opts.project_id, opts.organization_id).await
+            execute_action_node(pool, node, &previous, opts.project_id, opts.organization_id, opts.workflow_run_id).await
         {
             action_result
         } else {
@@ -175,13 +175,28 @@ pub async fn execute_workflow_nodes(
             execute_node_with_llm(pool, node, content, &previous, &opts.model, targets).await
         };
 
-        let schema_name = node
+        // Derive schema_name from explicit output_schema param, or auto-infer from
+        // downstream output nodes so user-created workflows work without manual config.
+        let explicit_schema = node
             .parameters
             .get("output_schema")
             .and_then(|v| v.as_str())
             .unwrap_or("")
-            .trim_end_matches("[]")
-            .to_string();
+            .trim_end_matches("[]");
+        let schema_name = if !explicit_schema.is_empty() {
+            explicit_schema.to_string()
+        } else if let Some(targets) = downstream_targets.get(&node.id) {
+            // Map output node types to schema names (e.g. "crm_contacts" → "contacts")
+            targets.iter().map(|t| match t.as_str() {
+                "crm_contacts" => "contacts",
+                "crm_companies" | "companies" => "companies",
+                "crm_deals" | "deals" => "deals",
+                "tasks" => "tasks",
+                other => other,
+            }).collect::<Vec<_>>().join("_")
+        } else {
+            String::new()
+        };
 
         if let Some(ref usage) = usage_meta {
             all_usage.push(usage.clone());

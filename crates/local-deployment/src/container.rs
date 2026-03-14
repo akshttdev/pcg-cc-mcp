@@ -250,10 +250,7 @@ impl LocalContainerService {
 
         // Check if the task has an agent_id with auto_create_pr_on_complete enabled
         let agent_id = match ctx.task.agent_id {
-            Some(ref id) => match Uuid::parse_str(id) {
-                Ok(uuid) => uuid,
-                Err(_) => return None,
-            },
+            Some(ref id) => id.as_str(),
             None => return None,
         };
 
@@ -758,7 +755,7 @@ impl LocalContainerService {
                     if let Err(e) = ActivityLog::create(
                         &db.pool,
                         &CreateActivityLog {
-                            task_id: Uuid::parse_str(&ctx.task.id).unwrap(),
+                            task_id: ctx.task.id.clone(),
                             actor_id: ctx.task_attempt.executor.clone(),
                             actor_type: ActorType::Agent,
                             action: "execution_completed".to_string(),
@@ -1428,7 +1425,7 @@ impl ContainerService for LocalContainerService {
         if let Err(e) = ActivityLog::create(
             &self.db.pool,
             &CreateActivityLog {
-                task_id: task_attempt.task_id,
+                task_id: task_attempt.task_id.to_string(),
                 actor_id: task_attempt.executor.clone(),
                 actor_type: ActorType::Agent,
                 action: "execution_started".to_string(),

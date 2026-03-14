@@ -156,26 +156,27 @@ pub struct TaskRelationships {
 
 #[derive(Debug, Deserialize, TS)]
 pub struct CreateTask {
-    pub project_id: Uuid,
+    pub project_id: String,
     #[ts(optional)]
-    pub pod_id: Option<Uuid>,
+    pub pod_id: Option<String>,
     #[ts(optional)]
-    pub board_id: Option<Uuid>,
+    pub board_id: Option<String>,
     pub title: String,
     pub description: Option<String>,
-    pub parent_task_attempt: Option<Uuid>,
-    pub image_ids: Option<Vec<Uuid>>,
+    pub parent_task_attempt: Option<String>,
+    pub image_ids: Option<Vec<String>>,
 
     // Phase A: Core Collaboration Fields
     pub priority: Option<Priority>,
     pub assignee_id: Option<String>,
     pub assignee_type: Option<String>,   // Polymorphic: "user", "agent", "team"
     pub assigned_agent: Option<String>,  // Legacy: agent name
-    pub agent_id: Option<Uuid>,           // New: foreign key to agents table
+    pub agent_id: Option<String>,           // New: foreign key to agents table
     pub assigned_mcps: Option<Vec<String>>,
+    #[serde(default)]
     pub created_by: String,
     pub requires_approval: Option<bool>,
-    pub parent_task_id: Option<Uuid>,
+    pub parent_task_id: Option<String>,
     pub tags: Option<Vec<String>>,
     pub due_date: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -183,6 +184,8 @@ pub struct CreateTask {
     pub custom_properties: Option<Value>,
     pub scheduled_start: Option<DateTime<Utc>>,
     pub scheduled_end: Option<DateTime<Utc>>,
+    /// JSON-encoded collaborators/watchers array
+    pub collaborators: Option<String>,
     /// Base64 encoded screenshot image for bug reports
     pub screenshot: Option<String>,
     /// Structured success criteria for agent self-evaluation
@@ -196,23 +199,23 @@ pub struct UpdateTask {
     pub title: Option<String>,
     pub description: Option<String>,
     pub status: Option<TaskStatus>,
-    pub parent_task_attempt: Option<Uuid>,
-    pub image_ids: Option<Vec<Uuid>>,
+    pub parent_task_attempt: Option<String>,
+    pub image_ids: Option<Vec<String>>,
     #[ts(optional)]
-    pub pod_id: Option<Option<Uuid>>,
+    pub pod_id: Option<Option<String>>,
     #[ts(optional)]
-    pub board_id: Option<Option<Uuid>>,
+    pub board_id: Option<Option<String>>,
 
     // Phase A: Core Collaboration Fields
     pub priority: Option<Priority>,
     pub assignee_id: Option<String>,
     pub assignee_type: Option<String>,   // Polymorphic: "user", "agent", "team"
     pub assigned_agent: Option<String>,  // Legacy: agent name
-    pub agent_id: Option<Option<Uuid>>,   // New: foreign key to agents table
+    pub agent_id: Option<Option<String>>,   // New: foreign key to agents table
     pub assigned_mcps: Option<Vec<String>>,
     pub requires_approval: Option<bool>,
     pub approval_status: Option<ApprovalStatus>,
-    pub parent_task_id: Option<Uuid>,
+    pub parent_task_id: Option<String>,
     pub tags: Option<Vec<String>>,
     pub due_date: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -292,6 +295,7 @@ const TASK_SELECT_SQL: &str = r#"
     NULLIF(custom_properties, '') AS custom_properties,
     scheduled_start,
     scheduled_end,
+    collaborators,
     screenshot,
     completion_criteria,
     output_format
@@ -511,12 +515,6 @@ ORDER BY t.created_at DESC"#,
             else { None }
         });
 
-        let project_id = data.project_id.to_string();
-        let pod_id = data.pod_id.map(|u| u.to_string());
-        let board_id = data.board_id.map(|u| u.to_string());
-        let parent_task_attempt = data.parent_task_attempt.map(|u| u.to_string());
-        let agent_id = data.agent_id.map(|u| u.to_string());
-        let parent_task_id = data.parent_task_id.map(|u| u.to_string());
         let status_str = "todo";
 
         let sql = format!(
@@ -534,22 +532,22 @@ ORDER BY t.created_at DESC"#,
 
         sqlx::query_as::<_, Task>(&sql)
             .bind(task_id)
-            .bind(&project_id)
-            .bind(&pod_id)
-            .bind(&board_id)
+            .bind(&data.project_id)
+            .bind(&data.pod_id)
+            .bind(&data.board_id)
             .bind(&data.title)
             .bind(&data.description)
             .bind(status_str)
-            .bind(&parent_task_attempt)
+            .bind(&data.parent_task_attempt)
             .bind(&priority)
             .bind(&data.assignee_id)
             .bind(&assignee_type)
             .bind(&data.assigned_agent)
-            .bind(&agent_id)
+            .bind(&data.agent_id)
             .bind(&assigned_mcps_json)
             .bind(&data.created_by)
             .bind(requires_approval)
-            .bind(&parent_task_id)
+            .bind(&data.parent_task_id)
             .bind(&tags_json)
             .bind(&data.due_date)
             .bind(&custom_properties)
@@ -644,6 +642,20 @@ ORDER BY t.created_at DESC"#,
         sqlx::query("UPDATE tasks SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1")
             .bind(id)
             .bind(&status)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Assign an agent to a task by updating its agent_id field.
+    pub async fn assign_agent(
+        pool: &SqlitePool,
+        task_id: &str,
+        agent_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE tasks SET agent_id = $2, updated_at = datetime('now', 'subsec') WHERE id = $1")
+            .bind(task_id)
+            .bind(agent_id)
             .execute(pool)
             .await?;
         Ok(())

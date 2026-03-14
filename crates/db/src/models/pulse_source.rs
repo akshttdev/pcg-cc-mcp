@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
+use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 #[ts(export)]
@@ -32,8 +33,8 @@ impl std::fmt::Display for PulseSourceType {
 #[ts(export)]
 pub struct PulseSource {
     pub id: String,
-    pub project_id: Uuid,
-    pub organization_id: Option<Uuid>,
+    pub project_id: DbUuid,
+    pub organization_id: Option<DbUuid>,
     pub source_id: String,
     pub source_type: String,
     pub name: String,
@@ -52,8 +53,8 @@ pub struct PulseSource {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreatePulseSource {
-    pub project_id: Uuid,
-    pub organization_id: Option<Uuid>,
+    pub project_id: String,
+    pub organization_id: Option<String>,
     pub source_id: String,
     pub source_type: String,
     pub name: String,
@@ -78,12 +79,30 @@ pub struct UpdatePulseSource {
 impl PulseSource {
     pub async fn find_by_project(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
+        let blob = crate::db_uuid::str_to_uuid_blob(project_id)
+            .map_err(|e| sqlx::Error::Protocol(format!("Invalid project UUID: {e}")))?;
         sqlx::query_as::<_, Self>(
             "SELECT * FROM pulse_sources WHERE project_id = ? ORDER BY created_at DESC",
         )
-        .bind(project_id)
+        .bind(blob)
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Find pulse sources scoped to an organization (across all projects in that org).
+    /// Note: `pulse_sources.organization_id` is stored as BLOB, so we use str_to_uuid_blob.
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        let blob = crate::db_uuid::str_to_uuid_blob(organization_id)
+            .map_err(|e| sqlx::Error::Protocol(format!("Invalid org UUID: {e}")))?;
+        sqlx::query_as::<_, Self>(
+            "SELECT * FROM pulse_sources WHERE organization_id = ? ORDER BY created_at DESC",
+        )
+        .bind(blob)
         .fetch_all(pool)
         .await
     }
@@ -100,6 +119,10 @@ impl PulseSource {
         let config_json = data.config.as_ref().map(|v| v.to_string());
         let enabled = data.enabled.unwrap_or(true);
         let interval = data.collection_interval_secs.unwrap_or(300);
+        let project_blob = crate::db_uuid::str_to_uuid_blob(&data.project_id)
+            .map_err(|e| sqlx::Error::Protocol(format!("Invalid project UUID: {e}")))?;
+        let org_blob = crate::db_uuid::str_to_optional_uuid_blob(data.organization_id.as_deref())
+            .map_err(|e| sqlx::Error::Protocol(format!("Invalid org UUID: {e}")))?;
 
         sqlx::query_as::<_, Self>(
             r#"INSERT INTO pulse_sources (id, project_id, organization_id, source_id, source_type, name, url, config, enabled, collection_interval_secs, category)
@@ -107,8 +130,8 @@ impl PulseSource {
                RETURNING *"#,
         )
         .bind(&id)
-        .bind(data.project_id)
-        .bind(data.organization_id)
+        .bind(project_blob)
+        .bind(org_blob)
         .bind(&data.source_id)
         .bind(&data.source_type)
         .bind(&data.name)

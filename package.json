@@ -25,7 +25,7 @@
     "frontend:build": "cd frontend && npm run build",
     "backend:dev": "BACKEND_PORT=$(node scripts/setup-dev-environment.js backend) npm run backend:dev:watch",
     "backend:check": "cargo check",
-    "backend:dev:watch": "SQLX_OFFLINE=1 DISABLE_WORKTREE_ORPHAN_CLEANUP=1 RUST_LOG=debug cargo watch --env DATABASE_URL=${DATABASE_URL:-sqlite://dev_assets/db.sqlite} -w crates -x 'run --bin server'",
+    "backend:dev:watch": "RUST_ENV=development CMAKE_POLICY_VERSION_MINIMUM=3.5 SQLX_OFFLINE=1 DISABLE_WORKTREE_ORPHAN_CLEANUP=1 RUST_LOG=debug cargo watch --env DATABASE_URL=${DATABASE_URL:-sqlite://dev_assets/db.sqlite} -w crates -x 'run --bin server'",
     "backend:build": "cargo build --release --bin server",
     "generate-types": "cargo run --bin generate_types",
     "generate-types:check": "cargo run --bin generate_types -- --check",

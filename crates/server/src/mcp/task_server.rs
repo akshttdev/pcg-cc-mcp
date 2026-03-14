@@ -812,17 +812,15 @@ impl TaskServer {
         let scheduled_end = req.scheduled_end.as_deref().and_then(parse_iso_datetime);
         let parent_task_id = req
             .parent_task_id
-            .as_deref()
-            .and_then(|s| Uuid::parse_str(s).ok());
+            .clone();
         let board_id = req
             .board_id
-            .as_deref()
-            .and_then(|s| Uuid::parse_str(s).ok());
+            .clone();
 
         let task_id = Uuid::new_v4();
         let task_id_str = task_id.to_string();
         let create_task_data = CreateTask {
-            project_id: project_uuid,
+            project_id: project_uuid.to_string(),
             pod_id: None,
             board_id,
             title: req.title.clone(),
@@ -849,6 +847,7 @@ impl TaskServer {
             screenshot: None,
             completion_criteria: req.completion_criteria.clone(),
             output_format: req.output_format.clone(),
+            collaborators: None,
         };
 
         match Task::create(&self.pool, &create_task_data, &task_id_str).await {
@@ -1647,11 +1646,10 @@ impl TaskServer {
             let due_date = item.due_date.as_deref().and_then(parse_iso_datetime);
             let parent_task_id = item
                 .parent_task_id
-                .as_deref()
-                .and_then(|s| Uuid::parse_str(s).ok());
+                .clone();
 
             let create_data = CreateTask {
-                project_id: project_uuid,
+                project_id: project_uuid.to_string(),
                 pod_id: None,
                 board_id: None,
                 title: item.title.clone(),
@@ -1675,6 +1673,7 @@ impl TaskServer {
                 screenshot: None,
                 completion_criteria: None,
                 output_format: None,
+                collaborators: None,
             };
 
             match Task::create(&self.pool, &create_data, &task_id).await {
@@ -2517,12 +2516,11 @@ impl TaskServer {
             .map(|id| id.to_string())
             .unwrap_or_else(|| "mcp".to_string());
 
-        let project_uuid_for_tasks = Uuid::parse_str(&project.id).unwrap();
         for (i, (title, description, priority_str, criteria, output_fmt)) in tasks_def.iter().enumerate() {
             let task_id = Uuid::new_v4().to_string();
             let priority = parse_priority(priority_str);
             let create_task = CreateTask {
-                project_id: project_uuid_for_tasks,
+                project_id: project.id.clone(),
                 pod_id: None,
                 board_id: None,
                 title: title.to_string(),
@@ -2546,6 +2544,7 @@ impl TaskServer {
                 screenshot: None,
                 completion_criteria: criteria.map(|s| s.to_string()),
                 output_format: output_fmt.map(|s| s.to_string()),
+                collaborators: None,
             };
 
             match Task::create(&self.pool, &create_task, &task_id).await {

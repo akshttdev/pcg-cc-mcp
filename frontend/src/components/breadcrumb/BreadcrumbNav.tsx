@@ -1,4 +1,4 @@
-import { ChevronRight, Home, ChevronsUpDown } from 'lucide-react';
+import { ChevronRight, Home, ChevronsUpDown, Minimize2, Maximize2 } from 'lucide-react';
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useProject } from '@/contexts/project-context';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,13 +12,21 @@ import {
 } from '@/components/ui/popover';
 import { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
+import { useViewStore } from '@/stores/useViewStore';
 
 interface BreadcrumbItem {
   label: string;
   href: string;
 }
 
-export function BreadcrumbNav() {
+interface BreadcrumbNavProps {
+  /** Task-specific fullscreen toggle (URL-based, used on task detail pages) */
+  onToggleFullscreen?: (fullscreen: boolean) => void;
+  isFullscreen?: boolean;
+}
+
+export function BreadcrumbNav({ onToggleFullscreen, isFullscreen }: BreadcrumbNavProps = {}) {
+  const { contentFullscreen, toggleContentFullscreen } = useViewStore();
   const { projectId, taskId, orgId, dataSourceId, clientId, personId, companyId } = useParams<{
     projectId?: string;
     taskId?: string;
@@ -334,42 +342,72 @@ export function BreadcrumbNav() {
   }
 
   return (
-    <nav className="flex items-center space-x-1 text-sm text-muted-foreground px-4 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <Link
-        to={currentOrg ? `/organizations/${currentOrg.id}` : '/projects'}
-        className="flex items-center hover:text-foreground transition-colors"
-      >
-        <Home className="h-4 w-4" />
-      </Link>
+    <nav className="flex items-center text-sm text-muted-foreground px-4 py-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex items-center space-x-1 flex-1 min-w-0">
+        <Link
+          to={currentOrg ? `/organizations/${currentOrg.id}` : '/projects'}
+          className="flex items-center hover:text-foreground transition-colors shrink-0"
+        >
+          <Home className="h-4 w-4" />
+        </Link>
 
-      {items.map((item, index) => {
-        const isLast = index === items.length - 1;
-        const isOrgItem = currentOrg && item.href === `/organizations/${currentOrg.id}`;
+        {items.map((item, index) => {
+          const isLast = index === items.length - 1;
+          const isOrgItem = currentOrg && item.href === `/organizations/${currentOrg.id}`;
+
+          return (
+            <div key={item.href} className="flex items-center space-x-1 min-w-0">
+              <ChevronRight className="h-4 w-4 shrink-0" />
+              {isOrgItem && allOrgs.length > 1 ? (
+                <OrgSwitcher
+                  currentOrg={currentOrg}
+                  allOrgs={allOrgs}
+                  onSelect={(id) => navigate(`/organizations/${id}`)}
+                  isLast={isLast}
+                />
+              ) : (
+                <Link
+                  to={item.href}
+                  className={cn(
+                    'hover:text-foreground transition-colors truncate',
+                    isLast && 'text-foreground font-medium'
+                  )}
+                >
+                  {item.label}
+                </Link>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {(() => {
+        // Task pages use URL-based fullscreen; all other pages use store-based
+        const isTaskPage = !!taskId && !!onToggleFullscreen;
+        const isActive = isTaskPage ? !!isFullscreen : contentFullscreen;
+        const handleToggle = isTaskPage
+          ? () => onToggleFullscreen!(!isFullscreen)
+          : toggleContentFullscreen;
 
         return (
-          <div key={item.href} className="flex items-center space-x-1">
-            <ChevronRight className="h-4 w-4" />
-            {isOrgItem && allOrgs.length > 1 ? (
-              <OrgSwitcher
-                currentOrg={currentOrg}
-                allOrgs={allOrgs}
-                onSelect={(id) => navigate(`/organizations/${id}`)}
-                isLast={isLast}
-              />
+          <button
+            onClick={handleToggle}
+            className="shrink-0 ml-3 flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted transition-colors"
+          >
+            {isActive ? (
+              <>
+                <Minimize2 className="h-3.5 w-3.5" />
+                Exit Fullscreen
+              </>
             ) : (
-              <Link
-                to={item.href}
-                className={cn(
-                  'hover:text-foreground transition-colors',
-                  isLast && 'text-foreground font-medium'
-                )}
-              >
-                {item.label}
-              </Link>
+              <>
+                <Maximize2 className="h-3.5 w-3.5" />
+                Fullscreen
+              </>
             )}
-          </div>
+          </button>
         );
-      })}
+      })()}
     </nav>
   );
 }

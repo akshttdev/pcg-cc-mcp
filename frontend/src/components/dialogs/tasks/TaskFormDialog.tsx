@@ -37,6 +37,7 @@ import type {
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { FormDialogBody } from '@/components/ui/form-dialog-body';
 
 export interface TaskFormDialogProps {
   task?: Task | null; // Optional for create mode
@@ -784,7 +785,7 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
     return (
       <>
         <Dialog open={modal.visible} onOpenChange={handleDialogOpenChange}>
-          <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-[650px] max-h-[90vh] flex flex-col overflow-hidden">
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <DialogTitle>
@@ -805,6 +806,50 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                 </div>
               </div>
             </DialogHeader>
+            <FormDialogBody
+              footer={
+                <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 w-full">
+                  <Button
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={isSubmitting || isSubmittingAndStart}
+                  >
+                    Cancel
+                  </Button>
+                  {isEditMode ? (
+                    <Button
+                      onClick={handleSubmit}
+                      disabled={isSubmitting || !title.trim()}
+                    >
+                      {isSubmitting ? 'Updating...' : 'Update Task'}
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={handleSubmit}
+                        disabled={
+                          isSubmitting || isSubmittingAndStart || !title.trim()
+                        }
+                      >
+                        {isSubmitting ? 'Creating...' : 'Create Task'}
+                      </Button>
+                      <Button
+                        onClick={handleCreateAndStart}
+                        disabled={
+                          isSubmitting || isSubmittingAndStart || !title.trim()
+                        }
+                        className={'font-medium'}
+                      >
+                        {isSubmittingAndStart
+                          ? 'Creating & Starting...'
+                          : 'Create & Start'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              }
+            >
             <div className="space-y-4">
               <div>
                 <Label htmlFor="task-title" className="text-sm font-medium">
@@ -1158,47 +1203,8 @@ export const TaskFormDialog = NiceModal.create<TaskFormDialogProps>(
                   return quickstartSection;
                 })()}
 
-              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={handleCancel}
-                  disabled={isSubmitting || isSubmittingAndStart}
-                >
-                  Cancel
-                </Button>
-                {isEditMode ? (
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting || !title.trim()}
-                  >
-                    {isSubmitting ? 'Updating...' : 'Update Task'}
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={handleSubmit}
-                      disabled={
-                        isSubmitting || isSubmittingAndStart || !title.trim()
-                      }
-                    >
-                      {isSubmitting ? 'Creating...' : 'Create Task'}
-                    </Button>
-                    <Button
-                      onClick={handleCreateAndStart}
-                      disabled={
-                        isSubmitting || isSubmittingAndStart || !title.trim()
-                      }
-                      className={'font-medium'}
-                    >
-                      {isSubmittingAndStart
-                        ? 'Creating & Starting...'
-                        : 'Create & Start'}
-                    </Button>
-                  </>
-                )}
-              </div>
             </div>
+            </FormDialogBody>
           </DialogContent>
         </Dialog>
 

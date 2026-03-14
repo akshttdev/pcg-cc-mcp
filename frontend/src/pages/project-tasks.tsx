@@ -53,6 +53,7 @@ import {
 import TaskKanbanBoard from '@/components/tasks/TaskKanbanBoard';
 import { SortMenu } from '@/components/tasks/SortMenu';
 import { EnhancedTaskDetailsPanel } from '@/components/tasks';
+import { ResizableDrawer } from '@/components/ui/resizable-drawer';
 import { ProjectOverview } from '@/components/projects/ProjectOverview';
 import type { Project } from 'shared/types';
 import type { TaskWithArchive } from '@/lib/api';
@@ -707,7 +708,7 @@ export function ProjectTasks() {
       )}
 
       {/* Kanban + Panel Container - uses side-by-side layout on xl+ */}
-      <div className="flex-1 min-h-0 xl:flex">
+      <div className="flex-1 min-h-0 xl:flex relative">
         {/* Left Column - Kanban Section */}
         <div className={getKanbanSectionClasses(isPanelOpen, isFullscreen)}>
           {/* Bulk Selection Toolbar */}
@@ -921,8 +922,8 @@ export function ProjectTasks() {
           )}
         </div>
 
-        {/* Right Column - Task Details Panel (always Enhanced for PCG workflow tasks) */}
-        {isPanelOpen && selectedTask ? (
+        {/* Task Details Drawer / Fullscreen Panel */}
+        {isPanelOpen && selectedTask && isFullscreen && (
           <EnhancedTaskDetailsPanel
             task={selectedTask}
             projectId={projectId!}
@@ -932,9 +933,30 @@ export function ProjectTasks() {
             onDuplicate={() => handleDuplicateTaskCallback(selectedTask)}
             onToggleFullscreen={() => toggleFullscreen(!isFullscreen)}
             isFullscreen={isFullscreen}
-            className={isFullscreen ? 'fixed inset-0 z-50' : 'w-[600px] xl:w-[700px] shrink-0'}
+            className="fixed inset-0 z-50"
           />
-        ) : null}
+        )}
+        <ResizableDrawer
+          open={isPanelOpen && !!selectedTask && !isFullscreen}
+          onClose={handleClosePanel}
+        >
+          {({ isExpanded, toggleExpand }) =>
+            selectedTask && (
+              <EnhancedTaskDetailsPanel
+                task={selectedTask}
+                projectId={projectId!}
+                onClose={handleClosePanel}
+                onEdit={() => handleEditTaskCallback(selectedTask)}
+                onDelete={() => handleDeleteTask(selectedTask.id)}
+                onDuplicate={() => handleDuplicateTaskCallback(selectedTask)}
+                onToggleExpand={toggleExpand}
+                isExpanded={isExpanded}
+                isFullscreen={false}
+                className="h-full"
+              />
+            )
+          }
+        </ResizableDrawer>
       </div>
     </div>
   );

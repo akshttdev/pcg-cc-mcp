@@ -286,7 +286,8 @@ async fn main() -> Result<(), VibeKanbanError> {
     routes::automations::spawn_automation_loop(deployment.db().pool.clone());
 
     // Spawn workflow schedule trigger loop (checks every 5 minutes)
-    routes::data_source_workflows::spawn_workflow_schedule_loop(deployment.db().pool.clone());
+    let schedule_shutdown = tokio_util::sync::CancellationToken::new();
+    routes::data_source_workflows::spawn_workflow_schedule_loop(deployment.db().pool.clone(), schedule_shutdown.clone());
 
     // Spawn OSS Library Listener (polls GitHub releases hourly)
     routes::oss_listener_bg::spawn_oss_listener(deployment.db().pool.clone());

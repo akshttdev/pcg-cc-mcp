@@ -92,6 +92,171 @@ pub async fn trigger_agent_watchers<C: ContainerService + Sync>(
     }
 }
 
+/// Spawn QA reviews for pending watchers without requiring an ExecutionContext.
+///
+/// This is the manual-trigger counterpart to [`trigger_agent_watchers`], used when
+/// a task is moved to InReview via the UI rather than by a dev agent completing
+/// execution. It looks up the task and base branch independently.
+pub async fn spawn_watcher_reviews<C: ContainerService + Sync>(
+    pool: &SqlitePool,
+    container: &C,
+    task_id: &str,
+    pr: &PrCreatedInfo,
+) {
+    let task = match Task::find_by_id(pool, task_id).await {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            tracing::warn!("spawn_watcher_reviews: task {task_id} not found");
+            return;
+        }
+        Err(e) => {
+            tracing::warn!("spawn_watcher_reviews: failed to load task {task_id}: {e}");
+            return;
+        }
+    };
+
+    let pending = match Task::find_pending_agent_watchers(pool, task_id).await {
+        Ok(w) => w,
+        Err(e) => {
+            tracing::warn!("spawn_watcher_reviews: failed to find watchers for {task_id}: {e}");
+            return;
+        }
+    };
+
+    if pending.is_empty() {
+        tracing::debug!("spawn_watcher_reviews: no pending watchers for task {task_id}");
+        return;
+    }
+
+    // Resolve base branch from the most recent task attempt (if any)
+    let task_uuid = match Uuid::parse_str(task_id) {
+        Ok(u) => u,
+        Err(_) => return,
+    };
+    let base_branch = TaskAttempt::fetch_all(pool, Some(task_uuid))
+        .await
+        .ok()
+        .and_then(|attempts| attempts.last().map(|a| a.base_branch.clone()))
+        .unwrap_or_default();
+
+    tracing::info!(
+        "spawn_watcher_reviews: triggering {} watcher(s) for task {task_id} with PR #{}",
+        pending.len(),
+        pr.number
+    );
+
+    for watcher in &pending {
+        if let Err(e) = spawn_single_watcher_review(
+            pool, container, task_id, &task.title,
+            task.completion_criteria.as_deref().unwrap_or_default(),
+            &base_branch, pr, watcher,
+        ).await {
+            tracing::error!(
+                "spawn_watcher_reviews: failed to trigger watcher {} for task {task_id}: {e}",
+                watcher.actor_id
+            );
+        }
+    }
+}
+
+/// Spawn a QA review for a single watcher without ExecutionContext.
+async fn spawn_single_watcher_review<C: ContainerService + Sync>(
+    pool: &SqlitePool,
+    container: &C,
+    task_id: &str,
+    task_title: &str,
+    completion_criteria: &str,
+    base_branch: &str,
+    pr: &PrCreatedInfo,
+    watcher: &TaskCollaborator,
+) -> Result<(), String> {
+    let agent_id = &watcher.actor_id;
+
+    // Mark as triggered
+    Task::update_collaborator(pool, task_id, agent_id, ACTOR_TYPE_AGENT_WATCHER, WATCHER_ACTION_TRIGGERED)
+        .await
+        .map_err(|e| format!("Failed to mark watcher as triggered: {e}"))?;
+
+    // Look up agent and config
+    let agent = Agent::find_by_id(pool, agent_id)
+        .await
+        .map_err(|e| format!("Failed to find agent {agent_id}: {e}"))?
+        .ok_or_else(|| format!("Agent {agent_id} not found"))?;
+
+    let config = AgentExecutionConfig::find_by_agent_id(pool, agent_id)
+        .await
+        .map_err(|e| format!("Failed to find config for agent {agent_id}: {e}"))?;
+
+    // Resolve executor profile (default to CLAUDE_CODE)
+    let executor_profile_id = if let Some(ref cfg) = config {
+        if let Some(ref profile_str) = cfg.execution_profile_id {
+            let parts: Vec<&str> = profile_str.splitn(2, ':').collect();
+            let executor = std::str::FromStr::from_str(parts[0])
+                .unwrap_or(BaseCodingAgent::ClaudeCode);
+            let variant = parts.get(1).map(|s| s.to_string());
+            ExecutorProfileId { executor, variant }
+        } else {
+            ExecutorProfileId::new(BaseCodingAgent::ClaudeCode)
+        }
+    } else {
+        ExecutorProfileId::new(BaseCodingAgent::ClaudeCode)
+    };
+
+    let review_description = build_review_description(pr, task_title, task_id, completion_criteria);
+
+    let task_uuid = Uuid::parse_str(task_id)
+        .map_err(|e| format!("Invalid task UUID: {e}"))?;
+
+    let attempt = TaskAttempt::create(
+        pool,
+        &CreateTaskAttempt {
+            executor: executor_profile_id.executor.clone(),
+            base_branch: base_branch.to_string(),
+        },
+        task_uuid,
+    )
+    .await
+    .map_err(|e| format!("Failed to create QA task attempt: {e}"))?;
+
+    let process = container
+        .start_attempt_with_reason(
+            &attempt,
+            executor_profile_id,
+            Some(ExecutionProcessRunReason::AgentReview),
+            Some(review_description.clone()),
+        )
+        .await
+        .map_err(|e| format!("Failed to start QA execution: {e}"))?;
+
+    // Store review instructions artifact
+    if let Err(e) = ExecutionArtifact::create(
+        pool,
+        db::models::execution_artifact::CreateExecutionArtifact {
+            execution_process_id: Some(process.id),
+            artifact_type: db::models::execution_artifact::ArtifactType::ResearchReport,
+            title: format!("QA Review Instructions — Task {} PR #{}", task_id, pr.number),
+            content: Some(review_description),
+            file_path: None,
+            metadata: Some(serde_json::json!({
+                "task_id": task_id,
+                "pr_number": pr.number,
+                "pr_url": pr.url,
+                "agent_watcher_id": agent_id,
+                "type": "qa_review_instructions",
+            })),
+        },
+    ).await {
+        tracing::warn!("Failed to store QA review instructions artifact: {e}");
+    }
+
+    tracing::info!(
+        "Triggered agent watcher '{}' ({}) on task {} — attempt {}",
+        agent.short_name, agent_id, task_id, attempt.id
+    );
+
+    Ok(())
+}
+
 /// Trigger a single agent watcher: mark as triggered, create attempt, start execution.
 async fn trigger_single_watcher<C: ContainerService + Sync>(
     pool: &SqlitePool,
@@ -114,15 +279,12 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
     .map_err(|e| format!("Failed to mark watcher as triggered: {e}"))?;
 
     // Look up agent and config
-    let agent_uuid = Uuid::parse_str(agent_id)
-        .map_err(|e| format!("Invalid agent UUID {agent_id}: {e}"))?;
-
-    let agent = Agent::find_by_id(pool, agent_uuid)
+    let agent = Agent::find_by_id(pool, agent_id)
         .await
         .map_err(|e| format!("Failed to find agent {agent_id}: {e}"))?
         .ok_or_else(|| format!("Agent {agent_id} not found"))?;
 
-    let config = AgentExecutionConfig::find_by_agent_id(pool, agent_uuid)
+    let config = AgentExecutionConfig::find_by_agent_id(pool, agent_id)
         .await
         .map_err(|e| format!("Failed to find config for agent {agent_id}: {e}"))?;
 
@@ -143,13 +305,14 @@ async fn trigger_single_watcher<C: ContainerService + Sync>(
 
     // Build the review description (structured QA prompt with PR URL, criteria, verdict schema)
     let completion_criteria = ctx.task.completion_criteria.clone().unwrap_or_default();
-    let review_description = build_review_description(pr, ctx, &completion_criteria);
+    let review_description = build_review_description(pr, &ctx.task.title, &ctx.task.id, &completion_criteria);
 
     // Resolve task UUID for attempt creation
     let task_uuid = Uuid::parse_str(&ctx.task.id)
         .map_err(|e| format!("Invalid task UUID: {e}"))?;
 
-    // Use the same base branch as the dev attempt
+    // ctx.task_attempt is always the dev attempt (not a QA attempt) — we reuse
+    // its base_branch so the QA review targets the same integration point.
     let base_branch = ctx.task_attempt.base_branch.clone();
 
     // Create TaskAttempt on the SAME task (no separate QA task)
@@ -363,7 +526,8 @@ pub async fn finalize_review(
 /// Build the QA review description/prompt for the watcher agent.
 fn build_review_description(
     pr: &PrCreatedInfo,
-    ctx: &ExecutionContext,
+    task_title: &str,
+    task_id: &str,
     completion_criteria: &str,
 ) -> String {
     format!(
@@ -382,8 +546,8 @@ fn build_review_description(
          \"iteration\": 1\n}}\n```",
         pr.number,
         pr.url,
-        ctx.task.title,
-        ctx.task.id,
+        task_title,
+        task_id,
         if completion_criteria.is_empty() {
             "No specific criteria defined."
         } else {

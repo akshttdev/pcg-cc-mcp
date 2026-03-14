@@ -488,26 +488,29 @@ pub async fn create_project(
     .await
     {
         Ok(project) => {
-            // Set owner_id on the project
+            // Set owner_id on the project (TEXT column — bind as string)
+            let user_id = db::DbUuid::from(access_context.user_id);
+            let user_id_blob = db::bind_uuid_blob(&user_id)
+                .map_err(|e| ApiError::InternalError(format!("Invalid UUID: {e}")))?;
             let _ = sqlx::query(
                 "UPDATE projects SET owner_id = ? WHERE id = ?"
             )
-            .bind(&access_context.user_id.to_string())
+            .bind(user_id.as_str())
             .bind(&project.id)
             .execute(&deployment.db().pool)
             .await;
 
             // Add the creator as project owner in project_members
-            let member_id = Uuid::new_v4().to_string();
+            let member_id = db::DbUuid::new();
             if let Err(e) = sqlx::query(
                 r#"INSERT INTO project_members (id, project_id, user_id, role, granted_by)
                    VALUES (?, ?, ?, ?, ?)"#
             )
-            .bind(&member_id)
+            .bind(db::bind_uuid(&member_id))
             .bind(&project.id)
-            .bind(&access_context.user_id.to_string())
+            .bind(&user_id_blob)
             .bind("owner")
-            .bind(&access_context.user_id.to_string())
+            .bind(&user_id_blob)
             .execute(&deployment.db().pool)
             .await {
                 tracing::error!("Failed to add project member for new project {}: {}", project.id, e);

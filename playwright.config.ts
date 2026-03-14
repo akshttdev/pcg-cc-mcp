@@ -12,6 +12,7 @@ import { defineConfig, devices } from "@playwright/test";
  * Environment variables:
  *   FRONTEND_PORT  — port the frontend dev server listens on (default 3000)
  *   E2E_HEADED     — set to "true" to run with visible browser (default headless)
+ *   E2E_SLOWMO     — milliseconds to slow down each action (default 250 in headed, 0 headless)
  *   E2E_BROWSER    — "chromium" | "firefox" | "webkit" (default "chromium")
  *   E2E_SCREENSHOTS — set to "true" to capture screenshots on failure (default off)
  *
@@ -23,6 +24,9 @@ import { defineConfig, devices } from "@playwright/test";
  *   npx playwright test -g "login"               # run tests matching pattern
  */
 const headed = process.env.E2E_HEADED === "true";
+const slowMo = process.env.E2E_SLOWMO
+  ? parseInt(process.env.E2E_SLOWMO, 10)
+  : headed ? 250 : 0;
 const browser = process.env.E2E_BROWSER || "chromium";
 const screenshots = process.env.E2E_SCREENSHOTS === "true";
 
@@ -46,8 +50,10 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${process.env.FRONTEND_PORT || 3000}`,
     headless: !headed,
-    // Slow down actions in headed mode so devs can visually follow along
-    ...(headed && { launchOptions: { slowMo: 250 } }),
+    // Larger viewport for headed/demo mode so the full app is visible
+    ...(headed && { viewport: { width: 1440, height: 900 } }),
+    // Slow down actions so devs can visually follow along (E2E_SLOWMO, default 250ms headed)
+    ...(slowMo > 0 && { launchOptions: { slowMo } }),
     trace: "on-first-retry",
     screenshot: screenshots ? "only-on-failure" : "off",
     video: headed ? "on" : "retain-on-failure",
@@ -64,9 +70,22 @@ export default defineConfig({
     {
       name: browser,
       dependencies: ["setup"],
+      testIgnore: /demos\//,
       use: {
         ...devices[browserDeviceMap[browser] || "Desktop Chrome"],
         storageState: authFile,
+      },
+    },
+
+    // Demo scripts — always headed, single browser window, no setup dependency
+    {
+      name: "demos",
+      testMatch: /demos\/.+\.spec\.ts/,
+      use: {
+        ...devices[browserDeviceMap[browser] || "Desktop Chrome"],
+        headless: false,
+        viewport: { width: 1920, height: 1080 },
+        launchOptions: { slowMo: slowMo || 250 },
       },
     },
   ],

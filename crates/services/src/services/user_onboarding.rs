@@ -13,7 +13,7 @@ use super::agent_registry::AgentRegistryService;
 
 pub struct OnboardingResult {
     pub home_project_id: Uuid,
-    pub orcha_agent_id: Uuid,
+    pub orcha_agent_id: String,
 }
 
 pub struct UserOnboardingService;
@@ -120,7 +120,7 @@ impl UserOnboardingService {
 
         Ok(OnboardingResult {
             home_project_id,
-            orcha_agent_id: orcha.id,
+            orcha_agent_id: orcha.id.into_string(),
         })
     }
 }
