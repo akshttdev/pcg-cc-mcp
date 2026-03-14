@@ -252,6 +252,22 @@ pub fn bind_optional_uuid_blob(uuid: &Option<DbUuid>) -> Result<Option<Vec<u8>>,
     uuid.as_ref().map(bind_uuid_blob).transpose()
 }
 
+/// Parse a UUID string and return 16-byte BLOB for binding to legacy BLOB columns.
+///
+/// Use this when a function receives a `&str` UUID and needs to query a BLOB column.
+/// ```ignore
+/// sqlx::query("SELECT * FROM pulse_sources WHERE organization_id = ?")
+///     .bind(str_to_uuid_blob(org_id)?)
+/// ```
+pub fn str_to_uuid_blob(s: &str) -> Result<Vec<u8>, uuid::Error> {
+    Ok(uuid::Uuid::parse_str(s)?.as_bytes().to_vec())
+}
+
+/// Parse an optional UUID string and return optional 16-byte BLOB for legacy BLOB columns.
+pub fn str_to_optional_uuid_blob(s: Option<&str>) -> Result<Option<Vec<u8>>, uuid::Error> {
+    s.map(str_to_uuid_blob).transpose()
+}
+
 /// Bind an `Option<DbUuid>` reference in a raw `sqlx::query()` call.
 ///
 /// Replaces the old `.as_ref().map(|u| u.as_bytes().to_vec())` pattern:

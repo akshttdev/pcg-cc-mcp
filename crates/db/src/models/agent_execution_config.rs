@@ -85,7 +85,7 @@ pub enum AgentExecutionConfigError {
     #[error("Config not found for agent: {0}")]
     ConfigNotFound(String),
     #[error("Ralph loop not found: {0}")]
-    RalphLoopNotFound(Uuid),
+    RalphLoopNotFound(String),
     #[error("JSON serialization error: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -445,8 +445,8 @@ pub struct UpdateAgentExecutionConfig {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct RalphLoopState {
     pub id: String,
-    pub task_attempt_id: Uuid,
-    pub agent_id: Option<Uuid>,
+    pub task_attempt_id: String,
+    pub agent_id: Option<String>,
 
     // Loop State
     pub current_iteration: i32,
@@ -491,8 +491,8 @@ impl RalphLoopState {
             "#,
         )
         .bind(&id)
-        .bind(data.task_attempt_id)
-        .bind(data.agent_id)
+        .bind(&data.task_attempt_id)
+        .bind(&data.agent_id)
         .bind(data.max_iterations)
         .bind(&data.completion_promise)
         .execute(pool)
@@ -500,7 +500,7 @@ impl RalphLoopState {
 
         Self::find_by_id(pool, &id)
             .await?
-            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(data.task_attempt_id))
+            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(data.task_attempt_id.clone()))
     }
 
     /// Find by ID
@@ -518,7 +518,7 @@ impl RalphLoopState {
     /// Find by task attempt ID
     pub async fn find_by_task_attempt(
         pool: &SqlitePool,
-        task_attempt_id: Uuid,
+        task_attempt_id: &str,
     ) -> Result<Option<Self>, AgentExecutionConfigError> {
         sqlx::query_as::<_, Self>(
             "SELECT * FROM ralph_loop_state WHERE task_attempt_id = ?1",
@@ -552,9 +552,7 @@ impl RalphLoopState {
 
         Self::find_by_id(pool, id)
             .await?
-            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(
-                Uuid::parse_str(id).unwrap_or_default(),
-            ))
+            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(id.to_string()))
     }
 
     /// Mark loop as complete
@@ -587,9 +585,7 @@ impl RalphLoopState {
 
         Self::find_by_id(pool, id)
             .await?
-            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(
-                Uuid::parse_str(id).unwrap_or_default(),
-            ))
+            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(id.to_string()))
     }
 
     /// Mark loop as max iterations reached
@@ -611,9 +607,7 @@ impl RalphLoopState {
 
         Self::find_by_id(pool, id)
             .await?
-            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(
-                Uuid::parse_str(id).unwrap_or_default(),
-            ))
+            .ok_or(AgentExecutionConfigError::RalphLoopNotFound(id.to_string()))
     }
 
     /// Record an error
@@ -656,8 +650,8 @@ impl RalphLoopState {
 
 #[derive(Debug, Deserialize, TS)]
 pub struct CreateRalphLoopState {
-    pub task_attempt_id: Uuid,
-    pub agent_id: Option<Uuid>,
+    pub task_attempt_id: String,
+    pub agent_id: Option<String>,
     pub max_iterations: i32,
     pub completion_promise: Option<String>,
 }
@@ -687,7 +681,7 @@ pub struct BackpressureCommandResult {
 pub struct RalphIteration {
     pub id: String,
     pub ralph_loop_id: String,
-    pub execution_process_id: Option<Uuid>,
+    pub execution_process_id: Option<String>,
 
     pub iteration_number: i32,
 
@@ -734,7 +728,7 @@ impl RalphIteration {
         )
         .bind(&id)
         .bind(&data.ralph_loop_id)
-        .bind(data.execution_process_id)
+        .bind(&data.execution_process_id)
         .bind(data.iteration_number)
         .execute(pool)
         .await?;
@@ -804,7 +798,7 @@ impl RalphIteration {
 #[derive(Debug, Deserialize, TS)]
 pub struct CreateRalphIteration {
     pub ralph_loop_id: String,
-    pub execution_process_id: Option<Uuid>,
+    pub execution_process_id: Option<String>,
     pub iteration_number: i32,
 }
 
