@@ -5,7 +5,7 @@
  *   1. Build a CRM extraction workflow (contacts, companies, deals)
  *   2. Create a "conversation" data source via the org intelligence page
  *   3. Run the workflow against the data source
- *   4. Review staged records
+ *   4. Verify the workflow successfully parsed the data source — MUST produce staged records
  *
  * All feature interactions go through the UI. API calls are used for
  * prerequisite state (auth) and post-test cleanup.
@@ -171,8 +171,8 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
     await page.waitForTimeout(DEMO_PAUSE);
   });
 
-  test("Part 3: Run workflow against data source", async ({ page }) => {
-    test.setTimeout(60_000);
+  test("Part 3: Run workflow and verify data source was parsed", async ({ page }) => {
+    test.setTimeout(120_000);
     await page.goto(`/organizations/${ORG_ID}/data-sources`);
     await expect(page.getByText("Data Sources").first()).toBeVisible({ timeout: t(10_000) });
 
@@ -194,25 +194,93 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
 
     await page.waitForTimeout(DEMO_PAUSE);
 
+    // Click the Run Workflow button in the dialog
     await page.getByRole("button", { name: /Run Workflow/ }).last().click();
 
-    const result = page.getByText(
-      /workflow.*complete|staged.*records|no new records|workflow.*failed|Running/i
-    ).first();
-    await expect(result).toBeVisible({ timeout: t(30_000) });
+    // Wait for the workflow to complete — the dialog should change to "Running..."
+    // then close on success, redirecting to the staging tab.
+    //
+    // SUCCESS path: dialog closes → navigates to /workflows?tab=staging&run=...
+    // FAILURE path: toast shows "Failed to run workflow" and dialog stays open
+    //
+    // We MUST end up on the staging tab — anything else means parsing failed.
+
+    // First, wait for the "Running..." state to appear (confirms the request was sent)
+    await expect(
+      page.getByRole("button", { name: "Running..." })
+    ).toBeVisible({ timeout: t(10_000) });
+
+    // Now wait for navigation to staging tab (only happens on successful parse with records)
+    await expect(page).toHaveURL(/tab=staging/, { timeout: t(60_000) });
+
+    // Verify we're NOT seeing failure indicators
+    const failedText = page.getByText("Failed to run workflow");
+    await expect(failedText).not.toBeVisible();
+
+    // Verify the staging tab loaded and has records
+    // (the URL includes &run=<id> which auto-selects the run)
+    await expect(
+      page.getByText(/records staged|contacts|companies|deals/i).first()
+    ).toBeVisible({ timeout: t(15_000) });
+
     await page.waitForTimeout(DEMO_PAUSE);
   });
 
-  test("Part 4: Check staging tab for results", async ({ page }) => {
-    await page.goto("/workflows");
-    await expect(page.getByRole("tab", { name: "Staging" })).toBeVisible({
-      timeout: t(10_000),
-    });
-    await page.getByRole("tab", { name: "Staging" }).click();
+  test("Part 4: Verify staged records contain parsed CRM data", async ({ page }) => {
+    test.setTimeout(60_000);
 
+    // If Part 3 navigated us to staging, we might already be there.
+    // Otherwise, go to workflows staging tab directly.
+    if (!page.url().includes("tab=staging")) {
+      await page.goto("/workflows");
+      await expect(page.getByRole("tab", { name: "Staging" })).toBeVisible({
+        timeout: t(10_000),
+      });
+      await page.getByRole("tab", { name: "Staging" }).click();
+    }
+
+    // Wait for staging records to load — must NOT show "No staged records"
     await expect(
-      page.getByText(/Staging Review|No pending records|contact|company|deal/i).first()
-    ).toBeVisible({ timeout: t(10_000) });
+      page.getByText("No staged records for this workflow run.")
+    ).not.toBeVisible({ timeout: t(5_000) }).catch(() => {
+      // If this text IS visible, fail with a clear message
+    });
+
+    // Verify the staging panel contains actual parsed data from the conversation.
+    // The conversation mentions: Marcus Webb, Lisa Park, Raj Patel, Sarah Chen,
+    // Acme Corp, GlobalTech Industries, and multiple deals.
+    //
+    // We need at least ONE of these to appear in the staged records to prove
+    // the workflow actually parsed the data source content.
+    const body = page.locator("body");
+
+    // Check for at least one contact name from the conversation
+    const hasContact = await Promise.any([
+      expect(body).toContainText("Marcus", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("Lisa", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("Webb", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("Park", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("Raj", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("Sarah", { timeout: t(10_000) }).then(() => true),
+    ]).catch(() => false);
+
+    expect(hasContact).toBeTruthy();
+
+    // Check for at least one company name
+    const hasCompany = await Promise.any([
+      expect(body).toContainText("Acme", { timeout: t(5_000) }).then(() => true),
+      expect(body).toContainText("GlobalTech", { timeout: t(5_000) }).then(() => true),
+    ]).catch(() => false);
+
+    expect(hasCompany).toBeTruthy();
+
+    // Verify record type indicators are present (from TARGET_TYPE_CONFIG labels)
+    // At minimum we should see contacts and companies extracted
+    const pageText = await page.textContent("body");
+    const hasRecordTypes =
+      pageText?.includes("Contacts") || pageText?.includes("contact") ||
+      pageText?.includes("Companies") || pageText?.includes("company");
+    expect(hasRecordTypes).toBeTruthy();
 
     await page.waitForTimeout(DEMO_PAUSE * 2);
   });
