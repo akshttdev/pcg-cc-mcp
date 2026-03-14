@@ -14,6 +14,7 @@ import {
 import { MessageCircleQuestion, Bug, Lightbulb, AlertCircle, Send, ImagePlus, X } from 'lucide-react';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { resolveApiUrl } from '@/lib/api';
+import { FormDialogBody } from '@/components/ui/form-dialog-body';
 
 type FeedbackType = 'bug' | 'feature' | 'improvement' | 'question' | 'other';
 
@@ -184,7 +185,7 @@ export const FeedbackDialog = NiceModal.create(() => {
 
   return (
     <Dialog open={modal.visible} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon className="h-5 w-5" />
@@ -192,7 +193,35 @@ export const FeedbackDialog = NiceModal.create(() => {
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <FormDialogBody
+            footer={
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleClose}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting || !title.trim() || !description.trim()}>
+                  {isSubmitting ? (
+                    <>
+                      <span className="animate-spin mr-2">&#9203;</span>
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Submit Feedback
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+          <div className="space-y-4">
           {/* Feedback Type */}
           <div>
             <Label className="text-sm font-medium">Feedback Type</Label>
@@ -402,30 +431,8 @@ export const FeedbackDialog = NiceModal.create(() => {
             </p>
           </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClose}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting || !title.trim() || !description.trim()}>
-              {isSubmitting ? (
-                <>
-                  <span className="animate-spin mr-2">⏳</span>
-                  Submitting...
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Submit Feedback
-                </>
-              )}
-            </Button>
           </div>
+          </FormDialogBody>
         </form>
       </DialogContent>
     </Dialog>
