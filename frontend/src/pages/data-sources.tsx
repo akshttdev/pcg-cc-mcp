@@ -8,7 +8,7 @@ import {
   Search, List, FileText, Table2, Music, Image,
   Film, Layers, Folder, MessageSquare, File, Database,
   Upload, ChevronRight, ChevronDown, Palette,
-  Download, Trash2, X, Info, RefreshCw, Play,
+  Download, Trash2, X, Info, RefreshCw, Play, Plus,
   SortAsc, SortDesc, FolderOpen, LayoutGrid,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, type DataSourceRecord } from '@/lib/api';
@@ -948,19 +948,33 @@ function RunWorkflowFromSourceDialog({ source, onClose }: {
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">Workflow</p>
-            <Select value={selectedWorkflowId} onValueChange={setSelectedWorkflowId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a workflow..." />
-              </SelectTrigger>
-              <SelectContent>
-                {workflows.map((wf) => (
-                  <SelectItem key={wf.id} value={wf.id}>
-                    <span>{wf.name}</span>
-                    {wf.is_system && <span className="ml-2 text-muted-foreground text-xs">(System)</span>}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {workflows.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-4 px-2 text-center border rounded-md bg-muted/30">
+                <p className="text-sm text-muted-foreground">No workflows available yet.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { handleClose(); navigate('/workflows'); }}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Create a Workflow
+                </Button>
+              </div>
+            ) : (
+              <Select value={selectedWorkflowId} onValueChange={setSelectedWorkflowId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a workflow..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {workflows.map((wf) => (
+                    <SelectItem key={wf.id} value={wf.id}>
+                      <span>{wf.name}</span>
+                      {wf.is_system && <span className="ml-2 text-muted-foreground text-xs">(System)</span>}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="flex gap-2 justify-end">

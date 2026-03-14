@@ -118,13 +118,20 @@ export function ResizableDrawer({
     [sidebarCollapsed, minWidth]
   );
 
-  // Close drawer when clicking outside it
+  // Close drawer when clicking outside it (but not on portaled overlays like
+  // popovers, dialogs, selects, or toasts that originate from within the drawer)
   const drawerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const handleMouseDown = (e: MouseEvent) => {
       if (isDraggingRef.current) return;
-      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement;
+      if (drawerRef.current && !drawerRef.current.contains(target)) {
+        // Don't close if clicking inside a portaled overlay (popover, dialog, select, toast)
+        const overlay = target.closest(
+          '[data-radix-popper-content-wrapper], [role="dialog"], [role="listbox"], [data-sonner-toaster], [data-radix-select-viewport]'
+        );
+        if (overlay) return;
         onClose();
       }
     };
