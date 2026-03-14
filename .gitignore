@@ -98,6 +98,8 @@ backups/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.db-shm
+*.db-wal
 
 /frontend/.env.sentry-build-plugin
 .ssh
