@@ -1,8 +1,32 @@
+//! # DbUuid — Dual-format UUID for SQLite
+//!
 //! A UUID type that transparently reads both BLOB (16-byte) and TEXT (36-char)
 //! formats from SQLite, and always writes as TEXT.
 //!
+//! ## Encoding Strategy
+//!
 //! This bridges the hybrid state where legacy tables store UUIDs as BLOBs
 //! and newer tables store them as TEXT strings.
+//!
+//! - **Decode (read)**: Inspects SQLite column type at runtime. TEXT columns are
+//!   read as-is; BLOB columns (16 bytes) are converted to hyphenated UUID strings.
+//! - **Encode (write)**: Always writes as TEXT. New data is always TEXT.
+//!
+//! ## When to use which bind helper
+//!
+//! | Column format | Bind helper | Example |
+//! |---------------|-------------|---------|
+//! | TEXT (new tables) | `bind_uuid()` or `.bind(&db_uuid)` | `notifications.user_id` |
+//! | BLOB (legacy) | `bind_uuid_blob()` → `Result<Vec<u8>>` | `project_members.user_id` |
+//!
+//! ## Known BLOB columns (as of migration 20260328)
+//!
+//! - `users.id`
+//! - `project_members.user_id`, `project_members.granted_by`
+//! - `organization_members.user_id`
+//! - `client_members.user_id`
+//!
+//! All other UUID columns have been migrated to TEXT.
 
 use std::fmt;
 use std::ops::Deref;

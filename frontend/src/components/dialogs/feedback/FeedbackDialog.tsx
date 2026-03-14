@@ -168,17 +168,19 @@ export const FeedbackDialog = NiceModal.create(() => {
   if (submitted) {
     return (
       <Dialog open={modal.visible} onOpenChange={handleClose}>
-        <div className="flex flex-col items-center justify-center py-12">
-          <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mb-4">
-            <Send className="h-8 w-8 text-green-600 dark:text-green-400" />
+        <DialogContent className="max-w-md">
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mb-4">
+              <Send className="h-8 w-8 text-green-600 dark:text-green-400" />
+            </div>
+            <DialogTitle className="text-xl font-semibold mb-2">
+              Thank You!
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground text-center max-w-sm">
+              Your feedback has been submitted. We appreciate you taking the time to help us improve.
+            </p>
           </div>
-          <DialogTitle className="text-xl font-semibold mb-2">
-            Thank You!
-          </DialogTitle>
-          <p className="text-sm text-muted-foreground text-center max-w-sm">
-            Your feedback has been submitted. We appreciate you taking the time to help us improve.
-          </p>
-        </div>
+        </DialogContent>
       </Dialog>
     );
   }

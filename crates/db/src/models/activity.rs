@@ -21,7 +21,7 @@ pub enum ActorType {
 pub struct ActivityLog {
     pub id: DbUuid,
     pub task_id: DbUuid,
-    pub actor_id: String,
+    pub actor_id: DbUuid,
     pub actor_type: ActorType,
     pub action: String,
     pub previous_state: Option<String>, // JSON object

@@ -348,6 +348,17 @@ impl Agent {
         .await
     }
 
+    /// Find the preferred agent for automated task assignment.
+    /// Selects a system-tier agent if available, otherwise falls back to the
+    /// highest-priority active agent.
+    pub async fn find_default_assignee(pool: &SqlitePool) -> Result<Option<Self>, sqlx::Error> {
+        let agents = Self::find_active(pool).await?;
+        Ok(agents.iter()
+            .find(|a| a.agent_tier.as_deref() == Some("system"))
+            .or_else(|| agents.first())
+            .cloned())
+    }
+
     /// Find agent by ID
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(

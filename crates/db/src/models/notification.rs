@@ -1,15 +1,15 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
+use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Notification {
-    pub id: String,
-    pub user_id: String,
-    pub organization_id: Option<String>,
+    pub id: DbUuid,
+    pub user_id: DbUuid,
+    pub organization_id: Option<DbUuid>,
     pub title: String,
     pub message: String,
     pub notification_type: String,

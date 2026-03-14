@@ -715,13 +715,19 @@ pub async fn update_task(
                     if let db::models::merge::Merge::Pr(pr_merge) = &merge {
                         let url = &pr_merge.pr_info.url;
                         let number = pr_merge.pr_info.number;
-                        // Extract owner/repo from PR URL
-                        let parts: Vec<&str> = url.trim_end_matches('/').rsplitn(5, '/').collect();
-                        let (owner, repo) = if parts.len() >= 4 {
-                            (parts[3].to_string(), parts[2].to_string())
-                        } else {
-                            ("unknown".to_string(), "unknown".to_string())
-                        };
+                        // Extract owner/repo from PR URL (e.g. https://github.com/owner/repo/pull/123)
+                        let (owner, repo) = url::Url::parse(url)
+                            .ok()
+                            .and_then(|parsed| {
+                                let segments: Vec<&str> = parsed.path_segments()?.collect();
+                                // path segments: ["owner", "repo", "pull", "123"]
+                                if segments.len() >= 2 {
+                                    Some((segments[0].to_string(), segments[1].to_string()))
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_else(|| ("unknown".to_string(), "unknown".to_string()));
                         pr_info = Some(services::services::qa_review::PrCreatedInfo {
                             number,
                             url: url.clone(),
