@@ -421,3 +421,60 @@ Successfully built a 7-node workflow: Data Source → 3 Extract nodes → 3 Outp
 | W2: Silent `.catch(() => {})` in E2E | ✅ Fixed |
 | W4: Inbox task click ignoring `source_id` | ⏭️ Deferred |
 | W5: Composite `schema_name` with `_` join | ⏭️ Deferred — cosmetic |
+
+---
+
+## PR #27 — Comprehensive Deferred / Not Addressed Items
+
+All items from QA review Rounds 1-7 that were NOT fixed in this sprint. Organized by severity.
+
+### Backend — Warning / Non-blocking
+
+| ID | Description | Round | Rationale for deferring |
+|----|-------------|-------|------------------------|
+| R2-W | `span.enter()` across `.await` in `tokio::spawn` (tracing corruption) | R6 | Should use `.instrument()` instead. Functional, but can produce garbled trace output under high concurrency. Low risk in current dogfood scale. |
+| R5-W | `send_notification` accepts arbitrary `recipient` string without validation | R6 | Notification recipient is set by workflow config, not user input. Add validation when notifications are user-facing. |
+| R6-W | `Notification::find_unread_by_user` has no `LIMIT` clause | R6 | Could return unbounded rows for heavy users. Add `LIMIT 100` when notification volume increases. |
+| R7-W | Path params relaxed from `Uuid` to `String` without input validation | R7 | DbUuid migration changed params to String. SQLite queries return empty on invalid IDs (no injection risk). Add `Uuid::parse_str()` guard at API boundary as follow-up. |
+| R8-W | No rate limit on watcher-triggered agent spawning | R6 | A rapid status toggle could spawn multiple review agents. Add debounce/dedup guard (check if active attempt exists before spawning). |
+| R9-W | Workflow notification deduplication missing | R6 | Same workflow run could send duplicate notifications if retried. Add `source_id` uniqueness check on insert. |
+| W2-Skip | `DbUuid::from_string()` no validation | R5 | Intentional design — `::parse()` exists for untrusted input, `::from_string()` is internal. Documented in module docs. |
+| W15-Skip | Zustand stores lack size bounds | R5 | Stores hold bounded preference data (booleans, enums). No unbounded growth risk. |
+| EC3 | No idempotency guard for watcher triggers | R6 | `trigger_agent_watchers()` could fire twice if status update retried. Low risk — watchers check `triggered_at` before acting. |
+| EC4 | Executor profile silently defaults to `CLAUDE_CODE` | R6 | If agent's `executor_profile` is missing/invalid, falls back to Claude Code. Should log a warning. |
+| EC5 | Race condition: status update vs watcher trigger | R6 | If task status changes again while watcher is spawning, the watcher may review stale state. Edge case — acceptable for now. |
+| EC6 | No fallback if watcher agent is deleted | R6 | If the agent referenced by a watcher config is deleted, `find_by_id` returns None and watcher silently skips. Should log a warning. |
+| W-CancelToken | `CancellationToken.cancel()` never called | R6 | Graceful shutdown dead code — token created but no shutdown handler wired. Non-blocking; server process kill works fine. |
+| W-NotifReturn | Notification `mark_read`/`delete` return success on nonexistent ID | R6 | SQLite `UPDATE/DELETE WHERE id=?` with no rows affected still returns Ok. Add `rows_affected == 0` → 404 check. |
+
+### Frontend — Warning / Non-blocking
+
+| ID | Description | Round | Rationale for deferring |
+|----|-------------|-------|------------------------|
+| R10 | ResizableDrawer expand state lost on remount | R5 | Drawer resets to default height when navigating away and back. Could persist in Zustand but low priority. |
+| R11 | `contentFullscreen` no Escape key exit on non-task pages | R5 | Fullscreen mode on pages without ResizableDrawer has no keyboard exit. BreadcrumbNav has exit button as fallback. |
+| R13 | Single activity click dismisses ALL notifications | R5 | **Partially fixed** — per-item read state added via localStorage. But `dismissedAt` cursor still affects all items when "Mark All Read" is clicked (by design). |
+| R15 | ResizableDrawer scrollbar click registers as click-outside (Windows/Linux) | R5 | Scrollbar mousedown fires on the drawer's parent. Only affects Windows/Linux where scrollbar is outside element bounds. Add scrollbar-area check. |
+| V1-partial | ResizableDrawer Escape conflicts with child components | R5 | `defaultPrevented` guard added, but Escape still propagates to parent if no child handles it. Full fix: `stopPropagation()` in child dialogs. |
+| V2 | `CreateTask.image_ids` latent inconsistency | R5 | TypeScript type has `image_ids?: string[]` but Rust struct has `image_ids: Option<String>` (JSON string). Works because frontend serializes, but types diverge. |
+| W3-localStorage | `localStorage` `orcha:read-activity-ids` grows unbounded | R6 | Set of read activity IDs never pruned. Cap at ~500 entries with LRU eviction. |
+| F12 | `InboxNotification` type hand-written (type drift risk) | R6 | TypeScript interface manually defined instead of auto-generated from Rust via ts-rs. Could drift from backend. Add `#[derive(TS)]` to Rust `Notification` struct. |
+| EC8 | FeedbackDialog textarea not auto-focused | R6 | Minor UX — user must click into textarea. Add `autoFocus` prop. |
+| EC9 | FeedbackDialog no character limit indicator | R6 | No visual feedback on max length. Add counter or maxLength attribute. |
+| EC10 | ApprovalPanel button states not disabled during API call | R6 | Double-click could send duplicate approve/reject. Add `isSubmitting` state. |
+
+### E2E Tests — Deferred
+
+| ID | Description | Round | Rationale for deferring |
+|----|-------------|-------|------------------------|
+| W9–W12 | E2E test hardening (fragile selectors, auth skip patterns, cleanup gaps, shared state leaks) | R5-R6 | Acceptable for dogfood. Harden when moving to CI. |
+| F13 | Demo tests never run against live app | R6 | Demo specs designed for local dev only. Add CI integration when demo infra is ready. |
+
+### Workflow Editor — UX Gaps (from Playwright MCP replay)
+
+| ID | Description | Found in |
+|----|-------------|----------|
+| WF-1 | Connection combobox pre-selects first option; clicking pre-selected option is a no-op (`onValueChange` doesn't fire) | Part 1 replay |
+| WF-2 | LLM Extract nodes have no default prompt template — users must write from scratch instead of customizing a default | Part 1 replay |
+| W4 | Inbox notification click ignores `source_id` — should deep-link to specific task/workflow | R7 |
+| W5 | Composite `schema_name` joins multiple target types with `_` separator — cosmetic, could confuse downstream consumers | R6-R7 |
