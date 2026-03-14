@@ -134,7 +134,7 @@ pub async fn trigger_research(
     // Fire async task — Nora orchestrates, Scout/Astra executes
     let pool_clone = pool.clone();
     let project_id = body.project_id;
-    let full_name = person.full_name.clone();
+    let _full_name = person.full_name.clone();
     let person_clone = person.clone();
     let _use_direct = body.agent_preference.as_deref() == Some("direct");
 

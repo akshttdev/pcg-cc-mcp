@@ -1614,7 +1614,7 @@ impl TopsiAgent {
     /// Handle listing projects
     async fn handle_list_projects(
         &self,
-        user_context: &UserContext,
+        _user_context: &UserContext,
         scope: &AccessScope,
     ) -> Result<TopsiResponse> {
         let project_count = match scope {
@@ -1650,7 +1650,7 @@ impl TopsiAgent {
     async fn handle_command(
         &self,
         command: &str,
-        user_context: &UserContext,
+        _user_context: &UserContext,
         scope: &AccessScope,
     ) -> Result<TopsiResponse> {
         // Parse and execute command
@@ -1714,8 +1714,8 @@ impl TopsiAgent {
     /// Get topology summary for accessible projects
     async fn get_topology_summary(
         &self,
-        project_id: Option<Uuid>,
-        scope: &AccessScope,
+        _project_id: Option<Uuid>,
+        _scope: &AccessScope,
     ) -> Result<TopologySummary> {
         // Return a basic summary for now
         // TODO: Integrate with actual topology data from database
@@ -1734,8 +1734,8 @@ impl TopsiAgent {
     /// Detect issues in the topology
     async fn detect_issues(
         &self,
-        project_id: Option<Uuid>,
-        scope: &AccessScope,
+        _project_id: Option<Uuid>,
+        _scope: &AccessScope,
     ) -> Result<Vec<DetectedIssue>> {
         // Return empty for now
         // TODO: Implement actual issue detection

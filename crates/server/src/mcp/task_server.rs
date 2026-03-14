@@ -2439,7 +2439,7 @@ impl TaskServer {
                  Some("Docs published, staging deployment successful, runbook reviewed"), Some("User documentation, deployment scripts, operational runbook")),
             ],
             "research" => {
-                let topic = req.topic.as_deref().unwrap_or("the research subject");
+                let _topic = req.topic.as_deref().unwrap_or("the research subject");
                 // We'll use the topic in descriptions below
                 vec![
                     ("Literature Review & Source Collection", "Gather and catalog existing research, papers, and data sources", "high",
@@ -2467,7 +2467,7 @@ impl TaskServer {
                  Some("Final report with ROI delivered, learnings documented, recommendations for next campaign"), Some("Campaign results report, ROI analysis, learnings document")),
             ],
             "client_onboarding" => {
-                let client = req.client_name.as_deref().unwrap_or("the client");
+                let _client = req.client_name.as_deref().unwrap_or("the client");
                 vec![
                     ("Discovery & Intake", "Conduct intake call, gather requirements, understand business context and goals", "critical",
                      Some("Intake form completed, requirements documented, stakeholders identified, timeline agreed"), Some("Intake form, requirements document, stakeholder map, project timeline")),
@@ -2549,7 +2549,7 @@ impl TaskServer {
             };
 
             match Task::create(&self.pool, &create_task, &task_id).await {
-                Ok(t) => {
+                Ok(_t) => {
                     created_tasks.push(serde_json::json!({
                         "order": i + 1,
                         "task_id": task_id.to_string(),

@@ -5,7 +5,6 @@
 //! ensuring strict client data isolation.
 
 use std::sync::Arc;
-use base64::Engine as _;
 
 use axum::{
     Json, Router,
@@ -1946,7 +1945,7 @@ pub async fn list_meetings(
                 .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok());
 
             let hex = s.project_id.replace('-', "").to_lowercase();
-            let project_name = project_map.get(&hex).cloned();
+            let _project_name = project_map.get(&hex).cloned();
 
             let segment_count = seg_count_map.get(&s.id).copied().unwrap_or(0);
             MeetingSessionSummary {
@@ -2001,7 +2000,7 @@ pub async fn join_meeting(
     .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
     // Look up project name for the response
-    let project_name: Option<String> = sqlx::query_scalar(
+    let _project_name: Option<String> = sqlx::query_scalar(
         "SELECT name FROM projects WHERE lower(hex(id)) = lower(replace(?1, '-', '')) AND deleted_at IS NULL",
     )
     .bind(&session.project_id)
@@ -2027,7 +2026,7 @@ pub async fn join_meeting(
 /// Add a typed text message or link to an active meeting without audio
 pub async fn meeting_text_message(
     State(state): State<DeploymentImpl>,
-    headers: axum::http::HeaderMap,
+    _headers: axum::http::HeaderMap,
     Json(request): Json<MeetingMessageRequest>,
 ) -> Result<Json<MeetingMessageResponse>, ApiError> {
     let pool = &state.db().pool;

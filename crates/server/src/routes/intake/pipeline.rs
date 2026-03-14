@@ -14,7 +14,7 @@ use db::models::{
     project_knowledge_source::{KnowledgeSourceType, ProjectKnowledgeSource},
     proposal::{CreateProposal, Proposal},
 };
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::{ExtractedIndividual, ExtractedIntake, ExtractedParticipant};

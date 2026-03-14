@@ -1780,7 +1780,7 @@ pub async fn handle_incoming_sms(
 
     // Resolve sender identity (persons > CRM > pcg_team)
     let person_context = lookup_sms_sender_context(pool, &request.from).await;
-    let caller_name = person_context
+    let _caller_name = person_context
         .as_ref()
         .and_then(|c| c.get("name").and_then(|v| v.as_str()))
         .unwrap_or("there")
