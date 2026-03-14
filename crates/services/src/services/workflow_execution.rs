@@ -6,6 +6,7 @@
 use db::models::crm_contact::{CrmContact, UpdateCrmContact};
 use db::models::crm_deal::{CrmDeal, UpdateCrmDeal};
 use db::models::company::{Company, UpdateCompany};
+use db::models::notification::{Notification, CreateNotification};
 use db::models::task::{Task, CreateTask, Priority};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -1621,6 +1622,7 @@ pub async fn execute_action_node(
     previous_results: &[(&str, &str, &str)],
     context_project_id: Option<Uuid>,
     context_org_id: Option<Uuid>,
+    workflow_run_id: Option<Uuid>,
 ) -> Option<(String, Option<Value>)> {
     match node.node_type.as_str() {
         // ── Conditional: evaluate a simple condition against upstream data ────
@@ -1681,7 +1683,14 @@ pub async fn execute_action_node(
         "send_notification" => {
             let notification_type = node.parameters.get("notification_type")
                 .and_then(|v| v.as_str())
-                .unwrap_or("in_app");
+                .map(|t| match t {
+                    "in_app" | "info" => "info",
+                    "warning" | "warn" => "warning",
+                    "success" => "success",
+                    "error" => "error",
+                    _ => "info",
+                })
+                .unwrap_or("info");
             let recipient = node.parameters.get("recipient")
                 .and_then(|v| v.as_str())
                 .unwrap_or("admin");
@@ -1699,16 +1708,65 @@ pub async fn execute_action_node(
                 .join("\n");
             let message = message_template.replace("{{previous_results}}", &prev_text);
 
-            // For now, log the notification. Full email/in-app integration is a future sprint.
             tracing::info!(
                 "[WORKFLOW] Notification node '{}': type={}, recipient={}, subject='{}'",
                 node.id, notification_type, recipient, subject
             );
 
+            // Resolve recipient to user_id
+            let resolved_user_id = match recipient {
+                "admin" => {
+                    // Look up admin user
+                    match sqlx::query_scalar::<_, String>(
+                        "SELECT CAST(id AS TEXT) FROM users WHERE role = 'admin' LIMIT 1"
+                    ).fetch_optional(pool).await {
+                        Ok(Some(uid)) => Some(uid),
+                        _ => None,
+                    }
+                }
+                "assigned_user" | "assignee" => {
+                    // Try to find assignee from previous results context
+                    previous_results.iter()
+                        .find_map(|(_, result, _)| {
+                            serde_json::from_str::<Value>(result).ok()
+                                .and_then(|v| v["assignee_id"].as_str().map(|s| s.to_string()))
+                        })
+                }
+                other => {
+                    // Treat as a direct user_id or email
+                    Some(other.to_string())
+                }
+            };
+
+            let mut notification_created = false;
+            if let Some(user_id) = &resolved_user_id {
+                let create_data = CreateNotification {
+                    user_id: user_id.clone(),
+                    organization_id: context_org_id.map(|u| u.to_string()),
+                    title: subject.to_string(),
+                    message: message.clone(),
+                    notification_type: notification_type.to_string(),
+                    source: Some("workflow".to_string()),
+                    source_id: workflow_run_id.map(|id| id.to_string()),
+                };
+                match Notification::create(pool, &create_data).await {
+                    Ok(_) => {
+                        notification_created = true;
+                        tracing::info!("[WORKFLOW] Notification created for user '{}'", user_id);
+                    }
+                    Err(e) => {
+                        tracing::error!("[WORKFLOW] Failed to create notification: {e}");
+                    }
+                }
+            } else {
+                tracing::warn!("[WORKFLOW] Could not resolve recipient '{}' to a user_id", recipient);
+            }
+
             let output = json!({
-                "notification_sent": true,
+                "notification_sent": notification_created,
                 "type": notification_type,
                 "recipient": recipient,
+                "resolved_user_id": resolved_user_id,
                 "subject": subject,
                 "message": message,
             });

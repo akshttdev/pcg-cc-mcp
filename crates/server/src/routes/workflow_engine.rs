@@ -164,7 +164,7 @@ pub async fn execute_workflow_nodes(
                 .join("\n");
             (input_data, None)
         } else if let Some(action_result) =
-            execute_action_node(pool, node, &previous, opts.project_id, opts.organization_id).await
+            execute_action_node(pool, node, &previous, opts.project_id, opts.organization_id, opts.workflow_run_id).await
         {
             action_result
         } else {
