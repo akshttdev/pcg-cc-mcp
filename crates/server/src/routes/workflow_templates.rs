@@ -197,6 +197,7 @@ async fn convert_deal(
                 screenshot: None,
                 completion_criteria: None,
                 output_format: None,
+                collaborators: None,
             };
 
             Task::create(pool, &create_task, &task_id.to_string())

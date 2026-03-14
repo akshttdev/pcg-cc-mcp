@@ -562,6 +562,7 @@ async fn import_records_from_table(
             screenshot: None,
             completion_criteria: None,
             output_format: None,
+            collaborators: None,
         };
 
         let task = match Task::create(pool, &create_task, &task_id).await {

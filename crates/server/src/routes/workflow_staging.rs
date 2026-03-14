@@ -833,6 +833,7 @@ async fn commit_task(pool: &SqlitePool, record: &WorkflowStagingRecord) -> Resul
         screenshot: None,
         completion_criteria,
         output_format,
+        collaborators: None,
     };
 
     let task = Task::create(pool, &create, &task_id.to_string()).await.map_err(|e| e.to_string())?;

@@ -847,6 +847,7 @@ impl TaskServer {
             screenshot: None,
             completion_criteria: req.completion_criteria.clone(),
             output_format: req.output_format.clone(),
+            collaborators: None,
         };
 
         match Task::create(&self.pool, &create_task_data, &task_id_str).await {
@@ -1672,6 +1673,7 @@ impl TaskServer {
                 screenshot: None,
                 completion_criteria: None,
                 output_format: None,
+                collaborators: None,
             };
 
             match Task::create(&self.pool, &create_data, &task_id).await {
@@ -2542,6 +2544,7 @@ impl TaskServer {
                 screenshot: None,
                 completion_criteria: criteria.map(|s| s.to_string()),
                 output_format: output_fmt.map(|s| s.to_string()),
+                collaborators: None,
             };
 
             match Task::create(&self.pool, &create_task, &task_id).await {

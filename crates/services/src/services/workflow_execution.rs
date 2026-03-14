@@ -645,8 +645,15 @@ pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, prev
     };
     match key.as_str() {
         "multi_extract" => {
-            // Combined extraction: produce contacts, companies, and deals in one JSON object
-            let schema_lower = output_schema.to_lowercase();
+            // Combined extraction: produce contacts, companies, and deals in one JSON object.
+            // Use target_schemas (downstream output nodes) when output_schema is empty.
+            let schema_lower = if !target_schemas.is_empty() {
+                target_schemas.join(" ").to_lowercase()
+            } else if !output_schema.is_empty() {
+                output_schema.to_lowercase()
+            } else {
+                title.to_lowercase()
+            };
             let mut result = serde_json::Map::new();
             // Extract contacts first so we can filter person names from companies
             let contacts_extracted = extract_contacts_from_text(content);
@@ -1845,6 +1852,7 @@ pub async fn execute_action_node(
                 scheduled_end: None,
                 completion_criteria: if completion_criteria.is_empty() { None } else { Some(completion_criteria.to_string()) },
                 output_format: None,
+                collaborators: None,
             };
 
             match Task::create(pool, &create_task, &task_id.to_string()).await {

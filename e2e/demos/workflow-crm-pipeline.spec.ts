@@ -240,11 +240,9 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
     }
 
     // Wait for staging records to load — must NOT show "No staged records"
-    await expect(
-      page.getByText("No staged records for this workflow run.")
-    ).not.toBeVisible({ timeout: t(5_000) }).catch(() => {
-      // If this text IS visible, fail with a clear message
-    });
+    const noRecordsText = page.getByText("No staged records for this workflow run.");
+    const noRecordsVisible = await noRecordsText.isVisible().catch(() => false);
+    expect(noRecordsVisible, "Staging tab shows 'No staged records' — workflow parsing failed").toBe(false);
 
     // Verify the staging panel contains actual parsed data from the conversation.
     // The conversation mentions: Marcus Webb, Lisa Park, Raj Patel, Sarah Chen,

@@ -590,6 +590,7 @@ impl PlatformDataService {
             screenshot: None,
             completion_criteria: None,
             output_format: None,
+            collaborators: None,
         };
 
         let task_id = Uuid::new_v4();

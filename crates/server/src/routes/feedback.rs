@@ -114,6 +114,7 @@ pub async fn submit_feedback(
         screenshot: req.screenshot.clone(),
         completion_criteria: None,
         output_format: None,
+        collaborators: None,
     };
 
     Task::create(pool, &create_task, &task_id_str)

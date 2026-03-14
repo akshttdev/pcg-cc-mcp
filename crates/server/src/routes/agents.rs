@@ -168,7 +168,7 @@ async fn search_agents(
         _ => {}
     }
 
-    Ok(Json(parsed))
+    Ok(Json(ApiResponse::<_, ()>::success(parsed)))
 }
 
 /// Seed core agents (Nora, Maci, Editron)

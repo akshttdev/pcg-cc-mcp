@@ -184,6 +184,8 @@ pub struct CreateTask {
     pub custom_properties: Option<Value>,
     pub scheduled_start: Option<DateTime<Utc>>,
     pub scheduled_end: Option<DateTime<Utc>>,
+    /// JSON-encoded collaborators/watchers array
+    pub collaborators: Option<String>,
     /// Base64 encoded screenshot image for bug reports
     pub screenshot: Option<String>,
     /// Structured success criteria for agent self-evaluation

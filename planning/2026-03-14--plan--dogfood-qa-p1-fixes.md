@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-14
 **Branch:** `qa/dogfood-pipeline-e2e-2026-03-13` (continue existing)
-**Status:** ALL 8 ITEMS + 14 E2E FIXES + 4 PR REVIEW ITEMS + 3 POST-RUN FIXES COMPLETE — pending E2E verification run
+**Status:** ALL 8 ITEMS + 14 E2E FIXES + 4 PR REVIEW ITEMS + 3 POST-RUN FIXES + QA ROUND 6 FIXES COMPLETE — pending E2E verification run
 **Triggered by:** E2E QA testing (see `archive/2026-03-13--review--dogfood-e2e-qa.md`)
 **Latest commits (2026-03-14):**
 - `e6f34f140` — fix: BLOB binding for owner_id/user_id in project creation (`bind_uuid_blob` helpers)
@@ -96,6 +96,34 @@ After the initial E2E run (103/110), 7 tests still failed. This section tracks t
 - Both have loading spinners — unlikely a missing component issue
 - Possible causes: (a) `topsi_user_settings` table missing from dev DB, (b) auth race condition on page load, (c) API endpoint returning 500
 - Recommendation: Run with `E2E_SCREENSHOTS=true` or Playwright traces to capture actual page state at failure
+
+---
+
+## PR #27 Review Round 6 Fixes
+
+| # | Issue | Fix | Status |
+|---|-------|-----|--------|
+| R6-C1 | `collaborators` in `TASK_SELECT_SQL` but not in `Task` struct — `FromRow` ignores it | Added `collaborators: Option<String>` to `Task` struct + `collaborators: None` to all 12 `CreateTask` initializers | **DONE** |
+| R6-C2 | `multi_extract` mock arm checks empty `output_schema` — produces `{}` for custom workflows | Now uses `target_schemas` (downstream output nodes) as primary, fallback to `output_schema` then `title` | **DONE** |
+| R6-W1 | `search_agents` not wrapped in `ApiResponse` (inconsistent with list/active) | Wrapped in `ApiResponse::<_, ()>::success()` | **DONE** |
+| R6-W5 | Multi-target `schema_name` joined with `_` | Deferred — cosmetic metadata, no functional impact |
+| Own-C2 | `owner_id` BLOB binding into TEXT column | Changed to `user_id.as_str()` for `owner_id` UPDATE, kept `user_id_blob` for `project_members` (BLOB column) | **DONE** |
+| Own-C3 | E2E `.catch(() => {})` silently swallows staging-empty assertion | Replaced with `isVisible()` check + explicit `expect(...).toBe(false)` with clear message | **DONE** |
+
+### Full QA Review Summary (3 parallel agents)
+
+**Backend (10 findings):** 2 Critical fixed (owner_id BLOB, collaborators struct), 4 Warning (span.enter async, notification 404, unused CancellationToken), 3 Info
+**Frontend (14 findings):** 0 Critical, 4 Warning (contentFullscreen nav reset, BreadcrumbNav null, Escape propagation, stale closure), 4 Info
+**E2E (18 findings):** 3 Critical fixed (silent catch, unguarded let, shared state), 10 Warning (fragile selectors, auth skip, cleanup gaps), 5 Info
+
+### Deferred items (non-blocking):
+- W: `contentFullscreen` not reset on navigation (frontend store)
+- W: BreadcrumbNav returns null when items empty, hiding exit fullscreen button
+- W: Escape key in ResizableDrawer doesn't stopPropagation for child dialogs
+- W: `readActivityIds` localStorage unbounded growth (cap at ~500)
+- W: `span.enter()` in async tokio::spawn (should use `.instrument()`)
+- W: Notification mark_read/delete return success on nonexistent ID
+- W: CancellationToken `.cancel()` never called (graceful shutdown dead code)
 
 ---
 

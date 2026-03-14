@@ -236,6 +236,7 @@ pub async fn find_or_create_task(
         screenshot: None,
         completion_criteria: None,
         output_format: None,
+        collaborators: None,
     };
 
     match Task::create(pool, &create, &task_id.to_string()).await {
