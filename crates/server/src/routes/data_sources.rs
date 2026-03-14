@@ -17,17 +17,18 @@ use crate::{DeploymentImpl, error::ApiError};
 
 // ── List endpoints ──────────────────────────────────────────────────────────
 
-/// GET /api/organizations/:org_id/data-sources
-async fn list_by_organization(
-    Path(org_id): Path<Uuid>,
-    State(deployment): State<DeploymentImpl>,
-) -> Result<Json<ApiResponse<Vec<DataSource>>>, ApiError> {
-    let pool = &deployment.db().pool;
-    let sources = DataSource::find_by_organization_all(pool, &org_id.to_string())
-        .await
-        .map_err(|e| ApiError::InternalError(format!("Failed to list data sources: {e}")))?;
-    Ok(Json(ApiResponse::success(sources)))
-}
+// TODO: unused — comment out to suppress warning
+// /// GET /api/organizations/:org_id/data-sources
+// async fn list_by_organization(
+//     Path(org_id): Path<Uuid>,
+//     State(deployment): State<DeploymentImpl>,
+// ) -> Result<Json<ApiResponse<Vec<DataSource>>>, ApiError> {
+//     let pool = &deployment.db().pool;
+//     let sources = DataSource::find_by_organization_all(pool, &org_id.to_string())
+//         .await
+//         .map_err(|e| ApiError::InternalError(format!("Failed to list data sources: {e}")))?;
+//     Ok(Json(ApiResponse::success(sources)))
+// }
 
 /// GET /api/projects/:project_id/data-sources
 async fn list_by_project(

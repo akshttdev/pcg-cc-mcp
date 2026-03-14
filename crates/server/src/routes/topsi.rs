@@ -1238,13 +1238,14 @@ async fn get_user_context_from_req(
     }
 }
 
-// Legacy function - kept for backward compatibility but marked deprecated
-#[deprecated(note = "Use get_user_context_from_req instead")]
-async fn get_user_context_from_state(_state: &DeploymentImpl) -> UserContext {
-    // Return anonymous user context
-    UserContext::user("anonymous")
-        .with_session(Uuid::new_v4().to_string())
-}
+// TODO: unused — comment out to suppress warning
+// // Legacy function - kept for backward compatibility but marked deprecated
+// #[deprecated(note = "Use get_user_context_from_req instead")]
+// async fn get_user_context_from_state(_state: &DeploymentImpl) -> UserContext {
+//     // Return anonymous user context
+//     UserContext::user("anonymous")
+//         .with_session(Uuid::new_v4().to_string())
+// }
 
 fn default_capabilities() -> Vec<String> {
     vec![
@@ -1836,49 +1837,51 @@ pub async fn update_voice_config(
 // Meeting Mode Handlers
 // ============================================================================
 
-/// Helper: get accessible project IDs (as lowercase hex, 32 chars) for a user
-/// Returns None for admins (all projects accessible).
-async fn get_accessible_project_hex_ids(
-    pool: &sqlx::SqlitePool,
-    user_id: &str,
-    is_admin: bool,
-) -> Option<std::collections::HashSet<String>> {
-    if is_admin {
-        return None;
-    }
-    let uid = match uuid::Uuid::parse_str(user_id) {
-        Ok(u) => u,
-        Err(_) => return Some(std::collections::HashSet::new()),
-    };
-    // project_members.project_id is BLOB; compare via hex
-    let ids: Vec<Vec<u8>> = sqlx::query_scalar(
-        "SELECT DISTINCT project_id FROM project_members WHERE user_id = ?1",
-    )
-    .bind(uid.as_bytes().as_slice())
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+// TODO: unused — comment out to suppress warning
+// /// Helper: get accessible project IDs (as lowercase hex, 32 chars) for a user
+// /// Returns None for admins (all projects accessible).
+// async fn get_accessible_project_hex_ids(
+//     pool: &sqlx::SqlitePool,
+//     user_id: &str,
+//     is_admin: bool,
+// ) -> Option<std::collections::HashSet<String>> {
+//     if is_admin {
+//         return None;
+//     }
+//     let uid = match uuid::Uuid::parse_str(user_id) {
+//         Ok(u) => u,
+//         Err(_) => return Some(std::collections::HashSet::new()),
+//     };
+//     // project_members.project_id is BLOB; compare via hex
+//     let ids: Vec<Vec<u8>> = sqlx::query_scalar(
+//         "SELECT DISTINCT project_id FROM project_members WHERE user_id = ?1",
+//     )
+//     .bind(uid.as_bytes().as_slice())
+//     .fetch_all(pool)
+//     .await
+//     .unwrap_or_default();
+//
+//     Some(
+//         ids.into_iter()
+//             .map(|b| hex::encode(&b))
+//             .collect(),
+//     )
+// }
 
-    Some(
-        ids.into_iter()
-            .map(|b| hex::encode(&b))
-            .collect(),
-    )
-}
-
-/// Helper: check if a project_id (UUID text with dashes) is accessible given a hex-id set
-fn project_is_accessible(
-    project_id_str: &str,
-    accessible: &Option<std::collections::HashSet<String>>,
-) -> bool {
-    match accessible {
-        None => true, // admin
-        Some(set) => {
-            let hex = project_id_str.replace('-', "").to_lowercase();
-            set.contains(&hex)
-        }
-    }
-}
+// TODO: unused — comment out to suppress warning
+// /// Helper: check if a project_id (UUID text with dashes) is accessible given a hex-id set
+// fn project_is_accessible(
+//     project_id_str: &str,
+//     accessible: &Option<std::collections::HashSet<String>>,
+// ) -> bool {
+//     match accessible {
+//         None => true, // admin
+//         Some(set) => {
+//             let hex = project_id_str.replace('-', "").to_lowercase();
+//             set.contains(&hex)
+//         }
+//     }
+// }
 
 /// List meeting sessions — scoped to user's accessible projects
 pub async fn list_meetings(
@@ -1903,22 +1906,22 @@ pub async fn list_meetings(
     let status_filter = params.status.as_deref();
 
     // Build a project_id → (project_name, org_name) lookup via a single query
-    #[derive(sqlx::FromRow)]
-    struct ProjectRow {
-        id_hex: String,
-        name: String,
-    }
-    let project_rows: Vec<ProjectRow> = sqlx::query_as(
-        "SELECT lower(hex(id)) as id_hex, name FROM projects",
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    // #[derive(sqlx::FromRow)]
+    // struct ProjectRow {
+    //     id_hex: String,
+    //     name: String,
+    // }
+    // let project_rows: Vec<ProjectRow> = sqlx::query_as(
+    //     "SELECT lower(hex(id)) as id_hex, name FROM projects",
+    // )
+    // .fetch_all(pool)
+    // .await
+    // .unwrap_or_default();
 
-    let project_map: std::collections::HashMap<String, String> = project_rows
-        .into_iter()
-        .map(|r| (r.id_hex, r.name))
-        .collect();
+    // let project_map: std::collections::HashMap<String, String> = project_rows
+    //     .into_iter()
+    //     .map(|r| (r.id_hex, r.name))
+    //     .collect();
 
     // Batch segment counts for all sessions
     #[derive(sqlx::FromRow)]
