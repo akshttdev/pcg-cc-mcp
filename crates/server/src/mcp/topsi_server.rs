@@ -26,6 +26,7 @@ use uuid::Uuid;
 // ========================================================
 
 #[derive(Debug, sqlx::FromRow)]
+#[allow(dead_code)]
 struct NodeRow {
     id: String,
     node_type: String,
@@ -47,6 +48,7 @@ struct EdgeRow {
 }
 
 #[derive(Debug, sqlx::FromRow)]
+#[allow(dead_code)]
 struct ClusterRow {
     id: String,
     name: String,

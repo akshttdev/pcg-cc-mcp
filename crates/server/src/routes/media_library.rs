@@ -223,6 +223,7 @@ async fn backfill_from_artifacts(
     let asset_base = utils::assets::asset_dir();
 
     #[derive(sqlx::FromRow)]
+    #[allow(dead_code)]
     struct RawArtifact {
         id: Uuid,
         project_id: Option<Uuid>,

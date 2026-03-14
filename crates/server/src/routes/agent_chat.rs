@@ -760,39 +760,40 @@ pub async fn get_conversation_messages(
     Ok(Json(messages))
 }
 
-/// Build context string from request context and project ID
-fn build_context_string(
-    context: &Option<serde_json::Value>,
-    project_id: Option<Uuid>,
-    project_context: Option<&str>,
-) -> String {
-    let mut parts = Vec::new();
-
-    // Include rich project context if available
-    if let Some(proj_ctx) = project_context {
-        parts.push(proj_ctx.to_string());
-    } else if let Some(project_id) = project_id {
-        // Fallback to just the project ID
-        parts.push(format!("Project ID: {}", project_id));
-    }
-
-    // Include any additional context from the request
-    if let Some(ctx) = context {
-        if let Some(obj) = ctx.as_object() {
-            for (key, value) in obj {
-                parts.push(format!("{}: {}", key, value));
-            }
-        } else {
-            parts.push(ctx.to_string());
-        }
-    }
-
-    if parts.is_empty() {
-        "No additional context provided.".to_string()
-    } else {
-        parts.join("\n")
-    }
-}
+// TODO: unused — comment out to suppress warning
+// /// Build context string from request context and project ID
+// fn build_context_string(
+//     context: &Option<serde_json::Value>,
+//     project_id: Option<Uuid>,
+//     project_context: Option<&str>,
+// ) -> String {
+//     let mut parts = Vec::new();
+//
+//     // Include rich project context if available
+//     if let Some(proj_ctx) = project_context {
+//         parts.push(proj_ctx.to_string());
+//     } else if let Some(project_id) = project_id {
+//         // Fallback to just the project ID
+//         parts.push(format!("Project ID: {}", project_id));
+//     }
+//
+//     // Include any additional context from the request
+//     if let Some(ctx) = context {
+//         if let Some(obj) = ctx.as_object() {
+//             for (key, value) in obj {
+//                 parts.push(format!("{}: {}", key, value));
+//             }
+//         } else {
+//             parts.push(ctx.to_string());
+//         }
+//     }
+//
+//     if parts.is_empty() {
+//         "No additional context provided.".to_string()
+//     } else {
+//         parts.join("\n")
+//     }
+// }
 
 /// Build context string from request context, project ID, and workflow results
 async fn build_context_string_with_workflows(
