@@ -1944,8 +1944,9 @@ pub async fn list_meetings(
                 .as_ref()
                 .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok());
 
-            let hex = s.project_id.replace('-', "").to_lowercase();
-            let _project_name = project_map.get(&hex).cloned();
+            // TODO: project_name lookup was computed but never used in the response
+            // let hex = s.project_id.replace('-', "").to_lowercase();
+            // let _project_name = project_map.get(&hex).cloned();
 
             let segment_count = seg_count_map.get(&s.id).copied().unwrap_or(0);
             MeetingSessionSummary {
@@ -1999,15 +2000,15 @@ pub async fn join_meeting(
     .await
     .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
-    // Look up project name for the response
-    let _project_name: Option<String> = sqlx::query_scalar(
-        "SELECT name FROM projects WHERE lower(hex(id)) = lower(replace(?1, '-', '')) AND deleted_at IS NULL",
-    )
-    .bind(&session.project_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
+    // TODO: project_name query was executed but never used in the response — commented to avoid dead DB call
+    // let _project_name: Option<String> = sqlx::query_scalar(
+    //     "SELECT name FROM projects WHERE lower(hex(id)) = lower(replace(?1, '-', '')) AND deleted_at IS NULL",
+    // )
+    // .bind(&session.project_id)
+    // .fetch_optional(pool)
+    // .await
+    // .ok()
+    // .flatten();
 
     tracing::info!(
         "[MEETING] Session {} (project: {}) joined — participants: {}",

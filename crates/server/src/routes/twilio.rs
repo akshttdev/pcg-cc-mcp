@@ -1780,11 +1780,12 @@ pub async fn handle_incoming_sms(
 
     // Resolve sender identity (persons > CRM > pcg_team)
     let person_context = lookup_sms_sender_context(pool, &request.from).await;
-    let _caller_name = person_context
-        .as_ref()
-        .and_then(|c| c.get("name").and_then(|v| v.as_str()))
-        .unwrap_or("there")
-        .to_string();
+    // TODO: caller_name was extracted but never used — person_context is still used below
+    // let caller_name = person_context
+    //     .as_ref()
+    //     .and_then(|c| c.get("name").and_then(|v| v.as_str()))
+    //     .unwrap_or("there")
+    //     .to_string();
 
     // Buffer message + media URLs immediately — image fetch happens inside the debounce
     // spawn so we don't block the webhook response (SignalWire times out after ~15s)

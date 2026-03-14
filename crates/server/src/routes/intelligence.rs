@@ -134,9 +134,10 @@ pub async fn trigger_research(
     // Fire async task — Nora orchestrates, Scout/Astra executes
     let pool_clone = pool.clone();
     let project_id = body.project_id;
-    let _full_name = person.full_name.clone();
+    // TODO: full_name and use_direct were computed but never used downstream
+    // let full_name = person.full_name.clone();
+    // let use_direct = body.agent_preference.as_deref() == Some("direct");
     let person_clone = person.clone();
-    let _use_direct = body.agent_preference.as_deref() == Some("direct");
 
     tokio::spawn(async move {
         let result = run_research_via_nora(
