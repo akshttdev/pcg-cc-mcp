@@ -293,6 +293,7 @@ const TASK_SELECT_SQL: &str = r#"
     NULLIF(custom_properties, '') AS custom_properties,
     scheduled_start,
     scheduled_end,
+    collaborators,
     screenshot,
     completion_criteria,
     output_format

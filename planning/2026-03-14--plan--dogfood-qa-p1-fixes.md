@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-14
 **Branch:** `qa/dogfood-pipeline-e2e-2026-03-13` (continue existing)
-**Status:** ALL 8 ITEMS + 14 E2E FIXES + 4 PR REVIEW ITEMS COMPLETE — pending E2E verification run
+**Status:** ALL 8 ITEMS + 14 E2E FIXES + 4 PR REVIEW ITEMS + 3 POST-RUN FIXES COMPLETE — pending E2E verification run
 **Triggered by:** E2E QA testing (see `archive/2026-03-13--review--dogfood-e2e-qa.md`)
 **Latest commits (2026-03-14):**
 - `e6f34f140` — fix: BLOB binding for owner_id/user_id in project creation (`bind_uuid_blob` helpers)
@@ -60,6 +60,42 @@ PR #27 E2E run: 96/110 passing, 14 failing (all pre-existing). This section trac
 - `package.json` — `RUST_ENV=development` prepended to `backend:dev:watch`
 - `e2e/health-check.spec.ts:263` — click "Admin Platforms" trigger before link assertion
 - `e2e/health-check.spec.ts:229,236` — `networkidle` + longer timeouts
+
+---
+
+## Post-Run E2E Fixes (7 remaining → 0 target)
+
+After the initial E2E run (103/110), 7 tests still failed. This section tracks those fixes.
+
+| # | Test | Root Cause | Fix | Status |
+|---|------|-----------|-----|--------|
+| 1 | health-check: Topsi Admin Settings | Timing — page loads but spinner/content race | Increased timeout to 20s + spinner wait | **INVESTIGATING** — routes/handlers look correct, may be missing DB table or auth race |
+| 2 | health-check: Topsi User Settings | Same as #1 | Same approach | **INVESTIGATING** |
+| 3 | health-check: QA watcher auto-reg (assert GET) | `TASK_SELECT_SQL` missing `collaborators` column — DB has data but API returns null | Added `collaborators` to `TASK_SELECT_SQL` in `task.rs` | **DONE** |
+| 4 | health-check: QA watcher auto-reg (assert watcher) | Same root cause as #3 | Same fix | **DONE** |
+| 5-6 | health-check: webhook tests | `RUST_ENV=development` not in env | Already fixed in 1C (package.json) — likely stale server | **DONE** (confirmed after restart) |
+| 7 | workflow-crm-pipeline: Run workflow | Mock fallback produces generic results when `output_schema` empty | `workflow_execution.rs:616` — fall back to node `title` for type detection | **DONE** |
+
+### Root cause analysis — QA watcher tests (3-4):
+- `add_agent_watcher()` correctly writes collaborators JSON to DB (confirmed via `sqlite3` query)
+- `auto_watch_agent_ids` in `agent_execution_config` seed data is correct
+- **But** `TASK_SELECT_SQL` (used by `Task::find_by_id()` and other queries) did NOT include `collaborators` in its SELECT clause
+- Result: API `GET /api/tasks/:id` returned null collaborators despite DB having the data
+- Fix: Added `collaborators` between `scheduled_end` and `screenshot` in `TASK_SELECT_SQL` (matching struct field order)
+
+### Root cause analysis — workflow mock fallback (7):
+- `generate_mock_step_result()` matches on `output_schema` to decide what mock data to return
+- User-created workflows set `output_schema: ""` (empty) — only system workflows populate it
+- Empty schema fell through to generic `{"result":"Analysis of N chars","status":"completed"}`
+- Fix: When `output_schema` is empty, fall back to node `title` (e.g. "Extract Contacts") which contains the type hint
+- Now `title.to_lowercase().contains("contact")` correctly triggers contact mock data
+
+### Investigation notes — Topsi settings (1-2):
+- Routes exist: `/topsi/admin/settings`, `/topsi/user/settings` (wired in `frontend/src/App.tsx`)
+- Components: `TopsiAdminSettings` fetches `/api/topsi/admin/prompt`, `TopsiUserSettings` fetches user preferences
+- Both have loading spinners — unlikely a missing component issue
+- Possible causes: (a) `topsi_user_settings` table missing from dev DB, (b) auth race condition on page load, (c) API endpoint returning 500
+- Recommendation: Run with `E2E_SCREENSHOTS=true` or Playwright traces to capture actual page state at failure
 
 ---
 

@@ -612,8 +612,10 @@ pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, prev
         "extract_companies" | "extract_contacts" | "identify_opportunities" | "identify_deals" => step_id.to_string(),
 
         _ => {
-            // For custom workflows, use output_schema to pick the right mock
-            let schema_lower = output_schema.to_lowercase();
+            // For custom workflows, use output_schema to pick the right mock.
+            // Fall back to node title when output_schema is empty (e.g. user-created workflows).
+            let hint = if output_schema.is_empty() { title } else { output_schema };
+            let schema_lower = hint.to_lowercase();
             let has_companies = schema_lower.contains("compan");
             let has_contacts = schema_lower.contains("contact") || schema_lower.contains("person") || schema_lower.contains("people");
             let has_deals = schema_lower.contains("deal") || schema_lower.contains("opportunit");
@@ -947,9 +949,7 @@ pub fn generate_mock_step_result(step_id: &str, content: &str, title: &str, prev
             }
         }
         _ => {
-            let _ = title; // suppress unused warning
             json!({"result": format!("Analysis of {} chars of content", content.len()), "status": "completed"}).to_string()
-
         }
     }
 }
