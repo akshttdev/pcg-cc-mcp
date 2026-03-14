@@ -192,7 +192,7 @@ impl ts_rs::TS for DbUuid {
 // Convenience helpers for query binding migration
 // ---------------------------------------------------------------------------
 
-/// Bind a `DbUuid` reference in a raw `sqlx::query()` call.
+/// Bind a `DbUuid` reference in a raw `sqlx::query()` call (TEXT columns).
 ///
 /// Replaces the old `.as_bytes().as_slice()` pattern:
 /// ```ignore
@@ -203,6 +203,30 @@ impl ts_rs::TS for DbUuid {
 /// ```
 pub fn bind_uuid(uuid: &DbUuid) -> &str {
     uuid.as_str()
+}
+
+/// Convert a `DbUuid` to 16-byte BLOB for binding to legacy BLOB UUID columns.
+///
+/// Use this at the bind site when inserting into a column that stores UUIDs as
+/// BLOB (e.g. `users.id`, `project_members.user_id`). Push the string→blob
+/// boundary as close to the DB consumer as possible; all other code should use
+/// DbUuid/str.
+///
+/// ```ignore
+/// let user_id = DbUuid::from(access_context.user_id);
+/// sqlx::query("INSERT INTO project_members (user_id) VALUES (?)")
+///     .bind(bind_uuid_blob(&user_id))
+/// ```
+pub fn bind_uuid_blob(uuid: &DbUuid) -> Vec<u8> {
+    uuid::Uuid::parse_str(uuid.as_str())
+        .expect("DbUuid must contain a valid UUID")
+        .as_bytes()
+        .to_vec()
+}
+
+/// Convert an `Option<DbUuid>` to optional 16-byte BLOB for legacy BLOB columns.
+pub fn bind_optional_uuid_blob(uuid: &Option<DbUuid>) -> Option<Vec<u8>> {
+    uuid.as_ref().map(|u| bind_uuid_blob(u))
 }
 
 /// Bind an `Option<DbUuid>` reference in a raw `sqlx::query()` call.
@@ -310,5 +334,20 @@ mod tests {
 
         let none_id: Option<DbUuid> = None;
         assert_eq!(bind_optional_uuid(&none_id), None);
+    }
+
+    #[test]
+    fn bind_blob_helpers() {
+        let id = DbUuid::from_string("550e8400-e29b-41d4-a716-446655440000");
+        let blob = bind_uuid_blob(&id);
+        assert_eq!(blob.len(), 16);
+        // Round-trip: blob → Uuid → string should match original
+        let round = uuid::Uuid::from_slice(&blob).unwrap();
+        assert_eq!(round.hyphenated().to_string(), id.as_str());
+
+        let some_id = Some(id.clone());
+        assert!(bind_optional_uuid_blob(&some_id).is_some());
+        let none_id: Option<DbUuid> = None;
+        assert!(bind_optional_uuid_blob(&none_id).is_none());
     }
 }

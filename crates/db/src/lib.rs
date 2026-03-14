@@ -13,7 +13,7 @@ pub mod models;
 pub mod repositories;
 pub mod services;
 
-pub use db_uuid::DbUuid;
+pub use db_uuid::{DbUuid, bind_uuid, bind_uuid_blob, bind_optional_uuid, bind_optional_uuid_blob};
 
 #[derive(Clone)]
 pub struct DBService {
