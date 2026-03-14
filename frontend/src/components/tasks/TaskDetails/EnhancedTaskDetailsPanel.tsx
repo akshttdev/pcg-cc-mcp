@@ -47,6 +47,8 @@ interface EnhancedTaskDetailsPanelProps {
   onDuplicate?: () => void;
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
+  onToggleExpand?: () => void;
+  isExpanded?: boolean;
   hideClose?: boolean;
   className?: string;
 }
@@ -136,6 +138,8 @@ export function EnhancedTaskDetailsPanel({
   onDuplicate,
   onToggleFullscreen,
   isFullscreen,
+  onToggleExpand,
+  isExpanded,
   hideClose,
   className,
 }: EnhancedTaskDetailsPanelProps) {
@@ -599,8 +603,8 @@ export function EnhancedTaskDetailsPanel({
         onDelete={onDelete}
         onDuplicate={onDuplicate}
         onClose={onClose}
-        onToggleFullscreen={onToggleFullscreen}
-        isFullscreen={isFullscreen}
+        onToggleExpand={onToggleExpand}
+        isExpanded={isExpanded}
         hideClose={hideClose}
       />
 

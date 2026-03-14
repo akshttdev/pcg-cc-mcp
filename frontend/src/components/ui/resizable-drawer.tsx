@@ -7,10 +7,15 @@ const SIDEBAR_EXPANDED_WIDTH = 288;
 const DEFAULT_MIN_WIDTH = 400;
 const EDGE_GAP = 10;
 
+export interface DrawerRenderProps {
+  isExpanded: boolean;
+  toggleExpand: () => void;
+}
+
 interface ResizableDrawerProps {
   open: boolean;
   onClose: () => void;
-  children: React.ReactNode;
+  children: React.ReactNode | ((props: DrawerRenderProps) => React.ReactNode);
   defaultWidth?: number;
   minWidth?: number;
   storageKey?: string;
@@ -31,6 +36,13 @@ export function ResizableDrawer({
 }: ResizableDrawerProps) {
   const { sidebarCollapsed } = useViewStore();
   const isDraggingRef = useRef(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const preExpandWidthRef = useRef<number | null>(null);
+
+  const getMaxWidth = useCallback(() => {
+    const sidebarWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
+    return window.innerWidth - sidebarWidth - EDGE_GAP;
+  }, [sidebarCollapsed]);
 
   const [width, setWidth] = useState(() => {
     try {
@@ -50,12 +62,29 @@ export function ResizableDrawer({
 
   // Clamp when sidebar state changes
   useEffect(() => {
-    const sidebarWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH;
-    const maxWidth = window.innerWidth - sidebarWidth - EDGE_GAP;
-    if (width > maxWidth) {
+    const maxWidth = getMaxWidth();
+    if (isExpanded) {
+      setWidth(maxWidth);
+    } else if (width > maxWidth) {
       setWidth(Math.max(minWidth, maxWidth));
     }
-  }, [sidebarCollapsed, width, minWidth]);
+  }, [sidebarCollapsed, width, minWidth, isExpanded, getMaxWidth]);
+
+  const toggleExpand = useCallback(() => {
+    setIsExpanded((prev) => {
+      if (!prev) {
+        // Expanding — save current width, go to max
+        preExpandWidthRef.current = width;
+        setWidth(getMaxWidth());
+        return true;
+      } else {
+        // Collapsing — restore saved width
+        setWidth(preExpandWidthRef.current ?? defaultWidth);
+        preExpandWidthRef.current = null;
+        return false;
+      }
+    });
+  }, [width, defaultWidth, getMaxWidth]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -67,6 +96,8 @@ export function ResizableDrawer({
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
         if (!isDraggingRef.current) return;
+        setIsExpanded(false);
+        preExpandWidthRef.current = null;
         const newWidth = Math.max(
           minWidth,
           Math.min(maxWidth, window.innerWidth - moveEvent.clientX)
@@ -127,7 +158,9 @@ export function ResizableDrawer({
             ))}
           </div>
         </div>
-        {children}
+        {typeof children === 'function'
+          ? children({ isExpanded, toggleExpand })
+          : children}
       </div>
     </>
   );

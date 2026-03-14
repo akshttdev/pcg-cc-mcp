@@ -940,19 +940,22 @@ export function ProjectTasks() {
           open={isPanelOpen && !!selectedTask && !isFullscreen}
           onClose={handleClosePanel}
         >
-          {selectedTask && (
-            <EnhancedTaskDetailsPanel
-              task={selectedTask}
-              projectId={projectId!}
-              onClose={handleClosePanel}
-              onEdit={() => handleEditTaskCallback(selectedTask)}
-              onDelete={() => handleDeleteTask(selectedTask.id)}
-              onDuplicate={() => handleDuplicateTaskCallback(selectedTask)}
-              onToggleFullscreen={() => toggleFullscreen(!isFullscreen)}
-              isFullscreen={false}
-              className="h-full"
-            />
-          )}
+          {({ isExpanded, toggleExpand }) =>
+            selectedTask && (
+              <EnhancedTaskDetailsPanel
+                task={selectedTask}
+                projectId={projectId!}
+                onClose={handleClosePanel}
+                onEdit={() => handleEditTaskCallback(selectedTask)}
+                onDelete={() => handleDeleteTask(selectedTask.id)}
+                onDuplicate={() => handleDuplicateTaskCallback(selectedTask)}
+                onToggleExpand={toggleExpand}
+                isExpanded={isExpanded}
+                isFullscreen={false}
+                className="h-full"
+              />
+            )
+          }
         </ResizableDrawer>
       </div>
     </div>

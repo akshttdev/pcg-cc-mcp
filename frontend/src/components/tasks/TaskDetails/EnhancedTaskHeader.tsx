@@ -19,8 +19,8 @@ import {
   Edit,
   Copy,
   Trash2,
-  Maximize2,
-  Minimize2,
+  ArrowLeftFromLine,
+  ArrowRightFromLine,
   X,
   Bot,
   User,
@@ -40,8 +40,8 @@ interface EnhancedTaskHeaderProps {
   onDelete?: () => void;
   onDuplicate?: () => void;
   onClose?: () => void;
-  onToggleFullscreen?: () => void;
-  isFullscreen?: boolean;
+  onToggleExpand?: () => void;
+  isExpanded?: boolean;
   hideClose?: boolean;
 }
 
@@ -98,8 +98,8 @@ export function EnhancedTaskHeader({
   onDelete,
   onDuplicate,
   onClose,
-  onToggleFullscreen,
-  isFullscreen,
+  onToggleExpand,
+  isExpanded,
   hideClose,
 }: EnhancedTaskHeaderProps) {
   const modeInfo = modeConfig[mode];
@@ -155,19 +155,19 @@ export function EnhancedTaskHeader({
 
         {/* Action buttons */}
         <div className="flex items-center gap-1 shrink-0">
-          {onToggleFullscreen && (
+          {onToggleExpand && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={onToggleFullscreen} className="h-8 w-8">
-                  {isFullscreen ? (
-                    <Minimize2 className="h-4 w-4" />
+                <Button variant="ghost" size="icon" onClick={onToggleExpand} className="h-8 w-8">
+                  {isExpanded ? (
+                    <ArrowRightFromLine className="h-4 w-4" />
                   ) : (
-                    <Maximize2 className="h-4 w-4" />
+                    <ArrowLeftFromLine className="h-4 w-4" />
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {isFullscreen ? 'Exit fullscreen (f)' : 'Fullscreen (f)'}
+                {isExpanded ? 'Collapse panel' : 'Expand panel'}
               </TooltipContent>
             </Tooltip>
           )}
