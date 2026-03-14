@@ -56,6 +56,7 @@ import {
   Cpu,
   Inbox,
   BarChart2,
+  HardDrive,
 } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -133,6 +134,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: 'Mission Control', icon: Rocket, to: '/mission-control', id: 'mission-control', adminOnly: true },
   { label: 'Pulse Engine', icon: Activity, to: '/pulse', id: 'pulse', adminOnly: true },
   { label: 'Mesh Network', icon: Globe, to: '/mesh', id: 'mesh', adminOnly: true },
+  { label: 'APN Cloud', icon: HardDrive, to: '/apn-cloud', id: 'apn-cloud', adminOnly: true },
 ];
 
 // Primary navigation - workspace destinations (user-level pages)

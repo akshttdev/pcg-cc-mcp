@@ -6471,3 +6471,121 @@ export const tokenUsageApi = {
     return handleApiResponse<TokenUsageByModel[]>(r);
   },
 };
+
+// ── Shared Storage (APN Cloud) ──────────────────────────────────────────────
+
+export interface StorageVolume {
+  id: string;
+  name: string;
+  description: string;
+  root_path: string;
+  available: boolean;
+  writable: boolean;
+}
+
+export interface StorageEntry {
+  name: string;
+  entry_type: 'file' | 'directory';
+  size: number | null;
+  modified: string | null;
+}
+
+export interface BrowseResponse {
+  volume: string;
+  path: string;
+  entries: StorageEntry[];
+}
+
+export interface StorageStats {
+  volume: string;
+  root: string;
+  total_files: number;
+  total_size_bytes: number;
+  manifest: Record<string, unknown> | null;
+}
+
+export interface StorageSearchResult {
+  volume: string;
+  name: string;
+  path: string;
+  entry_type: string;
+  size: number | null;
+}
+
+export const sharedStorageApi = {
+  async listVolumes(): Promise<StorageVolume[]> {
+    const response = await makeRequest('/api/shared-storage/volumes');
+    return handleApiResponse<StorageVolume[]>(response);
+  },
+
+  async browse(volume: string, path: string = '/'): Promise<BrowseResponse> {
+    const params = new URLSearchParams({ volume, path });
+    const response = await makeRequest(`/api/shared-storage/browse?${params}`);
+    return handleApiResponse<BrowseResponse>(response);
+  },
+
+  getDownloadUrl(volume: string, path: string): string {
+    const params = new URLSearchParams({ volume, path });
+    return `/api/shared-storage/download?${params}`;
+  },
+
+  async search(query: string, volume?: string): Promise<StorageSearchResult[]> {
+    const params = new URLSearchParams({ q: query });
+    if (volume) params.set('volume', volume);
+    const response = await makeRequest(`/api/shared-storage/search?${params}`);
+    return handleApiResponse<StorageSearchResult[]>(response);
+  },
+
+  async stats(volume?: string): Promise<{ volumes: StorageStats[] }> {
+    const params = volume ? new URLSearchParams({ volume }) : '';
+    const response = await makeRequest(`/api/shared-storage/stats?${params}`);
+    return handleApiResponse<{ volumes: StorageStats[] }>(response);
+  },
+
+  async upload(file: File, volume: string, path: string = '/'): Promise<StorageEntry> {
+    const params = new URLSearchParams({ volume, path });
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(resolveApiUrl(`/api/shared-storage/upload?${params}`), {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new ApiError(
+        `Failed to upload file: ${errorText}`,
+        response.status,
+        response
+      );
+    }
+
+    return handleApiResponse<StorageEntry>(response);
+  },
+
+  async mkdir(volume: string, path: string): Promise<StorageEntry> {
+    const response = await makeRequest('/api/shared-storage/mkdir', {
+      method: 'POST',
+      body: JSON.stringify({ volume, path }),
+    });
+    return handleApiResponse<StorageEntry>(response);
+  },
+
+  async deleteEntry(volume: string, path: string): Promise<void> {
+    const params = new URLSearchParams({ volume, path });
+    const response = await makeRequest(`/api/shared-storage/delete?${params}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  async rename(volume: string, from: string, to: string): Promise<StorageEntry> {
+    const response = await makeRequest('/api/shared-storage/rename', {
+      method: 'PUT',
+      body: JSON.stringify({ volume, from, to }),
+    });
+    return handleApiResponse<StorageEntry>(response);
+  },
+};

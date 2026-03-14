@@ -60,6 +60,7 @@ const SiteDirectoryPage       = lazy(() => import('@/pages/site-directory').then
 const MediaLibraryPage        = lazy(() => import('@/pages/media-library').then(m => ({ default: m.MediaLibraryPage })));
 const ReviewPage              = lazy(() => import('@/pages/review').then(m => ({ default: m.ReviewPage })));
 const OssLibraryListenerPage  = lazy(() => import('@/pages/oss-library-listener').then(m => ({ default: m.OssLibraryListenerPage })));
+const ApnCloudPage            = lazy(() => import('@/pages/apn-cloud').then(m => ({ default: m.ApnCloudPage })));
 
 // ─── Lazy-loaded settings pages ─────────────────────────────────────────────
 const SettingsLayout    = lazy(() => import('@/pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
@@ -348,6 +349,7 @@ function App() {
             path="/virtual-environment"
             element={<ProtectedRoute><VirtualEnvironmentPage /></ProtectedRoute>}
           />
+          <Route path="/apn-cloud" element={<ProtectedRoute><ApnCloudPage /></ProtectedRoute>} />
           <Route path="/mesh" element={<Navigate to="/settings/network" replace />} />
           <Route path="/pulse" element={<ProtectedRoute><PulsePage /></ProtectedRoute>} />
           <Route
