@@ -421,9 +421,24 @@ async fn dashboard_stats(
         .await
         .unwrap_or(0);
 
-    let sources = PulseSource::find_by_project(pool, project_id)
+    // Try project-scoped sources first; if empty, fall back to organization-scoped
+    let mut sources = PulseSource::find_by_project(pool, project_id)
         .await
         .unwrap_or_default();
+
+    if sources.is_empty() {
+        // Look up the project's organization_id and query org-scoped sources
+        if let Ok(Some(project)) = db::models::project::Project::find_by_id(pool, &project_id.to_string()).await {
+            if let Some(ref org_id) = project.organization_id {
+                if let Ok(org_uuid) = Uuid::parse_str(org_id) {
+                    sources = PulseSource::find_by_organization(pool, org_uuid)
+                        .await
+                        .unwrap_or_default();
+                }
+            }
+        }
+    }
+
     let total_sources = sources.len();
     let active_sources = sources.iter().filter(|s| s.status == "active" && s.enabled).count();
 

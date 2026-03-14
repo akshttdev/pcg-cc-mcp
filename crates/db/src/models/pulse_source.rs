@@ -88,6 +88,19 @@ impl PulseSource {
         .await
     }
 
+    /// Find pulse sources scoped to an organization (across all projects in that org).
+    pub async fn find_by_organization(
+        pool: &SqlitePool,
+        organization_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as::<_, Self>(
+            "SELECT * FROM pulse_sources WHERE organization_id = ? ORDER BY created_at DESC",
+        )
+        .bind(organization_id)
+        .fetch_all(pool)
+        .await
+    }
+
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>("SELECT * FROM pulse_sources WHERE id = ?")
             .bind(id)

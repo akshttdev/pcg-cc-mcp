@@ -4,6 +4,7 @@
 
 use axum::{Router, extract::State, response::Json as ResponseJson, routing::post};
 use db::constants::{BUGREPORTS_BOARD_ID, BUGREPORTS_PROJECT_ID};
+use db::models::agent::Agent;
 use db::models::data_source::{CreateDataSource, DataSource};
 use db::models::task::{CreateTask, Priority, Task};
 use deployment::Deployment;
@@ -118,6 +119,28 @@ pub async fn submit_feedback(
     Task::create(pool, &create_task, &task_id_str)
         .await
         .map_err(|e| ApiError::InternalError(format!("Failed to create feedback task: {}", e)))?;
+
+    // Assign a default dev agent to the task
+    match Agent::find_active(pool).await {
+        Ok(agents) => {
+            // Prefer system-tier agents, then any active agent
+            let dev_agent = agents.iter()
+                .find(|a| a.agent_tier.as_deref() == Some("system"))
+                .or_else(|| agents.first());
+            if let Some(agent) = dev_agent {
+                if let Err(e) = Task::assign_agent(pool, &task_id_str, &agent.id).await {
+                    tracing::warn!("Failed to assign dev agent to feedback task: {e}");
+                } else {
+                    tracing::info!("Assigned dev agent '{}' to feedback task {}", agent.short_name, task_id_str);
+                }
+            } else {
+                tracing::warn!("No active agents found for feedback task assignment");
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to look up dev agents for feedback task: {e}");
+        }
+    }
 
     // Also create a DataSource so workflow triggers (Bug Triage Pipeline) fire automatically
     let ds_metadata = json!({
