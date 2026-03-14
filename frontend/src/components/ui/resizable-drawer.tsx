@@ -20,8 +20,6 @@ interface ResizableDrawerProps {
   minWidth?: number;
   storageKey?: string;
   className?: string;
-  /** Extra classes on the backdrop */
-  backdropClassName?: string;
 }
 
 export function ResizableDrawer({
@@ -32,7 +30,6 @@ export function ResizableDrawer({
   minWidth = DEFAULT_MIN_WIDTH,
   storageKey = 'orcha:drawer-width',
   className,
-  backdropClassName,
 }: ResizableDrawerProps) {
   const { sidebarCollapsed } = useViewStore();
   const isDraggingRef = useRef(false);
@@ -121,20 +118,27 @@ export function ResizableDrawer({
     [sidebarCollapsed, minWidth]
   );
 
+  // Close drawer when clicking outside it
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (isDraggingRef.current) return;
+      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className={cn(
-          'absolute inset-0 z-40 bg-black/30 animate-in fade-in-0 duration-200',
-          backdropClassName
-        )}
-        onClick={onClose}
-      />
       {/* Drawer */}
       <div
+        ref={drawerRef}
         className={cn(
           'absolute inset-y-0 right-0 z-50 animate-in slide-in-from-right duration-300 shadow-xl',
           className
