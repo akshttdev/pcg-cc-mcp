@@ -116,6 +116,7 @@ pub mod discord;
 pub mod oss_listener;
 pub mod oss_listener_bg;
 pub mod meet;
+pub mod sync;
 
 /// Handler for the /metrics endpoint that exposes Prometheus metrics
 async fn metrics_handler() -> impl IntoResponse {
@@ -199,6 +200,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(discord::router(&deployment))
         .merge(media_library::router(&deployment))
         .merge(oss_listener::router(&deployment))
+        .merge(sync::router(&deployment))
         .merge(nora::nora_routes())
         .merge(topsi::topsi_routes())
         .layer(middleware::from_fn_with_state(

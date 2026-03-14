@@ -25,3 +25,4 @@ hex = "0.4"
 clap = { version = "4", features = ["derive"] }
 mime_guess = "2"
 walkdir = "2"
+hostname = "0.4"

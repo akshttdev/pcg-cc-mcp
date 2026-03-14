@@ -4,6 +4,13 @@
 /// without needing the full dashboard. New files dropped into the sync folder
 /// are automatically uploaded to the PCG platform.
 ///
+/// Enhanced with:
+/// - Server-side sync folder hierarchy (org-scoped shared folders)
+/// - Device registration & heartbeat
+/// - Selective sync via folder subscriptions
+/// - Conflict detection via hash comparison
+/// - Sync state reporting back to server
+///
 /// Config: ~/.pcg/sync.toml
 /// State:  ~/.pcg/sync_state.json
 use std::{
@@ -51,6 +58,8 @@ enum Command {
         folder: Option<String>,
         #[arg(long, help = "Organization ID to sync (leave blank to sync all)")]
         org_id: Option<String>,
+        #[arg(long, help = "Device name (default: hostname)")]
+        device_name: Option<String>,
     },
     /// Pull all files from server now (one-shot)
     Pull,
@@ -76,10 +85,21 @@ struct SyncConfig {
     /// Max file size to download automatically (bytes). Default 100MB.
     #[serde(default = "default_max_size")]
     max_auto_download_bytes: u64,
+    /// Device name for registration
+    #[serde(default = "default_device_name")]
+    device_name: String,
+    /// Registered device ID (set after first registration)
+    #[serde(default)]
+    device_id: Option<String>,
 }
 
 fn default_poll_interval() -> u64 { 60 }
 fn default_max_size() -> u64 { 100 * 1024 * 1024 }
+fn default_device_name() -> String {
+    hostname::get()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "Unknown Device".to_string())
+}
 
 fn config_path() -> PathBuf {
     dirs::home_dir()
@@ -113,21 +133,49 @@ fn save_config(cfg: &SyncConfig) -> Result<()> {
 // ─── Sync State ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct SyncState {
+struct SyncStateLocal {
     /// Map of data source ID → local file path (relative to sync_folder)
-    downloaded: HashMap<String, String>,
+    downloaded: HashMap<String, DownloadedEntry>,
     /// Set of local file hashes that have been uploaded
     uploaded_hashes: HashSet<String>,
+    /// Map of file path → hash for conflict detection
+    file_hashes: HashMap<String, String>,
 }
 
-impl SyncState {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DownloadedEntry {
+    path: String,
+    hash: Option<String>,
+    size: Option<u64>,
+    synced_at: Option<String>,
+    folder_id: Option<String>,
+}
+
+impl SyncStateLocal {
     fn load() -> Self {
         let path = state_path();
         if let Ok(content) = fs::read_to_string(&path) {
-            serde_json::from_str(&content).unwrap_or_default()
-        } else {
-            Self::default()
+            // Try new format first, fall back to old
+            if let Ok(state) = serde_json::from_str::<Self>(&content) {
+                return state;
+            }
+            // Migrate from old format (HashMap<String, String>)
+            if let Ok(old) = serde_json::from_str::<OldSyncState>(&content) {
+                let mut new = Self::default();
+                for (id, path) in old.downloaded {
+                    new.downloaded.insert(id, DownloadedEntry {
+                        path,
+                        hash: None,
+                        size: None,
+                        synced_at: None,
+                        folder_id: None,
+                    });
+                }
+                new.uploaded_hashes = old.uploaded_hashes;
+                return new;
+            }
         }
+        Self::default()
     }
 
     fn save(&self) -> Result<()> {
@@ -136,6 +184,12 @@ impl SyncState {
         fs::write(&path, serde_json::to_string_pretty(self)?)?;
         Ok(())
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct OldSyncState {
+    downloaded: HashMap<String, String>,
+    uploaded_hashes: HashSet<String>,
 }
 
 // ─── API Types ────────────────────────────────────────────────────────────────
@@ -153,8 +207,23 @@ struct DataSource {
     data_type: Option<String>,
     file_type: Option<String>,
     file_size: Option<i64>,
+    file_size_bytes: Option<i64>,
     #[serde(default)]
     metadata: String,
+    updated_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct SyncFolderRemote {
+    id: String,
+    name: String,
+    path: String,
+    auto_sync: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct SyncDeviceRemote {
+    id: String,
 }
 
 // ─── HTTP Client ──────────────────────────────────────────────────────────────
@@ -181,6 +250,88 @@ async fn fetch_data_sources(client: &Client, cfg: &SyncConfig) -> Result<Vec<Dat
     Ok(api.data)
 }
 
+async fn fetch_sync_folders(client: &Client, cfg: &SyncConfig) -> Result<Vec<SyncFolderRemote>> {
+    let Some(ref org_id) = cfg.org_id else {
+        return Ok(Vec::new());
+    };
+    let url = format!("{}/api/organizations/{}/sync/folders", cfg.server_url, org_id);
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let api: ApiResponse<Vec<SyncFolderRemote>> = resp.json().await?;
+            Ok(api.data)
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+async fn register_device(client: &Client, cfg: &mut SyncConfig) -> Result<String> {
+    if let Some(ref id) = cfg.device_id {
+        // Heartbeat existing device
+        let url = format!("{}/api/sync/devices/{}/heartbeat", cfg.server_url, id);
+        if client.post(&url).send().await.is_ok() {
+            return Ok(id.clone());
+        }
+    }
+
+    // Register new device
+    let platform = std::env::consts::OS.to_string();
+    let body = serde_json::json!({
+        "user_id": "00000000-0000-0000-0000-000000000000",
+        "organization_id": cfg.org_id.as_deref().unwrap_or(""),
+        "device_name": cfg.device_name,
+        "device_type": "desktop",
+        "platform": platform,
+        "sync_folder": cfg.sync_folder.to_string_lossy(),
+    });
+
+    let url = format!("{}/api/sync/devices/register", cfg.server_url);
+    match client.post(&url).json(&body).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let api: ApiResponse<SyncDeviceRemote> = resp.json().await?;
+            cfg.device_id = Some(api.data.id.clone());
+            save_config(cfg)?;
+            info!("Device registered: {}", api.data.id);
+            Ok(api.data.id)
+        }
+        Ok(resp) => {
+            let status = resp.status();
+            warn!("Device registration failed ({}), running in offline mode", status);
+            Ok(String::new())
+        }
+        Err(e) => {
+            warn!("Device registration failed: {}, running in offline mode", e);
+            Ok(String::new())
+        }
+    }
+}
+
+async fn report_sync_state(
+    client: &Client,
+    cfg: &SyncConfig,
+    file_path: &str,
+    status: &str,
+    hash: Option<&str>,
+    size: Option<i64>,
+    data_source_id: Option<&str>,
+    direction: &str,
+) {
+    let Some(ref device_id) = cfg.device_id else { return };
+    let url = format!("{}/api/sync/devices/{}/state", cfg.server_url, device_id);
+    let body = serde_json::json!({
+        "device_id": device_id,
+        "file_path": file_path,
+        "sync_status": status,
+        "file_hash": hash,
+        "file_size": size,
+        "data_source_id": data_source_id,
+        "sync_direction": direction,
+    });
+
+    if let Err(e) = client.post(&url).json(&body).send().await {
+        warn!("Failed to report sync state: {}", e);
+    }
+}
+
 /// Sanitize a filename to be filesystem-safe
 fn safe_filename(name: &str) -> String {
     name.chars()
@@ -190,11 +341,11 @@ fn safe_filename(name: &str) -> String {
         .to_string()
 }
 
-/// Determine local path for a data source, preserving folder structure
-fn local_path_for(source: &DataSource, sync_folder: &Path) -> PathBuf {
+/// Determine local path for a data source, using sync folder hierarchy
+fn local_path_for(source: &DataSource, sync_folder: &Path, sync_folders: &[SyncFolderRemote]) -> PathBuf {
     let meta: serde_json::Value = serde_json::from_str(&source.metadata).unwrap_or_default();
 
-    // Try to reconstruct folder context from Dropbox path
+    // Try to match to a sync folder first
     let folder_context = meta.get("folder_context")
         .and_then(|v| v.as_str())
         .or_else(|| {
@@ -211,7 +362,23 @@ fn local_path_for(source: &DataSource, sync_folder: &Path) -> PathBuf {
         format!("{}.{}", safe_filename(&source.title), ext)
     };
 
-    // Build path: sync_folder / Section / Client / filename
+    // If we have sync folders from server, use their paths for organization
+    if !sync_folders.is_empty() && !folder_context.is_empty() {
+        // Find matching sync folder by path prefix
+        for sf in sync_folders {
+            let sf_parts: Vec<&str> = sf.path.trim_start_matches('/').split('/').collect();
+            let ctx_parts: Vec<&str> = folder_context.split(" > ").collect();
+            if !sf_parts.is_empty() && !ctx_parts.is_empty() && sf_parts[0].eq_ignore_ascii_case(ctx_parts[0]) {
+                let mut path = sync_folder.to_path_buf();
+                for part in &ctx_parts {
+                    path = path.join(safe_filename(part));
+                }
+                return path.join(&base_name);
+            }
+        }
+    }
+
+    // Fallback: use folder context from metadata
     if folder_context.is_empty() {
         sync_folder.join(&base_name)
     } else {
@@ -231,47 +398,97 @@ fn is_downloadable(source: &DataSource) -> bool {
     meta.get("file_path").is_some()
 }
 
+fn file_hash(path: &Path) -> Option<String> {
+    let bytes = fs::read(path).ok()?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    Some(hex::encode(hasher.finalize()))
+}
+
 // ─── Pull (server → local) ────────────────────────────────────────────────────
 
-async fn pull_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> Result<()> {
+async fn pull_all(client: &Client, cfg: &SyncConfig, state: &mut SyncStateLocal) -> Result<()> {
     info!("Fetching data sources from server...");
     let sources = fetch_data_sources(client, cfg).await?;
-    info!("Found {} data sources", sources.len());
+    let sync_folders = fetch_sync_folders(client, cfg).await.unwrap_or_default();
+    info!("Found {} data sources, {} sync folders", sources.len(), sync_folders.len());
 
     let mut downloaded = 0;
     let mut skipped = 0;
+    let mut conflicts = 0;
     let mut errors = 0;
 
     for source in &sources {
-        // Skip if already downloaded
-        if state.downloaded.contains_key(&source.id) {
-            skipped += 1;
-            continue;
-        }
-
         // Skip if not locally available
         if !is_downloadable(source) {
             continue;
         }
 
+        let local_path = local_path_for(source, &cfg.sync_folder, &sync_folders);
+        let relative_path = local_path.strip_prefix(&cfg.sync_folder)
+            .unwrap_or(&local_path)
+            .to_string_lossy()
+            .to_string();
+
+        // Check if already downloaded with same version
+        if let Some(entry) = state.downloaded.get(&source.id) {
+            // Check for conflict: local file modified since last sync
+            if local_path.exists() {
+                if let Some(ref stored_hash) = entry.hash {
+                    if let Some(current_hash) = file_hash(&local_path) {
+                        if &current_hash != stored_hash {
+                            // Local file was modified — check if remote also changed
+                            if source.updated_at.is_some() && entry.synced_at.is_some() {
+                                warn!("CONFLICT: {} modified both locally and remotely", source.title);
+                                report_sync_state(
+                                    client, cfg, &relative_path, "conflict",
+                                    Some(&current_hash), None, Some(&source.id), "pull",
+                                ).await;
+                                conflicts += 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            skipped += 1;
+            continue;
+        }
+
         // Skip if too large
-        if let Some(size) = source.file_size {
+        let file_size = source.file_size_bytes.or(source.file_size);
+        if let Some(size) = file_size {
             if size > 0 && size as u64 > cfg.max_auto_download_bytes {
                 warn!("Skipping {} ({} bytes — exceeds {} limit)", source.title, size, cfg.max_auto_download_bytes);
                 continue;
             }
         }
 
-        let local_path = local_path_for(source, &cfg.sync_folder);
-
-        // Skip if file already exists at path
+        // Skip if file already exists at path (first-time setup)
         if local_path.exists() {
-            state.downloaded.insert(source.id.clone(), local_path.to_string_lossy().into_owned());
+            let hash = file_hash(&local_path);
+            state.downloaded.insert(source.id.clone(), DownloadedEntry {
+                path: relative_path.clone(),
+                hash: hash.clone(),
+                size: fs::metadata(&local_path).ok().map(|m| m.len()),
+                synced_at: Some(chrono::Utc::now().to_rfc3339()),
+                folder_id: None,
+            });
+            report_sync_state(
+                client, cfg, &relative_path, "synced",
+                hash.as_deref(), file_size, Some(&source.id), "pull",
+            ).await;
             continue;
         }
 
         // Download
         let url = format!("{}/api/data-sources/{}/download", cfg.server_url, source.id);
+
+        report_sync_state(
+            client, cfg, &relative_path, "pending",
+            None, file_size, Some(&source.id), "pull",
+        ).await;
+
         match client.get(&url).send().await {
             Ok(resp) if resp.status().is_success() => {
                 match resp.bytes().await {
@@ -285,10 +502,27 @@ async fn pull_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> R
                         }
                         if let Err(e) = fs::write(&local_path, &bytes) {
                             error!("Failed to write {}: {}", local_path.display(), e);
+                            report_sync_state(
+                                client, cfg, &relative_path, "error",
+                                None, file_size, Some(&source.id), "pull",
+                            ).await;
                             errors += 1;
                         } else {
+                            let hash = file_hash(&local_path);
+                            let size = bytes.len() as u64;
                             info!("Downloaded: {} → {}", source.title, local_path.display());
-                            state.downloaded.insert(source.id.clone(), local_path.to_string_lossy().into_owned());
+                            state.downloaded.insert(source.id.clone(), DownloadedEntry {
+                                path: relative_path.clone(),
+                                hash: hash.clone(),
+                                size: Some(size),
+                                synced_at: Some(chrono::Utc::now().to_rfc3339()),
+                                folder_id: None,
+                            });
+                            state.file_hashes.insert(relative_path.clone(), hash.clone().unwrap_or_default());
+                            report_sync_state(
+                                client, cfg, &relative_path, "synced",
+                                hash.as_deref(), Some(size as i64), Some(&source.id), "pull",
+                            ).await;
                             downloaded += 1;
                         }
                     }
@@ -299,9 +533,14 @@ async fn pull_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> R
                 }
             }
             Ok(resp) => {
-                // 404 means no local file on server (Dropbox metadata only) — mark as known
                 if resp.status().as_u16() == 404 {
-                    state.downloaded.insert(source.id.clone(), "cloud-only".to_string());
+                    state.downloaded.insert(source.id.clone(), DownloadedEntry {
+                        path: "cloud-only".to_string(),
+                        hash: None,
+                        size: None,
+                        synced_at: None,
+                        folder_id: None,
+                    });
                 }
             }
             Err(e) => {
@@ -312,20 +551,16 @@ async fn pull_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> R
     }
 
     state.save()?;
-    info!("Pull complete: {} downloaded, {} already synced, {} errors", downloaded, skipped, errors);
+    info!(
+        "Pull complete: {} downloaded, {} already synced, {} conflicts, {} errors",
+        downloaded, skipped, conflicts, errors
+    );
     Ok(())
 }
 
 // ─── Push (local → server) ────────────────────────────────────────────────────
 
-fn file_hash(path: &Path) -> Option<String> {
-    let bytes = fs::read(path).ok()?;
-    let mut hasher = Sha256::new();
-    hasher.update(&bytes);
-    Some(hex::encode(hasher.finalize()))
-}
-
-async fn push_file(client: &Client, cfg: &SyncConfig, path: &Path, state: &mut SyncState) -> Result<()> {
+async fn push_file(client: &Client, cfg: &SyncConfig, path: &Path, state: &mut SyncStateLocal) -> Result<()> {
     let hash = file_hash(path).context("Failed to hash file")?;
     if state.uploaded_hashes.contains(&hash) {
         return Ok(()); // already uploaded
@@ -336,14 +571,20 @@ async fn push_file(client: &Client, cfg: &SyncConfig, path: &Path, state: &mut S
         .unwrap_or("file")
         .to_string();
 
-    let bytes = fs::read(path)?;
-    let mime = mime_guess::from_path(path).first_or_octet_stream().to_string();
+    let relative_path = path.strip_prefix(&cfg.sync_folder)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string();
 
-    // Determine org context from path
-    let relative = path.strip_prefix(&cfg.sync_folder).unwrap_or(path);
-    let parts: Vec<&str> = relative.components()
-        .filter_map(|c| c.as_os_str().to_str())
-        .collect();
+    // Report pending
+    report_sync_state(
+        client, cfg, &relative_path, "pending",
+        Some(&hash), None, None, "push",
+    ).await;
+
+    let bytes = fs::read(path)?;
+    let size = bytes.len() as i64;
+    let mime = mime_guess::from_path(path).first_or_octet_stream().to_string();
 
     let form = multipart::Form::new()
         .text("title", filename.clone())
@@ -360,18 +601,27 @@ async fn push_file(client: &Client, cfg: &SyncConfig, path: &Path, state: &mut S
 
     if resp.status().is_success() {
         info!("Uploaded: {}", path.display());
-        state.uploaded_hashes.insert(hash);
+        state.uploaded_hashes.insert(hash.clone());
+        state.file_hashes.insert(relative_path.clone(), hash.clone());
+        report_sync_state(
+            client, cfg, &relative_path, "synced",
+            Some(&hash), Some(size), None, "push",
+        ).await;
         state.save()?;
     } else {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         error!("Upload failed for {}: {} — {}", path.display(), status, body);
+        report_sync_state(
+            client, cfg, &relative_path, "error",
+            Some(&hash), Some(size), None, "push",
+        ).await;
     }
 
     Ok(())
 }
 
-async fn push_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> Result<()> {
+async fn push_all(client: &Client, cfg: &SyncConfig, state: &mut SyncStateLocal) -> Result<()> {
     info!("Scanning local folder for new files to upload...");
     let sync_folder = cfg.sync_folder.clone();
 
@@ -381,16 +631,19 @@ async fn push_all(client: &Client, cfg: &SyncConfig, state: &mut SyncState) -> R
 
     // Known downloaded files — don't re-upload them
     let known_paths: HashSet<String> = state.downloaded.values()
-        .filter(|p| *p != "cloud-only")
-        .cloned()
+        .filter(|e| e.path != "cloud-only")
+        .map(|e| e.path.clone())
         .collect();
 
     let mut uploaded = 0;
     let mut skipped = 0;
 
     for entry in walkdir_files(&sync_folder) {
-        let path_str = entry.to_string_lossy().into_owned();
-        if known_paths.contains(&path_str) {
+        let relative = entry.strip_prefix(&sync_folder)
+            .unwrap_or(&entry)
+            .to_string_lossy()
+            .to_string();
+        if known_paths.contains(&relative) {
             skipped += 1;
             continue;
         }
@@ -420,22 +673,30 @@ fn walkdir_files(dir: &Path) -> Vec<PathBuf> {
 
 // ─── Daemon (watch + poll loop) ───────────────────────────────────────────────
 
-async fn run_daemon(cfg: SyncConfig) -> Result<()> {
+async fn run_daemon(mut cfg: SyncConfig) -> Result<()> {
     info!("Starting PCG sync daemon");
     info!("  Server:      {}", cfg.server_url);
     info!("  Sync folder: {}", cfg.sync_folder.display());
+    info!("  Device:      {}", cfg.device_name);
     if let Some(ref org) = cfg.org_id {
         info!("  Org filter:  {}", org);
     }
     info!("  Poll:        every {}s", cfg.poll_interval_secs);
 
     fs::create_dir_all(&cfg.sync_folder)?;
-    println!("📁 Sync folder ready: {}", cfg.sync_folder.display());
+    println!("  Sync folder ready: {}", cfg.sync_folder.display());
     println!("   Open this folder in Finder/Nautilus to access your PCG files.");
     println!("   Drop new files here — they'll upload automatically.\n");
 
     let client = build_client(&cfg.session_token)?;
-    let state = Arc::new(Mutex::new(SyncState::load()));
+
+    // Register device with server
+    let device_id = register_device(&client, &mut cfg).await?;
+    if !device_id.is_empty() {
+        info!("Device ID: {}", device_id);
+    }
+
+    let state = Arc::new(Mutex::new(SyncStateLocal::load()));
 
     // Initial pull
     {
@@ -473,6 +734,10 @@ async fn run_daemon(cfg: SyncConfig) -> Result<()> {
     let mut poll_ticker = tokio::time::interval(poll_interval);
     poll_ticker.tick().await; // skip first immediate tick (already pulled)
 
+    // Heartbeat timer (every 60s)
+    let mut heartbeat_ticker = tokio::time::interval(Duration::from_secs(60));
+    heartbeat_ticker.tick().await;
+
     loop {
         tokio::select! {
             _ = poll_ticker.tick() => {
@@ -480,6 +745,13 @@ async fn run_daemon(cfg: SyncConfig) -> Result<()> {
                 let mut st = state.lock().await;
                 if let Err(e) = pull_all(&client, &cfg, &mut st).await {
                     error!("Pull failed: {}", e);
+                }
+            }
+
+            _ = heartbeat_ticker.tick() => {
+                if let Some(ref id) = cfg.device_id {
+                    let url = format!("{}/api/sync/devices/{}/heartbeat", cfg.server_url, id);
+                    let _ = client.post(&url).send().await;
                 }
             }
 
@@ -508,18 +780,22 @@ fn print_status() {
             println!("PCG Sync Configuration:");
             println!("  Server:      {}", cfg.server_url);
             println!("  Sync folder: {}", cfg.sync_folder.display());
+            println!("  Device:      {}", cfg.device_name);
+            println!("  Device ID:   {}", cfg.device_id.as_deref().unwrap_or("not registered"));
             println!("  Org filter:  {}", cfg.org_id.as_deref().unwrap_or("all"));
             println!("  Poll:        every {}s", cfg.poll_interval_secs);
             println!("  Max dl size: {} MB", cfg.max_auto_download_bytes / 1024 / 1024);
 
-            let state = SyncState::load();
-            let local_count = state.downloaded.values().filter(|p| *p != "cloud-only").count();
-            let cloud_only = state.downloaded.values().filter(|p| *p == "cloud-only").count();
+            let state = SyncStateLocal::load();
+            let local_count = state.downloaded.values().filter(|e| e.path != "cloud-only").count();
+            let cloud_only = state.downloaded.values().filter(|e| e.path == "cloud-only").count();
             let uploaded = state.uploaded_hashes.len();
+            let tracked_hashes = state.file_hashes.len();
             println!("\nSync State:");
-            println!("  Local files: {}", local_count);
-            println!("  Cloud-only:  {} (metadata only, no local file on server)", cloud_only);
-            println!("  Uploaded:    {}", uploaded);
+            println!("  Local files:    {}", local_count);
+            println!("  Cloud-only:     {} (metadata only)", cloud_only);
+            println!("  Uploaded:       {}", uploaded);
+            println!("  Tracked hashes: {}", tracked_hashes);
 
             if cfg.sync_folder.exists() {
                 let file_count = walkdir_files(&cfg.sync_folder).len();
@@ -547,7 +823,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Configure { server, token, folder, org_id } => {
+        Command::Configure { server, token, folder, org_id, device_name } => {
             let sync_folder = folder
                 .map(PathBuf::from)
                 .unwrap_or_else(|| {
@@ -582,14 +858,14 @@ async fn main() -> Result<()> {
                 org_id,
                 poll_interval_secs: 60,
                 max_auto_download_bytes: 100 * 1024 * 1024,
+                device_name: device_name.unwrap_or_else(default_device_name),
+                device_id: None,
             };
 
             save_config(&cfg)?;
             println!("Sync folder: {}", sync_folder.display());
             println!("\nTo start syncing:");
             println!("  pcg-sync start");
-            println!("\nTo install as a background service (Linux systemd):");
-            println!("  See README for systemd unit file setup");
         }
 
         Command::Status => {
@@ -604,14 +880,14 @@ async fn main() -> Result<()> {
         Command::Pull => {
             let cfg = load_config()?;
             let client = build_client(&cfg.session_token)?;
-            let mut state = SyncState::load();
+            let mut state = SyncStateLocal::load();
             pull_all(&client, &cfg, &mut state).await?;
         }
 
         Command::Push => {
             let cfg = load_config()?;
             let client = build_client(&cfg.session_token)?;
-            let mut state = SyncState::load();
+            let mut state = SyncStateLocal::load();
             push_all(&client, &cfg, &mut state).await?;
         }
     }

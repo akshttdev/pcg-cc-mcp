@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   sharedStorageApi,
@@ -52,6 +53,7 @@ import {
   Home,
   Loader2,
   X,
+  FolderSync,
 } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 
@@ -137,6 +139,7 @@ function joinPath(...parts: string[]): string {
 
 export function ApnCloudPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State
@@ -492,6 +495,23 @@ export function ApnCloudPage() {
             >
               <FolderPlus className="h-4 w-4 mr-1.5" />
               New Folder
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                // Navigate to the first org's data sources sync tab
+                const orgPath = window.location.pathname.match(/\/organizations\/([^/]+)/);
+                if (orgPath) {
+                  navigate(`/organizations/${orgPath[1]}/intelligence/data-sources?tab=sync`);
+                } else {
+                  toast.info('Open from an organization to manage sync settings');
+                }
+              }}
+              title="Manage folder sync to local devices"
+            >
+              <FolderSync className="h-4 w-4 mr-1.5" />
+              Sync Settings
             </Button>
             <input
               ref={fileInputRef}

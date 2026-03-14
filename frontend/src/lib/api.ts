@@ -6589,3 +6589,200 @@ export const sharedStorageApi = {
     return handleApiResponse<StorageEntry>(response);
   },
 };
+
+// ── Sync Management ────────────────────────────────────────────────────────
+
+export interface SyncFolder {
+  id: string;
+  organization_id: string;
+  parent_id: string | null;
+  name: string;
+  path: string;
+  description: string | null;
+  is_shared: boolean;
+  auto_sync: boolean;
+  max_depth: number | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+export interface SyncDevice {
+  id: string;
+  user_id: string;
+  organization_id: string;
+  device_name: string;
+  device_type: string;
+  platform: string | null;
+  sync_folder: string;
+  last_seen_at: string | null;
+  last_sync_at: string | null;
+  sync_status: string;
+  sync_error: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SyncFileState {
+  id: string;
+  device_id: string;
+  data_source_id: string | null;
+  sync_folder_id: string | null;
+  file_path: string;
+  file_hash: string | null;
+  file_size: number | null;
+  local_modified: string | null;
+  remote_modified: string | null;
+  sync_status: 'pending' | 'synced' | 'conflict' | 'error' | 'deleted';
+  sync_direction: string | null;
+  conflict_type: string | null;
+  resolution: string | null;
+  error_message: string | null;
+  synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SyncSummary {
+  total_files: number;
+  synced: number;
+  pending: number;
+  conflicts: number;
+  errors: number;
+  total_size: number;
+}
+
+export interface OrgSyncOverview {
+  folder_count: number;
+  device_count: number;
+  active_devices: number;
+  sync_summary: SyncSummary;
+}
+
+export interface SyncSubscription {
+  id: string;
+  device_id: string;
+  sync_folder_id: string;
+  is_enabled: boolean;
+  selective_paths: string | null;
+  max_file_size: number | null;
+  created_at: string;
+}
+
+export const syncApi = {
+  // ── Folders ──────────────────────────────────────────────────────────────
+  async listFolders(orgId: string): Promise<SyncFolder[]> {
+    const response = await makeRequest(`/api/organizations/${orgId}/sync/folders`);
+    return handleApiResponse<SyncFolder[]>(response);
+  },
+
+  async createFolder(orgId: string, data: {
+    name: string;
+    parent_id?: string | null;
+    path?: string;
+    description?: string;
+    is_shared?: boolean;
+    auto_sync?: boolean;
+  }): Promise<SyncFolder> {
+    const response = await makeRequest(`/api/organizations/${orgId}/sync/folders`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, organization_id: orgId }),
+    });
+    return handleApiResponse<SyncFolder>(response);
+  },
+
+  async updateFolder(id: string, data: {
+    name?: string;
+    description?: string;
+    is_shared?: boolean;
+    auto_sync?: boolean;
+  }): Promise<SyncFolder> {
+    const response = await makeRequest(`/api/sync/folders/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SyncFolder>(response);
+  },
+
+  async deleteFolder(id: string): Promise<void> {
+    const response = await makeRequest(`/api/sync/folders/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  // ── Devices ──────────────────────────────────────────────────────────────
+  async listDevices(orgId: string): Promise<SyncDevice[]> {
+    const response = await makeRequest(`/api/organizations/${orgId}/sync/devices`);
+    return handleApiResponse<SyncDevice[]>(response);
+  },
+
+  async registerDevice(data: {
+    user_id: string;
+    organization_id: string;
+    device_name: string;
+    device_type?: string;
+    platform?: string;
+    sync_folder: string;
+  }): Promise<SyncDevice> {
+    const response = await makeRequest('/api/sync/devices/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<SyncDevice>(response);
+  },
+
+  async deactivateDevice(id: string): Promise<void> {
+    const response = await makeRequest(`/api/sync/devices/${id}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  // ── Sync State ───────────────────────────────────────────────────────────
+  async getDeviceState(deviceId: string): Promise<SyncFileState[]> {
+    const response = await makeRequest(`/api/sync/devices/${deviceId}/state`);
+    return handleApiResponse<SyncFileState[]>(response);
+  },
+
+  async getConflicts(deviceId: string): Promise<SyncFileState[]> {
+    const response = await makeRequest(`/api/sync/devices/${deviceId}/conflicts`);
+    return handleApiResponse<SyncFileState[]>(response);
+  },
+
+  async resolveConflict(stateId: string, resolution: 'keep_local' | 'keep_remote' | 'keep_both'): Promise<SyncFileState> {
+    const response = await makeRequest(`/api/sync/state/${stateId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ resolution }),
+    });
+    return handleApiResponse<SyncFileState>(response);
+  },
+
+  async getDeviceSummary(deviceId: string): Promise<SyncSummary> {
+    const response = await makeRequest(`/api/sync/devices/${deviceId}/summary`);
+    return handleApiResponse<SyncSummary>(response);
+  },
+
+  // ── Subscriptions ────────────────────────────────────────────────────────
+  async listSubscriptions(deviceId: string): Promise<SyncSubscription[]> {
+    const response = await makeRequest(`/api/sync/devices/${deviceId}/subscriptions`);
+    return handleApiResponse<SyncSubscription[]>(response);
+  },
+
+  async subscribe(deviceId: string, folderId: string, maxFileSize?: number): Promise<SyncSubscription> {
+    const response = await makeRequest(`/api/sync/devices/${deviceId}/subscriptions`, {
+      method: 'POST',
+      body: JSON.stringify({ sync_folder_id: folderId, is_enabled: true, max_file_size: maxFileSize }),
+    });
+    return handleApiResponse<SyncSubscription>(response);
+  },
+
+  async unsubscribe(subscriptionId: string): Promise<void> {
+    const response = await makeRequest(`/api/sync/subscriptions/${subscriptionId}`, { method: 'DELETE' });
+    return handleApiResponse<void>(response);
+  },
+
+  // ── Org Overview ─────────────────────────────────────────────────────────
+  async getOrgOverview(orgId: string): Promise<OrgSyncOverview> {
+    const response = await makeRequest(`/api/organizations/${orgId}/sync/summary`);
+    return handleApiResponse<OrgSyncOverview>(response);
+  },
+};

@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,12 @@ import {
   Upload, ChevronRight, ChevronDown, Palette,
   Download, Trash2, X, Info, RefreshCw,
   SortAsc, SortDesc, FolderOpen, LayoutGrid,
+  MonitorSmartphone, HardDrive, Cloud, CloudOff,
+  AlertTriangle, CheckCircle2, Clock, Plus,
+  FolderSync, Laptop, Server,
+  ArrowDownToLine, ArrowUpFromLine, Shield,
 } from 'lucide-react';
-import { dataSourcesApi, type DataSourceRecord } from '@/lib/api';
+import { dataSourcesApi, syncApi, type DataSourceRecord, type SyncDevice } from '@/lib/api';
 import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -428,11 +432,477 @@ function AddTextModal({ orgId, projectId, onClose, onAdded }: {
   );
 }
 
+// ─── Sync Management Panel ─────────────────────────────────────────────────
+
+function SyncPanel({ orgId }: { orgId?: string }) {
+  const queryClient = useQueryClient();
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderDesc, setNewFolderDesc] = useState('');
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+
+  const overviewQuery = useQuery({
+    queryKey: ['syncOverview', orgId],
+    queryFn: () => orgId ? syncApi.getOrgOverview(orgId) : null,
+    enabled: !!orgId,
+    staleTime: 15_000,
+  });
+
+  const foldersQuery = useQuery({
+    queryKey: ['syncFolders', orgId],
+    queryFn: () => orgId ? syncApi.listFolders(orgId) : [],
+    enabled: !!orgId,
+    staleTime: 30_000,
+  });
+
+  const devicesQuery = useQuery({
+    queryKey: ['syncDevices', orgId],
+    queryFn: () => orgId ? syncApi.listDevices(orgId) : [],
+    enabled: !!orgId,
+    staleTime: 15_000,
+  });
+
+  const conflictsQuery = useQuery({
+    queryKey: ['syncConflicts', selectedDevice],
+    queryFn: () => selectedDevice ? syncApi.getConflicts(selectedDevice) : [],
+    enabled: !!selectedDevice,
+    staleTime: 10_000,
+  });
+
+  const deviceStateQuery = useQuery({
+    queryKey: ['syncDeviceState', selectedDevice],
+    queryFn: () => selectedDevice ? syncApi.getDeviceState(selectedDevice) : [],
+    enabled: !!selectedDevice,
+    staleTime: 15_000,
+  });
+
+  const createFolderMutation = useMutation({
+    mutationFn: async () => {
+      if (!orgId || !newFolderName.trim()) return;
+      await syncApi.createFolder(orgId, {
+        name: newFolderName.trim(),
+        description: newFolderDesc.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Sync folder created');
+      setNewFolderName('');
+      setNewFolderDesc('');
+      setShowNewFolder(false);
+      queryClient.invalidateQueries({ queryKey: ['syncFolders'] });
+      queryClient.invalidateQueries({ queryKey: ['syncOverview'] });
+    },
+    onError: () => toast.error('Failed to create folder'),
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: (id: string) => syncApi.deleteFolder(id),
+    onSuccess: () => {
+      toast.success('Folder removed');
+      queryClient.invalidateQueries({ queryKey: ['syncFolders'] });
+      queryClient.invalidateQueries({ queryKey: ['syncOverview'] });
+    },
+  });
+
+  const resolveConflictMutation = useMutation({
+    mutationFn: ({ id, resolution }: { id: string; resolution: 'keep_local' | 'keep_remote' | 'keep_both' }) =>
+      syncApi.resolveConflict(id, resolution),
+    onSuccess: () => {
+      toast.success('Conflict resolved');
+      queryClient.invalidateQueries({ queryKey: ['syncConflicts'] });
+      queryClient.invalidateQueries({ queryKey: ['syncDeviceState'] });
+    },
+  });
+
+  const deactivateDeviceMutation = useMutation({
+    mutationFn: (id: string) => syncApi.deactivateDevice(id),
+    onSuccess: () => {
+      toast.success('Device removed');
+      setSelectedDevice(null);
+      queryClient.invalidateQueries({ queryKey: ['syncDevices'] });
+      queryClient.invalidateQueries({ queryKey: ['syncOverview'] });
+    },
+  });
+
+  const overview = overviewQuery.data;
+  const folders = foldersQuery.data || [];
+  const devices = devicesQuery.data || [];
+  const conflicts = conflictsQuery.data || [];
+  const deviceState = deviceStateQuery.data || [];
+
+  function deviceIcon(d: SyncDevice) {
+    if (d.device_type === 'server') return <Server className="h-4 w-4" />;
+    if (d.device_type === 'laptop') return <Laptop className="h-4 w-4" />;
+    return <MonitorSmartphone className="h-4 w-4" />;
+  }
+
+  function isOnline(d: SyncDevice) {
+    if (!d.last_seen_at) return false;
+    const diff = Date.now() - new Date(d.last_seen_at).getTime();
+    return diff < 5 * 60 * 1000;
+  }
+
+  function syncStatusBadge(status: string) {
+    switch (status) {
+      case 'synced': return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]"><CheckCircle2 className="h-2.5 w-2.5 mr-1" />Synced</Badge>;
+      case 'pending': return <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px]"><Clock className="h-2.5 w-2.5 mr-1" />Pending</Badge>;
+      case 'conflict': return <Badge className="bg-red-500/10 text-red-500 border-red-500/20 text-[10px]"><AlertTriangle className="h-2.5 w-2.5 mr-1" />Conflict</Badge>;
+      case 'error': return <Badge className="bg-red-500/10 text-red-500 border-red-500/20 text-[10px]"><CloudOff className="h-2.5 w-2.5 mr-1" />Error</Badge>;
+      default: return <Badge variant="outline" className="text-[10px]">{status}</Badge>;
+    }
+  }
+
+  if (!orgId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 p-12">
+        <Cloud className="h-12 w-12 opacity-30" />
+        <p className="text-sm font-medium">Select an organization to manage sync</p>
+        <p className="text-xs">File sync is scoped to organizations</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Overview stats */}
+      <div className="px-6 py-4 border-b bg-card/50">
+        <div className="grid grid-cols-4 gap-4">
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <FolderSync className="h-3.5 w-3.5" />
+              <span className="text-[11px] font-medium uppercase tracking-wide">Sync Folders</span>
+            </div>
+            <p className="text-xl font-semibold">{overview?.folder_count ?? folders.length}</p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <MonitorSmartphone className="h-3.5 w-3.5" />
+              <span className="text-[11px] font-medium uppercase tracking-wide">Devices</span>
+            </div>
+            <p className="text-xl font-semibold">
+              {overview?.device_count ?? devices.length}
+              {overview && overview.active_devices > 0 && (
+                <span className="text-xs text-emerald-500 ml-2">{overview.active_devices} online</span>
+              )}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span className="text-[11px] font-medium uppercase tracking-wide">Synced Files</span>
+            </div>
+            <p className="text-xl font-semibold">
+              {overview?.sync_summary.synced ?? 0}
+              {overview && overview.sync_summary.pending > 0 && (
+                <span className="text-xs text-amber-500 ml-2">{overview.sync_summary.pending} pending</span>
+              )}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span className="text-[11px] font-medium uppercase tracking-wide">Conflicts</span>
+            </div>
+            <p className="text-xl font-semibold">
+              {overview?.sync_summary.conflicts ?? 0}
+              {overview && overview.sync_summary.errors > 0 && (
+                <span className="text-xs text-red-500 ml-2">{overview.sync_summary.errors} errors</span>
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Two-column layout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left: Folders + Devices */}
+        <div className="w-80 shrink-0 border-r overflow-y-auto">
+          {/* Sync Folders */}
+          <div className="p-4 border-b">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <FolderSync className="h-4 w-4 text-primary" />
+                Sync Folders
+              </h3>
+              <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setShowNewFolder(v => !v)}>
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+
+            {showNewFolder && (
+              <div className="mb-3 rounded-lg border p-3 bg-muted/30 space-y-2">
+                <Input
+                  value={newFolderName}
+                  onChange={e => setNewFolderName(e.target.value)}
+                  placeholder="Folder name..."
+                  className="h-7 text-sm"
+                />
+                <Input
+                  value={newFolderDesc}
+                  onChange={e => setNewFolderDesc(e.target.value)}
+                  placeholder="Description (optional)..."
+                  className="h-7 text-sm"
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" className="h-6 text-xs" onClick={() => createFolderMutation.mutate()} disabled={!newFolderName.trim()}>
+                    Create
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setShowNewFolder(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {folders.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <FolderSync className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-xs">No sync folders configured</p>
+                <p className="text-[10px] mt-1">Create folders to organize synced files</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {folders.map(folder => (
+                  <div key={folder.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 group">
+                    <Folder className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{folder.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{folder.path}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {folder.auto_sync ? (
+                        <Cloud className="h-3 w-3 text-emerald-500" />
+                      ) : (
+                        <CloudOff className="h-3 w-3 text-muted-foreground" />
+                      )}
+                      <button
+                        className="p-0.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => {
+                          if (confirm(`Remove sync folder "${folder.name}"?`)) {
+                            deleteFolderMutation.mutate(folder.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Connected Devices */}
+          <div className="p-4">
+            <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
+              <MonitorSmartphone className="h-4 w-4 text-primary" />
+              Connected Devices
+            </h3>
+
+            {devices.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <HardDrive className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-xs">No devices connected</p>
+                <p className="text-[10px] mt-1">Install pcg-sync on a device to start</p>
+                <div className="mt-3 text-left rounded-md bg-muted/50 p-2">
+                  <p className="text-[10px] font-mono text-muted-foreground">
+                    $ cargo install pcg-sync<br/>
+                    $ pcg-sync configure<br/>
+                    $ pcg-sync start
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {devices.map(device => {
+                  const online = isOnline(device);
+                  const isSelected = selectedDevice === device.id;
+                  return (
+                    <button
+                      key={device.id}
+                      onClick={() => setSelectedDevice(isSelected ? null : device.id)}
+                      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors group
+                        ${isSelected ? 'bg-primary/10 border border-primary/20' : 'hover:bg-muted/50 border border-transparent'}`}
+                    >
+                      <div className="relative shrink-0">
+                        {deviceIcon(device)}
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-background ${online ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{device.device_name}</p>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span className="capitalize">{device.platform || device.device_type}</span>
+                          <span>·</span>
+                          {syncStatusBadge(device.sync_status)}
+                        </div>
+                      </div>
+                      <button
+                        className="p-1 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (confirm(`Remove device "${device.device_name}"?`)) {
+                            deactivateDeviceMutation.mutate(device.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Device detail / sync state */}
+        <div className="flex-1 overflow-y-auto">
+          {!selectedDevice ? (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
+              <Shield className="h-12 w-12 opacity-20" />
+              <p className="text-sm font-medium">Select a device to view sync details</p>
+              <p className="text-xs">See file-level sync status, resolve conflicts, and manage subscriptions</p>
+            </div>
+          ) : (
+            <div className="p-4 space-y-4">
+              {/* Conflicts section */}
+              {conflicts.length > 0 && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+                  <h4 className="text-sm font-semibold flex items-center gap-2 mb-3 text-red-500">
+                    <AlertTriangle className="h-4 w-4" />
+                    {conflicts.length} Conflict{conflicts.length !== 1 ? 's' : ''} to Resolve
+                  </h4>
+                  <div className="space-y-2">
+                    {conflicts.map(c => (
+                      <div key={c.id} className="flex items-center gap-3 rounded-lg border bg-card p-3">
+                        <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{c.file_path}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {c.conflict_type === 'both_modified' ? 'Modified on both device and server' : c.conflict_type || 'Unknown conflict'}
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-2"
+                            onClick={() => resolveConflictMutation.mutate({ id: c.id, resolution: 'keep_local' })}
+                          >
+                            <ArrowUpFromLine className="h-2.5 w-2.5 mr-1" />
+                            Keep Local
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-2"
+                            onClick={() => resolveConflictMutation.mutate({ id: c.id, resolution: 'keep_remote' })}
+                          >
+                            <ArrowDownToLine className="h-2.5 w-2.5 mr-1" />
+                            Keep Remote
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-2"
+                            onClick={() => resolveConflictMutation.mutate({ id: c.id, resolution: 'keep_both' })}
+                          >
+                            Keep Both
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* File sync state table */}
+              <div>
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <HardDrive className="h-4 w-4 text-primary" />
+                  Sync State ({deviceState.length} files)
+                </h4>
+
+                {deviceState.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground border rounded-lg">
+                    <Cloud className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-xs">No files synced yet</p>
+                    <p className="text-[10px] mt-1">Files will appear here once the device starts syncing</p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/30 border-b">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-[11px] font-medium text-muted-foreground">File</th>
+                          <th className="text-left px-3 py-2 text-[11px] font-medium text-muted-foreground w-24">Status</th>
+                          <th className="text-left px-3 py-2 text-[11px] font-medium text-muted-foreground w-20">Direction</th>
+                          <th className="text-right px-3 py-2 text-[11px] font-medium text-muted-foreground w-24">Size</th>
+                          <th className="text-right px-3 py-2 text-[11px] font-medium text-muted-foreground w-32">Synced</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deviceState.slice(0, 100).map(entry => (
+                          <tr key={entry.id} className="border-b last:border-0 hover:bg-muted/20">
+                            <td className="px-3 py-1.5">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <File className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <span className="text-xs font-medium truncate">{entry.file_path}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-1.5">{syncStatusBadge(entry.sync_status)}</td>
+                            <td className="px-3 py-1.5">
+                              {entry.sync_direction === 'pull' && (
+                                <span className="flex items-center gap-1 text-[10px] text-blue-500">
+                                  <ArrowDownToLine className="h-2.5 w-2.5" /> Pull
+                                </span>
+                              )}
+                              {entry.sync_direction === 'push' && (
+                                <span className="flex items-center gap-1 text-[10px] text-emerald-500">
+                                  <ArrowUpFromLine className="h-2.5 w-2.5" /> Push
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-right text-xs text-muted-foreground font-mono">
+                              {entry.file_size ? formatSize(entry.file_size) : '—'}
+                            </td>
+                            <td className="px-3 py-1.5 text-right text-[10px] text-muted-foreground">
+                              {entry.synced_at ? formatDate(entry.synced_at) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {deviceState.length > 100 && (
+                      <div className="px-3 py-2 text-[10px] text-muted-foreground text-center border-t bg-muted/10">
+                        Showing 100 of {deviceState.length} files
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function DataSourcesPage() {
   const { orgId, projectId } = useParams<{ orgId?: string; projectId?: string }>();
   const queryClient = useQueryClient();
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get('tab') === 'sync' ? 'sync' : 'files') as 'files' | 'sync';
+  const setActiveTab = (tab: 'files' | 'sync') => {
+    const params = new URLSearchParams(searchParams);
+    if (tab === 'files') params.delete('tab');
+    else params.set('tab', tab);
+    setSearchParams(params, { replace: true });
+  };
 
   const [search, setSearch] = useState('');
   const [selectedPath, setSelectedPath] = useState('');
@@ -535,48 +1005,79 @@ export default function DataSourcesPage() {
           </p>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          {/* Toolbar controls */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search files..."
-              className="pl-8 h-8 text-sm w-56"
-            />
-          </div>
-
+        {/* Tab toggle */}
+        <div className="flex items-center gap-0.5 border rounded-lg p-0.5 bg-muted/30 ml-4">
           <button
-            onClick={invalidate}
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground"
-            title="Refresh"
+            onClick={() => setActiveTab('files')}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5
+              ${activeTab === 'files' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
-            <RefreshCw className={`h-4 w-4 ${sourcesQuery.isFetching ? 'animate-spin' : ''}`} />
+            <Database className="h-3 w-3" />
+            Files
           </button>
+          <button
+            onClick={() => setActiveTab('sync')}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5
+              ${activeTab === 'sync' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <FolderSync className="h-3 w-3" />
+            Sync
+          </button>
+        </div>
 
-          <div className="flex items-center gap-0.5 border rounded-md p-0.5 bg-muted/30">
-            <button onClick={() => setViewMode('list')} className={`p-1 rounded ${viewMode === 'list' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>
-              <List className="h-3.5 w-3.5" />
-            </button>
-            <button onClick={() => setViewMode('grid')} className={`p-1 rounded ${viewMode === 'grid' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>
-              <LayoutGrid className="h-3.5 w-3.5" />
-            </button>
-          </div>
+        <div className="ml-auto flex items-center gap-2">
+          {activeTab === 'files' && (
+            <>
+              {/* Toolbar controls */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search files..."
+                  className="pl-8 h-8 text-sm w-56"
+                />
+              </div>
 
-          <Button size="sm" variant="outline" onClick={() => setShowTextModal(true)}>
-            <FileText className="h-3.5 w-3.5 mr-1.5" />
-            Add Text
-          </Button>
-          <Button size="sm" onClick={() => setShowUploadZone(u => !u)}>
-            <Upload className="h-3.5 w-3.5 mr-1.5" />
-            Upload
-          </Button>
+              <button
+                onClick={invalidate}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground"
+                title="Refresh"
+              >
+                <RefreshCw className={`h-4 w-4 ${sourcesQuery.isFetching ? 'animate-spin' : ''}`} />
+              </button>
+
+              <div className="flex items-center gap-0.5 border rounded-md p-0.5 bg-muted/30">
+                <button onClick={() => setViewMode('list')} className={`p-1 rounded ${viewMode === 'list' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>
+                  <List className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={() => setViewMode('grid')} className={`p-1 rounded ${viewMode === 'grid' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <Button size="sm" variant="outline" onClick={() => setShowTextModal(true)}>
+                <FileText className="h-3.5 w-3.5 mr-1.5" />
+                Add Text
+              </Button>
+              <Button size="sm" onClick={() => setShowUploadZone(u => !u)}>
+                <Upload className="h-3.5 w-3.5 mr-1.5" />
+                Upload
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
+      {/* Sync tab */}
+      {activeTab === 'sync' && (
+        <div className="flex-1 overflow-hidden">
+          <SyncPanel orgId={effectiveOrgId} />
+        </div>
+      )}
+
       {/* Upload zone */}
-      {showUploadZone && (
+      {activeTab === 'files' && showUploadZone && (
         <div className="px-6 py-4 border-b bg-muted/10">
           <UploadZone
             orgId={effectiveOrgId}
@@ -587,7 +1088,7 @@ export default function DataSourcesPage() {
       )}
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      {activeTab === 'files' && <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <div className="w-56 shrink-0 border-r bg-card overflow-y-auto p-2">
           {/* All files */}
@@ -827,7 +1328,7 @@ export default function DataSourcesPage() {
             onDelete={(id) => deleteMutation.mutate(id)}
           />
         )}
-      </div>
+      </div>}
 
       {/* Text modal */}
       {showTextModal && (
