@@ -224,8 +224,8 @@ pub fn bind_uuid_blob(uuid: &DbUuid) -> Result<Vec<u8>, uuid::Error> {
 }
 
 /// Convert an `Option<DbUuid>` to optional 16-byte BLOB for legacy BLOB columns.
-pub fn bind_optional_uuid_blob(uuid: &Option<DbUuid>) -> Option<Result<Vec<u8>, uuid::Error>> {
-    uuid.as_ref().map(|u| bind_uuid_blob(u))
+pub fn bind_optional_uuid_blob(uuid: &Option<DbUuid>) -> Result<Option<Vec<u8>>, uuid::Error> {
+    uuid.as_ref().map(bind_uuid_blob).transpose()
 }
 
 /// Bind an `Option<DbUuid>` reference in a raw `sqlx::query()` call.
@@ -345,8 +345,8 @@ mod tests {
         assert_eq!(round.hyphenated().to_string(), id.as_str());
 
         let some_id = Some(id.clone());
-        assert!(bind_optional_uuid_blob(&some_id).is_some());
+        assert!(bind_optional_uuid_blob(&some_id).unwrap().is_some());
         let none_id: Option<DbUuid> = None;
-        assert!(bind_optional_uuid_blob(&none_id).is_none());
+        assert!(bind_optional_uuid_blob(&none_id).unwrap().is_none());
     }
 }

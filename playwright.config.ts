@@ -6,7 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
  * Auth: Logs in once via auth.setup.ts, reuses storage state for all tests.
  *
  * Prerequisites:
- *   - Backend running on BACKEND_PORT (default 3000)
+ *   - Backend running on BACKEND_PORT (default 3001)
  *   - Frontend running on FRONTEND_PORT (default 3000) with proxy to backend
  *
  * Environment variables:
