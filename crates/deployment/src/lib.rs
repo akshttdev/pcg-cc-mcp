@@ -120,6 +120,10 @@ pub trait Deployment: Clone + Send + Sync + 'static {
 
     fn media_pipeline(&self) -> &MediaPipelineService;
 
+    /// Shared HTTP client with connection pooling and default timeouts.
+    /// All outbound HTTP requests should use this client instead of creating ad-hoc instances.
+    fn http_client(&self) -> &reqwest::Client;
+
     async fn update_sentry_scope(&self) -> Result<(), DeploymentError> {
         let user_id = self.user_id();
         let config = self.config().read().await;
