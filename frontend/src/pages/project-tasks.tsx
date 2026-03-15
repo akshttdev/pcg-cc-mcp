@@ -61,6 +61,7 @@ import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import { useProjectTasks } from '@/hooks/useProjectTasks';
 import { useProjectAccess } from '@/hooks/useProjectAccess';
 import { useTaskAgentFlowMap } from '@/hooks/useAgentFlows';
+import { useTaskChangeNotifications } from '@/hooks/useTaskChangeNotifications';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import NiceModal from '@ebay/nice-modal-react';
@@ -163,6 +164,9 @@ export function ProjectTasks() {
     isLoading,
     error: streamError,
   } = useProjectTasks(projectId || '');
+
+  // Show toast notifications for agent-driven task changes
+  useTaskChangeNotifications(tasksById);
 
   // Fetch project access scope (full vs assigned_only)
   const { data: projectAccess } = useProjectAccess(projectId);
