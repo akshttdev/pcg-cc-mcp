@@ -1,7 +1,8 @@
 # Sidebar: Fix Collapse on Navigation + Modularize
 
 **Branch:** `dev/2026-03-14`
-**Status:** Implemented
+**PR:** [#30](https://github.com/KingBodhi/pcg-cc-mcp/pull/30)
+**Status:** In Review
 
 ---
 
@@ -94,9 +95,22 @@ frontend/src/components/layout/sidebar/
 
 ## Verification
 
-- `cd frontend && npx tsc --noEmit` — compiles
-- `cd frontend && npm run lint` — no errors
-- Navigate project → My Tasks → project — org stays expanded
-- Manually collapse sections → navigate → they stay collapsed
-- Page refresh → sections reset to defaults (session-only, expected)
-- Existing sidebar imports still resolve via index.tsx
+- [x] `cd frontend && npx tsc --noEmit` — compiles
+- [x] `cd frontend && npm run lint` — no new errors
+- [ ] Navigate project → My Tasks → project — org stays expanded
+- [ ] Manually collapse sections → navigate → they stay collapsed
+- [ ] Page refresh → sections reset to defaults (session-only, expected)
+- [x] Existing sidebar imports still resolve via index.tsx
+- [x] Vercel preview deployed successfully
+
+## PR Review Feedback (2026-03-15)
+
+Owner review identified 3 should-fix + 2 nice-to-fix items. All addressed in `a74e820`:
+
+| # | Issue | Resolution |
+|---|-------|------------|
+| 1 | `allOrgs` broke `useMemo` memoization in `SidebarOrgGroups` | Wrapped in its own `useMemo` keyed on stable refs |
+| 2 | Duplicate `findInTree()` in `OrgSection` | Replaced with imported `isProjectInTree` from helpers |
+| 3 | `ClientGroup` used `localStorage+useState` inconsistently | Migrated to `useExpandable` (Zustand) |
+| 4 | `any` type in staging filter (`Sidebar.tsx`) | Removed — `WorkflowStagingRecord.status` already typed |
+| 5 | DnD sensors recreated every render | No change — `useSensors` is a dnd-kit hook that memoizes internally |
