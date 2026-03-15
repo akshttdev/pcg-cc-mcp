@@ -82,6 +82,8 @@ fn generate_types_content() -> String {
         server::routes::tasks::AddAgentWatcherRequest::decl(),
         server::routes::task_attempts::CreateGitHubPrRequest::decl(),
         server::routes::task_attempts::LinkPrRequest::decl(),
+        server::routes::task_attempts::CreateTaskAttemptRecordBody::decl(),
+        server::routes::task_attempts::CreateRecordResponse::decl(),
         server::routes::tasks::UpdateCollaboratorRequest::decl(),
         server::routes::images::ImageResponse::decl(),
         services::services::github_service::GitHubServiceError::decl(),

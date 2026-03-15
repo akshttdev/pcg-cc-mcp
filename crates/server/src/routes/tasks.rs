@@ -694,6 +694,7 @@ pub async fn update_task(
     if old_status != task.status && task.status == db::models::task::TaskStatus::InReview {
         let dep = deployment.clone();
         let task_id = task.id.clone();
+        let project_id = task.project_id.clone();
         tokio::spawn(async move {
             let pool = &dep.db().pool;
             // Find PR associated with this task's attempts
@@ -744,6 +745,14 @@ pub async fn update_task(
                     tracing::warn!(
                         "Manual InReview on task {task_id}: watchers pending but no PR found — watchers not triggered"
                     );
+                }
+            }
+
+            // Broadcast updated task state after watcher triggering so frontend
+            // receives the collaborator state change via WebSocket
+            if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(pool, &project_id).await {
+                if let Some(task_with_status) = tasks.into_iter().find(|t| t.id == task_id) {
+                    broadcast_task_event(&dep, "replace", &task_id, Some(&task_with_status));
                 }
             }
         });
