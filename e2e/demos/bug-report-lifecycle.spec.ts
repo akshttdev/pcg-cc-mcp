@@ -19,7 +19,7 @@ import {
   t, login, TEST_DATA_PREFIX, apiLogin,
   navigateToProjectTasks, navigateToTaskDetail,
   changeTaskStatus, addQaWatcher, findTaskCard,
-  cleanupTaskByPath, ensureAgentsSeeded, openFeedbackDialog,
+  cleanupTaskByPath, cleanupE2eDataSources, ensureAgentsSeeded, openFeedbackDialog,
 } from "../helpers";
 import {
   simulateDevAgentWork, simulateQaVerdict,
@@ -192,5 +192,8 @@ test.describe("Bug Report Lifecycle Demo", () => {
     if (DEMO_PR_NUMBER) {
       await cleanupDemoPr(request, DEMO_PR_NUMBER);
     }
+    // Feedback dialog creates data sources as side effect — clean them up.
+    // Data sources are org-scoped; ORCHA Platform is in the default org.
+    await cleanupE2eDataSources(request, "01010101-0101-0101-0101-010101010101");
   });
 });

@@ -41,4 +41,5 @@ export {
   cleanupProject,
   cleanupTaskByPath,
   cleanupTestData,
+  cleanupE2eDataSources,
 } from "./cleanup";

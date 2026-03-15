@@ -17,6 +17,24 @@ export async function cleanupTaskByPath(request: APIRequestContext, taskPath: st
   }
 }
 
+/** Delete E2E-prefixed data sources for an organization. */
+export async function cleanupE2eDataSources(
+  request: APIRequestContext,
+  orgId: string
+) {
+  await apiLogin(request);
+  const res = await request.get(`/api/organizations/${orgId}/data-sources`);
+  if (!res.ok()) return;
+  const data = await res.json().catch(() => null);
+  const sources = (data?.data ?? data) as Array<{ id: string; title?: string }>;
+  if (!Array.isArray(sources)) return;
+  for (const ds of sources) {
+    if (ds.title?.includes(TEST_DATA_PREFIX)) {
+      await request.delete(`/api/data-sources/${ds.id}`).catch(() => {});
+    }
+  }
+}
+
 /** Clean up test data created during E2E runs */
 export async function cleanupTestData(request: APIRequestContext) {
   await apiLogin(request);
