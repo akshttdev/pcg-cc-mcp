@@ -182,7 +182,7 @@ async fn list_user_bases(
         )));
     }
 
-    let service = match AirtableService::new(config.airtable.token.as_ref().unwrap()) {
+    let service = match AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
         Ok(s) => s,
         Err(e) => {
             return Ok(Json(ApiResponse::error(&format!(
@@ -242,7 +242,7 @@ async fn get_connection(
 
     // Try to fetch base info from Airtable API
     let base_info = if config.airtable.is_configured() {
-        if let Ok(service) = AirtableService::new(config.airtable.token.as_ref().unwrap()) {
+        if let Ok(service) = AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
             // Get bases and find the matching one
             if let Ok(bases) = service.list_my_bases().await {
                 bases
@@ -275,7 +275,7 @@ async fn create_connection(
     // Optionally fetch base name from Airtable if not provided
     let mut create_data = payload;
     if create_data.airtable_base_name.is_none() && config.airtable.is_configured() {
-        if let Ok(service) = AirtableService::new(config.airtable.token.as_ref().unwrap()) {
+        if let Ok(service) = AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
             if let Ok(bases) = service.list_my_bases().await {
                 if let Some(base) = bases
                     .into_iter()
@@ -368,7 +368,7 @@ async fn get_base_tables(
         }
     };
 
-    let service = match AirtableService::new(config.airtable.token.as_ref().unwrap()) {
+    let service = match AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
         Ok(s) => s,
         Err(e) => {
             return Ok(Json(ApiResponse::error(&format!(
@@ -418,7 +418,7 @@ async fn get_table_records(
         }
     };
 
-    let service = match AirtableService::new(config.airtable.token.as_ref().unwrap()) {
+    let service = match AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
         Ok(s) => s,
         Err(e) => {
             return Ok(Json(ApiResponse::error(&format!(
@@ -462,7 +462,7 @@ async fn import_records_from_table(
         }
     };
 
-    let service = match AirtableService::new(config.airtable.token.as_ref().unwrap()) {
+    let service = match AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
         Ok(s) => s,
         Err(e) => {
             return Ok(Json(ApiResponse::error(&format!(
@@ -581,7 +581,13 @@ async fn import_records_from_table(
         );
 
         // Create the link
-        let task_uuid = Uuid::parse_str(&task.id).unwrap();
+        let task_uuid = match Uuid::parse_str(&task.id) {
+            Ok(u) => u,
+            Err(e) => {
+                error!("Invalid task UUID {}: {}", task.id, e);
+                continue;
+            }
+        };
         let link = match AirtableRecordLink::create(
             pool,
             CreateAirtableRecordLink {
@@ -678,7 +684,7 @@ async fn push_task_to_airtable(
         }
     };
 
-    let service = match AirtableService::new(config.airtable.token.as_ref().unwrap()) {
+    let service = match AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
         Ok(s) => s,
         Err(e) => {
             return Ok(Json(ApiResponse::error(&format!(
@@ -718,7 +724,8 @@ async fn push_task_to_airtable(
     let record_url = build_record_url(&payload.base_id, &payload.table_id, &record.id);
 
     // Create the link
-    let task_uuid = Uuid::parse_str(&task.id).unwrap();
+    let task_uuid = Uuid::parse_str(&task.id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let link = match AirtableRecordLink::create(
         pool,
         CreateAirtableRecordLink {
@@ -788,7 +795,7 @@ async fn sync_deliverables_to_airtable(
         }
     };
 
-    let service = match AirtableService::new(config.airtable.token.as_ref().unwrap()) {
+    let service = match AirtableService::new(config.airtable.token.as_deref().unwrap_or_default()) {
         Ok(s) => s,
         Err(e) => {
             return Ok(Json(ApiResponse::error(&format!(

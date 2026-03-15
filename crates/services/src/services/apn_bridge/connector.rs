@@ -397,7 +397,7 @@ impl APNConnector {
                     }
                     _ = heartbeat.tick() => {
                         // Send ping
-                        let ping = serde_json::to_string(&APNMessage::Ping).unwrap();
+                        let ping = serde_json::to_string(&APNMessage::Ping).unwrap_or_default();
                         if write.send(Message::Text(ping)).await.is_err() {
                             break;
                         }

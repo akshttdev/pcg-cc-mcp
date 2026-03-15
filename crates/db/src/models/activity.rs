@@ -85,15 +85,15 @@ impl ActivityLog {
         let previous_state_json = data
             .previous_state
             .as_ref()
-            .map(|v| serde_json::to_string(v).unwrap());
+            .and_then(|v| serde_json::to_string(v).ok());
         let new_state_json = data
             .new_state
             .as_ref()
-            .map(|v| serde_json::to_string(v).unwrap());
+            .and_then(|v| serde_json::to_string(v).ok());
         let metadata_json = data
             .metadata
             .as_ref()
-            .map(|v| serde_json::to_string(v).unwrap());
+            .and_then(|v| serde_json::to_string(v).ok());
 
         sqlx::query_as::<_, ActivityLog>(
             r#"INSERT INTO activity_logs (id, task_id, actor_id, actor_type, action, previous_state, new_state, metadata)
