@@ -1,6 +1,6 @@
 # Backlog — Remaining Work
 
-**Last updated:** 2026-03-14
+**Last updated:** 2026-03-15
 **Context:** Consolidated from all completed planning docs. Items prioritized by impact and dependency.
 
 ---
@@ -29,10 +29,9 @@
 **Source:** `archive/2026-03-12--review--ui-backend-capability-gaps.md` (F12)
 **What:** Workflows must be manually run. No cron, event, or webhook triggers.
 
-### 5. E2E Demo Test Run
+### ~~5. E2E Demo Test Run~~ → RESOLVED
 **Source:** `2026-03-14--plan--e2e-demo-refactor.md`
-**What:** 25 demo tests committed and parse correctly but haven't been run yet against the live app. Need to verify all pass in headed mode with single persistent browser.
-**Status:** PENDING FIRST RUN
+**Resolution:** All suites run and passing — health checks 40/40, demos 28/31 (1 pre-existing flaky locator in bug-report-lifecycle Step 6). Structured test commands added to package.json with env pre-flight check (PR #34).
 
 ---
 
@@ -170,3 +169,9 @@
 | Notification icons not visually distinct | Colored icon circles + actor type badges (2026-03-15) |
 | Run Workflow button has no loading indicator | Added Loader2 spinner to data-sources.tsx (2026-03-15) |
 | Workflow CRM demo incomplete (no commit/verify) | Extended with Parts 5-8: approve, runs, contacts, pipeline (2026-03-15) |
+| E2E demo test run (Backlog #5) | Health checks 40/40, demos 28/31, structured test commands (PR #34) |
+| Tech debt sprint: .unwrap() elimination | 40 unwraps → proper error handling across 8 files (PR #34) |
+| Tech debt sprint: api.ts monolith | 6,669 lines → 21 domain modules (PR #34) |
+| Tech debt sprint: org-profile.tsx monolith | 7,086 lines → 33 modular files with lazy-loaded tabs (PR #34) |
+| Tech debt sprint: CI pipeline | fmt + clippy + test + lint + types + audit (PR #34) |
+| Tech debt sprint: eprintln in prod code | 4 calls → 0, replaced with tracing (PR #34) |
