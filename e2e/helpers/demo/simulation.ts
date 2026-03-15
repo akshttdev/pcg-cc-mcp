@@ -132,33 +132,20 @@ async function ensureTaskAttempt(
     return attempts[0].id;
   }
 
-  // Create a new attempt — execution will likely fail but record persists
-  const createRes = await request.post("/api/task-attempts", {
+  // Create a bare attempt record (no execution started)
+  const createRes = await request.post("/api/task-attempts/create-record", {
     data: {
       task_id: taskId,
-      executor_profile_id: { executor: "CLAUDE_CODE", variant: null },
+      executor: "CLAUDE_CODE",
       base_branch: "main",
     },
   });
-
-  // Even if execution fails, attempt record may exist
-  // Try to fetch attempts again
-  const retryRes = await request.get(`/api/task-attempts?task_id=${taskId}`);
-  if (retryRes.ok()) {
-    const retryData = await retryRes.json();
-    const retryAttempts = retryData.data ?? retryData;
-    if (Array.isArray(retryAttempts) && retryAttempts.length > 0) {
-      return retryAttempts[0].id;
-    }
+  if (!createRes.ok()) {
+    const errBody = await createRes.text().catch(() => "(no body)");
+    throw new Error(`Failed to create task attempt record for task ${taskId}: ${createRes.status()} ${errBody}`);
   }
-
-  // If creation succeeded, use that
-  if (createRes.ok()) {
-    const createData = await createRes.json();
-    return createData.data?.id ?? createData.id;
-  }
-
-  throw new Error(`Failed to create task attempt for task ${taskId}`);
+  const createData = await createRes.json();
+  return createData.data?.id ?? createData.id;
 }
 
 /**
@@ -206,13 +193,19 @@ export async function simulateDevAgentWork(
       target_branch: config.defaultBranch,
     },
   });
-  expect(linkRes.ok(), `Failed to link PR to attempt ${attemptId}`).toBeTruthy();
+  if (!linkRes.ok()) {
+    const errBody = await linkRes.text().catch(() => "(no body)");
+    throw new Error(`Failed to link PR to attempt ${attemptId}: ${linkRes.status()} ${errBody}`);
+  }
 
   // 5. Update task status to inreview (triggers watcher spawn)
   const updateRes = await request.put(`/api/tasks/${taskId}`, {
     data: { status: "inreview" },
   });
-  expect(updateRes.ok(), "Failed to update task status to inreview").toBeTruthy();
+  if (!updateRes.ok()) {
+    const errBody = await updateRes.text().catch(() => "(no body)");
+    throw new Error(`Failed to update task status to inreview: ${updateRes.status()} ${errBody}`);
+  }
 
   return { branch: branchName, prNumber, prUrl, attemptId };
 }
