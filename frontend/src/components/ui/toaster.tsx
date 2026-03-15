@@ -20,6 +20,10 @@ export function Toaster() {
     <Sonner
       theme={resolvedTheme}
       position="top-right"
+      visibleToasts={4}
+      duration={5000}
+      gap={8}
+      expand
       toastOptions={{
         classNames: {
           toast:
