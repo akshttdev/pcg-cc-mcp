@@ -21,7 +21,6 @@ import { organizationsApi } from '@/lib/api';
 import type {
   SidebarTree,
   SidebarOrg,
-  SidebarProject as SidebarProjectType,
 } from '@/lib/api';
 import NiceModal from '@ebay/nice-modal-react';
 import type { CreateNameDialogResult } from '@/components/dialogs';
@@ -64,11 +63,9 @@ export function OrgSection({
 
   // Part A fix: removed isWorkspacePage auto-collapse useEffect
 
-  const findInTree = (projects: SidebarProjectType[], id: string): boolean =>
-    projects.some((p) => p.id === id || findInTree(p.children || [], id));
   const hasActiveProject = projectId ? (
-    findInTree(org.internal_projects, projectId) ||
-    org.clients.some((c) => findInTree(c.projects, projectId))
+    isProjectInTree(org.internal_projects, projectId) ||
+    org.clients.some((c) => isProjectInTree(c.projects, projectId))
   ) : false;
   const isActiveOrg = activeOrgId === org.id || hasActiveProject;
 
@@ -277,7 +274,10 @@ export function SidebarOrgGroups({
   const [showOtherOrgs, setShowOtherOrgs] = useState(false);
 
   // Derive activeOrgId: from URL orgId, from which org contains the active project, or from home org
-  const allOrgs = [...sidebarTree.owned_orgs, ...sidebarTree.member_orgs];
+  const allOrgs = useMemo(
+    () => [...sidebarTree.owned_orgs, ...sidebarTree.member_orgs],
+    [sidebarTree.owned_orgs, sidebarTree.member_orgs]
+  );
   const activeOrgId = useMemo(() => {
     if (orgId) return orgId;
     if (projectId) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Collapsible,
@@ -18,6 +18,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { SidebarClient as SidebarClientType } from '@/lib/api';
 import NiceModal from '@ebay/nice-modal-react';
 import type { ProjectFormDialogResult } from '@/components/dialogs';
+import { useExpandable } from '@/stores/useExpandableStore';
 import { HealthDot } from './HealthDot';
 import { countProjects, isProjectInTree } from './helpers';
 import { SortableProjectList } from './ProjectList';
@@ -43,25 +44,16 @@ export function ClientGroup({
 }) {
   const location = useLocation();
   const hasActiveProject = isProjectInTree(client.projects, projectId || '');
-  const storageKey = `sidebar:client:${client.id}:expanded`;
-  const [expanded, setExpanded] = useState<boolean>(() => {
-    if (hasActiveProject) return true;
-    const stored = localStorage.getItem(storageKey);
-    return stored !== null ? stored === 'true' : false;
-  });
-  const handleSetExpanded = (next: boolean) => {
-    setExpanded(next);
-    localStorage.setItem(storageKey, String(next));
-  };
+  const [expanded, setExpanded] = useExpandable(`sidebar:client:${client.id}`, false);
 
   useEffect(() => {
     if (hasActiveProject && !expanded) {
-      handleSetExpanded(true);
+      setExpanded(true);
     }
   }, [hasActiveProject]);
 
   return (
-    <Collapsible open={expanded} onOpenChange={handleSetExpanded}>
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
       {/* Header row: chevron toggles expand/collapse, name navigates to client page */}
       <div
         className={cn(

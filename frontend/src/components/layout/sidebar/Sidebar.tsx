@@ -134,7 +134,7 @@ export function Sidebar({ className }: SidebarProps) {
     queryFn: async () => {
       if (!homeOrgId) return 0;
       const records = await stagingApi.listPending(homeOrgId);
-      return records.filter((r: any) => r.status === 'pending_review').length;
+      return records.filter((r) => r.status === 'pending_review').length;
     },
     enabled: !!homeOrgId,
     staleTime: 30000,
