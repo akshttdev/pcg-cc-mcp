@@ -230,7 +230,7 @@ export type AuthorType = "human" | "agent" | "mcp" | "system";
 
 export type CommentType = "comment" | "statusupdate" | "review" | "approval" | "system" | "handoff" | "mcpnotification";
 
-export type ActivityLog = { id: string, task_id: string, actor_id: string, actor_type: ActorType, action: string, previous_state: string | null, new_state: string | null, metadata: string | null, timestamp: string, };
+export type ActivityLog = { id: string, task_id: string, actor_id: string, actor_type: ActorType, action: string, previous_state: string | null, new_state: string | null, metadata: string | null, timestamp: string, actor_name: string | null, };
 
 export type CreateActivityLog = { task_id: string, actor_id: string, actor_type: ActorType, action: string, previous_state: JsonValue | null, new_state: JsonValue | null, metadata: JsonValue | null, };
 
