@@ -1,29 +1,41 @@
 /**
- * Demo: Bug Report Full Lifecycle
+ * Demo: Bug Report Full Lifecycle (Agent-Driven)
  *
  * Walks through the complete lifecycle of a user-submitted bug report
- * entirely through the UI:
- *   Report → find on kanban → add QA watcher → status progression → Done
+ * with real agent interactions:
+ *   Report → find on kanban → add QA watcher → agent starts working →
+ *   PR created → QA review triggered → QA verdict → Human approval → Done
  *
- * Feedback tasks are created in the ORCHA Platform project (hardcoded UUID
- * 00000000-0000-0000-0000-000000000001) by the backend POST /api/feedback.
+ * Agent interactions are simulated via API (real GitHub branches, PRs,
+ * and merge records) — no stub executors in production code.
+ *
+ * Requires: GITHUB_TOKEN env var for sandbox repo operations.
  *
  * Self-contained: seeds agents in beforeAll, no reliance on specific DB state
  * beyond the ORCHA Platform project existing (guaranteed by migrations).
  */
 import { test, expect } from "./fixtures";
 import {
-  t, login, TEST_DATA_PREFIX,
+  t, login, TEST_DATA_PREFIX, apiLogin,
   navigateToProjectTasks, navigateToTaskDetail,
   changeTaskStatus, addQaWatcher, findTaskCard,
   cleanupTaskByPath, ensureAgentsSeeded, openFeedbackDialog,
 } from "../helpers";
+import {
+  simulateDevAgentWork, simulateQaVerdict,
+  cleanupDemoBranches, cleanupDemoPr,
+} from "../helpers/demo";
+import { waitForToast } from "../helpers/demo/assertions";
 
 const BUG_TITLE = `${TEST_DATA_PREFIX} Demo: Dashboard crash ${Date.now()}`;
 const DEMO_PAUSE = 1_500;
 const BUGREPORTS_PROJECT_ID = "00000000-0000-0000-0000-000000000001";
+const QA_AGENT_ID = "a0000000-0000-0000-0000-000000000002";
 
 let TASK_PATH: string;
+let TASK_ID: string;
+let DEMO_BRANCH: string | undefined;
+let DEMO_PR_NUMBER: number | undefined;
 
 test.describe("Bug Report Lifecycle Demo", () => {
   test.describe.configure({ mode: "serial" });
@@ -86,6 +98,7 @@ test.describe("Bug Report Lifecycle Demo", () => {
     });
 
     TASK_PATH = new URL(page.url()).pathname;
+    TASK_ID = TASK_PATH.split("/tasks/")[1];
     await page.waitForTimeout(DEMO_PAUSE);
   });
 
@@ -97,17 +110,23 @@ test.describe("Bug Report Lifecycle Demo", () => {
     await expect(page.getByText(/ORCHA QA/i)).toBeVisible({ timeout: t(5_000) });
   });
 
-  test("Step 4: Change status To Do → In Progress", async ({ page }) => {
+  test("Step 4: Agent starts working — simulate dev agent", async ({ page, request }) => {
     await navigateToTaskDetail(page, TASK_PATH);
-    await changeTaskStatus(page, "To Do", "In Progress", { demoPause: DEMO_PAUSE });
+    await apiLogin(request);
+
+    // Simulate dev agent: creates real branch + commit + PR in sandbox repo,
+    // links PR to task attempt, updates status to inreview
+    const result = await simulateDevAgentWork(request, TASK_ID);
+    DEMO_BRANCH = result.branch;
+    DEMO_PR_NUMBER = result.prNumber;
+
+    // Wait for the toast notification showing the task moved to In Review
+    await waitForToast(page, /moved to In Review|In Review/i, { timeout: t(15_000) });
+
+    await page.waitForTimeout(DEMO_PAUSE);
   });
 
-  test("Step 5: Change status In Progress → In Review", async ({ page }) => {
-    await navigateToTaskDetail(page, TASK_PATH);
-    await changeTaskStatus(page, "In Progress", "In Review", { demoPause: DEMO_PAUSE });
-  });
-
-  test("Step 6: Verify task in In Review on kanban", async ({ page }) => {
+  test("Step 5: Verify task in In Review on kanban", async ({ page }) => {
     await navigateToProjectTasks(page, BUGREPORTS_PROJECT_ID);
 
     // Verify task card is visible on the board
@@ -116,6 +135,27 @@ test.describe("Bug Report Lifecycle Demo", () => {
 
     // Verify "In Review" column header is visible (confirms we can see the column)
     await expect(page.getByText("In Review").first()).toBeVisible({ timeout: t(5_000) });
+    await page.waitForTimeout(DEMO_PAUSE);
+  });
+
+  test("Step 6: QA watcher verdict — simulate QA pass", async ({ page, request }) => {
+    await navigateToTaskDetail(page, TASK_PATH);
+    await apiLogin(request);
+
+    // First mark watcher as triggered (simulates spawn_watcher_reviews)
+    await request.patch(`/api/tasks/${TASK_ID}/collaborators`, {
+      data: { actor_id: QA_AGENT_ID, actor_type: "agent_watcher", action: "triggered" },
+    });
+
+    // Wait for "QA review started" toast
+    await waitForToast(page, /QA review started/i, { timeout: t(10_000) });
+    await page.waitForTimeout(DEMO_PAUSE);
+
+    // Simulate QA verdict: PASS
+    await simulateQaVerdict(request, TASK_ID, QA_AGENT_ID, "qa_pass");
+
+    // Wait for "QA verdict: PASS" toast
+    await waitForToast(page, /QA verdict.*PASS/i, { timeout: t(10_000) });
     await page.waitForTimeout(DEMO_PAUSE);
   });
 
@@ -140,5 +180,11 @@ test.describe("Bug Report Lifecycle Demo", () => {
 
   test.afterAll(async ({ request }) => {
     if (TASK_PATH) await cleanupTaskByPath(request, TASK_PATH);
+    if (DEMO_BRANCH) {
+      await cleanupDemoBranches(request, [DEMO_BRANCH]);
+    }
+    if (DEMO_PR_NUMBER) {
+      await cleanupDemoPr(request, DEMO_PR_NUMBER);
+    }
   });
 });
