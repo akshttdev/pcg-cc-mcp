@@ -3,6 +3,7 @@ import { Suspense, useEffect, useCallback } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
 import i18n from '@/i18n';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { Navbar } from '@/components/layout/navbar';
 import { Sidebar } from '@/components/layout/sidebar';
 import { useViewStore } from '@/stores/useViewStore';
@@ -196,9 +197,11 @@ export function AppShell() {
 
                 <div className="flex-1 overflow-y-auto">
                   <ViewAsBanner />
-                  <Suspense fallback={<PageLoader />}>
-                    <Outlet />
-                  </Suspense>
+                  <PageErrorBoundary label="Page">
+                    <Suspense fallback={<PageLoader />}>
+                      <Outlet />
+                    </Suspense>
+                  </PageErrorBoundary>
                 </div>
               </div>
             </div>

@@ -1005,9 +1005,8 @@ pub fn extract_records_from_output(data: &Value, target_type: &str) -> Vec<Value
     }
 
     // If it's a single object with recognized entity fields, wrap it
-    if data.is_object() && !data.as_object().unwrap().is_empty() {
+    if let Some(obj) = data.as_object().filter(|o| !o.is_empty()) {
         // Only wrap if it looks like an actual entity record (has name/title/email)
-        let obj = data.as_object().unwrap();
         let looks_like_record = obj.contains_key("name") || obj.contains_key("title")
             || obj.contains_key("email") || obj.contains_key("first_name");
         if looks_like_record {

@@ -489,10 +489,10 @@ pub async fn save_follow_up_draft(
             .await
             .unwrap_or(false)
         {
-            // Start follow up with saved draft
-            let _ =
-                start_follow_up_from_draft(&deployment, &task_attempt, current.as_ref().unwrap())
-                    .await;
+            // Start follow up with saved draft (current is guaranteed Some by the queued check above)
+            if let Some(draft) = current.as_ref() {
+                let _ = start_follow_up_from_draft(&deployment, &task_attempt, draft).await;
+            }
         } else {
             tracing::debug!(
                 "Follow-up draft for attempt {} already being sent or not eligible",
@@ -633,7 +633,7 @@ pub async fn set_follow_up_queue(
             .unwrap_or(false)
         {
             let _ =
-                start_follow_up_from_draft(&deployment, &task_attempt, current.as_ref().unwrap())
+                start_follow_up_from_draft(&deployment, &task_attempt, current.as_ref().expect("current checked via queued above"))
                     .await;
         } else {
             // Schedule a short delayed recheck to handle timing edges

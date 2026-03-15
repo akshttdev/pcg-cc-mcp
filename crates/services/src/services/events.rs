@@ -533,11 +533,11 @@ impl EventService {
                                 },
                             };
 
-                            let patch =
-                                serde_json::from_value(json!([
-                                    serde_json::to_value(event_patch).unwrap()
-                                ]))
-                                .unwrap();
+                            let patch_value = serde_json::to_value(&event_patch)
+                                .unwrap_or_else(|_| json!({"op": "test", "path": "/", "value": null}));
+                            let Ok(patch) = serde_json::from_value(json!([patch_value])) else {
+                                return;
+                            };
 
                             msg_store_for_hook.push_patch(patch);
                         });
@@ -566,7 +566,10 @@ impl EventService {
         // Convert task array to object keyed by task ID
         let tasks_map: serde_json::Map<String, serde_json::Value> = tasks
             .into_iter()
-            .map(|task| (task.id.to_string(), serde_json::to_value(task).unwrap()))
+            .filter_map(|task| {
+                let id = task.id.to_string();
+                serde_json::to_value(task).ok().map(|v| (id, v))
+            })
             .collect();
 
         let initial_patch = json!([{
@@ -574,7 +577,7 @@ impl EventService {
             "path": "/tasks",
             "value": tasks_map
         }]);
-        let initial_msg = LogMsg::JsonPatch(serde_json::from_value(initial_patch).unwrap());
+        let initial_msg = LogMsg::JsonPatch(serde_json::from_value(initial_patch)?);
 
         // Clone necessary data for the async filter
         let db_pool = self.db.pool.clone();
@@ -701,11 +704,9 @@ impl EventService {
         // Convert processes array to object keyed by process ID
         let processes_map: serde_json::Map<String, serde_json::Value> = processes
             .into_iter()
-            .map(|process| {
-                (
-                    process.id.to_string(),
-                    serde_json::to_value(process).unwrap(),
-                )
+            .filter_map(|process| {
+                let id = process.id.to_string();
+                serde_json::to_value(process).ok().map(|v| (id, v))
             })
             .collect();
 
@@ -714,7 +715,7 @@ impl EventService {
             "path": "/execution_processes",
             "value": processes_map
         }]);
-        let initial_msg = LogMsg::JsonPatch(serde_json::from_value(initial_patch).unwrap());
+        let initial_msg = LogMsg::JsonPatch(serde_json::from_value(initial_patch)?);
 
         // Get filtered event stream
         let filtered_stream = BroadcastStream::new(self.msg_store.get_receiver()).filter_map(
@@ -839,7 +840,7 @@ impl EventService {
                 "value": { "follow_up_draft": draft }
             }
         ]);
-        let initial_msg = LogMsg::JsonPatch(serde_json::from_value(initial_patch).unwrap());
+        let initial_msg = LogMsg::JsonPatch(serde_json::from_value(initial_patch)?);
 
         // Filtered live stream, mapped into direct JSON patches that update /follow_up_draft
         let filtered_stream = BroadcastStream::new(self.msg_store.get_receiver()).filter_map(
@@ -862,8 +863,9 @@ impl EventService {
                                                 "value": draft
                                             }
                                         ]);
-                                        let direct_patch = serde_json::from_value(direct).unwrap();
-                                        return Some(Ok(LogMsg::JsonPatch(direct_patch)));
+                                        if let Ok(direct_patch) = serde_json::from_value(direct) {
+                                            return Some(Ok(LogMsg::JsonPatch(direct_patch)));
+                                        }
                                     }
                                 }
                                 RecordTypes::DeletedFollowUpDraft {
@@ -891,8 +893,9 @@ impl EventService {
                                                 "value": empty
                                             }
                                         ]);
-                                        let direct_patch = serde_json::from_value(direct).unwrap();
-                                        return Some(Ok(LogMsg::JsonPatch(direct_patch)));
+                                        if let Ok(direct_patch) = serde_json::from_value(direct) {
+                                            return Some(Ok(LogMsg::JsonPatch(direct_patch)));
+                                        }
                                     }
                                 }
                                 _ => {}

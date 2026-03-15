@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 import {
   UserSystemProvider,
@@ -118,9 +119,11 @@ function App() {
       <SentryRoutes>
         {/* Embed routes - no layout, no auth */}
         <Route path="/embed/virtual-environment" element={
-          <Suspense fallback={<PageLoader />}>
-            <EmbedVirtualEnvironmentPage />
-          </Suspense>
+          <PageErrorBoundary label="Virtual Environment">
+            <Suspense fallback={<PageLoader />}>
+              <EmbedVirtualEnvironmentPage />
+            </Suspense>
+          </PageErrorBoundary>
         } />
 
         {/* Auth routes - clean layout, no sidebar/navbar */}

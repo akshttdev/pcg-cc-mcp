@@ -87,15 +87,23 @@ fn parse_iso_datetime(s: &str) -> Option<DateTime<Utc>> {
     None
 }
 
+/// Serialize a value to a pretty-printed JSON string, falling back to the error message on failure.
+fn to_json_pretty<T: Serialize>(value: &T) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|e| format!(r#"{{"error": "JSON serialization failed: {}"}}"#, e))
+}
+
+/// Serialize a value to a serde_json::Value, falling back to a null on failure.
+fn to_json_value<T: Serialize>(value: &T) -> Value {
+    serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
 fn parse_uuid(s: &str, field_name: &str) -> Result<Uuid, CallToolResult> {
     Uuid::parse_str(s).map_err(|_| {
         let err = serde_json::json!({
             "success": false,
             "error": format!("Invalid {} format. Must be a valid UUID.", field_name),
         });
-        CallToolResult::error(vec![Content::text(
-            serde_json::to_string_pretty(&err).unwrap(),
-        )])
+        CallToolResult::error(vec![Content::text(to_json_pretty(&err))])
     })
 }
 
@@ -104,15 +112,11 @@ fn error_result(error: &str, details: Option<&str>) -> CallToolResult {
     if let Some(d) = details {
         obj["details"] = Value::String(d.to_string());
     }
-    CallToolResult::error(vec![Content::text(
-        serde_json::to_string_pretty(&obj).unwrap(),
-    )])
+    CallToolResult::error(vec![Content::text(to_json_pretty(&obj))])
 }
 
 fn success_json<T: Serialize>(value: &T) -> CallToolResult {
-    CallToolResult::success(vec![Content::text(
-        serde_json::to_string_pretty(value).unwrap(),
-    )])
+    CallToolResult::success(vec![Content::text(to_json_pretty(value))])
 }
 
 /// Build TaskSummary from a Task model
@@ -759,7 +763,8 @@ impl TaskServer {
         if self.is_admin || self.user_id.is_none() {
             return Ok(None); // None = all projects accessible
         }
-        let user_id = self.user_id.unwrap();
+        // Safety: checked self.user_id.is_none() above, so this is guaranteed Some
+        let user_id = self.user_id.unwrap_or_default();
         let user_id_bytes = user_id.as_bytes().to_vec();
 
         #[derive(sqlx::FromRow)]
@@ -865,7 +870,8 @@ impl TaskServer {
         let projects_result = if self.is_admin || self.user_id.is_none() {
             Project::find_all(&self.pool).await
         } else {
-            let user_id = self.user_id.unwrap();
+            // Safety: checked self.user_id.is_none() above, so this is guaranteed Some
+            let user_id = self.user_id.unwrap_or_default();
             let user_id_bytes = user_id.as_bytes().to_vec();
 
             #[derive(sqlx::FromRow)]
@@ -1135,7 +1141,7 @@ impl TaskServer {
         };
 
         let new_tags = match &req.tags {
-            Some(t) => Some(serde_json::to_string(t).unwrap()),
+            Some(t) => serde_json::to_string(t).ok().or_else(|| current_task.tags.clone()),
             None => current_task.tags.clone(),
         };
 
@@ -1408,7 +1414,7 @@ impl TaskServer {
                 };
                 let response = serde_json::json!({ "success": true, "message": msg });
                 Ok(CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&response).unwrap(),
+                    to_json_pretty(&response),
                 )]))
             }
             Err(e) => {
@@ -1479,7 +1485,7 @@ impl TaskServer {
                     message: "Comment added successfully".to_string(),
                 };
                 Ok(CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&response).unwrap(),
+                    to_json_pretty(&response),
                 )]))
             }
             Err(e) => {
@@ -1545,7 +1551,7 @@ impl TaskServer {
                     count,
                 };
                 Ok(CallToolResult::success(vec![Content::text(
-                    serde_json::to_string_pretty(&response).unwrap(),
+                    to_json_pretty(&response),
                 )]))
             }
             Err(e) => {
@@ -1780,7 +1786,7 @@ impl TaskServer {
                 None => current.assigned_agent.clone(),
             };
             let new_tags = match &item.tags {
-                Some(t) => Some(serde_json::to_string(t).unwrap()),
+                Some(t) => serde_json::to_string(t).ok().or_else(|| current.tags.clone()),
                 None => current.tags.clone(),
             };
 
@@ -2282,7 +2288,7 @@ impl TaskServer {
                                         .contains(&q_lower)
                             })
                             .take(limit as usize)
-                            .map(|t| serde_json::to_value(task_with_status_to_summary(t)).unwrap())
+                            .map(|t| to_json_value(&task_with_status_to_summary(t)))
                             .collect()
                     }
                     Err(_) => vec![],
@@ -2296,7 +2302,7 @@ impl TaskServer {
                 .bind(limit as i64)
                 .fetch_all(&self.pool)
                 .await {
-                    Ok(tasks) => tasks.iter().map(|t| serde_json::to_value(task_to_summary(t)).unwrap()).collect(),
+                    Ok(tasks) => tasks.iter().map(|t| to_json_value(&task_to_summary(t))).collect(),
                     Err(_) => vec![],
                 }
             };
@@ -3347,7 +3353,7 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
                     .await
                     .map_err(|e| e.to_string())?
                     .ok_or_else(|| "Task not found".to_string())?;
-                Ok(serde_json::to_value(task_to_summary(&task)).unwrap())
+                Ok(to_json_value(&task_to_summary(&task)))
             } else {
                 // Task list
                 let tasks = Task::find_by_project_id_with_attempt_status(pool, &project_uuid.to_string())
@@ -3355,7 +3361,7 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
                     .map_err(|e| e.to_string())?;
                 let summaries: Vec<Value> = tasks
                     .iter()
-                    .map(|t| serde_json::to_value(task_with_status_to_summary(t)).unwrap())
+                    .map(|t| to_json_value(&task_with_status_to_summary(t)))
                     .collect();
                 Ok(serde_json::json!({
                     "project_id": project.id.to_string(),
@@ -3435,7 +3441,7 @@ async fn resolve_resource(pool: &SqlitePool, uri: &str) -> Result<Value, String>
                 .cloned();
 
             match health {
-                Some(h) => Ok(serde_json::to_value(h).unwrap()),
+                Some(h) => Ok(to_json_value(&h)),
                 None => Ok(serde_json::json!({
                     "project_id": project.id.to_string(),
                     "health_status": "unknown",
