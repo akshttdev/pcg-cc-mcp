@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type React from 'react';
 import { useParams, useSearchParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { toast } from 'sonner';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -6860,53 +6861,69 @@ export function OrganizationProfilePage({ defaultTab, defaultPipeline }: Organiz
             </div>
 
             <TabsContent value="overview">
-              <OverviewTab
-                orgId={orgId}
-                orgName={org.name}
-                projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
-                projectCount={allProjects.length}
-                clientCount={clients.length}
-                memberCount={members.length}
-                totalDealValue={totalDealValue}
-                totalDeals={orgDeals.length}
-                contactCount={crmContacts.length}
-              />
+              <PageErrorBoundary label="Overview">
+                <OverviewTab
+                  orgId={orgId}
+                  orgName={org.name}
+                  projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
+                  projectCount={allProjects.length}
+                  clientCount={clients.length}
+                  memberCount={members.length}
+                  totalDealValue={totalDealValue}
+                  totalDeals={orgDeals.length}
+                  contactCount={crmContacts.length}
+                />
+              </PageErrorBoundary>
             </TabsContent>
 
             <TabsContent value="pipelines">
-              <PipelinesTab orgId={orgId} defaultPipeline={pipelineFromUrl || undefined} />
+              <PageErrorBoundary label="Pipelines">
+                <PipelinesTab orgId={orgId} defaultPipeline={pipelineFromUrl || undefined} />
+              </PageErrorBoundary>
             </TabsContent>
 
             <TabsContent value="contacts">
-              <ContactsTab orgId={orgId} />
+              <PageErrorBoundary label="Contacts">
+                <ContactsTab orgId={orgId} />
+              </PageErrorBoundary>
             </TabsContent>
 
             <TabsContent value="projects">
-              <ProjectsTab
-                orgId={orgId}
-                sidebarOrg={sidebarOrg}
-                clientFilter={clientFilter}
-                onClearClientFilter={clearClientFilter}
-              />
+              <PageErrorBoundary label="Projects">
+                <ProjectsTab
+                  orgId={orgId}
+                  sidebarOrg={sidebarOrg}
+                  clientFilter={clientFilter}
+                  onClearClientFilter={clearClientFilter}
+                />
+              </PageErrorBoundary>
             </TabsContent>
 
             <TabsContent value="social">
-              <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} orgId={orgId} />
+              <PageErrorBoundary label="Social">
+                <SocialTab projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))} orgId={orgId} />
+              </PageErrorBoundary>
             </TabsContent>
 
             <TabsContent value="intelligence">
-              <IntelligenceTab
-                projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
-                orgId={orgId}
-              />
+              <PageErrorBoundary label="Intelligence">
+                <IntelligenceTab
+                  projectEntries={allProjects.map(p => ({ id: p.id, name: p.name }))}
+                  orgId={orgId}
+                />
+              </PageErrorBoundary>
             </TabsContent>
 
             <TabsContent value="members">
-              <MembersTab orgId={orgId} orgName={org.name} />
+              <PageErrorBoundary label="Members">
+                <MembersTab orgId={orgId} orgName={org.name} />
+              </PageErrorBoundary>
             </TabsContent>
 
             <TabsContent value="integrations">
-              <IntegrationsTab orgId={orgId} />
+              <PageErrorBoundary label="Integrations">
+                <IntegrationsTab orgId={orgId} />
+              </PageErrorBoundary>
             </TabsContent>
           </Tabs>
         </div>
