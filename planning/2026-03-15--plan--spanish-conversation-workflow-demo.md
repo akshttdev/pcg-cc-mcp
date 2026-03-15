@@ -257,19 +257,24 @@ Use proper Spanish characters (`é`, `ñ`, `í`, `ó`, `ú`, `ü`) in the conver
 
 ## Implementation Order
 
-1. [ ] Ensure Demo 4 passes end-to-end (FK fix validation)
-2. [ ] Create `e2e/demos/workflow-spanish-pipeline.spec.ts`
-3. [ ] Add Spanish conversation constant with proper Unicode
-4. [ ] Implement Part 1: Build workflow with translation chain
-5. [ ] Implement Parts 2-3: Data source creation + workflow run
-6. [ ] Implement Parts 4-6: Staging review + CRM verification
-7. [ ] Add cleanup logic
-8. [ ] Run full demo suite: all 5 demos passing
+1. [x] Ensure Demo 4 passes end-to-end (FK fix validation)
+2. [x] Create `e2e/demos/workflow-spanish-pipeline.spec.ts`
+3. [x] Add Spanish conversation constant with proper Unicode
+4. [x] Implement Part 1: Build workflow with translation chain
+5. [x] Implement Parts 2-3: Data source creation + workflow run
+6. [x] Implement Parts 4-6: Staging review + CRM verification
+7. [x] Add cleanup logic
+8. [x] Run full demo suite: all workflow demos passing (2 GitHub-dependent demos skip as expected)
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Separate demo or extend Demo 4?** → Separate demo script (cleaner, independent, can run in isolation)
-2. **CRM pipeline for deals?** → Reuse existing default pipeline or create a "LATAM Pipeline" for the demo?
-3. **Translation node output_mode**: Should be `text` (not `structured`) since translation produces prose, not JSON. Verify the UI supports selecting output mode per node.
+1. **Separate demo or extend Demo 4?** → Separate demo script. Cleaner, independent, can run in isolation.
+2. **CRM pipeline for deals?** → Reuses existing default pipeline. No LATAM-specific pipeline needed.
+3. **Translation node chaining?** → **Abandoned.** Chaining via Translate & Summarize (text output) → Extract Contacts only produced company records (4 companies, 0 contacts/deals). Root cause: text output from `llm_summarize` doesn't propagate correctly to downstream `llm_extract` nodes via `{{previous_results}}`. **Final design:** All 3 extract nodes connect directly to Data Source with Spanish-aware prompts. The LLM handles translation inline during extraction. This produces contacts + companies + deals reliably.
+4. **Shared helpers?** → `addExtractNode` / `addOutputNode` extracted to `e2e/helpers/workflow-builder.ts` (QA follow-up).
+
+## QA Review
+
+See `planning/2026-03-15--review--spanish-demo-qa.md` — all findings resolved, merge approved.
