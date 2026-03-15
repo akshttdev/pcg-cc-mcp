@@ -258,10 +258,10 @@ impl CrmContact {
             RETURNING *
             "#,
         )
-        .bind(id)
-        .bind(data.organization_id)
-        .bind(None::<Uuid>)
-        .bind(data.client_id)
+        .bind(id.to_string())
+        .bind(data.organization_id.to_string())
+        .bind(None::<String>)
+        .bind(data.client_id.map(|u| u.to_string()))
         .bind(&data.first_name)
         .bind(&data.last_name)
         .bind(&full_name)
@@ -291,7 +291,7 @@ impl CrmContact {
         sqlx::query_as::<_, CrmContact>(
             r#"SELECT * FROM crm_contacts WHERE id = ?1"#,
         )
-        .bind(id)
+        .bind(id.to_string())
         .fetch_optional(pool)
         .await?
         .ok_or(CrmContactError::NotFound)
@@ -306,7 +306,7 @@ impl CrmContact {
         let contact = sqlx::query_as::<_, CrmContact>(
             r#"SELECT * FROM crm_contacts WHERE organization_id = ?1 AND LOWER(email) = LOWER(?2) LIMIT 1"#,
         )
-        .bind(organization_id)
+        .bind(organization_id.to_string())
         .bind(email)
         .fetch_optional(pool)
         .await?;

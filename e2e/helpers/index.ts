@@ -13,7 +13,7 @@
  */
 
 export { TEST_USER, login, apiLogin, ensureAuthenticated } from "./auth";
-export { t } from "./timing";
+export { t, demoPause } from "./timing";
 export {
   navigateToFirstProjectTasks,
   navigateToProjectTasks,

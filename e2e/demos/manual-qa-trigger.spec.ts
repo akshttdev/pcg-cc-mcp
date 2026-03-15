@@ -17,7 +17,7 @@
  */
 import { test, expect } from "./fixtures";
 import {
-  t, login, createDemoProject, TEST_DATA_PREFIX, apiLogin,
+  t, demoPause, login, createDemoProject, TEST_DATA_PREFIX, apiLogin,
   navigateToProjectTasks, navigateToTaskDetail, createTaskViaUI,
   changeTaskStatus, addQaWatcher, findTaskCard, cleanupProject,
   ensureAgentsSeeded,
@@ -37,8 +37,6 @@ let TASK_ID: string;
 let DEMO_BRANCH: string | undefined;
 let DEMO_PR_NUMBER: number | undefined;
 
-const DEMO_PAUSE = 1_500;
-
 test.describe("Manual QA Trigger Demo", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -53,17 +51,17 @@ test.describe("Manual QA Trigger Demo", () => {
 
     await createTaskViaUI(page, TASK_TITLE, {
       description: "Test task for manual QA trigger verification",
-      demoPause: DEMO_PAUSE,
+      demoPause: demoPause.medium,
     });
 
     TASK_PATH = new URL(page.url()).pathname;
     TASK_ID = TASK_PATH.split("/tasks/")[1];
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 2: Add QA watcher from task detail drawer", async ({ page }) => {
     await navigateToTaskDetail(page, TASK_PATH);
-    await addQaWatcher(page, { demoPause: DEMO_PAUSE });
+    await addQaWatcher(page, { demoPause: demoPause.medium });
 
     // Verify the ORCHA QA agent name is visible alongside "Watching" status
     await expect(page.getByText(/ORCHA QA/i)).toBeVisible({ timeout: t(5_000) });
@@ -78,22 +76,22 @@ test.describe("Manual QA Trigger Demo", () => {
     DEMO_BRANCH = result.branch;
     DEMO_PR_NUMBER = result.prNumber;
 
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 4: Change status To Do → In Progress", async ({ page }) => {
     await navigateToTaskDetail(page, TASK_PATH);
-    await changeTaskStatus(page, "To Do", "In Progress", { demoPause: DEMO_PAUSE });
+    await changeTaskStatus(page, "To Do", "In Progress", { demoPause: demoPause.medium });
   });
 
   test("Step 5: Change status In Progress → In Review (triggers watcher)", async ({ page }) => {
     await navigateToTaskDetail(page, TASK_PATH);
-    await changeTaskStatus(page, "In Progress", "In Review", { demoPause: DEMO_PAUSE });
+    await changeTaskStatus(page, "In Progress", "In Review", { demoPause: demoPause.medium });
 
     // With a PR linked, the server's spawn_watcher_reviews should trigger.
     // Wait for the QA watcher trigger toast
     await waitForToast(page, /QA review started|watcher.*trigger/i, { timeout: t(15_000) });
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 6: QA watcher verdict — simulate QA pass", async ({ page, request }) => {
@@ -116,7 +114,7 @@ test.describe("Manual QA Trigger Demo", () => {
       await request.patch(`/api/tasks/${TASK_ID}/collaborators`, {
         data: { actor_id: QA_AGENT_ID, actor_type: "agent_watcher", action: "triggered" },
       });
-      await page.waitForTimeout(DEMO_PAUSE);
+      await page.waitForTimeout(demoPause.medium);
     }
 
     // Simulate QA verdict: PASS
@@ -132,7 +130,7 @@ test.describe("Manual QA Trigger Demo", () => {
     await expect(
       page.getByText(/Passed|qa_pass/i)
     ).toBeVisible({ timeout: t(10_000) });
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 7: Verify task in In Review on kanban", async ({ page }) => {
@@ -144,12 +142,12 @@ test.describe("Manual QA Trigger Demo", () => {
 
     // Verify "In Review" column header is visible
     await expect(page.getByText("In Review").first()).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 8: Human approval — change to Done", async ({ page }) => {
     await navigateToTaskDetail(page, TASK_PATH);
-    await changeTaskStatus(page, "In Review", "Done", { demoPause: DEMO_PAUSE * 2 });
+    await changeTaskStatus(page, "In Review", "Done", { demoPause: demoPause.long });
   });
 
   test.afterAll(async ({ request }) => {

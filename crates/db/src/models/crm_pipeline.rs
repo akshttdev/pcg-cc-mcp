@@ -164,10 +164,10 @@ impl CrmPipeline {
             RETURNING *
             "#,
         )
-        .bind(id)
-        .bind(data.organization_id)
-        .bind(None::<Uuid>)
-        .bind(data.client_id)
+        .bind(id.to_string())
+        .bind(data.organization_id.map(|u| u.to_string()))
+        .bind(None::<String>)
+        .bind(data.client_id.map(|u| u.to_string()))
         .bind(&data.name)
         .bind(&data.description)
         .bind(&pipeline_type)
@@ -592,8 +592,8 @@ impl CrmPipelineStage {
             RETURNING *
             "#,
         )
-        .bind(id)
-        .bind(data.pipeline_id)
+        .bind(id.to_string())
+        .bind(data.pipeline_id.to_string())
         .bind(&data.name)
         .bind(&data.description)
         .bind(&data.color)

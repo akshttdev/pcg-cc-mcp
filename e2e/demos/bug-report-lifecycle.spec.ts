@@ -16,7 +16,7 @@
  */
 import { test, expect } from "./fixtures";
 import {
-  t, login, TEST_DATA_PREFIX, apiLogin,
+  t, demoPause, login, TEST_DATA_PREFIX, apiLogin,
   navigateToProjectTasks, navigateToTaskDetail,
   changeTaskStatus, addQaWatcher, findTaskCard,
   cleanupTaskByPath, cleanupE2eDataSources, ensureAgentsSeeded, openFeedbackDialog,
@@ -28,7 +28,6 @@ import {
 import { waitForToast } from "../helpers/demo/assertions";
 
 const BUG_TITLE = `${TEST_DATA_PREFIX} Demo: Dashboard crash ${Date.now()}`;
-const DEMO_PAUSE = 1_500;
 const BUGREPORTS_PROJECT_ID = "00000000-0000-0000-0000-000000000001";
 const QA_AGENT_ID = "a0000000-0000-0000-0000-000000000002";
 
@@ -68,7 +67,7 @@ test.describe("Bug Report Lifecycle Demo", () => {
       "Dashboard shows white screen on empty project.\n\nSteps to reproduce:\n1. Create new project\n2. Navigate to dashboard\n3. See blank white screen"
     );
 
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
 
     // Submit
     await page.getByRole("button", { name: "Submit Feedback" }).click();
@@ -81,7 +80,7 @@ test.describe("Bug Report Lifecycle Demo", () => {
       page.getByRole("heading", { name: "Submit Feedback" })
     ).not.toBeVisible({ timeout: t(5_000) });
 
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 2: Find bug on kanban → open detail", async ({ page }) => {
@@ -90,7 +89,7 @@ test.describe("Bug Report Lifecycle Demo", () => {
     // Feedback creates tasks with [Bug] prefix — search for the title fragment
     const card = findTaskCard(page, BUG_TITLE);
     await expect(card).toBeVisible({ timeout: t(10_000) });
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
 
     await card.click();
     await expect(page.getByText("Agent Reviewers", { exact: true })).toBeVisible({
@@ -99,12 +98,12 @@ test.describe("Bug Report Lifecycle Demo", () => {
 
     TASK_PATH = new URL(page.url()).pathname;
     TASK_ID = TASK_PATH.split("/tasks/")[1];
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 3: Add QA watcher", async ({ page }) => {
     await navigateToTaskDetail(page, TASK_PATH);
-    await addQaWatcher(page, { demoPause: DEMO_PAUSE });
+    await addQaWatcher(page, { demoPause: demoPause.medium });
 
     // Verify the ORCHA QA agent name is visible
     await expect(page.getByText(/ORCHA QA/i)).toBeVisible({ timeout: t(5_000) });
@@ -122,12 +121,12 @@ test.describe("Bug Report Lifecycle Demo", () => {
 
     // Wait for toast showing the task moved to In Review
     await waitForToast(page, /moved to In Review|In Review/i, { timeout: t(15_000) });
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
 
     // The backend's spawn_watcher_reviews triggers the QA watcher automatically
     // when a task moves to InReview with a linked PR. Wait for that toast too.
     await waitForToast(page, /QA review started/i, { timeout: t(15_000) });
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 5: Verify task in In Review on kanban", async ({ page }) => {
@@ -136,7 +135,7 @@ test.describe("Bug Report Lifecycle Demo", () => {
     const card = findTaskCard(page, BUG_TITLE);
     await expect(card).toBeVisible({ timeout: t(10_000) });
     await expect(page.getByText("In Review").first()).toBeVisible({ timeout: t(5_000) });
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 6: QA watcher verdict — simulate QA pass", async ({ page, request }) => {
@@ -167,12 +166,12 @@ test.describe("Bug Report Lifecycle Demo", () => {
     await expect(
       page.getByText(/Passed|qa_pass/i)
     ).toBeVisible({ timeout: t(10_000) });
-    await page.waitForTimeout(DEMO_PAUSE);
+    await page.waitForTimeout(demoPause.medium);
   });
 
   test("Step 7: Human approval — change to Done", async ({ page }) => {
     await navigateToTaskDetail(page, TASK_PATH);
-    await changeTaskStatus(page, "In Review", "Done", { demoPause: DEMO_PAUSE });
+    await changeTaskStatus(page, "In Review", "Done", { demoPause: demoPause.medium });
   });
 
   test("Step 8: Verify task in Done column", async ({ page }) => {
@@ -186,7 +185,7 @@ test.describe("Bug Report Lifecycle Demo", () => {
     const card = findTaskCard(page, BUG_TITLE);
     await expect(card).toBeVisible({ timeout: t(5_000) });
 
-    await page.waitForTimeout(DEMO_PAUSE * 2);
+    await page.waitForTimeout(demoPause.long);
   });
 
   test.afterAll(async ({ request }) => {

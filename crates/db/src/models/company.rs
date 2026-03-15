@@ -217,7 +217,7 @@ impl Company {
                (id, name, slug, website, industry, description, logo_url, headquarters, created_by_org_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         )
-        .bind(id)
+        .bind(id.to_string())
         .bind(&input.name)
         .bind(&slug)
         .bind(&input.website)
@@ -225,7 +225,7 @@ impl Company {
         .bind(&input.description)
         .bind(&input.logo_url)
         .bind(&input.headquarters)
-        .bind(input.created_by_org_id)
+        .bind(input.created_by_org_id.map(|u| u.to_string()))
         .execute(pool)
         .await
         .map_err(|e| {
