@@ -232,7 +232,7 @@ test.describe("Settings", () => {
     // Wait for loading spinner to disappear (API fetch for admin prompt)
     await expect(page.locator('[class*="animate-spin"]')).not.toBeVisible({ timeout: 20_000 }).catch(() => {});
     await expect(page.getByText("Topsi Configuration")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("System Prompt")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("System Prompt", { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test("Topsi user preferences page loads", async ({ page }) => {
@@ -240,8 +240,8 @@ test.describe("Settings", () => {
     await page.waitForLoadState("domcontentloaded");
     // Wait for loading spinner to disappear (API fetch for user preferences)
     await expect(page.locator('[class*="animate-spin"]')).not.toBeVisible({ timeout: 20_000 }).catch(() => {});
-    await expect(page.getByText("Topsi Preferences")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("Confirmation Mode")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "Topsi Preferences" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Confirmation Mode", { exact: true })).toBeVisible({ timeout: 20_000 });
   });
 });
 

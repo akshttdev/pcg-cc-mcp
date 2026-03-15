@@ -111,12 +111,58 @@ pub async fn run_intake_pipeline(
         register_call_in_knowledge_graph(&pool, pid, item_id, &extracted).await;
     }
 
+    // Stage 4b: Create tasks from action items (email-driven workflow kickoff)
+    create_tasks_from_action_items(
+        &pool, &extracted.action_items, &item, organization_id, primary_person_id,
+    ).await;
+
     // Stage 5 & 6: Run company research passes, then generate comprehensive report
     // This runs in background so intake item is already marked processed
     let businesses = extracted.businesses.clone();
     let individuals = extracted.individuals.clone();
     let pool_clone = pool.clone();
+    let from_email = item.from_email.clone().unwrap_or_default();
     tokio::spawn(async move {
+        // Ensure company records exist for all extracted businesses (trusted senders)
+        if is_trusted_sender(&from_email) {
+            for biz in &businesses {
+                if biz.name.len() > 2 {
+                    // Skip internal companies (PCG, Sirak Studios variants)
+                    let lower = biz.name.to_lowercase();
+                    if lower.contains("powerclub") || lower.contains("pcg")
+                        || lower.contains("sirak") || lower.contains("cyra")
+                        || lower.contains("cyrax") || lower.contains("cyroax") {
+                        continue;
+                    }
+                    match Company::find_or_create(&pool_clone, &biz.name, organization_id, None).await {
+                        Ok(co) => {
+                            // Update company description if we have one and it's richer
+                            if let Some(desc) = &biz.description {
+                                if desc.len() > 20 {
+                                    let _ = sqlx::query(
+                                        "UPDATE companies SET description = COALESCE(
+                                            CASE WHEN length(description) < ? THEN ? ELSE description END,
+                                            ?
+                                         ), industry = COALESCE(industry, ?),
+                                         updated_at = datetime('now','subsec') WHERE id = ?"
+                                    )
+                                    .bind(desc.len() as i64)
+                                    .bind(desc)
+                                    .bind(desc)
+                                    .bind(&biz.industry)
+                                    .bind(co.id)
+                                    .execute(&pool_clone)
+                                    .await;
+                                }
+                            }
+                            info!("Ensured company record for '{}' ({})", biz.name, co.id);
+                        }
+                        Err(e) => warn!("Failed to create company '{}': {}", biz.name, e),
+                    }
+                }
+            }
+        }
+
         // Run company research passes for each identified business (up to 3 passes each)
         for biz in &businesses {
             if biz.name.len() > 2 {
@@ -181,9 +227,9 @@ async fn associate_participants(
             None
         };
 
-        // Fall back to name match
+        // Fall back to name match (with company for disambiguation)
         let person_id = if person_id.is_none() {
-            find_person_by_name(pool, &participant.name).await
+            find_person_by_name_and_company(pool, &participant.name, participant.company.as_deref()).await
         } else {
             person_id
         };
@@ -254,10 +300,18 @@ pub(super) async fn find_person_by_email(pool: &sqlx::SqlitePool, email: &str) -
 }
 
 pub(super) async fn find_person_by_name(pool: &sqlx::SqlitePool, name: &str) -> Option<Uuid> {
+    find_person_by_name_and_company(pool, name, None).await
+}
+
+pub(super) async fn find_person_by_name_and_company(
+    pool: &sqlx::SqlitePool,
+    name: &str,
+    company: Option<&str>,
+) -> Option<Uuid> {
     #[derive(sqlx::FromRow)]
     struct Row { id: Uuid }
 
-    // Exact match first
+    // 1. Exact full_name match
     let exact = sqlx::query_as::<_, Row>(
         "SELECT id FROM persons WHERE full_name = ? COLLATE NOCASE LIMIT 1",
     )
@@ -272,12 +326,13 @@ pub(super) async fn find_person_by_name(pool: &sqlx::SqlitePool, name: &str) -> 
         return exact;
     }
 
-    // Fuzzy: first + last name parts
     let parts: Vec<&str> = name.split_whitespace().collect();
+
+    // 2. Multi-word: first + last substring match
     if parts.len() >= 2 {
         let first = parts[0];
         let last = parts[parts.len() - 1];
-        sqlx::query_as::<_, Row>(
+        let found = sqlx::query_as::<_, Row>(
             "SELECT id FROM persons WHERE full_name LIKE ? AND full_name LIKE ? LIMIT 1",
         )
         .bind(format!("%{first}%"))
@@ -286,10 +341,86 @@ pub(super) async fn find_person_by_name(pool: &sqlx::SqlitePool, name: &str) -> 
         .await
         .ok()
         .flatten()
-        .map(|r| r.id)
-    } else {
-        None
+        .map(|r| r.id);
+
+        if found.is_some() {
+            return found;
+        }
     }
+
+    // 3. Single-word name: match if the name appears as the first word (or only word) in full_name
+    //    e.g. "Robbi" matches "Robbi Jan", "Manolis" matches "Manolis Koureas"
+    if parts.len() == 1 {
+        let single = parts[0];
+
+        // 3a. If we have a company, use it to disambiguate
+        if let Some(co) = company {
+            let found = sqlx::query_as::<_, Row>(
+                "SELECT id FROM persons \
+                 WHERE (full_name LIKE ? OR full_name LIKE ?) \
+                   AND company_name LIKE ? \
+                 LIMIT 1",
+            )
+            .bind(format!("{single} %"))   // "Robbi %" matches "Robbi Jan"
+            .bind(single)                  // exact single name
+            .bind(format!("%{co}%"))
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.id);
+
+            if found.is_some() {
+                return found;
+            }
+        }
+
+        // 3b. Without company, match first-name prefix (only if exactly one result)
+        let found = sqlx::query_as::<_, Row>(
+            "SELECT id FROM persons \
+             WHERE full_name LIKE ? OR full_name = ? COLLATE NOCASE \
+             LIMIT 1",
+        )
+        .bind(format!("{single} %"))
+        .bind(single)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| r.id);
+
+        if found.is_some() {
+            return found;
+        }
+    }
+
+    // 4. Multi-word with company fallback: match any word in the name + company
+    if parts.len() >= 2 {
+        if let Some(co) = company {
+            for part in &parts {
+                if part.len() < 3 { continue; }
+                let found = sqlx::query_as::<_, Row>(
+                    "SELECT id FROM persons \
+                     WHERE full_name LIKE ? \
+                       AND company_name LIKE ? \
+                     LIMIT 1",
+                )
+                .bind(format!("%{part}%"))
+                .bind(format!("%{co}%"))
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+                .map(|r| r.id);
+
+                if found.is_some() {
+                    return found;
+                }
+            }
+        }
+    }
+
+    None
 }
 
 async fn create_person_from_intake(
@@ -755,5 +886,169 @@ pub(super) async fn advance_deal_stage(pool: &sqlx::SqlitePool, deal_id: Uuid, s
                 info!("Advanced deal {} to stage '{}'", deal_id, stage_name);
             }
         }
+    }
+}
+
+// ── Stage 4b: Task creation from email action items ─────────────────────────
+
+/// Trusted sender → user/agent mapping for task assignment.
+/// When an email from a trusted sender contains action items referencing these
+/// names, we create PCG tasks and assign them to the appropriate user or agent.
+struct TaskAssignmentConfig {
+    /// Sirak Studios org ID
+    org_id: &'static str,
+    /// Default project for Sirak Studios tasks
+    project_id: &'static str,
+    /// Nora agent ID (for tasks Nora should execute)
+    nora_agent_id: &'static str,
+    /// Bodhi user ID (Jessy = Bodhi in the system)
+    bodhi_user_id: &'static str,
+    /// Josh user ID
+    josh_user_id: &'static str,
+}
+
+const SIRAK_CONFIG: TaskAssignmentConfig = TaskAssignmentConfig {
+    org_id: "02020202-0202-0202-0202-020202020202",
+    project_id: "b0b1b2b3-b4b5-b6b7-b8b9-babbbcbdbebf",
+    nora_agent_id: "0907dc4f-3f7f-4c40-93cf-f36a833eaa78",
+    bodhi_user_id: "7970fc60-f694-4b4d-a7b6-0dae5023bd6c",
+    josh_user_id: "80ab1230-627a-4859-af9a-1e02c2a26639",
+};
+
+/// Trusted senders whose emails automatically create tasks.
+fn is_trusted_sender(email: &str) -> bool {
+    let lower = email.to_lowercase();
+    lower == "sirak@sirakstudios.com"
+        || lower == "aaren@sirakstudios.com"
+        || lower.ends_with("@sirakstudios.com")
+}
+
+/// Create PCG tasks from extracted action items in emails from trusted senders.
+async fn create_tasks_from_action_items(
+    pool: &sqlx::SqlitePool,
+    action_items: &[super::ExtractedActionItem],
+    item: &CallIntakeItem,
+    organization_id: Option<Uuid>,
+    primary_person_id: Option<Uuid>,
+) {
+    // Only create tasks from trusted senders
+    let sender = item.from_email.as_deref().unwrap_or("");
+    if !is_trusted_sender(sender) {
+        return;
+    }
+
+    // Use org-specific config if this is Sirak Studios, otherwise skip
+    let org_str = organization_id.map(|id| id.to_string()).unwrap_or_default();
+    if org_str != SIRAK_CONFIG.org_id && organization_id.is_some() {
+        // Not Sirak Studios — skip for now (can extend later)
+        return;
+    }
+
+    let project_id = SIRAK_CONFIG.project_id;
+    let subject = item.subject.as_deref().unwrap_or("Email intake");
+
+    for action in action_items {
+        let description = &action.action;
+        if description.len() < 5 {
+            continue;
+        }
+
+        // Determine assignee based on owner name
+        let owner_lower = action.owner.as_deref().unwrap_or("").to_lowercase();
+        let (assignee_id, agent_id, created_by) = resolve_task_assignee(&owner_lower);
+
+        // Build task title: truncate action to 80 chars
+        let title = if description.len() > 80 {
+            format!("{}…", &description[..77])
+        } else {
+            description.clone()
+        };
+
+        // Build task description with context
+        let task_desc = format!(
+            "Source: Email from {}\nSubject: {}\nAction: {}\n{}{}",
+            sender,
+            subject,
+            description,
+            if let Some(deadline) = &action.deadline {
+                format!("Deadline: {}\n", deadline)
+            } else {
+                String::new()
+            },
+            if let Some(pid) = primary_person_id {
+                format!("Related person: {}", pid)
+            } else {
+                String::new()
+            },
+        );
+
+        // Dedup: skip if a task with the same title already exists in this project
+        let exists: bool = sqlx::query_scalar(
+            "SELECT COUNT(*) > 0 FROM tasks WHERE project_id = ? AND title = ?",
+        )
+        .bind(project_id)
+        .bind(&title)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(false);
+
+        if exists {
+            continue;
+        }
+
+        let task_id = Uuid::new_v4();
+        let priority = if owner_lower.contains("nora") { "high" } else { "medium" };
+
+        let result = sqlx::query(
+            "INSERT INTO tasks (id, project_id, title, description, status, priority,
+             assignee_id, agent_id, created_by, tags, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'todo', ?, ?, ?, ?, ?, datetime('now','subsec'), datetime('now','subsec'))",
+        )
+        .bind(task_id.to_string())
+        .bind(project_id)
+        .bind(&title)
+        .bind(&task_desc)
+        .bind(priority)
+        .bind(assignee_id)
+        .bind(agent_id)
+        .bind(created_by)
+        .bind(format!("[\"email-intake\",\"auto-created\"]"))
+        .execute(pool)
+        .await;
+
+        match result {
+            Ok(_) => info!(
+                "Created task '{}' (assignee: {}, agent: {}) from email intake",
+                title,
+                action.owner.as_deref().unwrap_or("unassigned"),
+                if agent_id.is_some() { "Nora" } else { "none" },
+            ),
+            Err(e) => warn!("Failed to create task '{}': {}", title, e),
+        }
+    }
+}
+
+/// Map owner name references to user IDs and agent IDs.
+/// Returns (assignee_id, agent_id, created_by).
+fn resolve_task_assignee(owner_lower: &str) -> (Option<&'static str>, Option<&'static str>, &'static str) {
+    if owner_lower.contains("nora") {
+        // Nora tasks: assigned to Nora agent, created by system
+        (None, Some(SIRAK_CONFIG.nora_agent_id), "nora-intake")
+    } else if owner_lower.contains("jessy") || owner_lower.contains("bodhi") {
+        // Jessy = Bodhi
+        (Some(SIRAK_CONFIG.bodhi_user_id), None, "nora-intake")
+    } else if owner_lower.contains("josh") {
+        (Some(SIRAK_CONFIG.josh_user_id), None, "nora-intake")
+    } else if owner_lower.contains("sirak") || owner_lower.contains("aaren") {
+        // Requests from Sirak to himself — still create as Nora tasks (she's servicing the org)
+        (None, Some(SIRAK_CONFIG.nora_agent_id), "nora-intake")
+    } else if owner_lower.is_empty() || owner_lower == "none" {
+        // Unattributed action items from trusted sender → Nora handles
+        (None, Some(SIRAK_CONFIG.nora_agent_id), "nora-intake")
+    } else {
+        // External person (client action) — create but don't assign internally
+        (None, None, "nora-intake")
     }
 }
