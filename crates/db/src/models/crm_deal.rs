@@ -755,10 +755,10 @@ impl CrmDeal {
 
                 // Fetch person_id from the contact (bridge to persons table)
                 let person_id: Option<Uuid> = if let Some(contact_id) = deal.crm_contact_id {
-                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<Uuid> }
-                    sqlx::query_as::<_, Row>("SELECT person_id FROM crm_contacts WHERE id = ?")
+                    #[derive(sqlx::FromRow)] struct Row { id: Uuid }
+                    sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE crm_contact_id = ?")
                         .bind(contact_id)
-                        .fetch_optional(pool).await.ok().flatten().and_then(|r| r.person_id)
+                        .fetch_optional(pool).await.ok().flatten().map(|r| r.id)
                 } else { None };
 
                 let report_id = if let Some(pid) = person_id {
@@ -901,10 +901,10 @@ impl CrmDeal {
                 };
 
                 let person_id: Option<Uuid> = if let Some(contact_id) = deal.crm_contact_id {
-                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<Uuid> }
-                    sqlx::query_as::<_, Row>("SELECT person_id FROM crm_contacts WHERE id = ?")
+                    #[derive(sqlx::FromRow)] struct Row { id: Uuid }
+                    sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE crm_contact_id = ?")
                         .bind(contact_id)
-                        .fetch_optional(pool).await.ok().flatten().and_then(|r| r.person_id)
+                        .fetch_optional(pool).await.ok().flatten().map(|r| r.id)
                 } else { None };
 
                 let report_id = if let Some(pid) = person_id {
