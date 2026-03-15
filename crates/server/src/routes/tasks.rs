@@ -1245,6 +1245,37 @@ pub(crate) async fn list_agent_watchers(
     Ok(ResponseJson(ApiResponse::success(result)))
 }
 
+/// PATCH /tasks/:task_id/collaborators — update a collaborator's action state.
+/// Used to programmatically set watcher verdicts or other collaborator transitions.
+#[derive(Debug, Deserialize, TS)]
+pub struct UpdateCollaboratorRequest {
+    pub actor_id: String,
+    pub actor_type: String,
+    pub action: String,
+}
+
+pub(crate) async fn update_collaborator(
+    Extension(_access_context): Extension<AccessContext>,
+    Extension(task): Extension<Task>,
+    State(deployment): State<DeploymentImpl>,
+    Json(body): Json<UpdateCollaboratorRequest>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    Task::update_collaborator(pool, &task.id, &body.actor_id, &body.actor_type, &body.action)
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to update collaborator: {e}")))?;
+
+    // Broadcast updated task state to WebSocket clients
+    if let Ok(tasks) = Task::find_by_project_id_with_attempt_status(pool, &task.project_id).await {
+        if let Some(task_with_status) = tasks.into_iter().find(|t| t.id == task.id) {
+            broadcast_task_event(&deployment, "replace", &task.id, Some(&task_with_status));
+        }
+    }
+
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     // Task-ID routes with load_task_middleware — defined as explicit routes
     // instead of .nest() to avoid Axum 0.8 path parameter shadowing static routes
@@ -1255,6 +1286,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/{task_id}/request-changes", post(request_changes))
         .route("/{task_id}/reject", post(reject_task))
         .route("/{task_id}/watch", post(watch_task).delete(unwatch_task))
+        .route("/{task_id}/collaborators", axum::routing::patch(update_collaborator))
         .route("/{task_id}/agent-watchers", get(list_agent_watchers).post(add_agent_watcher))
         .route("/{task_id}/agent-watchers/{agent_id}", delete(remove_agent_watcher))
         .layer(from_fn_with_state(deployment.clone(), load_task_middleware));

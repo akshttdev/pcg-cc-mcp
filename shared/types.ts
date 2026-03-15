@@ -270,6 +270,10 @@ export type AddAgentWatcherRequest = { agent_id: string, };
 
 export type CreateGitHubPrRequest = { title: string, body: string | null, base_branch: string | null, };
 
+export type LinkPrRequest = { pr_number: bigint, pr_url: string, target_branch: string | null, };
+
+export type UpdateCollaboratorRequest = { actor_id: string, actor_type: string, action: string, };
+
 export type ImageResponse = { id: string, file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, created_at: string, updated_at: string, };
 
 export enum GitHubServiceError { TOKEN_INVALID = "TOKEN_INVALID", INSUFFICIENT_PERMISSIONS = "INSUFFICIENT_PERMISSIONS", REPO_NOT_FOUND_OR_NO_ACCESS = "REPO_NOT_FOUND_OR_NO_ACCESS" }

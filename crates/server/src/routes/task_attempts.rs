@@ -1121,6 +1121,38 @@ pub async fn merge_task_attempt(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+/// POST /task-attempts/:id/link-pr — register an externally-created PR against this attempt.
+/// Creates a PR merge record without requiring a worktree or pushing branches.
+#[derive(Debug, Deserialize, TS)]
+pub struct LinkPrRequest {
+    pub pr_number: i64,
+    pub pr_url: String,
+    pub target_branch: Option<String>,
+}
+
+pub async fn link_pr(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<LinkPrRequest>,
+) -> Result<ResponseJson<ApiResponse<PrMerge>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let target_branch = payload
+        .target_branch
+        .unwrap_or_else(|| task_attempt.base_branch.clone());
+
+    let pr_merge = Merge::create_pr(
+        pool,
+        task_attempt.id,
+        &target_branch,
+        payload.pr_number,
+        &payload.pr_url,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to link PR: {e}")))?;
+
+    Ok(ResponseJson(ApiResponse::success(pr_merge)))
+}
+
 pub async fn push_task_attempt_branch(
     Extension(task_attempt): Extension<TaskAttempt>,
     State(deployment): State<DeploymentImpl>,
@@ -1747,6 +1779,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/branch-status", get(get_task_attempt_branch_status))
         .route("/diff", get(get_task_attempt_diff))
         .route("/merge", post(merge_task_attempt))
+        .route("/link-pr", post(link_pr))
         .route("/push", post(push_task_attempt_branch))
         .route("/rebase", post(rebase_task_attempt))
         .route("/conflicts/abort", post(abort_conflicts_task_attempt))
