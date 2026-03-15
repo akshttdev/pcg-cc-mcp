@@ -7,6 +7,7 @@
 //! - Stage 4: knowledge graph registration
 //! - CRM deal automation helpers
 
+use db::db_uuid::DbUuid;
 use db::models::{
     call_intake_item::CallIntakeItem,
     company::Company,
@@ -134,7 +135,7 @@ pub async fn run_intake_pipeline(
                         || lower.contains("cyrax") || lower.contains("cyroax") {
                         continue;
                     }
-                    match Company::find_or_create(&pool_clone, &biz.name, organization_id, None).await {
+                    match Company::find_or_create(&pool_clone, &biz.name, organization_id.map(DbUuid::from), None).await {
                         Ok(co) => {
                             // Update company description if we have one and it's richer
                             if let Some(desc) = &biz.description {
@@ -150,7 +151,7 @@ pub async fn run_intake_pipeline(
                                     .bind(desc)
                                     .bind(desc)
                                     .bind(&biz.industry)
-                                    .bind(co.id)
+                                    .bind(co.id.as_str())
                                     .execute(&pool_clone)
                                     .await;
                                 }
@@ -466,7 +467,7 @@ async fn create_person_from_intake(
                     if let Ok(company) = Company::find_or_create(
                         pool,
                         company_name.trim(),
-                        organization_id,
+                        organization_id.map(DbUuid::from),
                         None,
                     ).await {
                         let _ = sqlx::query(
@@ -798,16 +799,17 @@ async fn ensure_crm_deal_for_person(
     let deal_name = format!("{} — Discovery Lead", person_name);
 
     // Check for existing deal with same name in this org (dedup)
-    if let Ok(Some(existing)) = CrmDeal::find_by_name_and_org(pool, &deal_name, org_id).await {
+    let org_db_id = DbUuid::from(org_id);
+    if let Ok(Some(existing)) = CrmDeal::find_by_name_and_org(pool, &deal_name, &org_db_id).await {
         // Link intake item to existing deal
         let _ = sqlx::query(
             "UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?",
         )
-        .bind(existing.id)
+        .bind(existing.id.as_str())
         .bind(intake_item_id)
         .execute(pool)
         .await;
-        return Some(existing.id);
+        return Uuid::parse_str(existing.id.as_str()).ok();
     }
 
     // Find crm_contact_id for this person if available
@@ -825,11 +827,11 @@ async fn ensure_crm_deal_for_person(
 
     // Create the deal
     let deal_result = CrmDeal::create(pool, CreateCrmDeal {
-        organization_id: org_id,
+        organization_id: org_db_id,
         client_id: None,
-        crm_contact_id: contact_id,
-        crm_pipeline_id: Some(pipeline_id),
-        crm_stage_id: Some(stage_id),
+        crm_contact_id: contact_id.map(DbUuid::from),
+        crm_pipeline_id: Some(DbUuid::from(pipeline_id)),
+        crm_stage_id: Some(DbUuid::from(stage_id)),
         name: deal_name,
         description: Some(summary[..summary.len().min(500)].to_string()),
         amount: None,
@@ -846,11 +848,11 @@ async fn ensure_crm_deal_for_person(
             let _ = sqlx::query(
                 "UPDATE call_intake_items SET crm_deal_id = ? WHERE id = ?",
             )
-            .bind(deal.id)
+            .bind(deal.id.as_str())
             .bind(intake_item_id)
             .execute(pool)
             .await;
-            Some(deal.id)
+            Uuid::parse_str(deal.id.as_str()).ok()
         }
         Err(e) => {
             warn!("Failed to create CRM deal for person {}: {:?}", person_id, e);
@@ -861,14 +863,15 @@ async fn ensure_crm_deal_for_person(
 
 /// Advance a CRM deal to the named stage in its pipeline.
 pub(super) async fn advance_deal_stage(pool: &sqlx::SqlitePool, deal_id: Uuid, stage_name: &str) {
-    let deal = match CrmDeal::find_by_id(pool, deal_id).await {
+    let deal_db_id = DbUuid::from(deal_id);
+    let deal = match CrmDeal::find_by_id(pool, &deal_db_id).await {
         Ok(d) => d,
         Err(_) => return,
     };
 
-    if let Some(pipeline_id) = deal.crm_pipeline_id {
+    if let Some(ref pipeline_id) = deal.crm_pipeline_id {
         #[derive(sqlx::FromRow)]
-        struct StageRow { id: Vec<u8> }
+        struct StageRow { id: String }
 
         let stage = sqlx::query_as::<_, StageRow>(
             "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = ? LIMIT 1",
@@ -881,10 +884,9 @@ pub(super) async fn advance_deal_stage(pool: &sqlx::SqlitePool, deal_id: Uuid, s
         .flatten();
 
         if let Some(s) = stage {
-            if let Ok(stage_id) = Uuid::from_slice(&s.id) {
-                let _ = CrmDeal::move_to_stage(pool, deal_id, stage_id, 0).await;
-                info!("Advanced deal {} to stage '{}'", deal_id, stage_name);
-            }
+            let stage_id = DbUuid::from_string(s.id);
+            let _ = CrmDeal::move_to_stage(pool, &deal_db_id, &stage_id, 0).await;
+            info!("Advanced deal {} to stage '{}'", deal_id, stage_name);
         }
     }
 }

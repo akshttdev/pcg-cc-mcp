@@ -15,6 +15,7 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::access_control::AccessContext};
+use db::db_uuid::DbUuid;
 use super::{
     EmailIntakePayload, GenerateReportRequest, RevisionRequest, UploadIntakePayload,
     pipeline::run_intake_pipeline,
@@ -288,10 +289,11 @@ pub async fn approve_business_report(
     // Advance CRM deal to "Proposal" stage if linked
     let mut deal_json: Option<serde_json::Value> = None;
     if let Some(deal_id) = report.crm_deal_id {
-        if let Ok(deal) = CrmDeal::find_by_id(pool, deal_id).await {
-            if let Some(pipeline_id) = deal.crm_pipeline_id {
+        let deal_db_id = DbUuid::from(deal_id);
+        if let Ok(deal) = CrmDeal::find_by_id(pool, &deal_db_id).await {
+            if let Some(ref pipeline_id) = deal.crm_pipeline_id {
                 // Find the "Proposal" stage in this pipeline
-                let proposal_stage: Option<(Vec<u8>,)> = sqlx::query_as(
+                let proposal_stage: Option<(String,)> = sqlx::query_as(
                     "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = 'Proposal' LIMIT 1",
                 )
                 .bind(pipeline_id)
@@ -299,10 +301,9 @@ pub async fn approve_business_report(
                 .await
                 .unwrap_or(None);
 
-                if let Some((stage_bytes,)) = proposal_stage {
-                    if let Ok(stage_id) = Uuid::from_slice(&stage_bytes) {
-                        let _ = CrmDeal::move_to_stage(pool, deal_id, stage_id, 0).await;
-                    }
+                if let Some((stage_id_str,)) = proposal_stage {
+                    let stage_id = DbUuid::from_string(stage_id_str);
+                    let _ = CrmDeal::move_to_stage(pool, &deal_db_id, &stage_id, 0).await;
                 }
             }
             deal_json = Some(serde_json::json!({ "id": deal.id, "name": deal.name }));
@@ -428,9 +429,10 @@ pub async fn request_revision(
 
     // Move CRM deal back to "Research" stage if linked
     if let Some(deal_id) = report.crm_deal_id {
-        if let Ok(deal) = CrmDeal::find_by_id(pool, deal_id).await {
-            if let Some(pipeline_id) = deal.crm_pipeline_id {
-                let research_stage: Option<(Vec<u8>,)> = sqlx::query_as(
+        let deal_db_id = DbUuid::from(deal_id);
+        if let Ok(deal) = CrmDeal::find_by_id(pool, &deal_db_id).await {
+            if let Some(ref pipeline_id) = deal.crm_pipeline_id {
+                let research_stage: Option<(String,)> = sqlx::query_as(
                     "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND name = 'Research' LIMIT 1",
                 )
                 .bind(pipeline_id)
@@ -438,10 +440,9 @@ pub async fn request_revision(
                 .await
                 .unwrap_or(None);
 
-                if let Some((stage_bytes,)) = research_stage {
-                    if let Ok(stage_id) = Uuid::from_slice(&stage_bytes) {
-                        let _ = CrmDeal::move_to_stage(pool, deal_id, stage_id, 0).await;
-                    }
+                if let Some((stage_id_str,)) = research_stage {
+                    let stage_id = DbUuid::from_string(stage_id_str);
+                    let _ = CrmDeal::move_to_stage(pool, &deal_db_id, &stage_id, 0).await;
                 }
             }
         }

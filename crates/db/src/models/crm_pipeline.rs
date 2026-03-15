@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
 use ts_rs::TS;
-use uuid::Uuid;
+
+use crate::db_uuid::DbUuid;
 
 #[derive(Debug, Error)]
 pub enum CrmPipelineError {
@@ -59,9 +60,9 @@ impl std::str::FromStr for PipelineType {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct CrmPipeline {
-    pub id: Uuid,
-    pub project_id: Option<Uuid>,
-    pub organization_id: Option<Uuid>,
+    pub id: DbUuid,
+    pub project_id: Option<DbUuid>,
+    pub organization_id: Option<DbUuid>,
     pub name: String,
     pub description: Option<String>,
     pub pipeline_type: String,
@@ -76,8 +77,8 @@ pub struct CrmPipeline {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct CrmPipelineStage {
-    pub id: Uuid,
-    pub pipeline_id: Uuid,
+    pub id: DbUuid,
+    pub pipeline_id: DbUuid,
     pub name: String,
     pub description: Option<String>,
     pub color: String,
@@ -94,8 +95,8 @@ pub struct CrmPipelineStage {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateCrmPipeline {
-    pub organization_id: Option<Uuid>,
-    pub client_id: Option<Uuid>,
+    pub organization_id: Option<DbUuid>,
+    pub client_id: Option<DbUuid>,
     pub name: String,
     pub description: Option<String>,
     pub pipeline_type: PipelineType,
@@ -106,7 +107,7 @@ pub struct CreateCrmPipeline {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateCrmPipelineStage {
-    pub pipeline_id: Uuid,
+    pub pipeline_id: DbUuid,
     pub name: String,
     pub description: Option<String>,
     pub color: String,
@@ -151,7 +152,7 @@ impl CrmPipeline {
         pool: &SqlitePool,
         data: CreateCrmPipeline,
     ) -> Result<Self, CrmPipelineError> {
-        let id = Uuid::new_v4();
+        let id = DbUuid::new();
         let pipeline_type = data.pipeline_type.to_string();
 
         let pipeline = sqlx::query_as::<_, CrmPipeline>(
@@ -164,10 +165,10 @@ impl CrmPipeline {
             RETURNING *
             "#,
         )
-        .bind(id.to_string())
-        .bind(data.organization_id.map(|u| u.to_string()))
-        .bind(None::<String>)
-        .bind(data.client_id.map(|u| u.to_string()))
+        .bind(&id)
+        .bind(&data.organization_id)
+        .bind(None::<DbUuid>)
+        .bind(&data.client_id)
         .bind(&data.name)
         .bind(&data.description)
         .bind(&pipeline_type)
@@ -179,7 +180,7 @@ impl CrmPipeline {
         Ok(pipeline)
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, CrmPipelineError> {
+    pub async fn find_by_id(pool: &SqlitePool, id: &DbUuid) -> Result<Self, CrmPipelineError> {
         sqlx::query_as::<_, CrmPipeline>(r#"SELECT * FROM crm_pipelines WHERE id = ?1"#)
             .bind(id)
             .fetch_optional(pool)
@@ -190,7 +191,7 @@ impl CrmPipeline {
     /// Find pipelines by project (legacy/compatibility)
     pub async fn find_by_project(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &DbUuid,
     ) -> Result<Vec<Self>, CrmPipelineError> {
         let pipelines = sqlx::query_as::<_, CrmPipeline>(
             r#"SELECT * FROM crm_pipelines WHERE project_id = ?1 AND is_active = 1 ORDER BY name"#,
@@ -205,7 +206,7 @@ impl CrmPipeline {
     /// List all active pipelines in an organization (direct org_id query)
     pub async fn find_by_organization(
         pool: &SqlitePool,
-        organization_id: Uuid,
+        organization_id: &DbUuid,
         pipeline_type: Option<PipelineType>,
     ) -> Result<Vec<Self>, CrmPipelineError> {
         let pipelines = if let Some(pt) = pipeline_type {
@@ -236,7 +237,7 @@ impl CrmPipeline {
     /// Find pipeline by type scoped to an organization
     pub async fn find_by_type_for_org(
         pool: &SqlitePool,
-        organization_id: Uuid,
+        organization_id: &DbUuid,
         pipeline_type: PipelineType,
     ) -> Result<Option<Self>, CrmPipelineError> {
         let pipeline_type_str = pipeline_type.to_string();
@@ -254,7 +255,7 @@ impl CrmPipeline {
     /// Find pipeline by type scoped to a project (legacy/compatibility)
     pub async fn find_by_type(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &DbUuid,
         pipeline_type: PipelineType,
     ) -> Result<Option<Self>, CrmPipelineError> {
         let pipeline_type_str = pipeline_type.to_string();
@@ -271,7 +272,7 @@ impl CrmPipeline {
 
     pub async fn find_with_stages(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
     ) -> Result<CrmPipelineWithStages, CrmPipelineError> {
         let pipeline = Self::find_by_id(pool, id).await?;
         let stages = CrmPipelineStage::find_by_pipeline(pool, id).await?;
@@ -281,7 +282,7 @@ impl CrmPipeline {
 
     pub async fn update(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
         data: UpdateCrmPipeline,
     ) -> Result<Self, CrmPipelineError> {
         let is_active = data.is_active.map(|b| if b { 1 } else { 0 });
@@ -310,7 +311,7 @@ impl CrmPipeline {
         .ok_or(CrmPipelineError::NotFound)
     }
 
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<(), CrmPipelineError> {
+    pub async fn delete(pool: &SqlitePool, id: &DbUuid) -> Result<(), CrmPipelineError> {
         let result = sqlx::query(r#"DELETE FROM crm_pipelines WHERE id = ?1"#)
             .bind(id)
             .execute(pool)
@@ -326,7 +327,7 @@ impl CrmPipeline {
     /// Ensure default pipelines exist for an organization
     pub async fn ensure_defaults_for_org(
         pool: &SqlitePool,
-        organization_id: Uuid,
+        organization_id: &DbUuid,
     ) -> Result<(), CrmPipelineError> {
         let existing = Self::find_by_organization(pool, organization_id, None).await?;
 
@@ -349,7 +350,7 @@ impl CrmPipeline {
     /// Ensure default pipelines exist for a project (legacy/compatibility)
     pub async fn ensure_defaults(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &DbUuid,
     ) -> Result<(), CrmPipelineError> {
         if Self::find_by_type(pool, project_id, PipelineType::Conferences)
             .await?
@@ -385,12 +386,12 @@ impl CrmPipeline {
 
     async fn create_conferences_pipeline(
         pool: &SqlitePool,
-        organization_id: Option<Uuid>,
+        organization_id: Option<&DbUuid>,
     ) -> Result<Self, CrmPipelineError> {
         let pipeline = Self::create(
             pool,
             CreateCrmPipeline {
-                organization_id,
+                organization_id: organization_id.cloned(),
                 client_id: None,
                 name: "Conferences".to_string(),
                 description: Some("Track conference applications and attendance".to_string()),
@@ -415,7 +416,7 @@ impl CrmPipeline {
             CrmPipelineStage::create(
                 pool,
                 CreateCrmPipelineStage {
-                    pipeline_id: pipeline.id,
+                    pipeline_id: pipeline.id.clone(),
                     name: name.to_string(),
                     description: None,
                     color: color.to_string(),
@@ -433,12 +434,12 @@ impl CrmPipeline {
 
     async fn create_clients_pipeline(
         pool: &SqlitePool,
-        organization_id: Option<Uuid>,
+        organization_id: Option<&DbUuid>,
     ) -> Result<Self, CrmPipelineError> {
         let pipeline = Self::create(
             pool,
             CreateCrmPipeline {
-                organization_id,
+                organization_id: organization_id.cloned(),
                 client_id: None,
                 name: "Clients".to_string(),
                 description: Some("Track client acquisition pipeline".to_string()),
@@ -463,7 +464,7 @@ impl CrmPipeline {
             CrmPipelineStage::create(
                 pool,
                 CreateCrmPipelineStage {
-                    pipeline_id: pipeline.id,
+                    pipeline_id: pipeline.id.clone(),
                     name: name.to_string(),
                     description: None,
                     color: color.to_string(),
@@ -481,12 +482,12 @@ impl CrmPipeline {
 
     async fn create_sales_pipeline(
         pool: &SqlitePool,
-        organization_id: Option<Uuid>,
+        organization_id: Option<&DbUuid>,
     ) -> Result<Self, CrmPipelineError> {
         let pipeline = Self::create(
             pool,
             CreateCrmPipeline {
-                organization_id,
+                organization_id: organization_id.cloned(),
                 client_id: None,
                 name: "Sales Pipeline".to_string(),
                 description: Some("Agency sales process: Lead → Proposal → Win/Lose".to_string()),
@@ -509,7 +510,7 @@ impl CrmPipeline {
             CrmPipelineStage::create(
                 pool,
                 CreateCrmPipelineStage {
-                    pipeline_id: pipeline.id,
+                    pipeline_id: pipeline.id.clone(),
                     name: name.to_string(),
                     description: None,
                     color: color.to_string(),
@@ -527,12 +528,12 @@ impl CrmPipeline {
 
     async fn create_delivery_pipeline(
         pool: &SqlitePool,
-        organization_id: Option<Uuid>,
+        organization_id: Option<&DbUuid>,
     ) -> Result<Self, CrmPipelineError> {
         let pipeline = Self::create(
             pool,
             CreateCrmPipeline {
-                organization_id,
+                organization_id: organization_id.cloned(),
                 client_id: None,
                 name: "Client Delivery".to_string(),
                 description: Some("Client delivery pipeline: Onboarding → Brand Guide → Online Presence → Social Stack → Monthly Retainer".to_string()),
@@ -557,7 +558,7 @@ impl CrmPipeline {
             CrmPipelineStage::create(
                 pool,
                 CreateCrmPipelineStage {
-                    pipeline_id: pipeline.id,
+                    pipeline_id: pipeline.id.clone(),
                     name: name.to_string(),
                     description: None,
                     color: color.to_string(),
@@ -579,7 +580,7 @@ impl CrmPipelineStage {
         pool: &SqlitePool,
         data: CreateCrmPipelineStage,
     ) -> Result<Self, CrmPipelineError> {
-        let id = Uuid::new_v4();
+        let id = DbUuid::new();
         let is_closed = data.is_closed.map(|b| if b { 1 } else { 0 }).unwrap_or(0);
         let is_won = data.is_won.map(|b| if b { 1 } else { 0 }).unwrap_or(0);
 
@@ -592,8 +593,8 @@ impl CrmPipelineStage {
             RETURNING *
             "#,
         )
-        .bind(id.to_string())
-        .bind(data.pipeline_id.to_string())
+        .bind(&id)
+        .bind(&data.pipeline_id)
         .bind(&data.name)
         .bind(&data.description)
         .bind(&data.color)
@@ -607,7 +608,7 @@ impl CrmPipelineStage {
         Ok(stage)
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, CrmPipelineError> {
+    pub async fn find_by_id(pool: &SqlitePool, id: &DbUuid) -> Result<Self, CrmPipelineError> {
         sqlx::query_as::<_, CrmPipelineStage>(r#"SELECT * FROM crm_pipeline_stages WHERE id = ?1"#)
             .bind(id)
             .fetch_optional(pool)
@@ -617,7 +618,7 @@ impl CrmPipelineStage {
 
     pub async fn find_by_pipeline(
         pool: &SqlitePool,
-        pipeline_id: Uuid,
+        pipeline_id: &DbUuid,
     ) -> Result<Vec<Self>, CrmPipelineError> {
         let stages = sqlx::query_as::<_, CrmPipelineStage>(
             r#"SELECT * FROM crm_pipeline_stages WHERE pipeline_id = ?1 ORDER BY position"#,
@@ -631,7 +632,7 @@ impl CrmPipelineStage {
 
     pub async fn update(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
         data: UpdateCrmPipelineStage,
     ) -> Result<Self, CrmPipelineError> {
         let is_closed = data.is_closed.map(|b| if b { 1 } else { 0 });
@@ -665,7 +666,7 @@ impl CrmPipelineStage {
         .ok_or(CrmPipelineError::StageNotFound)
     }
 
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<(), CrmPipelineError> {
+    pub async fn delete(pool: &SqlitePool, id: &DbUuid) -> Result<(), CrmPipelineError> {
         let result = sqlx::query(r#"DELETE FROM crm_pipeline_stages WHERE id = ?1"#)
             .bind(id)
             .execute(pool)
@@ -681,8 +682,8 @@ impl CrmPipelineStage {
     /// Reorder stages within a pipeline
     pub async fn reorder(
         pool: &SqlitePool,
-        pipeline_id: Uuid,
-        stage_ids: Vec<Uuid>,
+        pipeline_id: &DbUuid,
+        stage_ids: Vec<DbUuid>,
     ) -> Result<Vec<Self>, CrmPipelineError> {
         for (position, stage_id) in stage_ids.iter().enumerate() {
             sqlx::query(
