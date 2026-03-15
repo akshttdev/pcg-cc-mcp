@@ -5,15 +5,15 @@
  * to "In Review" status:
  *   Create task → add QA watcher → To Do → In Progress → In Review → Done
  *
- * Prerequisites:
- *   - Dev server running (FRONTEND_PORT, default 3001)
- *   - Seed database with ORCHA Platform project and QA agent
+ * Self-contained: creates its own project and seeds agents in beforeAll.
+ * No reliance on specific seed DB state beyond Powerclub Global org existing.
  */
 import { test, expect } from "./fixtures";
 import {
   t, login, createDemoProject, TEST_DATA_PREFIX,
   navigateToProjectTasks, navigateToTaskDetail, createTaskViaUI,
   changeTaskStatus, addQaWatcher, findTaskCard, cleanupProject,
+  ensureAgentsSeeded,
 } from "../helpers";
 
 const TASK_TITLE = `${TEST_DATA_PREFIX} Manual QA Trigger ${Date.now()}`;
@@ -25,6 +25,10 @@ const DEMO_PAUSE = 1_500;
 
 test.describe("Manual QA Trigger Demo", () => {
   test.describe.configure({ mode: "serial" });
+
+  test.beforeAll(async ({ request }) => {
+    await ensureAgentsSeeded(request);
+  });
 
   test("Step 1: Create a task via the UI", async ({ page }) => {
     await login(page);
@@ -43,6 +47,10 @@ test.describe("Manual QA Trigger Demo", () => {
   test("Step 2: Add QA watcher from task detail drawer", async ({ page }) => {
     await navigateToTaskDetail(page, TASK_PATH);
     await addQaWatcher(page, { demoPause: DEMO_PAUSE });
+
+    // Verify the ORCHA QA agent name is visible alongside "Watching" status
+    await expect(page.getByText(/ORCHA QA/i)).toBeVisible({ timeout: t(5_000) });
+    await expect(page.getByText("Watching")).toBeVisible({ timeout: t(5_000) });
   });
 
   test("Step 3: Change status To Do → In Progress", async ({ page }) => {
@@ -59,14 +67,22 @@ test.describe("Manual QA Trigger Demo", () => {
 
   test("Step 5: Verify watcher stayed in Watching (no PR)", async ({ page }) => {
     await navigateToTaskDetail(page, TASK_PATH);
+
+    // With no PR attached, the watcher should remain in "Watching" state
+    await expect(page.getByText(/ORCHA QA/i)).toBeVisible({ timeout: t(5_000) });
     await expect(page.getByText("Watching")).toBeVisible({ timeout: t(5_000) });
     await page.waitForTimeout(DEMO_PAUSE);
   });
 
   test("Step 6: Verify task in In Review on kanban", async ({ page }) => {
     await navigateToProjectTasks(page, PROJECT_ID);
-    await expect(page.getByText("In Review").first()).toBeVisible({ timeout: t(10_000) });
-    await expect(findTaskCard(page, TASK_TITLE)).toBeVisible({ timeout: t(5_000) });
+
+    // Verify the task card is visible on the board
+    const card = findTaskCard(page, TASK_TITLE);
+    await expect(card).toBeVisible({ timeout: t(10_000) });
+
+    // Verify "In Review" column header is visible
+    await expect(page.getByText("In Review").first()).toBeVisible({ timeout: t(5_000) });
     await page.waitForTimeout(DEMO_PAUSE);
   });
 

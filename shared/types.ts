@@ -178,6 +178,10 @@ export type TaskRelationships = { parent_task: Task | null, current_attempt: Tas
 
 export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, 
 /**
+ * JSON-encoded collaborators/watchers array
+ */
+collaborators: string | null, 
+/**
  * Base64 encoded screenshot image for bug reports
  */
 screenshot: string | null, 

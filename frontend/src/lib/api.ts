@@ -1256,7 +1256,8 @@ export const agentsApi = {
     if (!response.ok) {
       throw new ApiError('Failed to search agents', response.status, response);
     }
-    return response.json();
+    const body = await response.json();
+    return body.data ?? body;
   },
 
   // List active agents only
@@ -1265,7 +1266,8 @@ export const agentsApi = {
     if (!response.ok) {
       throw new ApiError('Failed to load active agents', response.status, response);
     }
-    return response.json();
+    const body = await response.json();
+    return body.data ?? body;
   },
 
   // Get agent by ID
