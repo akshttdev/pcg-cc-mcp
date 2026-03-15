@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-rust-unwraps.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-frontend-any.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
