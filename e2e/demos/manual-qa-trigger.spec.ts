@@ -91,10 +91,9 @@ test.describe("Manual QA Trigger Demo", () => {
     await changeTaskStatus(page, "In Progress", "In Review", { demoPause: DEMO_PAUSE });
 
     // With a PR linked, the server's spawn_watcher_reviews should trigger.
-    // Wait for the watcher to change from "Watching" to "Triggered"
-    // Note: If the real QA agent executor is not available, the watcher may
-    // stay in triggered state. We'll simulate the verdict in the next step.
-    await page.waitForTimeout(DEMO_PAUSE * 2);
+    // Wait for the QA watcher trigger toast
+    await waitForToast(page, /QA review started|watcher.*trigger/i, { timeout: t(15_000) });
+    await page.waitForTimeout(DEMO_PAUSE);
   });
 
   test("Step 6: QA watcher verdict — simulate QA pass", async ({ page, request }) => {
@@ -123,8 +122,16 @@ test.describe("Manual QA Trigger Demo", () => {
     // Simulate QA verdict: PASS
     await simulateQaVerdict(request, TASK_ID, QA_AGENT_ID, "qa_pass");
 
-    // Wait for "QA verdict: PASS" toast
-    await waitForToast(page, /QA verdict.*PASS/i, { timeout: t(15_000) });
+    // Force reload to pick up the verdict change (AgentWatcherPanel fetches once on mount)
+    await page.reload();
+    await expect(
+      page.getByText("Agent Reviewers", { exact: true })
+    ).toBeVisible({ timeout: t(10_000) });
+
+    // Wait for watcher badge to update to "Passed"
+    await expect(
+      page.getByText(/Passed|qa_pass/i)
+    ).toBeVisible({ timeout: t(10_000) });
     await page.waitForTimeout(DEMO_PAUSE);
   });
 

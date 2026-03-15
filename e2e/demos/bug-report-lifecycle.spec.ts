@@ -131,13 +131,10 @@ test.describe("Bug Report Lifecycle Demo", () => {
   });
 
   test("Step 5: Verify task in In Review on kanban", async ({ page }) => {
+    // Verify on kanban board that task appears in In Review column
     await navigateToProjectTasks(page, BUGREPORTS_PROJECT_ID);
-
-    // Verify task card is visible on the board
     const card = findTaskCard(page, BUG_TITLE);
     await expect(card).toBeVisible({ timeout: t(10_000) });
-
-    // Verify "In Review" column header is visible (confirms we can see the column)
     await expect(page.getByText("In Review").first()).toBeVisible({ timeout: t(5_000) });
     await page.waitForTimeout(DEMO_PAUSE);
   });
@@ -160,8 +157,16 @@ test.describe("Bug Report Lifecycle Demo", () => {
     // Simulate QA verdict: PASS
     await simulateQaVerdict(request, TASK_ID, QA_AGENT_ID, "qa_pass");
 
-    // Wait for "QA verdict: PASS" toast
-    await waitForToast(page, /QA verdict.*PASS/i, { timeout: t(15_000) });
+    // Force reload to pick up the verdict change (AgentWatcherPanel fetches once on mount)
+    await page.reload();
+    await expect(
+      page.getByText("Agent Reviewers", { exact: true })
+    ).toBeVisible({ timeout: t(10_000) });
+
+    // Wait for watcher badge to update to "Passed"
+    await expect(
+      page.getByText(/Passed|qa_pass/i)
+    ).toBeVisible({ timeout: t(10_000) });
     await page.waitForTimeout(DEMO_PAUSE);
   });
 

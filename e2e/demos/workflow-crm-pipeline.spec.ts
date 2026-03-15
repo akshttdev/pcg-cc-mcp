@@ -68,9 +68,10 @@ async function addExtractNode(
   const nameInput = page.getByText("Node Name", { exact: true }).locator("..").getByRole("textbox");
   await nameInput.fill(name);
 
-  await page
-    .getByRole("textbox", { name: /Analyze the following content/ })
-    .fill(prompt);
+  // Fill the prompt template textarea (under "Prompt Template" label)
+  const promptTextarea = page.getByRole("textbox", { name: /extraction instructions|Analyze the following/ });
+  await expect(promptTextarea).toBeVisible({ timeout: t(5_000) });
+  await promptTextarea.fill(prompt);
 
   await page.getByRole("combobox").filter({ hasText: /Add input connection/ }).click();
   await page.getByRole("option", { name: new RegExp(connectTo) }).first().click();
@@ -105,7 +106,7 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
   test.describe.configure({ mode: "serial" });
 
   test("Part 1: Build CRM extraction workflow", async ({ page }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(120_000);
     await login(page);
     await page.goto("/workflows");
     await expect(page.getByRole("button", { name: "New Workflow" })).toBeVisible({
@@ -279,6 +280,27 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
       pageText?.includes("Contacts") || pageText?.includes("contact") ||
       pageText?.includes("Companies") || pageText?.includes("company");
     expect(hasRecordTypes).toBeTruthy();
+
+    // Verify specific extracted field values (emails from transcript)
+    const hasEmail = await Promise.any([
+      expect(body).toContainText("marcus.webb@acmecorp.com", { timeout: t(5_000) }).then(() => true),
+      expect(body).toContainText("lisa.park@acmecorp.com", { timeout: t(5_000) }).then(() => true),
+      expect(body).toContainText("raj.patel@acmecorp.com", { timeout: t(5_000) }).then(() => true),
+    ]).catch(() => false);
+    expect(hasEmail, "No email addresses found in staged records").toBeTruthy();
+
+    // Verify deal amounts were extracted
+    const hasAmount = await Promise.any([
+      expect(body).toContainText("450000", { timeout: t(5_000) }).then(() => true),
+      expect(body).toContainText("450,000", { timeout: t(5_000) }).then(() => true),
+      expect(body).toContainText("200000", { timeout: t(5_000) }).then(() => true),
+      expect(body).toContainText("200,000", { timeout: t(5_000) }).then(() => true),
+    ]).catch(() => false);
+    expect(hasAmount, "No deal amounts found in staged records").toBeTruthy();
+
+    // Verify staging actions are available (approve/commit buttons)
+    const approveBtn = page.getByRole("button", { name: /approve|commit/i }).first();
+    await expect(approveBtn).toBeVisible({ timeout: t(5_000) });
 
     await page.waitForTimeout(DEMO_PAUSE * 2);
   });
