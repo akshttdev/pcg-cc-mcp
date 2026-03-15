@@ -268,8 +268,13 @@ Use proper Spanish characters (`é`, `ñ`, `í`, `ó`, `ú`, `ü`) in the conver
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **Separate demo or extend Demo 4?** → Separate demo script (cleaner, independent, can run in isolation)
-2. **CRM pipeline for deals?** → Reuse existing default pipeline or create a "LATAM Pipeline" for the demo?
-3. **Translation node output_mode**: Should be `text` (not `structured`) since translation produces prose, not JSON. Verify the UI supports selecting output mode per node.
+1. **Separate demo or extend Demo 4?** → Separate demo script. Cleaner, independent, can run in isolation.
+2. **CRM pipeline for deals?** → Reuses existing default pipeline. No LATAM-specific pipeline needed.
+3. **Translation node chaining?** → **Abandoned.** Chaining via Translate & Summarize (text output) → Extract Contacts only produced company records (4 companies, 0 contacts/deals). Root cause: text output from `llm_summarize` doesn't propagate correctly to downstream `llm_extract` nodes via `{{previous_results}}`. **Final design:** All 3 extract nodes connect directly to Data Source with Spanish-aware prompts. The LLM handles translation inline during extraction. This produces contacts + companies + deals reliably.
+4. **Shared helpers?** → `addExtractNode` / `addOutputNode` extracted to `e2e/helpers/workflow-builder.ts` (QA follow-up).
+
+## QA Review
+
+See `planning/2026-03-15--review--spanish-demo-qa.md` — all findings resolved, merge approved.
