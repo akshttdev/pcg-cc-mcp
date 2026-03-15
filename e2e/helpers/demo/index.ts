@@ -18,3 +18,6 @@ export {
   createPrForTask,
 } from "./simulation";
 export { cleanupDemoBranches, cleanupDemoPr } from "./cleanup";
+
+// Re-export toast assertion helpers
+export { waitForToast } from "./assertions";

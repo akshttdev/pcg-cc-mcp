@@ -2,61 +2,247 @@ import { APIRequestContext, expect } from "@playwright/test";
 import { apiLogin } from "../auth";
 import { DEMO_REPO_CONFIG, type DemoRepoConfig } from "./config";
 
+const GITHUB_API = "https://api.github.com";
+
+/** Helper to make GitHub API calls with auth */
+async function ghApi(
+  request: APIRequestContext,
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  path: string,
+  data?: unknown
+) {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) throw new Error("GITHUB_TOKEN env var required for demo simulation");
+
+  const url = path.startsWith("http") ? path : `${GITHUB_API}${path}`;
+  const opts = {
+    headers: {
+      Authorization: `token ${token}`,
+      Accept: "application/vnd.github.v3+json",
+    },
+    ...(data ? { data } : {}),
+  };
+
+  switch (method) {
+    case "GET": return request.get(url, opts);
+    case "POST": return request.post(url, opts);
+    case "PUT": return request.put(url, opts);
+    case "PATCH": return request.patch(url, opts);
+    case "DELETE": return request.delete(url, opts);
+  }
+}
+
+/**
+ * Create a branch with a commit in the sandbox repo via GitHub API.
+ * Returns the branch name.
+ */
+async function createBranchWithCommit(
+  request: APIRequestContext,
+  config: DemoRepoConfig,
+  branchName: string,
+  message: string
+): Promise<string> {
+  const { owner, name, defaultBranch } = config;
+
+  // 1. Get the SHA of the default branch
+  const refRes = await ghApi(
+    request, "GET",
+    `/repos/${owner}/${name}/git/refs/heads/${defaultBranch}`
+  );
+  expect(refRes.ok(), `Failed to get ref for ${defaultBranch}`).toBeTruthy();
+  const refData = await refRes.json();
+  const baseSha = refData.object.sha;
+
+  // 2. Create a new branch
+  const createRefRes = await ghApi(
+    request, "POST",
+    `/repos/${owner}/${name}/git/refs`,
+    { ref: `refs/heads/${branchName}`, sha: baseSha }
+  );
+  expect(createRefRes.ok(), `Failed to create branch ${branchName}`).toBeTruthy();
+
+  // 3. Create a file on the branch (the "agent's commit")
+  const timestamp = new Date().toISOString();
+  const content = Buffer.from(
+    `// Agent simulation commit\n// Task: ${message}\n// Created: ${timestamp}\nexport const status = "completed";\n`
+  ).toString("base64");
+
+  const filePath = `src/agent-work-${Date.now()}.ts`;
+  const createFileRes = await ghApi(
+    request, "PUT",
+    `/repos/${owner}/${name}/contents/${filePath}`,
+    {
+      message,
+      content,
+      branch: branchName,
+    }
+  );
+  expect(createFileRes.ok(), `Failed to create file on ${branchName}`).toBeTruthy();
+
+  return branchName;
+}
+
+/**
+ * Create a PR in the sandbox repo via GitHub API.
+ */
+async function createPr(
+  request: APIRequestContext,
+  config: DemoRepoConfig,
+  branchName: string,
+  title: string,
+  body: string
+): Promise<{ prNumber: number; prUrl: string }> {
+  const { owner, name, defaultBranch } = config;
+
+  const prRes = await ghApi(
+    request, "POST",
+    `/repos/${owner}/${name}/pulls`,
+    {
+      title,
+      body,
+      head: branchName,
+      base: defaultBranch,
+    }
+  );
+  expect(prRes.ok(), "Failed to create PR").toBeTruthy();
+  const prData = await prRes.json();
+
+  return {
+    prNumber: prData.number,
+    prUrl: prData.html_url,
+  };
+}
+
+/**
+ * Get or create a task attempt for the given task.
+ * If an attempt already exists, returns the latest one.
+ * Otherwise creates a new one (execution will fail, but the record persists).
+ */
+async function ensureTaskAttempt(
+  request: APIRequestContext,
+  taskId: string
+): Promise<string> {
+  // Check for existing attempts
+  const attemptsRes = await request.get(`/api/task-attempts?task_id=${taskId}`);
+  expect(attemptsRes.ok()).toBeTruthy();
+  const attemptsData = await attemptsRes.json();
+  const attempts = attemptsData.data ?? attemptsData;
+
+  if (Array.isArray(attempts) && attempts.length > 0) {
+    return attempts[0].id;
+  }
+
+  // Create a new attempt — execution will likely fail but record persists
+  const createRes = await request.post("/api/task-attempts", {
+    data: {
+      task_id: taskId,
+      executor_profile_id: { executor: "CLAUDE_CODE", variant: null },
+      base_branch: "main",
+    },
+  });
+
+  // Even if execution fails, attempt record may exist
+  // Try to fetch attempts again
+  const retryRes = await request.get(`/api/task-attempts?task_id=${taskId}`);
+  if (retryRes.ok()) {
+    const retryData = await retryRes.json();
+    const retryAttempts = retryData.data ?? retryData;
+    if (Array.isArray(retryAttempts) && retryAttempts.length > 0) {
+      return retryAttempts[0].id;
+    }
+  }
+
+  // If creation succeeded, use that
+  if (createRes.ok()) {
+    const createData = await createRes.json();
+    return createData.data?.id ?? createData.id;
+  }
+
+  throw new Error(`Failed to create task attempt for task ${taskId}`);
+}
+
 /**
  * Simulate dev agent work via API calls.
  *
  * This does what a real dev agent completion triggers:
- * 1. Creates a branch + commit in the sandbox repo (via gh CLI)
- * 2. Creates a PR via gh CLI
- * 3. Links the PR to the task via merge record API
- * 4. Updates task status to `inreview` (triggers spawn_watcher_reviews)
+ * 1. Creates a branch + commit in the sandbox repo (via GitHub API)
+ * 2. Creates a PR via GitHub API
+ * 3. Creates a task attempt (if none exists)
+ * 4. Links the PR to the task attempt via POST /api/task-attempts/:id/link-pr
+ * 5. Updates task status to `inreview` (triggers spawn_watcher_reviews)
  *
- * @returns { branch, prNumber, prUrl } for cleanup
+ * @returns { branch, prNumber, prUrl, attemptId } for cleanup
  */
 export async function simulateDevAgentWork(
   request: APIRequestContext,
   taskId: string,
   repo?: Partial<DemoRepoConfig>
-): Promise<{ branch: string; prNumber: number; prUrl: string }> {
+): Promise<{ branch: string; prNumber: number; prUrl: string; attemptId: string }> {
   const config = { ...DEMO_REPO_CONFIG, ...repo };
   await apiLogin(request);
 
-  // TODO Phase 1: Implement when sandbox repo is created
-  // 1. gh api to create branch from default branch
-  // 2. gh api to create/update a file on that branch (the "agent's commit")
-  // 3. gh pr create
-  // 4. POST /api/merges to link PR to task attempt
-  // 5. PATCH /api/tasks/:id { status: "inreview" }
-
-  throw new Error(
-    "simulateDevAgentWork not yet implemented — needs sandbox repo (Phase 0)"
+  // 1. Create branch + commit in sandbox repo
+  const branchName = `e2e-demo/${taskId.slice(0, 8)}-${Date.now()}`;
+  await createBranchWithCommit(
+    request, config, branchName,
+    `feat: agent work for task ${taskId.slice(0, 8)}`
   );
+
+  // 2. Create PR
+  const { prNumber, prUrl } = await createPr(
+    request, config, branchName,
+    `[E2E Demo] Agent work for task ${taskId.slice(0, 8)}`,
+    `Automated agent simulation commit.\n\nTask: ${taskId}`
+  );
+
+  // 3. Ensure task attempt exists
+  const attemptId = await ensureTaskAttempt(request, taskId);
+
+  // 4. Link PR to task attempt
+  const linkRes = await request.post(`/api/task-attempts/${attemptId}/link-pr`, {
+    data: {
+      pr_number: prNumber,
+      pr_url: prUrl,
+      target_branch: config.defaultBranch,
+    },
+  });
+  expect(linkRes.ok(), `Failed to link PR to attempt ${attemptId}`).toBeTruthy();
+
+  // 5. Update task status to inreview (triggers watcher spawn)
+  const updateRes = await request.put(`/api/tasks/${taskId}`, {
+    data: { status: "inreview" },
+  });
+  expect(updateRes.ok(), "Failed to update task status to inreview").toBeTruthy();
+
+  return { branch: branchName, prNumber, prUrl, attemptId };
 }
 
 /**
  * Simulate a QA watcher verdict via API calls.
  *
  * This does what a real QA agent's finalize_review triggers:
- * 1. Creates an execution artifact with verdict JSON
- * 2. Updates the watcher's collaborator action to the verdict
+ * 1. Updates the watcher's collaborator action to the verdict
+ * 2. Broadcasts the change via WebSocket (server-side)
  *
+ * @param agentId - The agent watcher's ID
  * @param verdict - "qa_pass" | "qa_needs_changes" | "qa_fail"
  */
 export async function simulateQaVerdict(
   request: APIRequestContext,
   taskId: string,
+  agentId: string,
   verdict: "qa_pass" | "qa_needs_changes" | "qa_fail"
 ): Promise<void> {
   await apiLogin(request);
 
-  // TODO Phase 1: Implement
-  // 1. Find the watcher's task attempt (GET /api/tasks/:id should include collaborators)
-  // 2. Create execution artifact with { verdict: "PASS"|"NEEDS_CHANGES"|"FAIL" }
-  // 3. Update collaborator last_action to verdict
-
-  throw new Error(
-    "simulateQaVerdict not yet implemented — needs API investigation (Phase 1)"
-  );
+  const res = await request.patch(`/api/tasks/${taskId}/collaborators`, {
+    data: {
+      actor_id: agentId,
+      actor_type: "agent_watcher",
+      action: verdict,
+    },
+  });
+  expect(res.ok(), `Failed to set QA verdict ${verdict} for agent ${agentId}`).toBeTruthy();
 }
 
 /**
@@ -68,17 +254,35 @@ export async function simulateQaVerdict(
 export async function createPrForTask(
   request: APIRequestContext,
   taskId: string,
-  branch: string,
   repo?: Partial<DemoRepoConfig>
-): Promise<{ prNumber: number; prUrl: string }> {
+): Promise<{ branch: string; prNumber: number; prUrl: string; attemptId: string }> {
   const config = { ...DEMO_REPO_CONFIG, ...repo };
   await apiLogin(request);
 
-  // TODO Phase 1: Implement
-  // 1. gh pr create on the branch
-  // 2. POST /api/merges to link PR to task attempt
-
-  throw new Error(
-    "createPrForTask not yet implemented — needs sandbox repo (Phase 0)"
+  // Create branch + commit
+  const branchName = `e2e-demo/${taskId.slice(0, 8)}-${Date.now()}`;
+  await createBranchWithCommit(
+    request, config, branchName,
+    `feat: stub PR for task ${taskId.slice(0, 8)}`
   );
+
+  // Create PR
+  const { prNumber, prUrl } = await createPr(
+    request, config, branchName,
+    `[E2E Demo] Stub PR for task ${taskId.slice(0, 8)}`,
+    `Stub PR for manual QA trigger demo.\n\nTask: ${taskId}`
+  );
+
+  // Ensure task attempt + link PR
+  const attemptId = await ensureTaskAttempt(request, taskId);
+  const linkRes = await request.post(`/api/task-attempts/${attemptId}/link-pr`, {
+    data: {
+      pr_number: prNumber,
+      pr_url: prUrl,
+      target_branch: config.defaultBranch,
+    },
+  });
+  expect(linkRes.ok(), `Failed to link PR to attempt ${attemptId}`).toBeTruthy();
+
+  return { branch: branchName, prNumber, prUrl, attemptId };
 }
