@@ -8,38 +8,92 @@ paths:
 ## Type Safety
 
 - NEVER use `any` type — use proper interfaces or `unknown` with type guards
-- If a type is generated from Rust (via ts-rs), import from `shared/types`
+- Import types from `shared/types` when generated from Rust (via ts-rs)
 - After modifying Rust structs with `#[derive(TS)]`, run `npm run generate-types`
 - Prefer `satisfies` over `as` for type assertions
+- Define component props as `interface ComponentProps { }` — not inline object types
 
 ## Component Architecture
 
-- Maximum component file size: 500 lines. If larger, extract sub-components
+- Maximum component file size: 500 lines. If larger, extract sub-components into a directory
 - Each component file should export ONE primary component
 - Co-locate sub-components in a directory (e.g., `sidebar/Sidebar.tsx`, `sidebar/OrgSection.tsx`)
 - Use barrel exports (`index.tsx`) for backward compatibility when splitting files
+- Functional components only — no class components
+
+## State Management
+
+- **React Query** for server state (API data) — all fetching/caching through `useQuery`/`useMutation`
+- **Zustand stores** for client state (UI preferences, expand/collapse, selection, filters)
+- Do NOT mix — don't put API data in Zustand, don't put UI state in React Query
+- Use `useExpandable` store for any collapsible/expandable UI that should persist across navigation
+- Use `persist` middleware for Zustand stores that should survive page refresh
+
+## React Query Patterns
+
+- Configure `staleTime` appropriately (default: 5 minutes via QueryClient defaults)
+- Invalidate related queries on mutation success: `queryClient.invalidateQueries({ queryKey: [...] })`
+- Use optimistic updates via `queryClient.setQueryData()` for responsive UI
+- Always handle `error` state in the component render — never show blank on failure
+
+## API Client
+
+- All HTTP requests go through `lib/api.ts` domain modules (e.g., `tasksApi.create()`)
+- Never use raw `fetch()` directly — use `makeRequest()` from the API client
+- API methods return typed promises: `async (data: CreateTask): Promise<Task>`
+- API errors include status, endpoint, and timestamp in logs
+
+## Dialogs & Modals
+
+- Use NiceModal (`@ebay/nice-modal-react`) for all dialogs
+- Register dialogs in `main.tsx` with `NiceModal.register('dialog-name', Component)`
+- Dialog components export via `NiceModal.create<PropsType>()`
+- Close with `modal.hide()`, return data with `modal.resolve(data)`
+- Always wrap `NiceModal.show()` in try/catch — dismiss throws
+
+## Routing
+
+- Use `React.lazy()` for all page-level components — never import pages eagerly
+- Wrap lazy pages in `<Suspense fallback={<PageLoader />}>`
+- Use `ProtectedRoute`, `AdminRoute`, `RoleRoute` HOCs for access control
+- URL patterns: `/projects/:projectId/tasks`, `/organizations/:orgId/members`, etc.
 
 ## Error Handling
 
 - Wrap major page sections in `<ErrorBoundary>` — never let one tab crash the whole page
-- All `useQuery` calls should handle error state in the UI
 - All `useEffect` with async operations must have cleanup (AbortController or return fn)
-- Never silently swallow errors — at minimum `console.error()`, preferably user-visible feedback
+- All WebSocket/SSE hooks must clean up connections in the useEffect return function
+- Never silently swallow errors — at minimum `console.error()`, preferably toast via `sonner`
 
-## State Management
+## Styling
 
-- Use React Query for server state (API data)
-- Use Zustand stores for client state (UI preferences, expand/collapse)
-- Do NOT mix — don't put API data in Zustand, don't put UI state in React Query
-- Use `useExpandable` store for any collapsible/expandable UI that should persist across navigation
+- Use Tailwind CSS utility classes — no custom CSS unless absolutely necessary
+- Use `cn()` from `@/lib/utils` for conditional/merged class names
+- Use shadcn/ui components from `@/components/ui/` — don't create custom primitives
+- Icons from `lucide-react` — import only the icons you need (tree-shake)
+- Support dark mode with `dark:` prefix variants
 
 ## Performance
 
-- Only add `useMemo`/`useCallback` when there's a measured performance problem or an expensive computation
-- Use `React.lazy()` for tabs within large pages — don't load all tab content eagerly
-- Keep dependencies array in hooks accurate — use ESLint `exhaustive-deps` rule
+- Only add `useMemo`/`useCallback` when there's a measured performance problem or expensive computation
+- Memoize context provider values with `useMemo` to prevent unnecessary re-renders
+- Keep `useEffect` dependency arrays accurate — use ESLint `exhaustive-deps` rule
+
+## Modularity & Functional Design
+
+- Prefer pure functions for data transformations — no side effects, easy to test
+- Extract business logic into custom hooks — components should focus on rendering
+- Keep components small and composable: one component = one responsibility
+- Extract repeated UI patterns into shared components in `components/ui/`
+- Extract repeated data logic into custom hooks in `hooks/`
+- Use composition over configuration — pass children/render props instead of adding boolean flags
+- Prefer `.map()`, `.filter()`, `.reduce()` over imperative loops for data transformations
+- Avoid deeply nested ternaries — extract to helper functions or early returns
+- Co-locate related code: hook + component + types in the same directory
+- Split pages into container (data fetching) + presentational (rendering) when complex
 
 ## Constants
 
 - No magic strings or numbers inline — extract to constants files
-- Colors, timeouts, batch sizes, and validation limits should be in `src/constants/`
+- Colors, timeouts, batch sizes, and validation limits should be in named constants
+- Task status values: `todo`, `inprogress`, `inreview`, `done`, `cancelled` (no underscores)
