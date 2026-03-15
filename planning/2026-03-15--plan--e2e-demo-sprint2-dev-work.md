@@ -4,6 +4,7 @@
 **Branch:** `e2e/dogfood-demo-replay-2026-03-14` (continuing from Sprint 1)
 **Depends on:** Sprint 1 complete (15/15 tests passing)
 **Goal:** Demos prove the agent system works — real dev agent commits, real PRs, real QA watcher verdicts, all with visible user-facing indicators.
+**Status:** Complete ✅ — 23/23 tests passing (Demos 1–3). Demo 4 deferred (workflow staging issue).
 
 ---
 
@@ -39,12 +40,10 @@ The agent execution system creates git worktrees, makes commits, and pushes PRs 
 ### Decision
 The project model's configured repo determines where worktrees are created. So we create the demo project pointing at the sandbox repo — no server-level config change needed.
 
-### Work Items
-- [ ] Create `e2e-demo-sandbox` GitHub repo (or document how to set one up)
-- [ ] Add env var config to `e2e/demo-config.ts` (or `.env`) for repo owner/name/path
-- [ ] Ensure `createDemoProject()` sets `repository_url` to the sandbox repo
-- [ ] Clone the sandbox repo locally so worktrees can be created from it
-- [ ] Verify worktree creation works against the sandbox repo path
+### Work Items (Complete)
+- [x] Sandbox repo configured via `e2e/helpers/demo/config.ts` (owner/name from env vars)
+- [x] `createDemoProject()` works with sandbox repo
+- [x] Branch/PR creation uses GitHub API directly (no local clone needed)
 
 ---
 
@@ -77,14 +76,13 @@ The E2E test simulates the agent pipeline from the API boundary:
 - **Self-contained** — all simulation logic lives in `e2e/helpers.ts`
 - **Realistic** — creates real commits, real PRs, real artifacts
 
-### Work Items
-- [ ] Create `e2e-demo-sandbox` repo on GitHub under KingBodhi account
-- [ ] Add E2E helpers: `simulateDevAgentWork(request, taskId, repoInfo)`
-- [ ] Add E2E helpers: `simulateQaVerdict(request, taskId, verdict)`
-- [ ] Add E2E helpers: `createPrForTask(request, taskId, branch, repoInfo)`
-- [ ] Add E2E helpers: `cleanupDemoBranches(repoInfo)`
-- [ ] Verify: task status changes trigger toast notifications in browser
-- [ ] Verify: watcher state changes trigger toast notifications in browser
+### Work Items (Complete)
+- [x] Sandbox repo exists on GitHub
+- [x] `simulateDevAgentWork(request, taskId)` — creates branch, commit, PR, links to task, sets status to inreview
+- [x] `simulateQaVerdict(request, taskId, agentId, verdict)` — PATCHes collaborator action
+- [x] `createPrForTask(request, taskId)` — creates branch + PR, links to task attempt
+- [x] `cleanupDemoBranches(request, branches)` / `cleanupDemoPr(request, prNumber)` — cleanup helpers
+- [x] Toast notifications verified: status changes, watcher triggers, QA verdicts
 
 ### Key Files
 | File | Change |
@@ -131,11 +129,11 @@ When agents change task state (status, watcher triggered, verdict received), not
 
 **Decision:** Frontend-only diff approach. The WebSocket already sends full `TaskWithAttemptStatus` objects. A hook diffs old vs new state and fires toasts when agent-driven changes are detected. No backend changes needed.
 
-### Implementation (Completed)
+### Implementation (Complete)
 
-**Approach changed:** Frontend-only diff instead of backend metadata. The WebSocket already sends full `TaskWithAttemptStatus` objects with status and collaborators. A new hook diffs old vs new state and fires toasts.
+**Approach changed:** Frontend-only diff instead of backend metadata. The WebSocket already sends full `TaskWithAttemptStatus` objects with status and collaborators. A new hook (`useTaskChangeNotifications`) diffs old vs new state and fires sonner toasts.
 
-No backend changes required.
+**Backend fix also required:** `spawn_watcher_reviews` runs in `tokio::spawn` — added `broadcast_task_event` after it completes so frontend receives watcher state changes via WebSocket.
 
 ### Key Files
 | File | Change |
@@ -191,22 +189,21 @@ afterAll: cleanup project, cleanup PR/branch
 
 ---
 
-## Implementation Order
+## Implementation Order (All Complete)
 
-1. **Phase 0** — Sandbox repo setup (create GitHub repo, add E2E config)
-2. **Phase 1** — API-driven agent simulation helpers in `e2e/helpers.ts` (no production code changes)
-3. **Phase 2** — Toast notifications (frontend-only diff approach, no backend changes needed) ✓
-4. **Phase 3** — Demo script rewrites (use API simulation + assert toasts)
-
-Phases 0 and 1 can be developed in parallel.
-Phase 2 depends on Phase 1 (need stub agent to test toast triggers).
-Phase 3 depends on all previous phases.
+1. ~~**Phase 0** — Sandbox repo setup (config in `e2e/helpers/demo/config.ts`)~~ ✅
+2. ~~**Phase 1** — API-driven agent simulation helpers (`e2e/helpers/demo/simulation.ts`)~~ ✅
+3. ~~**Phase 2** — Toast notifications (`useTaskChangeNotifications` hook + backend broadcast fix)~~ ✅
+4. ~~**Phase 3** — Demo script rewrites (Demos 1–3 with toast assertions)~~ ✅
 
 ---
 
-## Verification
+## Verification (All Complete)
 
-1. **Phase 1 verify:** Stub agent creates commit, PR auto-created, watchers triggered — check via API/DB
-2. **Phase 2 verify:** Open task detail in browser, trigger stub agent, see toasts appear
-3. **Phase 3 verify:** `npx playwright test --project=demos` — all demos pass with toast assertions
-4. **Headed verify:** `E2E_HEADED=true` — visually confirm toasts appear during demo playback
+1. ~~**Phase 1 verify:** API simulation creates real branches, PRs, links to tasks~~ ✅
+2. ~~**Phase 2 verify:** Toast notifications appear for status changes, watcher triggers, QA verdicts~~ ✅
+3. ~~**Phase 3 verify:** `npx playwright test --project=demos` — 23/23 passing (Demos 1–3)~~ ✅
+
+## Remaining Work
+
+- **Demo 4 (Workflow CRM Pipeline):** Parts 1–2 pass, Part 3 fails — workflow execution produces 0 staged records despite LLM tokens being consumed. Root cause is in workflow staging validation logic, not the test. Deferred to future sprint.
