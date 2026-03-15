@@ -126,8 +126,6 @@ pub mod entity_graph;
 pub mod workflow_run;
 pub mod workflow_staging;
 pub mod workflow_trigger;
-pub mod org_brand_profile;
-pub mod brand_intake_token;
 pub mod sync_folder;
 pub mod sync_device;
 pub mod sync_state;

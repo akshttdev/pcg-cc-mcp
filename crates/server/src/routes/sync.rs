@@ -47,6 +47,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
+use deployment::Deployment;
 use crate::{DeploymentImpl, error::ApiError};
 
 // ── Subscription types ─────────────────────────────────────────────────────
@@ -77,7 +78,7 @@ async fn list_folders(
     State(dep): State<DeploymentImpl>,
     Path(org_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<SyncFolder>>>, ApiError> {
-    let folders = SyncFolder::find_by_organization(&dep.pool, org_id).await?;
+    let folders = SyncFolder::find_by_organization(&dep.db().pool, org_id).await?;
     Ok(Json(ApiResponse::success(folders)))
 }
 
@@ -87,7 +88,7 @@ async fn create_folder(
     Json(mut input): Json<CreateSyncFolder>,
 ) -> Result<Json<ApiResponse<SyncFolder>>, ApiError> {
     input.organization_id = org_id;
-    let folder = SyncFolder::create(&dep.pool, input).await?;
+    let folder = SyncFolder::create(&dep.db().pool, input).await?;
     Ok(Json(ApiResponse::success(folder)))
 }
 
@@ -96,7 +97,7 @@ async fn update_folder(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateSyncFolder>,
 ) -> Result<Json<ApiResponse<Option<SyncFolder>>>, ApiError> {
-    let folder = SyncFolder::update(&dep.pool, id, input).await?;
+    let folder = SyncFolder::update(&dep.db().pool, id, input).await?;
     Ok(Json(ApiResponse::success(folder)))
 }
 
@@ -104,7 +105,7 @@ async fn delete_folder(
     State(dep): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    SyncFolder::archive(&dep.pool, id).await?;
+    SyncFolder::archive(&dep.db().pool, id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -114,7 +115,7 @@ async fn list_devices(
     State(dep): State<DeploymentImpl>,
     Path(org_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<SyncDevice>>>, ApiError> {
-    let devices = SyncDevice::find_by_organization(&dep.pool, org_id).await?;
+    let devices = SyncDevice::find_by_organization(&dep.db().pool, org_id).await?;
     Ok(Json(ApiResponse::success(devices)))
 }
 
@@ -122,7 +123,7 @@ async fn register_device(
     State(dep): State<DeploymentImpl>,
     Json(input): Json<RegisterDevice>,
 ) -> Result<Json<ApiResponse<SyncDevice>>, ApiError> {
-    let device = SyncDevice::register(&dep.pool, input).await?;
+    let device = SyncDevice::register(&dep.db().pool, input).await?;
     Ok(Json(ApiResponse::success(device)))
 }
 
@@ -130,7 +131,7 @@ async fn heartbeat_device(
     State(dep): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    SyncDevice::heartbeat(&dep.pool, id).await?;
+    SyncDevice::heartbeat(&dep.db().pool, id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -139,7 +140,7 @@ async fn update_device_status(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateDeviceStatus>,
 ) -> Result<Json<ApiResponse<Option<SyncDevice>>>, ApiError> {
-    let device = SyncDevice::update_status(&dep.pool, id, input).await?;
+    let device = SyncDevice::update_status(&dep.db().pool, id, input).await?;
     Ok(Json(ApiResponse::success(device)))
 }
 
@@ -147,7 +148,7 @@ async fn deactivate_device(
     State(dep): State<DeploymentImpl>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    SyncDevice::deactivate(&dep.pool, id).await?;
+    SyncDevice::deactivate(&dep.db().pool, id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -157,7 +158,7 @@ async fn get_device_state(
     State(dep): State<DeploymentImpl>,
     Path(device_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<SyncState>>>, ApiError> {
-    let state = SyncState::find_by_device(&dep.pool, device_id).await?;
+    let state = SyncState::find_by_device(&dep.db().pool, device_id).await?;
     Ok(Json(ApiResponse::success(state)))
 }
 
@@ -167,7 +168,7 @@ async fn upsert_state(
     Json(mut input): Json<UpsertSyncState>,
 ) -> Result<Json<ApiResponse<SyncState>>, ApiError> {
     input.device_id = device_id;
-    let state = SyncState::upsert(&dep.pool, input).await?;
+    let state = SyncState::upsert(&dep.db().pool, input).await?;
     Ok(Json(ApiResponse::success(state)))
 }
 
@@ -175,7 +176,7 @@ async fn get_conflicts(
     State(dep): State<DeploymentImpl>,
     Path(device_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<SyncState>>>, ApiError> {
-    let conflicts = SyncState::find_conflicts(&dep.pool, device_id).await?;
+    let conflicts = SyncState::find_conflicts(&dep.db().pool, device_id).await?;
     Ok(Json(ApiResponse::success(conflicts)))
 }
 
@@ -183,7 +184,7 @@ async fn get_pending(
     State(dep): State<DeploymentImpl>,
     Path(device_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<SyncState>>>, ApiError> {
-    let pending = SyncState::find_pending(&dep.pool, device_id).await?;
+    let pending = SyncState::find_pending(&dep.db().pool, device_id).await?;
     Ok(Json(ApiResponse::success(pending)))
 }
 
@@ -192,7 +193,7 @@ async fn resolve_conflict(
     Path(id): Path<Uuid>,
     Json(input): Json<ResolveConflict>,
 ) -> Result<Json<ApiResponse<Option<SyncState>>>, ApiError> {
-    let state = SyncState::resolve_conflict(&dep.pool, id, &input.resolution).await?;
+    let state = SyncState::resolve_conflict(&dep.db().pool, id, &input.resolution).await?;
     Ok(Json(ApiResponse::success(state)))
 }
 
@@ -200,7 +201,7 @@ async fn device_summary(
     State(dep): State<DeploymentImpl>,
     Path(device_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<db::models::sync_state::SyncSummary>>, ApiError> {
-    let summary = SyncState::summary_for_device(&dep.pool, device_id).await?;
+    let summary = SyncState::summary_for_device(&dep.db().pool, device_id).await?;
     Ok(Json(ApiResponse::success(summary)))
 }
 
@@ -217,7 +218,7 @@ async fn list_subscriptions(
            FROM sync_subscriptions WHERE device_id = ?"#,
     )
     .bind(&device_bytes)
-    .fetch_all(&dep.pool)
+    .fetch_all(&dep.db().pool)
     .await?;
 
     let subs: Vec<SyncSubscription> = rows.into_iter().map(|r| {
@@ -258,7 +259,7 @@ async fn create_subscription(
     .bind(&folder_bytes)
     .bind(is_enabled)
     .bind(input.max_file_size)
-    .execute(&dep.pool)
+    .execute(&dep.db().pool)
     .await?;
 
     Ok(Json(ApiResponse::success(SyncSubscription {
@@ -279,7 +280,7 @@ async fn delete_subscription(
     let id_bytes = id.as_bytes().to_vec();
     sqlx::query("DELETE FROM sync_subscriptions WHERE id = ?")
         .bind(&id_bytes)
-        .execute(&dep.pool)
+        .execute(&dep.db().pool)
         .await?;
     Ok(Json(ApiResponse::success(())))
 }
@@ -290,9 +291,9 @@ async fn org_sync_summary(
     State(dep): State<DeploymentImpl>,
     Path(org_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<OrgSyncOverview>>, ApiError> {
-    let folders = SyncFolder::find_by_organization(&dep.pool, org_id).await?;
-    let devices = SyncDevice::find_by_organization(&dep.pool, org_id).await?;
-    let summary = SyncState::summary_for_org(&dep.pool, org_id).await?;
+    let folders = SyncFolder::find_by_organization(&dep.db().pool, org_id).await?;
+    let devices = SyncDevice::find_by_organization(&dep.db().pool, org_id).await?;
+    let summary = SyncState::summary_for_org(&dep.db().pool, org_id).await?;
 
     Ok(Json(ApiResponse::success(OrgSyncOverview {
         folder_count: folders.len() as i64,
