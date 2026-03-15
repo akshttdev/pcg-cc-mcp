@@ -8,8 +8,9 @@
  *   ./tasks      — task/project CRUD, kanban interactions
  *   ./agents     — agent seeding
  *   ./ui         — feedback dialog, view-as, settings
- *   ./cleanup    — test data cleanup
- *   ./demo/      — Sprint 2 agent simulation helpers
+ *   ./cleanup          — test data cleanup
+ *   ./workflow-builder — workflow editor node helpers
+ *   ./demo/            — Sprint 2 agent simulation helpers
  */
 
 export { TEST_USER, login, apiLogin, ensureAuthenticated } from "./auth";
@@ -43,3 +44,4 @@ export {
   cleanupTestData,
   cleanupE2eDataSources,
 } from "./cleanup";
+export { addExtractNode, addOutputNode } from "./workflow-builder";

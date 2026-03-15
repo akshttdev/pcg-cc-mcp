@@ -18,7 +18,7 @@
  *   - LLM backend accessible (PCG Router) for workflow execution
  */
 import { test, expect } from "./fixtures";
-import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX } from "../helpers";
+import { t, demoPause, login, apiLogin, TEST_DATA_PREFIX, addExtractNode, addOutputNode } from "../helpers";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -104,54 +104,6 @@ const TEST_DEAL_KEYWORDS = [
   "1,200,000",
   "1200000",
 ];
-
-// ── Workflow Builder Helpers ─────────────────────────────────────────────────
-
-/** Add an LLM Extract node: open picker, click LLM Extract, rename, fill prompt, connect to input. */
-async function addExtractNode(
-  page: import("@playwright/test").Page,
-  name: string,
-  prompt: string,
-  connectTo: string
-) {
-  await page.getByRole("button", { name: "Add Node" }).click();
-  await page.getByRole("button", { name: /^LLM Extract Extract/ }).click();
-  await expect(page.getByText("Node Name")).toBeVisible({ timeout: t(5_000) });
-
-  const nameInput = page.getByText("Node Name", { exact: true }).locator("..").getByRole("textbox");
-  await nameInput.fill(name);
-
-  // Fill the prompt template textarea
-  const promptTextarea = page.getByRole("textbox", { name: /extraction instructions|Analyze the following/ });
-  await expect(promptTextarea).toBeVisible({ timeout: t(5_000) });
-  await promptTextarea.fill(prompt);
-
-  await page.getByRole("combobox").filter({ hasText: /Add input connection/ }).click();
-  await page.getByRole("option", { name: new RegExp(connectTo) }).first().click();
-
-  await expect(page.getByText(`from: ${connectTo}`).last()).toBeVisible({ timeout: t(5_000) });
-  await page.waitForTimeout(demoPause.medium);
-}
-
-/** Add an output node and connect it to the specified upstream node. */
-async function addOutputNode(
-  page: import("@playwright/test").Page,
-  outputType: string,
-  connectTo: string
-) {
-  await page.getByRole("button", { name: "Add Node" }).click();
-  await page.getByRole("button", { name: new RegExp(`Output: ${outputType}`) }).click();
-
-  await expect(page.getByText("Input Connections")).toBeVisible({ timeout: t(5_000) });
-
-  const connectionCombo = page.getByRole("combobox").filter({ hasText: /Add input connection/ });
-  await expect(connectionCombo).toBeVisible({ timeout: t(5_000) });
-  await connectionCombo.click();
-  await page.getByRole("option", { name: new RegExp(connectTo) }).first().click();
-
-  await expect(page.getByText(`from: ${connectTo}`).last()).toBeVisible({ timeout: t(5_000) });
-  await page.waitForTimeout(demoPause.medium);
-}
 
 // ── Test Flow ────────────────────────────────────────────────────────────────
 
