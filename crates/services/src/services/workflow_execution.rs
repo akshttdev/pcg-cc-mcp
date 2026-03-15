@@ -2297,9 +2297,42 @@ pub async fn execute_node_with_llm(
     model: &str,
     target_schemas: &[String],
 ) -> (String, Option<Value>) {
-    let prompt_template = node.parameters.get("prompt_template")
+    let user_prompt = node.parameters.get("prompt_template")
         .and_then(|v| v.as_str())
-        .unwrap_or("Analyze the following content:\n{{content}}");
+        .unwrap_or("");
+
+    let prompt_template: String = if user_prompt.trim().is_empty() {
+        // Generate a context-aware default prompt based on target schemas
+        let smart_prompt = target_schemas.iter().find_map(|schema| {
+            match schema.as_str() {
+                "crm_contacts" => Some(
+                    "Extract all people and contacts mentioned in the content. \
+                     For each person, provide their first_name, last_name, email, phone, \
+                     company_name, and job_title.\n\n{{content}}"
+                ),
+                "crm_companies" | "companies" => Some(
+                    "Extract all companies and organizations mentioned in the content. \
+                     For each company, provide the name, website, industry, and description.\n\n{{content}}"
+                ),
+                "crm_deals" | "deals" => Some(
+                    "Extract all business opportunities and deals mentioned in the content. \
+                     For each deal, provide the name, amount, currency, contact_name, \
+                     contact_email, company_name, and stage.\n\n{{content}}"
+                ),
+                "tasks" => Some(
+                    "Extract all action items and tasks mentioned in the content. \
+                     For each task, provide the title, description, priority, and assignee.\n\n{{content}}"
+                ),
+                _ => None,
+            }
+        });
+        smart_prompt
+            .unwrap_or("Analyze the following content:\n{{content}}")
+            .to_string()
+    } else {
+        user_prompt.to_string()
+    };
+    let prompt_template = prompt_template.as_str();
 
     // Build the actual prompt by substituting template variables
     // {{previous_results}} — backwards-compatible merged text of all upstream outputs
