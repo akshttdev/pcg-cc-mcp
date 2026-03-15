@@ -2,13 +2,12 @@
  * Demo: Spanish Conversation Workflow → CRM Pipeline (Multilingual)
  *
  * End-to-end feature demo showing:
- *   1. Build a CRM extraction workflow (contacts, companies, deals)
- *      with Spanish-aware prompts (LLM handles translation inline)
+ *   1. Build a CRM extraction workflow with Spanish-aware prompts
  *   2. Create a Spanish conversation data source
  *   3. Run the workflow against the data source
- *   4. Verify staged records contain translated/extracted data
- *   5. Approve & commit staged records into the CRM
- *   6. Verify CRM contacts (Spanish names preserved)
+ *   4. Verify staged records, approve & commit into CRM
+ *   5. Verify CRM contacts (Spanish names preserved)
+ *   6. Verify CRM deals were created with correct amounts
  *
  * This demo showcases multilingual workflow capabilities —
  * LLM nodes handle Spanish→English translation + structured extraction.
@@ -93,7 +92,18 @@ const TEST_EMAILS = [
 ];
 
 // Keywords to match extracted deals
-const TEST_DEAL_KEYWORDS = ["TechSoluciones", "180,000", "180000", "Grupo Andino", "500,000", "500000", "Innovación", "Innovacion", "1,200,000", "1200000"];
+const TEST_DEAL_KEYWORDS = [
+  "TechSoluciones",
+  "180,000",
+  "180000",
+  "Grupo Andino",
+  "500,000",
+  "500000",
+  "Innovación",
+  "Innovacion",
+  "1,200,000",
+  "1200000",
+];
 
 // ── Workflow Builder Helpers ─────────────────────────────────────────────────
 
