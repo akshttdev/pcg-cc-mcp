@@ -2,17 +2,21 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use git2::{Error as GitError, Repository};
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use utils::shell::get_shell_command;
 
 use super::{
     git::{GitService, GitServiceError},
     git_cli::GitCli,
 };
+
+/// Timeout for acquiring per-worktree async locks
+const WORKTREE_LOCK_TIMEOUT: Duration = Duration::from_secs(30);
 
 // Global synchronization for worktree creation to prevent race conditions
 lazy_static::lazy_static! {
@@ -38,6 +42,8 @@ pub enum WorktreeError {
     BranchNotFound(String),
     #[error("Repository error: {0}")]
     Repository(String),
+    #[error("Lock timeout: waited {0}s for worktree lock on {1}")]
+    LockTimeout(u64, String),
 }
 
 pub struct WorktreeManager;
@@ -83,17 +89,27 @@ impl WorktreeManager {
     ) -> Result<(), WorktreeError> {
         let path_str = worktree_path.to_string_lossy().to_string();
 
-        // Get or create a lock for this specific worktree path
+        // Get or create a lock for this specific worktree path.
+        // Uses unwrap_or_else to recover from a poisoned mutex (prior panic).
         let lock = {
-            let mut locks = WORKTREE_CREATION_LOCKS.lock().unwrap();
+            let mut locks = WORKTREE_CREATION_LOCKS
+                .lock()
+                .unwrap_or_else(|poisoned| {
+                    warn!("Worktree creation locks mutex was poisoned, recovering");
+                    poisoned.into_inner()
+                });
             locks
                 .entry(path_str.clone())
                 .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
                 .clone()
         };
 
-        // Acquire the lock for this specific worktree path
-        let _guard = lock.lock().await;
+        // Acquire the per-worktree async lock with timeout
+        let _guard = tokio::time::timeout(WORKTREE_LOCK_TIMEOUT, lock.lock())
+            .await
+            .map_err(|_| {
+                WorktreeError::LockTimeout(WORKTREE_LOCK_TIMEOUT.as_secs(), path_str.clone())
+            })?;
 
         // Check if worktree already exists and is properly set up
         if Self::is_worktree_properly_set_up(repo_path, worktree_path).await? {
@@ -381,16 +397,27 @@ impl WorktreeManager {
     ) -> Result<(), WorktreeError> {
         let path_str = worktree_path.to_string_lossy().to_string();
 
-        // Get the same lock to ensure we don't interfere with creation
+        // Get the same lock to ensure we don't interfere with creation.
+        // Uses unwrap_or_else to recover from a poisoned mutex (prior panic).
         let lock = {
-            let mut locks = WORKTREE_CREATION_LOCKS.lock().unwrap();
+            let mut locks = WORKTREE_CREATION_LOCKS
+                .lock()
+                .unwrap_or_else(|poisoned| {
+                    warn!("Worktree creation locks mutex was poisoned, recovering");
+                    poisoned.into_inner()
+                });
             locks
                 .entry(path_str.clone())
                 .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
                 .clone()
         };
 
-        let _guard = lock.lock().await;
+        // Acquire the per-worktree async lock with timeout
+        let _guard = tokio::time::timeout(WORKTREE_LOCK_TIMEOUT, lock.lock())
+            .await
+            .map_err(|_| {
+                WorktreeError::LockTimeout(WORKTREE_LOCK_TIMEOUT.as_secs(), path_str.clone())
+            })?;
 
         if let Some(worktree_name) = worktree_path.file_name().and_then(|n| n.to_str()) {
             // Try to determine the git repo path if not provided
