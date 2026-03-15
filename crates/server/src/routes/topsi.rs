@@ -825,6 +825,8 @@ pub async fn chat_with_topsi(
         return Err(ApiError::BadRequest("Topsi is not active".to_string()));
     }
 
+    let topsi_agent_id = topsi.id;
+
     // Get REAL user context from authentication
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
@@ -833,7 +835,7 @@ pub async fn chat_with_topsi(
     let session_id = request.session_id.clone();
 
     let topsi_request = TopsiRequest::new(TopsiRequestType::Chat {
-        message: request.message,
+        message: request.message.clone(),
     });
 
     let response = topsi
@@ -863,6 +865,36 @@ pub async fn chat_with_topsi(
                 Err(e) => tracing::error!("[VIBE] Failed to record Topsi usage: {}", e),
             }
         }
+    }
+
+    // Persist conversation (non-blocking)
+    {
+        use db::models::agent_conversation::{AgentConversation, AgentConversationMessage};
+        let pool_conv = pool.clone();
+        let sess = session_id.clone();
+        let user_msg = request.message.clone();
+        let assistant_msg = response.message.clone();
+        let resp_input = response.input_tokens;
+        let resp_output = response.output_tokens;
+        tokio::spawn(async move {
+            match AgentConversation::get_or_create(&pool_conv, topsi_agent_id, &sess, None).await {
+                Ok(conversation) => {
+                    if let Err(e) = AgentConversationMessage::add_user_message(
+                        &pool_conv, conversation.id, &user_msg,
+                    ).await {
+                        tracing::warn!("Failed to persist Topsi user message: {}", e);
+                    }
+                    if let Err(e) = AgentConversationMessage::add_assistant_message(
+                        &pool_conv, conversation.id, &assistant_msg,
+                        Some("claude-sonnet-4-20250514"), Some("anthropic"),
+                        resp_input, resp_output, None,
+                    ).await {
+                        tracing::warn!("Failed to persist Topsi assistant message: {}", e);
+                    }
+                }
+                Err(e) => tracing::warn!("Failed to get/create Topsi conversation: {}", e),
+            }
+        });
     }
 
     Ok(Json(response))

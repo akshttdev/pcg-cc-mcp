@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { AskTopsiButton } from '@/components/topsi/AskTopsiButton';
 import {
   Sheet,
@@ -36,13 +37,17 @@ import {
   RotateCcw,
   ThumbsUp,
   Clock,
+  ChevronRight,
+  ShieldCheck,
+  Search,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useDealClient } from '@/hooks/useCrmPipeline';
 import { CrmActivityTimeline } from './CrmActivityTimeline';
 import { DealConvertDialog } from './DealConvertDialog';
-import { reportsApi } from '@/lib/api';
+import { reportsApi, crmDealsApi } from '@/lib/api';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
 import type { Project } from 'shared/types';
 
@@ -189,6 +194,9 @@ function PanelContent({
         </div>
       </div>
 
+      {/* Pipeline Stage Stepper */}
+      <PipelineStepper currentStage={deal.stage} />
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={onTabChange} className="flex-1 flex flex-col min-h-0">
         <TabsList className="mx-6 mt-4">
@@ -199,24 +207,36 @@ function PanelContent({
               <span className="ml-1 w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
             )}
           </TabsTrigger>
+          <TabsTrigger value="review">
+            Review
+            {deal.review_task_id && deal.review_task_status !== 'done' && (
+              <span className="ml-1 w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse inline-block" />
+            )}
+          </TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
         <TabsContent value="details" className="flex-1 mt-0 min-h-0">
-          <ScrollArea className="h-[calc(100vh-360px)]">
+          <ScrollArea className="h-[calc(100vh-400px)]">
             <DetailsTab deal={deal} onEdit={onEdit} onDelete={onDelete} onConvert={onConvert} orgId={orgId} />
           </ScrollArea>
         </TabsContent>
 
         <TabsContent value="intel" className="flex-1 mt-0 min-h-0">
-          <ScrollArea className="h-[calc(100vh-360px)]">
+          <ScrollArea className="h-[calc(100vh-400px)]">
             <IntelTab deal={deal} />
           </ScrollArea>
         </TabsContent>
 
+        <TabsContent value="review" className="flex-1 mt-0 min-h-0">
+          <ScrollArea className="h-[calc(100vh-400px)]">
+            <ReviewTab deal={deal} />
+          </ScrollArea>
+        </TabsContent>
+
         <TabsContent value="projects" className="flex-1 mt-0 min-h-0">
-          <ScrollArea className="h-[calc(100vh-360px)]">
+          <ScrollArea className="h-[calc(100vh-400px)]">
             <ProjectsTab
               client={client}
               projects={projects}
@@ -227,12 +247,244 @@ function PanelContent({
         </TabsContent>
 
         <TabsContent value="activity" className="flex-1 mt-0 min-h-0">
-          <ScrollArea className="h-[calc(100vh-360px)]">
+          <ScrollArea className="h-[calc(100vh-400px)]">
             <ActivityTab deal={deal} projectId={projectId} />
           </ScrollArea>
         </TabsContent>
       </Tabs>
     </>
+  );
+}
+
+// ── Pipeline Stage Stepper ──
+
+const PIPELINE_STAGES = [
+  { name: 'Lead', color: '#6B7280' },
+  { name: 'Business Analysis', color: '#3B82F6' },
+  { name: 'Discovery', color: '#8B5CF6' },
+  { name: 'Build Proposal', color: '#F59E0B' },
+  { name: 'Polish', color: '#EC4899' },
+  { name: 'Proposal Meeting', color: '#EF4444' },
+  { name: 'Closed Won', color: '#22C55E' },
+  { name: 'Closed Lost', color: '#9CA3AF' },
+];
+
+function PipelineStepper({ currentStage }: { currentStage: string }) {
+  const currentIndex = PIPELINE_STAGES.findIndex(
+    (s) => s.name.toLowerCase() === currentStage?.toLowerCase()
+  );
+  // Don't render if the stage isn't in our pipeline list (e.g. delivery/custom pipelines)
+  if (currentIndex === -1) return null;
+
+  return (
+    <div className="px-6 py-3 border-b">
+      <div className="flex items-center gap-0.5">
+        {PIPELINE_STAGES.filter((s) => s.name !== 'Closed Lost').map((stage, i) => {
+          const isCompleted = i < currentIndex;
+          const isCurrent = i === currentIndex;
+          const isClosedWon = stage.name === 'Closed Won' && currentStage?.toLowerCase() === 'closed won';
+          const isClosedLost = currentStage?.toLowerCase() === 'closed lost';
+
+          return (
+            <div key={stage.name} className="flex items-center flex-1 min-w-0">
+              <div className="flex flex-col items-center flex-1">
+                <div
+                  className={cn(
+                    'w-full h-1.5 rounded-full transition-all',
+                    isClosedLost ? 'bg-gray-300' :
+                    isCompleted || isClosedWon ? 'bg-green-500' :
+                    isCurrent ? 'bg-primary' : 'bg-muted'
+                  )}
+                />
+                {isCurrent && (
+                  <span className="text-[9px] font-medium mt-1 text-center truncate max-w-full" style={{ color: stage.color }}>
+                    {stage.name}
+                  </span>
+                )}
+              </div>
+              {i < PIPELINE_STAGES.length - 2 && (
+                <ChevronRight className="h-3 w-3 text-muted-foreground/30 shrink-0 mx-0.5" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {currentStage?.toLowerCase() === 'closed lost' && (
+        <p className="text-[10px] text-muted-foreground text-center mt-1">Closed Lost</p>
+      )}
+    </div>
+  );
+}
+
+// ── Review Tab ──
+
+function ReviewTab({ deal }: { deal: CrmDealWithContact }) {
+  const [advanceLoading, setAdvanceLoading] = useState(false);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const queryClient = useQueryClient();
+
+  const hasReviewTask = !!deal.review_task_id;
+  const taskDone = deal.review_task_status === 'done';
+
+  const handleAdvance = async () => {
+    setAdvanceLoading(true);
+    try {
+      await crmDealsApi.advanceDeal(deal.id);
+      toast.success('Deal advanced to next stage');
+      queryClient.invalidateQueries({ queryKey: ['kanban'] });
+      queryClient.invalidateQueries({ queryKey: ['deal-rich'] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to advance deal');
+    } finally {
+      setAdvanceLoading(false);
+    }
+  };
+
+  const handleTriggerResearch = async () => {
+    if (!deal.person_id) return;
+    setResearchLoading(true);
+    try {
+      const response = await fetch(`/api/persons/${deal.person_id}/research`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) throw new Error('Research trigger failed');
+      toast.success('Research triggered — Nora is gathering intel');
+    } catch {
+      toast.error('Failed to trigger research');
+    } finally {
+      setResearchLoading(false);
+    }
+  };
+
+  // Stage-specific review checklists
+  const stageChecklist: Record<string, string[]> = {
+    'lead': ['Person research complete', 'Company research complete', 'Lead quality verified'],
+    'business analysis': ['Business report reviewed', 'Market opportunity assessed', 'Discovery call scheduled'],
+    'discovery': ['Discovery notes captured', 'Pain points identified', 'Budget range confirmed'],
+    'build proposal': ['Services defined and scoped', 'Pricing approved', 'Timeline realistic'],
+    'polish': ['Presentation deck complete', 'Report card accurate', 'Data quality verified'],
+    'proposal meeting': ['Meeting scheduled', 'Presentation rehearsed', 'Decision maker confirmed'],
+  };
+
+  const currentChecklist = stageChecklist[deal.stage?.toLowerCase()] || [];
+
+  return (
+    <div className="p-6 space-y-5">
+      {/* Current review task */}
+      {hasReviewTask ? (
+        <Card className="bg-muted/30">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {taskDone ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Clock className="h-4 w-4 text-amber-400 animate-pulse" />
+                )}
+                <span className="text-sm font-medium">
+                  {taskDone ? 'Review Complete' : 'Review Pending'}
+                </span>
+              </div>
+              {deal.review_task_assignee && (
+                <Badge variant="outline" className="text-xs">
+                  {deal.review_task_assignee}
+                </Badge>
+              )}
+            </div>
+
+            {taskDone && (
+              <Button
+                size="sm"
+                className="w-full"
+                onClick={handleAdvance}
+                disabled={advanceLoading}
+              >
+                {advanceLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                Approve & Advance to Next Stage
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="text-center py-4 text-sm text-muted-foreground">
+          No review task for this stage.
+          {!['closed won', 'closed lost', 'proposal meeting'].includes(deal.stage?.toLowerCase()) && (
+            <p className="text-xs mt-1">A review task will be created when entering an active stage.</p>
+          )}
+        </div>
+      )}
+
+      {/* Request more research */}
+      {deal.person_id && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={handleTriggerResearch}
+          disabled={researchLoading}
+        >
+          {researchLoading ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+          ) : (
+            <Search className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          Request More Research
+        </Button>
+      )}
+
+      {/* Stage-specific review checklist */}
+      {currentChecklist.length > 0 && (
+        <div>
+          <h4 className="text-xs font-medium text-muted-foreground mb-2">
+            Stage Review Checklist
+          </h4>
+          <div className="space-y-1.5">
+            {currentChecklist.map((item) => (
+              <div key={item} className="flex items-center gap-2 text-sm">
+                <div className="w-3.5 h-3.5 rounded border border-muted-foreground/30 shrink-0" />
+                <span className="text-muted-foreground">{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Person + Company intel summary side by side */}
+      <div className="grid grid-cols-2 gap-3">
+        {deal.intelligence_summary && (
+          <Card className="bg-muted/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Brain className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-xs font-medium">Person Intel</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-4">
+                {deal.intelligence_summary}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+        {deal.company_intelligence_status === 'done' && (
+          <Card className="bg-muted/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Building2 className="h-3.5 w-3.5 text-purple-500" />
+                <span className="text-xs font-medium">Company Intel</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                {deal.contact_company ? `Research complete for ${deal.contact_company}` : 'Company research complete'}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -421,6 +673,65 @@ function IntelTab({ deal }: { deal: CrmDealWithContact }) {
             </Card>
           )}
         </div>
+      )}
+
+      {/* Company intelligence section */}
+      {deal.contact_company && (
+        <div>
+          <h4 className="text-xs font-medium text-muted-foreground mb-2">Company Intelligence</h4>
+          <Card className="bg-muted/30">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-sm font-medium">{deal.contact_company}</span>
+                {deal.company_intelligence_status === 'done' && (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 ml-auto" />
+                )}
+                {(deal.company_intelligence_status === 'running' || deal.company_intelligence_status === 'queued') && (
+                  <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin ml-auto" />
+                )}
+                {(!deal.company_intelligence_status || deal.company_intelligence_status === 'idle') && (
+                  <AlertCircle className="h-3.5 w-3.5 text-muted-foreground/40 ml-auto" />
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {deal.company_intelligence_status === 'done'
+                  ? 'Company research complete'
+                  : deal.company_intelligence_status === 'running' || deal.company_intelligence_status === 'queued'
+                  ? 'Company research in progress...'
+                  : 'No company research yet'}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Inline trigger research */}
+      {deal.person_id && !isResearching && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={async () => {
+            setLoading(true);
+            try {
+              await fetch(`/api/persons/${deal.person_id}/research`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+              });
+              toast.success('Research triggered');
+            } catch {
+              toast.error('Failed to trigger research');
+            } finally {
+              setLoading(false);
+            }
+          }}
+          disabled={loading}
+        >
+          {loading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Search className="h-3.5 w-3.5 mr-1.5" />}
+          {isDone ? 'Run Additional Research' : 'Trigger Research'}
+        </Button>
       )}
 
       {/* Link to full person profile */}

@@ -3400,6 +3400,16 @@ export const crmDealsApi = {
     await handleApiResponse<void>(response);
   },
 
+  advanceDeal: async (dealId: string): Promise<CrmDealRecord> => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/advance`, { method: 'POST' });
+    return handleApiResponse<CrmDealRecord>(response);
+  },
+
+  getDealRich: async (dealId: string) => {
+    const response = await makeRequest(`/api/crm/deals/${dealId}/rich`);
+    return handleApiResponse(response);
+  },
+
   getMetrics: async (organizationId: string, pipelineId?: string): Promise<PipelineMetricsRecord> => {
     const params = new URLSearchParams({ organization_id: organizationId });
     if (pipelineId) params.set('pipeline_id', pipelineId);

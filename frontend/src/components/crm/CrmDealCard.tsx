@@ -24,6 +24,9 @@ import {
   Loader2,
   FileText,
   RotateCcw,
+  Search,
+  ShieldCheck,
+  CircleDot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CrmDealWithContact } from '@/types/crm';
@@ -235,9 +238,30 @@ export function CrmDealCard({ deal, onClick, onEdit, onDelete, isDragging, board
           </div>
         </div>
 
-        {/* Intel badge row */}
-        {(hasIntel || deal.report_review_status) && (
-          <div className="flex items-center flex-wrap gap-1.5">
+        {/* Stage-aware badges + Intel badge row */}
+        <div className="flex items-center flex-wrap gap-1.5">
+          {/* Stage-aware indicators */}
+          {deal.stage?.toLowerCase() === 'lead' && !hasIntel && (
+            <Badge className="text-[9px] px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 gap-0.5">
+              <Search className="h-2.5 w-2.5" />
+              Research Needed
+            </Badge>
+          )}
+          {deal.stage?.toLowerCase() === 'lead' && intelDone && (
+            <Badge className="text-[9px] px-1.5 py-0 bg-green-100 text-green-700 border-green-200 hover:bg-green-100 gap-0.5">
+              <ShieldCheck className="h-2.5 w-2.5" />
+              Ready for Review
+            </Badge>
+          )}
+          {deal.review_task_id && deal.review_task_status !== 'done' && (
+            <Badge className="text-[9px] px-1.5 py-0 bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100 gap-0.5 animate-pulse">
+              <CircleDot className="h-2.5 w-2.5" />
+              Needs Review
+            </Badge>
+          )}
+
+          {/* Existing intel badges */}
+          {hasIntel && (
             <div className="flex items-center gap-1 text-xs">
               <IntelStatusIcon status={deal.intelligence_status} />
               {confidencePct != null && (
@@ -247,11 +271,20 @@ export function CrmDealCard({ deal, onClick, onEdit, onDelete, isDragging, board
                 <span className="text-muted-foreground">{deal.research_pass_count} pass{(deal.research_pass_count ?? 0) !== 1 ? 'es' : ''}</span>
               )}
             </div>
-            {deal.report_review_status && (
-              <ReportStatusChip reviewStatus={deal.report_review_status} />
-            )}
-          </div>
-        )}
+          )}
+
+          {/* Company intel indicator */}
+          {deal.company_intelligence_status && (
+            <div className="flex items-center gap-0.5 text-xs">
+              <Building2 className="h-3 w-3" />
+              <IntelStatusIcon status={deal.company_intelligence_status} />
+            </div>
+          )}
+
+          {deal.report_review_status && (
+            <ReportStatusChip reviewStatus={deal.report_review_status} />
+          )}
+        </div>
 
         {/* Intelligence summary preview */}
         {summaryPreview && (

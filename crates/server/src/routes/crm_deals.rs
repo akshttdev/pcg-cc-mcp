@@ -160,6 +160,22 @@ async fn get_deal_rich(
         review_task_id, review_task_status, review_task_assignee,
     ) = CrmDeal::fetch_intel_data_pub(pool, deal.id, person_id).await;
 
+    // Look up company intelligence status before constructing deal_with_contact
+    let company_name_for_intel = contact_info.as_ref().and_then(|c| c.company_name.as_deref());
+    let deal_company_intel_status = {
+        if let Some(cn) = company_name_for_intel {
+            if !cn.is_empty() {
+                #[derive(sqlx::FromRow)]
+                struct StatusRow { intelligence_status: Option<String> }
+                sqlx::query_as::<_, StatusRow>(
+                    "SELECT intelligence_status FROM companies WHERE name = ? COLLATE NOCASE LIMIT 1",
+                )
+                .bind(cn)
+                .fetch_optional(pool).await.ok().flatten().and_then(|r| r.intelligence_status)
+            } else { None }
+        } else { None }
+    };
+
     let deal_with_contact = CrmDealWithContact {
         contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
         contact_email: contact_info.as_ref().and_then(|c| c.email.clone()),
@@ -180,6 +196,7 @@ async fn get_deal_rich(
         review_task_id,
         review_task_status,
         review_task_assignee,
+        company_intelligence_status: deal_company_intel_status,
         deal,
     };
 
@@ -430,44 +447,283 @@ async fn move_deal_stage(
         }
     }
 
-    // If the target stage name contains "Analysis Done", create a review task
+    // Stage-aware auto-triggers (8-stage Clients pipeline with human gates)
     let stage_name_lower = target_stage
         .as_ref()
         .map(|s| s.name.to_lowercase())
         .unwrap_or_default();
-    if stage_name_lower.contains("analysis done") || stage_name_lower.contains("analysis complete") {
-        // Only create if no existing active task for this deal
-        let existing_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL"
-        )
-        .bind(deal.id)
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
-        let existing = if existing_count > 0 { Some(()) } else { None };
 
-        if existing.is_none() {
-            let task_id = Uuid::new_v4();
-            let task_title = format!("Review intelligence: {}", deal.name);
-            let task_desc = "Review the Who Is? research and business report for this lead before advancing to proposal.";
-            let _ = sqlx::query(
-                r#"
-                INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at)
-                VALUES (?, ?, ?, 'todo', ?, ?, datetime('now','subsec'), datetime('now','subsec'))
-                "#,
-            )
-            .bind(task_id)
-            .bind(&task_title)
-            .bind(task_desc)
-            .bind(deal.id)
-            .bind(deal.project_id)
-            .execute(pool)
-            .await;
+    // "Lead" stage → auto-trigger "Who Is" person + company research
+    if stage_name_lower == "lead" {
+        let pool_bg = pool.clone();
+        let deal_id = deal.id;
+        let contact_id = deal.crm_contact_id;
+        tokio::spawn(async move {
+            trigger_who_is_research(&pool_bg, deal_id, contact_id).await;
+        });
+    }
+
+    // Stages that need a human review task before advancing
+    let review_stages = [
+        ("business analysis", "Review Who Is research and verify lead quality"),
+        ("discovery", "Review business analysis report and confirm discovery readiness"),
+        ("build proposal", "Confirm discovery knowledge is proposal-ready"),
+        ("polish", "Verify proposed services and budgets are accurate"),
+    ];
+
+    for (stage_key, task_desc) in &review_stages {
+        if stage_name_lower == *stage_key {
+            create_review_task_if_needed(pool, &deal, task_desc).await;
+            break;
         }
     }
 
     Ok(Json(ApiResponse::success(deal)))
 
+}
+
+/// Auto-trigger "Who Is" research for a deal's contact person and company
+async fn trigger_who_is_research(
+    pool: &sqlx::SqlitePool,
+    deal_id: Uuid,
+    contact_id: Option<Uuid>,
+) {
+    let Some(contact_id) = contact_id else { return };
+
+    // Look up person_id from crm_contacts
+    #[derive(sqlx::FromRow)]
+    struct ContactRow {
+        person_id: Option<Uuid>,
+    }
+    let person_id = sqlx::query_as::<_, ContactRow>(
+        "SELECT person_id FROM crm_contacts WHERE id = ?",
+    )
+    .bind(contact_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|r| r.person_id);
+
+    let Some(person_id) = person_id else { return };
+
+    // Check if person intelligence is idle or null — only trigger if not already running
+    #[derive(sqlx::FromRow)]
+    struct IntelRow {
+        intelligence_status: Option<String>,
+        company_name: Option<String>,
+    }
+    let intel = sqlx::query_as::<_, IntelRow>(
+        "SELECT p.intelligence_status, p.company_name FROM persons p WHERE p.id = ?",
+    )
+    .bind(person_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some(intel) = &intel {
+        let status = intel.intelligence_status.as_deref().unwrap_or("idle");
+        if status == "idle" || status == "" {
+            // Trigger person research via the same logic as POST /api/persons/:id/research
+            tracing::info!("Auto-triggering Who Is research for person {} (deal {})", person_id, deal_id);
+            let _ = sqlx::query(
+                "UPDATE persons SET intelligence_status = 'queued', updated_at = datetime('now','subsec') WHERE id = ?",
+            )
+            .bind(person_id)
+            .execute(pool)
+            .await;
+
+            let pool2 = pool.clone();
+            tokio::spawn(async move {
+                if let Err(e) = crate::routes::intelligence::trigger_research_for_person(&pool2, person_id).await {
+                    tracing::error!("Auto Who Is research failed for person {}: {}", person_id, e);
+                }
+            });
+        }
+    }
+
+    // If person has a company_name, check/create Company and trigger company research if idle
+    if let Some(company_name) = intel.and_then(|i| i.company_name).filter(|n| !n.is_empty()) {
+        trigger_company_research_if_idle(pool, &company_name).await;
+    }
+}
+
+/// Trigger company research if the company's intel status is idle
+async fn trigger_company_research_if_idle(pool: &sqlx::SqlitePool, company_name: &str) {
+    #[derive(sqlx::FromRow)]
+    struct CompanyRow {
+        id: Uuid,
+        intelligence_status: Option<String>,
+    }
+    let company = sqlx::query_as::<_, CompanyRow>(
+        "SELECT id, intelligence_status FROM companies WHERE name = ? COLLATE NOCASE LIMIT 1",
+    )
+    .bind(company_name)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some(company) = company {
+        let status = company.intelligence_status.as_deref().unwrap_or("idle");
+        if status == "idle" || status == "" {
+            tracing::info!("Auto-triggering company research for '{}' ({})", company_name, company.id);
+            crate::routes::intelligence::run_company_research_direct(
+                pool, company.id, company_name, None,
+            )
+            .await;
+        }
+    }
+}
+
+/// Create a review task for a deal if none exists
+async fn create_review_task_if_needed(pool: &sqlx::SqlitePool, deal: &CrmDeal, description: &str) {
+    let existing_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+    )
+    .bind(deal.id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+
+    if existing_count == 0 {
+        let task_id = Uuid::new_v4();
+        let task_title = format!("Review & approve: {}", deal.name);
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO tasks (id, title, description, status, crm_deal_id, project_id, created_at, updated_at)
+            VALUES (?, ?, ?, 'todo', ?, ?, datetime('now','subsec'), datetime('now','subsec'))
+            "#,
+        )
+        .bind(task_id)
+        .bind(&task_title)
+        .bind(description)
+        .bind(deal.id)
+        .bind(deal.project_id)
+        .execute(pool)
+        .await;
+    }
+}
+
+/// POST /crm/deals/:id/advance - Advance deal to next stage after review approval
+async fn advance_deal(
+    State(deployment): State<DeploymentImpl>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    let deal = CrmDeal::find_by_id(pool, id).await?;
+    let current_stage_id = deal.crm_stage_id
+        .ok_or_else(|| ApiError::BadRequest("Deal has no stage assigned".to_string()))?;
+
+    // Validate: active review tasks for this deal must be done
+    let pending_tasks: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+
+    if pending_tasks > 0 {
+        return Err(ApiError::BadRequest(
+            format!("Cannot advance: {} pending review task(s) must be completed first", pending_tasks),
+        ));
+    }
+
+    // Find next stage by position + 1 within the same pipeline
+    let current_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, current_stage_id).await
+        .map_err(|_| ApiError::NotFound("Current stage not found".to_string()))?;
+
+    let next_position = current_stage.position + 1;
+
+    #[derive(sqlx::FromRow)]
+    struct NextStageRow {
+        id: Uuid,
+    }
+    let next_stage = sqlx::query_as::<_, NextStageRow>(
+        "SELECT id FROM crm_pipeline_stages WHERE pipeline_id = ? AND position = ? LIMIT 1",
+    )
+    .bind(current_stage.pipeline_id)
+    .bind(next_position)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to find next stage: {}", e)))?
+    .ok_or_else(|| ApiError::BadRequest("Deal is already at the final stage".to_string()))?;
+
+    // Move deal to next stage — position 0 (will be sorted by position within stage)
+    let deal = CrmDeal::move_to_stage(pool, id, next_stage.id, 0).await?;
+
+    // Fire stage-entry hooks for the new stage
+    let new_stage = db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, next_stage.id).await.ok();
+    let new_stage_name = new_stage.as_ref().map(|s| s.name.to_lowercase()).unwrap_or_default();
+    let is_won = new_stage.as_ref().map(|s| s.is_won.unwrap_or(0) == 1).unwrap_or(false);
+
+    // Auto-create delivery deal on Closed Won
+    if is_won {
+        if let Some(pipeline_id) = deal.crm_pipeline_id {
+            if let Ok(pipeline) = db::models::crm_pipeline::CrmPipeline::find_by_id(pool, pipeline_id).await {
+                if pipeline.pipeline_type == "clients" || pipeline.pipeline_type == "sales" {
+                    if let Some(deal_org_id) = deal.organization_id {
+                        if let Ok(Some(delivery_pipeline)) =
+                            db::models::crm_pipeline::CrmPipeline::find_by_type_for_org(
+                                pool, deal_org_id,
+                                db::models::crm_pipeline::PipelineType::Delivery,
+                            ).await
+                        {
+                            let delivery_stages =
+                                db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(pool, delivery_pipeline.id)
+                                    .await
+                                    .unwrap_or_default();
+                            if let Some(first_stage) = delivery_stages.first() {
+                                let _ = CrmDeal::create(pool, CreateCrmDeal {
+                                    organization_id: deal_org_id,
+                                    client_id: deal.client_id,
+                                    crm_contact_id: deal.crm_contact_id,
+                                    crm_pipeline_id: Some(delivery_pipeline.id),
+                                    crm_stage_id: Some(first_stage.id),
+                                    name: format!("{} - Delivery", deal.name),
+                                    description: Some(format!("Auto-created from won deal: {}", deal.name)),
+                                    amount: deal.amount,
+                                    currency: Some(deal.currency.clone()),
+                                    expected_close_date: None,
+                                    tags: None,
+                                    custom_fields: None,
+                                }).await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Create review task for stages that need one
+    let review_stages = [
+        ("business analysis", "Review Who Is research and verify lead quality"),
+        ("discovery", "Review business analysis report and confirm discovery readiness"),
+        ("build proposal", "Confirm discovery knowledge is proposal-ready"),
+        ("polish", "Verify proposed services and budgets are accurate"),
+    ];
+    for (stage_key, task_desc) in &review_stages {
+        if new_stage_name == *stage_key {
+            create_review_task_if_needed(pool, &deal, task_desc).await;
+            break;
+        }
+    }
+
+    // Auto-trigger research on Lead entry
+    if new_stage_name == "lead" {
+        let pool_bg = pool.clone();
+        let deal_id = deal.id;
+        let contact_id = deal.crm_contact_id;
+        tokio::spawn(async move {
+            trigger_who_is_research(&pool_bg, deal_id, contact_id).await;
+        });
+    }
+
+    Ok(Json(ApiResponse::success(deal)))
 }
 
 /// GET /organizations/:org_id/crm/deals - List deals for an organization
@@ -634,6 +890,7 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/crm/deals/{id}", delete(delete_deal))
         .route("/crm/deals/{id}/rich", get(get_deal_rich))
         .route("/crm/deals/{id}/stage", patch(move_deal_stage))
+        .route("/crm/deals/{id}/advance", post(advance_deal))
         // Org-scoped CRM deal routes
         .route("/organizations/{org_id}/crm/deals", get(list_org_deals))
 
