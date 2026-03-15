@@ -2323,7 +2323,6 @@ pub async fn execute_node_with_llm(
     let wrapped_content = format!("--- BEGIN SOURCE CONTENT ---\n{}\n--- END SOURCE CONTENT ---", content);
 
     let mut prompt = prompt_template
-
         .replace("{{content}}", &wrapped_content)
         .replace("{{previous_results}}", &prev_text)
         .replace("{{target_schema}}", &schema_text);
@@ -2337,6 +2336,27 @@ pub async fn execute_node_with_llm(
         }
     }
 
+    // If the prompt template didn't reference {{content}} or {{previous_results}},
+    // automatically prepend the source data so the LLM has something to extract from.
+    // This handles the common case where users write simple prompts like
+    // "Extract all contacts" without using template variables.
+    let has_content_ref = prompt_template.contains("{{content}}");
+    let has_prev_ref = prompt_template.contains("{{previous_results}}")
+        || previous_results.iter().any(|(_, _, schema)| {
+            !schema.is_empty() && prompt_template.contains(&format!("{{{{{}}}}}", schema))
+        });
+
+    let prompt = if !has_content_ref && !has_prev_ref {
+        // Prefer previous_results (upstream node output) if available, otherwise use raw content
+        let source_data = if !prev_text.is_empty() {
+            prev_text.clone()
+        } else {
+            wrapped_content.clone()
+        };
+        format!("{}\n\n{}", source_data, prompt)
+    } else {
+        prompt
+    };
 
     // If target_schema is non-empty but the prompt didn't contain the placeholder, append it
     let prompt = if !schema_text.is_empty() && !prompt_template.contains("{{target_schema}}") {
@@ -2361,6 +2381,11 @@ pub async fn execute_node_with_llm(
     } else {
         "You are a helpful assistant that analyzes content and provides clear, well-structured responses."
     };
+    tracing::debug!(
+        "[WORKFLOW] Node '{}' type='{}' target_schemas={:?} content_len={} prompt_len={}",
+        node.id, node.node_type, target_schemas, content.len(), prompt.len()
+    );
+
     let messages = vec![
         WorkflowLLMService::system_message(system_msg),
         WorkflowLLMService::user_message(&prompt),
