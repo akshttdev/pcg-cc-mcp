@@ -1,11 +1,15 @@
 /**
- * Demo: Workflow Builder + CRM Pipeline
+ * Demo: Workflow Builder + CRM Pipeline (Full Lifecycle)
  *
  * End-to-end feature demo showing:
  *   1. Build a CRM extraction workflow (contacts, companies, deals)
  *   2. Create a "conversation" data source via the org intelligence page
  *   3. Run the workflow against the data source
  *   4. Verify the workflow successfully parsed the data source — MUST produce staged records
+ *   5. Approve & commit staged records into the CRM
+ *   6. Verify the workflow run on the Runs tab
+ *   7. Navigate to CRM contacts page — verify extracted contacts and view detail
+ *   8. Navigate to CRM pipeline — verify extracted deals
  *
  * All feature interactions go through the UI. API calls are used for
  * prerequisite state (auth) and post-test cleanup.
@@ -305,6 +309,144 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
     await page.waitForTimeout(DEMO_PAUSE * 2);
   });
 
+  test("Part 5: Approve & commit staged records into CRM", async ({ page }) => {
+    test.setTimeout(60_000);
+
+    // Navigate to staging tab (Part 3 left us on ?tab=staging)
+    if (!page.url().includes("tab=staging")) {
+      await page.goto("/workflows");
+      await page.getByRole("tab", { name: "Staging" }).click();
+    }
+
+    // Wait for staging panel to render with records
+    await expect(
+      page.getByRole("button", { name: /Approve & commit/i }).first()
+    ).toBeVisible({ timeout: t(15_000) });
+
+    await page.waitForTimeout(DEMO_PAUSE);
+
+    // Click "Approve & commit N valid" button to commit all valid records
+    await page.getByRole("button", { name: /Approve & commit/i }).first().click();
+
+    // Wait for success confirmation — records committed to CRM
+    await expect(
+      page.getByText(/committed successfully|committed/i).first()
+    ).toBeVisible({ timeout: t(30_000) });
+
+    await page.waitForTimeout(DEMO_PAUSE * 2);
+  });
+
+  test("Part 6: Verify workflow run on Runs tab", async ({ page }) => {
+    test.setTimeout(30_000);
+    await login(page);
+    await page.goto("/workflows");
+
+    // Click the Runs tab
+    await expect(page.getByRole("tab", { name: /Runs/i })).toBeVisible({
+      timeout: t(10_000),
+    });
+    await page.getByRole("tab", { name: /Runs/i }).click();
+
+    // Verify we see our workflow run with completed status
+    const workflowName = WORKFLOW_NAME.replace(`${TEST_DATA_PREFIX} `, "");
+    await expect(
+      page.getByText(new RegExp(workflowName)).first()
+    ).toBeVisible({ timeout: t(10_000) });
+
+    // Verify the run shows a completed/success indicator
+    await expect(
+      page.getByText(/completed|success/i).first()
+    ).toBeVisible({ timeout: t(10_000) });
+
+    // Verify "Review Staging" button is available (records were staged)
+    await expect(
+      page.getByRole("button", { name: /Review Staging/i }).first()
+    ).toBeVisible({ timeout: t(5_000) });
+
+    await page.waitForTimeout(DEMO_PAUSE);
+  });
+
+  test("Part 7: Verify CRM contacts and view detail", async ({ page }) => {
+    test.setTimeout(60_000);
+    await login(page);
+
+    // Navigate to the org's CRM contacts page
+    await page.goto(`/organizations/${ORG_ID}/crm/contacts`);
+
+    // Wait for contacts to load
+    await expect(
+      page.getByText(/contacts/i).first()
+    ).toBeVisible({ timeout: t(10_000) });
+
+    // Verify at least one contact from the conversation was created
+    const body = page.locator("body");
+    const hasContact = await Promise.any([
+      expect(body).toContainText("Marcus Webb", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("Lisa Park", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("Raj Patel", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("Sarah Chen", { timeout: t(10_000) }).then(() => true),
+    ]).catch(() => false);
+    expect(hasContact, "No contacts from conversation found in CRM").toBeTruthy();
+
+    await page.waitForTimeout(DEMO_PAUSE);
+
+    // Click on a contact card to open the detail modal
+    // Try clicking on the first matching contact name
+    const contactLink = page.getByText(/Marcus Webb|Lisa Park|Raj Patel|Sarah Chen/).first();
+    await contactLink.click();
+
+    // Verify contact detail modal/panel opens with relevant fields
+    await expect(
+      page.getByText(/email|phone|company|job title/i).first()
+    ).toBeVisible({ timeout: t(10_000) });
+
+    // Verify the contact has an email from the conversation
+    const hasEmail = await Promise.any([
+      expect(body).toContainText("marcus.webb@acmecorp.com", { timeout: t(5_000) }).then(() => true),
+      expect(body).toContainText("lisa.park@acmecorp.com", { timeout: t(5_000) }).then(() => true),
+      expect(body).toContainText("raj.patel@acmecorp.com", { timeout: t(5_000) }).then(() => true),
+    ]).catch(() => false);
+    expect(hasEmail, "No email found in contact detail").toBeTruthy();
+
+    await page.waitForTimeout(DEMO_PAUSE * 2);
+  });
+
+  test("Part 8: Verify CRM pipeline deals", async ({ page }) => {
+    test.setTimeout(60_000);
+    await login(page);
+
+    // Navigate to the org's CRM pipeline page
+    await page.goto(`/organizations/${ORG_ID}/crm/pipeline`);
+
+    // Wait for pipeline board to load
+    await expect(
+      page.getByText(/pipeline|deals/i).first()
+    ).toBeVisible({ timeout: t(10_000) });
+
+    // Verify at least one deal from the conversation was created
+    const body = page.locator("body");
+    const hasDeal = await Promise.any([
+      expect(body).toContainText("Acme", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("450", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("200", { timeout: t(10_000) }).then(() => true),
+      expect(body).toContainText("GlobalTech", { timeout: t(10_000) }).then(() => true),
+    ]).catch(() => false);
+    expect(hasDeal, "No deals from conversation found in CRM pipeline").toBeTruthy();
+
+    await page.waitForTimeout(DEMO_PAUSE);
+
+    // Click on a deal card to open the detail panel
+    const dealCard = page.getByText(/Acme|deployment|analytics/i).first();
+    await dealCard.click();
+
+    // Verify deal detail panel opens with relevant info
+    await expect(
+      page.getByText(/amount|value|contact|company|stage/i).first()
+    ).toBeVisible({ timeout: t(10_000) });
+
+    await page.waitForTimeout(DEMO_PAUSE * 2);
+  });
+
   // ─── Cleanup ───────────────────────────────────────────────────────────
 
   test.afterAll(async ({ request }) => {
@@ -330,6 +472,33 @@ test.describe("Workflow → CRM Pipeline Demo", () => {
       for (const ds of list) {
         if (ds.title?.startsWith(TEST_DATA_PREFIX)) {
           await request.delete(`/api/data-sources/${ds.id}`).catch(() => {});
+        }
+      }
+    }
+
+    // Delete CRM contacts created by the workflow commit
+    const contactsRes = await request.get(`/api/organizations/${ORG_ID}/crm/contacts`);
+    if (contactsRes.ok()) {
+      const contacts = await contactsRes.json();
+      const list = contacts.data || contacts || [];
+      for (const c of list) {
+        // Clean up contacts with emails from the test conversation
+        const testEmails = ["marcus.webb@acmecorp.com", "lisa.park@acmecorp.com", "raj.patel@acmecorp.com"];
+        if (testEmails.includes(c.email)) {
+          await request.delete(`/api/organizations/${ORG_ID}/crm/contacts/${c.id}`).catch(() => {});
+        }
+      }
+    }
+
+    // Delete CRM deals created by the workflow commit
+    const dealsRes = await request.get(`/api/organizations/${ORG_ID}/crm/deals`);
+    if (dealsRes.ok()) {
+      const deals = await dealsRes.json();
+      const list = deals.data || deals || [];
+      for (const d of list) {
+        if (d.contact_name?.includes("Webb") || d.contact_name?.includes("Park") ||
+            d.company_name?.includes("Acme") || d.company_name?.includes("GlobalTech")) {
+          await request.delete(`/api/organizations/${ORG_ID}/crm/deals/${d.id}`).catch(() => {});
         }
       }
     }
