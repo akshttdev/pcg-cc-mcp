@@ -257,14 +257,14 @@ Use proper Spanish characters (`é`, `ñ`, `í`, `ó`, `ú`, `ü`) in the conver
 
 ## Implementation Order
 
-1. [ ] Ensure Demo 4 passes end-to-end (FK fix validation)
-2. [ ] Create `e2e/demos/workflow-spanish-pipeline.spec.ts`
-3. [ ] Add Spanish conversation constant with proper Unicode
-4. [ ] Implement Part 1: Build workflow with translation chain
-5. [ ] Implement Parts 2-3: Data source creation + workflow run
-6. [ ] Implement Parts 4-6: Staging review + CRM verification
-7. [ ] Add cleanup logic
-8. [ ] Run full demo suite: all 5 demos passing
+1. [x] Ensure Demo 4 passes end-to-end (FK fix validation)
+2. [x] Create `e2e/demos/workflow-spanish-pipeline.spec.ts`
+3. [x] Add Spanish conversation constant with proper Unicode
+4. [x] Implement Part 1: Build workflow with translation chain
+5. [x] Implement Parts 2-3: Data source creation + workflow run
+6. [x] Implement Parts 4-6: Staging review + CRM verification
+7. [x] Add cleanup logic
+8. [x] Run full demo suite: all workflow demos passing (2 GitHub-dependent demos skip as expected)
 
 ---
 
