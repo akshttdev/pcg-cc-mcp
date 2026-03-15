@@ -1651,7 +1651,7 @@ function NodeConfigPanel({
                     onChange={(e) =>
                       onUpdateParameter('prompt_template', e.target.value)
                     }
-                    placeholder={`Analyze the following content and...\n\nContent:\n{{content}}\n\nContacts:\n{{contacts}}\n\nOr all upstream:\n{{previous_results}}`}
+                    placeholder={`Enter extraction instructions here. The source content is automatically included.\n\nExample for contacts:\nExtract all people mentioned. For each: first_name, last_name, email, phone, company_name, job_title.\n\nExample for companies:\nExtract all companies mentioned. For each: name, website, industry, description.\n\nTip: Use {{content}} to reference the source data explicitly.`}
                     className="text-sm font-mono min-h-[200px] resize-y"
                   />
                 </div>

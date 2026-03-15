@@ -178,6 +178,10 @@ export type TaskRelationships = { parent_task: Task | null, current_attempt: Tas
 
 export type CreateTask = { project_id: string, pod_id?: string, board_id?: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, priority: Priority | null, assignee_id: string | null, assignee_type: string | null, assigned_agent: string | null, agent_id: string | null, assigned_mcps: Array<string> | null, created_by: string, requires_approval: boolean | null, parent_task_id: string | null, tags: Array<string> | null, due_date: string | null, custom_properties: Record<string, unknown> | null, scheduled_start: string | null, scheduled_end: string | null, 
 /**
+ * JSON-encoded collaborators/watchers array
+ */
+collaborators: string | null, 
+/**
  * Base64 encoded screenshot image for bug reports
  */
 screenshot: string | null, 
@@ -226,7 +230,7 @@ export type AuthorType = "human" | "agent" | "mcp" | "system";
 
 export type CommentType = "comment" | "statusupdate" | "review" | "approval" | "system" | "handoff" | "mcpnotification";
 
-export type ActivityLog = { id: string, task_id: string, actor_id: string, actor_type: ActorType, action: string, previous_state: string | null, new_state: string | null, metadata: string | null, timestamp: string, };
+export type ActivityLog = { id: string, task_id: string, actor_id: string, actor_type: ActorType, action: string, previous_state: string | null, new_state: string | null, metadata: string | null, timestamp: string, actor_name: string | null, };
 
 export type CreateActivityLog = { task_id: string, actor_id: string, actor_type: ActorType, action: string, previous_state: JsonValue | null, new_state: JsonValue | null, metadata: JsonValue | null, };
 
@@ -265,6 +269,10 @@ export type AgentWatcherInfo = { agent_id: string, agent_name: string, agent_des
 export type AddAgentWatcherRequest = { agent_id: string, };
 
 export type CreateGitHubPrRequest = { title: string, body: string | null, base_branch: string | null, };
+
+export type LinkPrRequest = { pr_number: bigint, pr_url: string, target_branch: string | null, };
+
+export type UpdateCollaboratorRequest = { actor_id: string, actor_type: string, action: string, };
 
 export type ImageResponse = { id: string, file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, created_at: string, updated_at: string, };
 

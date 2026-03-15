@@ -35,7 +35,7 @@ use executors::{
 };
 use futures_util::TryStreamExt;
 use git2::BranchType;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use services::services::{
@@ -1121,6 +1121,104 @@ pub async fn merge_task_attempt(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+/// POST /task-attempts/:id/link-pr — register an externally-created PR against this attempt.
+/// Creates a PR merge record without requiring a worktree or pushing branches.
+#[derive(Debug, Deserialize, TS)]
+pub struct LinkPrRequest {
+    pub pr_number: i64,
+    pub pr_url: String,
+    pub target_branch: Option<String>,
+}
+
+/// POST /task-attempts/create-record — create a task attempt record without starting execution.
+/// Used for linking external work (PRs, commits) to a task.
+#[derive(Debug, Deserialize, TS)]
+pub struct CreateTaskAttemptRecordBody {
+    pub task_id: Uuid,
+    pub executor: BaseCodingAgent,
+    pub base_branch: String,
+}
+
+/// Response for create-record endpoint (avoids Uuid/TEXT decode issues)
+#[derive(Debug, Serialize, TS)]
+pub struct CreateRecordResponse {
+    pub id: String,
+    pub task_id: String,
+    pub base_branch: String,
+    pub executor: String,
+}
+
+pub async fn create_task_attempt_record(
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<CreateTaskAttemptRecordBody>,
+) -> Result<ResponseJson<ApiResponse<CreateRecordResponse>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // Use a single connection with FK checks disabled to avoid TEXT/BLOB
+    // mismatch between task_attempts.task_id (Uuid→BLOB) and tasks.id (TEXT).
+    let mut conn = pool.acquire().await
+        .map_err(|e| ApiError::InternalError(format!("Pool acquire: {e}")))?;
+
+    sqlx::query("PRAGMA foreign_keys = OFF").execute(&mut *conn).await
+        .map_err(|e| ApiError::InternalError(format!("FK pragma: {e}")))?;
+
+    let attempt_id = Uuid::new_v4();
+    let result = sqlx::query_as!(
+        TaskAttempt,
+        r#"INSERT INTO task_attempts (id, task_id, container_ref, branch, base_branch, executor, worktree_deleted, setup_completed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, base_branch, executor as "executor!",  worktree_deleted as "worktree_deleted!: bool", setup_completed_at as "setup_completed_at: DateTime<Utc>", archived as "archived!: bool", pinned as "pinned!: bool", name, seen_at as "seen_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+        attempt_id,
+        payload.task_id,
+        Option::<String>::None,
+        Option::<String>::None,
+        payload.base_branch,
+        payload.executor,
+        false,
+        Option::<DateTime<Utc>>::None,
+    )
+    .fetch_one(&mut *conn)
+    .await;
+
+    // Re-enable FK checks on this connection before returning it to pool
+    let _ = sqlx::query("PRAGMA foreign_keys = ON").execute(&mut *conn).await;
+
+    let task_attempt = result
+        .map_err(|e| ApiError::InternalError(format!("Failed to create task attempt: {e}")))?;
+
+    Ok(ResponseJson(ApiResponse::success(CreateRecordResponse {
+        id: task_attempt.id.to_string(),
+        task_id: task_attempt.task_id.to_string(),
+        base_branch: task_attempt.base_branch,
+        executor: task_attempt.executor,
+    })))
+}
+
+/// POST /task-attempts/:id/link-pr — register an externally-created PR against this attempt.
+/// Creates a PR merge record without requiring a worktree or pushing branches.
+pub async fn link_pr(
+    Extension(task_attempt): Extension<TaskAttempt>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<LinkPrRequest>,
+) -> Result<ResponseJson<ApiResponse<PrMerge>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let target_branch = payload
+        .target_branch
+        .unwrap_or_else(|| task_attempt.base_branch.clone());
+
+    let pr_merge = Merge::create_pr(
+        pool,
+        task_attempt.id,
+        &target_branch,
+        payload.pr_number,
+        &payload.pr_url,
+    )
+    .await
+    .map_err(|e| ApiError::InternalError(format!("Failed to link PR: {e}")))?;
+
+    Ok(ResponseJson(ApiResponse::success(pr_merge)))
+}
+
 pub async fn push_task_attempt_branch(
     Extension(task_attempt): Extension<TaskAttempt>,
     State(deployment): State<DeploymentImpl>,
@@ -1747,6 +1845,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/branch-status", get(get_task_attempt_branch_status))
         .route("/diff", get(get_task_attempt_diff))
         .route("/merge", post(merge_task_attempt))
+        .route("/link-pr", post(link_pr))
         .route("/push", post(push_task_attempt_branch))
         .route("/rebase", post(rebase_task_attempt))
         .route("/conflicts/abort", post(abort_conflicts_task_attempt))
@@ -1762,6 +1861,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
     let task_attempts_router = Router::new()
         .route("/", get(get_task_attempts).post(create_task_attempt))
+        .route("/create-record", post(create_task_attempt_record))
         .nest("/{id}", task_attempt_id_router);
 
     Router::new().nest("/task-attempts", task_attempts_router)

@@ -28,6 +28,9 @@ pub struct ActivityLog {
     pub new_state: Option<String>,      // JSON object
     pub metadata: Option<String>,       // JSON object
     pub timestamp: DateTime<Utc>,
+    /// Display name of the actor (populated via JOIN, not stored in table)
+    #[sqlx(default)]
+    pub actor_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -48,11 +51,13 @@ impl ActivityLog {
     ) -> Result<Vec<Self>, sqlx::Error> {
         let task_id_db = DbUuid::from_string(task_id);
         sqlx::query_as::<_, ActivityLog>(
-            r#"SELECT id, task_id, actor_id, actor_type, action,
-                      previous_state, new_state, metadata, timestamp
-               FROM activity_logs
-               WHERE task_id = $1
-               ORDER BY timestamp DESC"#,
+            r#"SELECT al.id, al.task_id, al.actor_id, al.actor_type, al.action,
+                      al.previous_state, al.new_state, al.metadata, al.timestamp,
+                      COALESCE(u.full_name, u.username) AS actor_name
+               FROM activity_logs al
+               LEFT JOIN users u ON lower(hex(u.id)) = replace(al.actor_id, '-', '')
+               WHERE al.task_id = $1
+               ORDER BY al.timestamp DESC"#,
         )
         .bind(&task_id_db)
         .fetch_all(pool)
@@ -62,10 +67,12 @@ impl ActivityLog {
     pub async fn find_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Self>, sqlx::Error> {
         let id_db = DbUuid::from_string(id);
         sqlx::query_as::<_, ActivityLog>(
-            r#"SELECT id, task_id, actor_id, actor_type, action,
-                      previous_state, new_state, metadata, timestamp
-               FROM activity_logs
-               WHERE id = $1"#,
+            r#"SELECT al.id, al.task_id, al.actor_id, al.actor_type, al.action,
+                      al.previous_state, al.new_state, al.metadata, al.timestamp,
+                      COALESCE(u.full_name, u.username) AS actor_name
+               FROM activity_logs al
+               LEFT JOIN users u ON lower(hex(u.id)) = replace(al.actor_id, '-', '')
+               WHERE al.id = $1"#,
         )
         .bind(&id_db)
         .fetch_optional(pool)
@@ -120,9 +127,11 @@ impl ActivityLog {
         let query_str = format!(
             r#"SELECT
                 al.id, al.task_id, al.actor_id, al.actor_type, al.action,
-                al.previous_state, al.new_state, al.metadata, al.timestamp
+                al.previous_state, al.new_state, al.metadata, al.timestamp,
+                COALESCE(u.full_name, u.username) AS actor_name
             FROM activity_logs al
             JOIN tasks t ON al.task_id = t.id
+            LEFT JOIN users u ON lower(hex(u.id)) = replace(al.actor_id, '-', '')
             WHERE t.project_id IN ({})
             ORDER BY al.timestamp DESC
             LIMIT ?"#,

@@ -19,7 +19,25 @@ function formatActor(item: ActivityItem): string {
   if (item.actor_type === 'agent') return 'Agent';
   if (item.actor_type === 'system') return 'System';
   if (item.actor_id === 'current-user' || !item.actor_id) return 'You';
+  if (item.actor_name) return item.actor_name;
   return item.actor_id;
+}
+
+/** Extract title from metadata or new_state JSON. */
+function extractTitle(item: ActivityItem): string | undefined {
+  try {
+    if (item.metadata) {
+      const m = JSON.parse(item.metadata);
+      if (m.title) return m.title;
+    }
+  } catch {}
+  try {
+    if (item.new_state) {
+      const s = JSON.parse(item.new_state);
+      if (s.title) return s.title;
+    }
+  } catch {}
+  return undefined;
 }
 
 export function formatAction(item: ActivityItem): string {
@@ -29,27 +47,29 @@ export function formatAction(item: ActivityItem): string {
     if (item.metadata) meta = JSON.parse(item.metadata);
   } catch {}
 
+  const title = extractTitle(item);
+
   switch (item.action) {
     case 'created':
     case 'create':
     case 'task_created':
-      return `${actor} created${meta.title ? ` "${meta.title}"` : ' a task'}`;
+      return `${actor} created${title ? ` "${title}"` : ' a task'}`;
     case 'updated':
     case 'update':
     case 'task_updated':
       if (meta.fields_changed) {
-        return `${actor} updated ${meta.fields_changed.join(', ')}`;
+        return `${actor} updated ${meta.fields_changed.join(', ')}${title ? ` on "${title}"` : ''}`;
       }
-      return `${actor} updated a task`;
+      return `${actor} updated${title ? ` "${title}"` : ' a task'}`;
     case 'status_change':
-      return `${actor} changed status${meta.to ? ` to ${meta.to}` : ''}`;
+      return `${actor} changed status${meta.to ? ` to ${meta.to}` : ''}${title ? ` on "${title}"` : ''}`;
     case 'comment':
-      return `${actor} commented`;
+      return `${actor} commented${title ? ` on "${title}"` : ''}`;
     case 'create_and_start':
       return `${actor} started execution`;
     case 'deleted':
     case 'delete':
-      return `${actor} deleted${meta.title ? ` "${meta.title}"` : ' an item'}`;
+      return `${actor} deleted${title ? ` "${title}"` : ' an item'}`;
     default:
       return `${actor} ${item.action.replace(/_/g, ' ')}`;
   }

@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use thiserror::Error;
 use ts_rs::TS;
-use uuid::Uuid;
+
+use crate::db_uuid::DbUuid;
 
 use super::crm_pipeline::CrmPipelineStage;
 
@@ -18,13 +19,13 @@ pub enum CrmDealError {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct CrmDeal {
-    pub id: Uuid,
-    pub project_id: Option<Uuid>,
-    pub organization_id: Option<Uuid>,
-    pub client_id: Option<Uuid>,
-    pub crm_contact_id: Option<Uuid>,
-    pub crm_pipeline_id: Option<Uuid>,
-    pub crm_stage_id: Option<Uuid>,
+    pub id: DbUuid,
+    pub project_id: Option<DbUuid>,
+    pub organization_id: Option<DbUuid>,
+    pub client_id: Option<DbUuid>,
+    pub crm_contact_id: Option<DbUuid>,
+    pub crm_pipeline_id: Option<DbUuid>,
+    pub crm_stage_id: Option<DbUuid>,
     pub position: Option<i32>,
     pub name: String,
     pub description: Option<String>,
@@ -37,7 +38,7 @@ pub struct CrmDeal {
     pub actual_close_date: Option<DateTime<Utc>>,
     pub last_activity_at: Option<DateTime<Utc>>,
     pub owner_user_id: Option<String>,
-    pub assigned_agent_id: Option<Uuid>,
+    pub assigned_agent_id: Option<DbUuid>,
     pub zoho_deal_id: Option<String>,
     pub external_ids: Option<String>,
     pub tags: Option<String>,
@@ -51,11 +52,11 @@ pub struct CrmDeal {
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct CreateCrmDeal {
-    pub organization_id: Uuid,
-    pub client_id: Option<Uuid>,
-    pub crm_contact_id: Option<Uuid>,
-    pub crm_pipeline_id: Option<Uuid>,
-    pub crm_stage_id: Option<Uuid>,
+    pub organization_id: DbUuid,
+    pub client_id: Option<DbUuid>,
+    pub crm_contact_id: Option<DbUuid>,
+    pub crm_pipeline_id: Option<DbUuid>,
+    pub crm_stage_id: Option<DbUuid>,
     pub name: String,
     pub description: Option<String>,
     pub amount: Option<f64>,
@@ -68,9 +69,9 @@ pub struct CreateCrmDeal {
 #[derive(Debug, Default, Deserialize, TS)]
 #[ts(export)]
 pub struct UpdateCrmDeal {
-    pub crm_contact_id: Option<Uuid>,
-    pub crm_pipeline_id: Option<Uuid>,
-    pub crm_stage_id: Option<Uuid>,
+    pub crm_contact_id: Option<DbUuid>,
+    pub crm_pipeline_id: Option<DbUuid>,
+    pub crm_stage_id: Option<DbUuid>,
     pub position: Option<i32>,
     pub name: Option<String>,
     pub description: Option<String>,
@@ -78,7 +79,7 @@ pub struct UpdateCrmDeal {
     pub currency: Option<String>,
     pub expected_close_date: Option<String>,
     pub owner_user_id: Option<String>,
-    pub assigned_agent_id: Option<Uuid>,
+    pub assigned_agent_id: Option<DbUuid>,
     pub tags: Option<Vec<String>>,
     pub custom_fields: Option<serde_json::Value>,
     pub lost_reason: Option<String>,
@@ -87,7 +88,7 @@ pub struct UpdateCrmDeal {
 
 #[derive(Debug, Deserialize)]
 pub struct MoveDealRequest {
-    pub stage_id: Uuid,
+    pub stage_id: DbUuid,
     pub position: i32,
 }
 
@@ -106,9 +107,9 @@ pub struct CrmDealWithContact {
     pub task_done: i64,
     pub deliverable_count: i64,
     /// person_id from crm_contacts — bridges to persons table for wiki/intel
-    pub person_id: Option<Uuid>,
+    pub person_id: Option<DbUuid>,
     /// report_id — id of the business report (wiki) for this deal's person
-    pub report_id: Option<Uuid>,
+    pub report_id: Option<DbUuid>,
     // Person intelligence fields
     pub intelligence_status: Option<String>,
     pub intelligence_summary: Option<String>,
@@ -118,7 +119,7 @@ pub struct CrmDealWithContact {
     pub report_status: Option<String>,
     pub report_review_status: Option<String>,
     // Review task
-    pub review_task_id: Option<Uuid>,
+    pub review_task_id: Option<DbUuid>,
     pub review_task_status: Option<String>,
     pub review_task_assignee: Option<String>,
 }
@@ -127,7 +128,7 @@ pub struct CrmDealWithContact {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct KanbanBoardData {
-    pub pipeline_id: Uuid,
+    pub pipeline_id: DbUuid,
     pub pipeline_name: String,
     pub stages: Vec<KanbanStageWithDeals>,
 }
@@ -142,7 +143,7 @@ pub struct KanbanStageWithDeals {
 
 impl CrmDeal {
     pub async fn create(pool: &SqlitePool, data: CreateCrmDeal) -> Result<Self, CrmDealError> {
-        let id = Uuid::new_v4();
+        let id = DbUuid::new();
         let currency = data.currency.unwrap_or_else(|| "USD".to_string());
         let tags = data.tags.map(|v| serde_json::to_string(&v).unwrap_or_default());
         let custom_fields = data.custom_fields.map(|v| v.to_string());
@@ -150,7 +151,7 @@ impl CrmDeal {
         // Get stage probability if stage is specified
         // Note: legacy `stage` column has CHECK constraint with fixed values,
         // so we always default to 'qualification' and use crm_stage_id for real stage tracking
-        let probability = if let Some(stage_id) = data.crm_stage_id {
+        let probability = if let Some(ref stage_id) = data.crm_stage_id {
             match CrmPipelineStage::find_by_id(pool, stage_id).await {
                 Ok(stage) => stage.probability,
                 Err(_) => 0,
@@ -161,7 +162,7 @@ impl CrmDeal {
         let stage_name = "qualification".to_string();
 
         // Calculate next position in stage
-        let position = if let Some(stage_id) = data.crm_stage_id {
+        let position = if let Some(ref stage_id) = data.crm_stage_id {
             let max_pos: Option<(i32,)> = sqlx::query_as(
                 r#"SELECT COALESCE(MAX(position), -1) FROM crm_deals WHERE crm_stage_id = ?1"#,
             )
@@ -185,13 +186,13 @@ impl CrmDeal {
             RETURNING *
             "#,
         )
-        .bind(id)
-        .bind(data.organization_id)
-        .bind(None::<Uuid>)
-        .bind(data.client_id)
-        .bind(data.crm_contact_id)
-        .bind(data.crm_pipeline_id)
-        .bind(data.crm_stage_id)
+        .bind(&id)
+        .bind(&data.organization_id)
+        .bind(None::<DbUuid>)
+        .bind(&data.client_id)
+        .bind(&data.crm_contact_id)
+        .bind(&data.crm_pipeline_id)
+        .bind(&data.crm_stage_id)
         .bind(position)
         .bind(&data.name)
         .bind(&data.description)
@@ -208,7 +209,7 @@ impl CrmDeal {
         Ok(deal)
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Self, CrmDealError> {
+    pub async fn find_by_id(pool: &SqlitePool, id: &DbUuid) -> Result<Self, CrmDealError> {
         sqlx::query_as::<_, CrmDeal>(r#"SELECT * FROM crm_deals WHERE id = ?1"#)
             .bind(id)
             .fetch_optional(pool)
@@ -218,7 +219,7 @@ impl CrmDeal {
 
     pub async fn find_by_organization(
         pool: &SqlitePool,
-        organization_id: Uuid,
+        organization_id: &DbUuid,
     ) -> Result<Vec<Self>, CrmDealError> {
         let deals = sqlx::query_as::<_, CrmDeal>(
             r#"SELECT * FROM crm_deals WHERE organization_id = ?1 ORDER BY created_at DESC"#,
@@ -233,7 +234,7 @@ impl CrmDeal {
     /// Find deals by project (legacy/compatibility)
     pub async fn find_by_project(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &DbUuid,
     ) -> Result<Vec<Self>, CrmDealError> {
         let deals = sqlx::query_as::<_, CrmDeal>(
             r#"SELECT * FROM crm_deals WHERE project_id = ?1 ORDER BY created_at DESC"#,
@@ -247,7 +248,7 @@ impl CrmDeal {
 
     pub async fn find_by_pipeline(
         pool: &SqlitePool,
-        pipeline_id: Uuid,
+        pipeline_id: &DbUuid,
     ) -> Result<Vec<Self>, CrmDealError> {
         let deals = sqlx::query_as::<_, CrmDeal>(
             r#"SELECT * FROM crm_deals WHERE crm_pipeline_id = ?1 ORDER BY position"#,
@@ -261,7 +262,7 @@ impl CrmDeal {
 
     pub async fn find_by_stage(
         pool: &SqlitePool,
-        stage_id: Uuid,
+        stage_id: &DbUuid,
     ) -> Result<Vec<Self>, CrmDealError> {
         let deals = sqlx::query_as::<_, CrmDeal>(
             r#"SELECT * FROM crm_deals WHERE crm_stage_id = ?1 ORDER BY position"#,
@@ -275,7 +276,7 @@ impl CrmDeal {
 
     pub async fn find_by_contact(
         pool: &SqlitePool,
-        contact_id: Uuid,
+        contact_id: &DbUuid,
     ) -> Result<Vec<Self>, CrmDealError> {
         let deals = sqlx::query_as::<_, CrmDeal>(
             r#"SELECT * FROM crm_deals WHERE crm_contact_id = ?1 ORDER BY created_at DESC"#,
@@ -289,7 +290,7 @@ impl CrmDeal {
 
     pub async fn update(
         pool: &SqlitePool,
-        id: Uuid,
+        id: &DbUuid,
         data: UpdateCrmDeal,
     ) -> Result<Self, CrmDealError> {
         let tags = data.tags.map(|v| serde_json::to_string(&v).unwrap_or_default());
@@ -343,8 +344,8 @@ impl CrmDeal {
     /// Move deal to a new stage and position (for drag-drop)
     pub async fn move_to_stage(
         pool: &SqlitePool,
-        id: Uuid,
-        stage_id: Uuid,
+        id: &DbUuid,
+        stage_id: &DbUuid,
         new_position: i32,
     ) -> Result<Self, CrmDealError> {
         let deal = Self::find_by_id(pool, id).await?;
@@ -368,8 +369,8 @@ impl CrmDeal {
         .await?;
 
         // If moving between stages, compact the old stage
-        if old_stage_id != Some(stage_id) {
-            if let Some(old_sid) = old_stage_id {
+        if old_stage_id.as_ref() != Some(stage_id) {
+            if let Some(ref old_sid) = old_stage_id {
                 sqlx::query(
                     r#"
                     UPDATE crm_deals SET
@@ -429,8 +430,8 @@ impl CrmDeal {
             .await?;
 
         // Log stage change activity if stage changed
-        if old_stage_id != Some(stage_id) {
-            let old_stage_name = if let Some(old_sid) = old_stage_id {
+        if old_stage_id.as_ref() != Some(stage_id) {
+            let old_stage_name = if let Some(ref old_sid) = old_stage_id {
                 CrmPipelineStage::find_by_id(pool, old_sid)
                     .await
                     .map(|s| s.name)
@@ -457,11 +458,11 @@ impl CrmDeal {
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now', 'subsec'))
                 "#,
             )
-            .bind(Uuid::new_v4())
-            .bind(updated_deal.organization_id)
-            .bind(None::<Uuid>)
-            .bind(updated_deal.crm_contact_id)
-            .bind(updated_deal.id)
+            .bind(DbUuid::new())
+            .bind(&updated_deal.organization_id)
+            .bind(None::<DbUuid>)
+            .bind(&updated_deal.crm_contact_id)
+            .bind(&updated_deal.id)
             .bind(activity_type)
             .bind(format!("Moved to {}", stage_name))
             .bind(format!("Deal moved from {} to {}", old_stage_name, stage_name))
@@ -476,7 +477,7 @@ impl CrmDeal {
     pub async fn find_by_name_and_org(
         pool: &SqlitePool,
         name: &str,
-        organization_id: Uuid,
+        organization_id: &DbUuid,
     ) -> Result<Option<Self>, CrmDealError> {
         let deal = sqlx::query_as::<_, CrmDeal>(
             r#"SELECT * FROM crm_deals
@@ -495,8 +496,8 @@ impl CrmDeal {
     pub async fn find_by_name_contact_pipeline(
         pool: &SqlitePool,
         name: &str,
-        contact_id: Uuid,
-        pipeline_id: Uuid,
+        contact_id: &DbUuid,
+        pipeline_id: &DbUuid,
     ) -> Result<Option<Self>, CrmDealError> {
         let deal = sqlx::query_as::<_, CrmDeal>(
             r#"SELECT * FROM crm_deals
@@ -511,7 +512,7 @@ impl CrmDeal {
         Ok(deal)
     }
 
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<(), CrmDealError> {
+    pub async fn delete(pool: &SqlitePool, id: &DbUuid) -> Result<(), CrmDealError> {
         let result = sqlx::query(r#"DELETE FROM crm_deals WHERE id = ?1"#)
             .bind(id)
             .execute(pool)
@@ -527,7 +528,7 @@ impl CrmDeal {
     /// Fetch project name + task/deliverable counts for a given project.
     async fn fetch_project_stats(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &DbUuid,
     ) -> (Option<String>, i64, i64, i64) {
         let project_name: Option<String> =
             sqlx::query_scalar("SELECT name FROM projects WHERE id = ?")
@@ -564,13 +565,13 @@ impl CrmDeal {
 
     /// Get Kanban board data for a pipeline
     /// Look up the business_report id for a given person (latest report)
-    pub async fn report_id_for_person_pub(pool: &SqlitePool, person_id: Uuid) -> Option<Uuid> {
+    pub async fn report_id_for_person_pub(pool: &SqlitePool, person_id: &DbUuid) -> Option<DbUuid> {
         Self::report_id_for_person(pool, person_id).await
     }
 
     pub async fn fetch_project_stats_pub(
         pool: &SqlitePool,
-        project_id: Uuid,
+        project_id: &DbUuid,
     ) -> (Option<String>, i64, i64, i64) {
         Self::fetch_project_stats(pool, project_id).await
     }
@@ -578,19 +579,19 @@ impl CrmDeal {
     #[allow(clippy::type_complexity)]
     pub async fn fetch_intel_data_pub(
         pool: &SqlitePool,
-        deal_id: Uuid,
-        person_id: Option<Uuid>,
+        deal_id: &DbUuid,
+        person_id: Option<&DbUuid>,
     ) -> (
         Option<String>, Option<String>, Option<f64>, Option<i64>,
         Option<String>, Option<String>,
-        Option<Uuid>, Option<String>, Option<String>,
+        Option<DbUuid>, Option<String>, Option<String>,
     ) {
         Self::fetch_intel_data(pool, deal_id, person_id).await
     }
 
-    async fn report_id_for_person(pool: &SqlitePool, person_id: Uuid) -> Option<Uuid> {
+    async fn report_id_for_person(pool: &SqlitePool, person_id: &DbUuid) -> Option<DbUuid> {
         #[derive(sqlx::FromRow)]
-        struct Row { id: Uuid }
+        struct Row { id: DbUuid }
         sqlx::query_as::<_, Row>(
             "SELECT id FROM business_reports WHERE person_id = ? ORDER BY created_at DESC LIMIT 1"
         )
@@ -608,12 +609,12 @@ impl CrmDeal {
     #[allow(clippy::type_complexity)]
     async fn fetch_intel_data(
         pool: &SqlitePool,
-        deal_id: Uuid,
-        person_id: Option<Uuid>,
+        deal_id: &DbUuid,
+        person_id: Option<&DbUuid>,
     ) -> (
         Option<String>, Option<String>, Option<f64>, Option<i64>,
         Option<String>, Option<String>,
-        Option<Uuid>, Option<String>, Option<String>,
+        Option<DbUuid>, Option<String>, Option<String>,
     ) {
         // Person intelligence
         let (intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count) =
@@ -664,7 +665,7 @@ impl CrmDeal {
         let (review_task_id, review_task_status, review_task_assignee) = {
             #[derive(sqlx::FromRow)]
             struct TaskRow {
-                id: Uuid,
+                id: DbUuid,
                 status: Option<String>,
                 assignee_name: Option<String>,
             }
@@ -699,7 +700,7 @@ impl CrmDeal {
 
     pub async fn get_kanban_data(
         pool: &SqlitePool,
-        pipeline_id: Uuid,
+        pipeline_id: &DbUuid,
     ) -> Result<KanbanBoardData, CrmDealError> {
         use super::crm_contact::CrmContact;
         use super::crm_pipeline::CrmPipeline;
@@ -716,31 +717,31 @@ impl CrmDeal {
 
         for stage in stages {
             // Get deals for this stage
-            let deals = Self::find_by_stage(pool, stage.id).await?;
+            let deals = Self::find_by_stage(pool, &stage.id).await?;
 
             // Enrich deals with contact info
             let mut deals_with_contacts = Vec::new();
             for deal in deals {
-                let contact_info = if let Some(contact_id) = deal.crm_contact_id {
+                let contact_info = if let Some(ref contact_id) = deal.crm_contact_id {
                     CrmContact::find_by_id(pool, contact_id).await.ok()
                 } else {
                     None
                 };
 
                 // Fetch person_id from the contact (bridge to persons table)
-                let person_id: Option<Uuid> = if let Some(contact_id) = deal.crm_contact_id {
-                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<Uuid> }
+                let person_id: Option<DbUuid> = if let Some(ref contact_id) = deal.crm_contact_id {
+                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<DbUuid> }
                     sqlx::query_as::<_, Row>("SELECT person_id FROM crm_contacts WHERE id = ?")
                         .bind(contact_id)
                         .fetch_optional(pool).await.ok().flatten().and_then(|r| r.person_id)
                 } else { None };
 
-                let report_id = if let Some(pid) = person_id {
+                let report_id = if let Some(ref pid) = person_id {
                     Self::report_id_for_person(pool, pid).await
                 } else { None };
 
                 let (project_name, task_total, task_done, deliverable_count) =
-                    if let Some(pid) = deal.project_id {
+                    if let Some(ref pid) = deal.project_id {
                         Self::fetch_project_stats(pool, pid).await
                     } else {
                         (None, 0, 0, 0)
@@ -750,7 +751,7 @@ impl CrmDeal {
                     intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
                     report_status, report_review_status,
                     review_task_id, review_task_status, review_task_assignee,
-                ) = Self::fetch_intel_data(pool, deal.id, person_id).await;
+                ) = Self::fetch_intel_data(pool, &deal.id, person_id.as_ref()).await;
 
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
@@ -789,7 +790,7 @@ impl CrmDeal {
         }
 
         Ok(KanbanBoardData {
-            pipeline_id,
+            pipeline_id: pipeline_id.clone(),
             pipeline_name: pipeline.name,
             stages: kanban_stages,
         })
@@ -799,8 +800,8 @@ impl CrmDeal {
     /// Merges stages from all matching pipelines and aggregates deals into a unified board.
     pub async fn get_kanban_by_organization(
         pool: &SqlitePool,
-        organization_id: Uuid,
-        pipeline_id: Uuid,
+        organization_id: &DbUuid,
+        pipeline_id: &DbUuid,
     ) -> Result<KanbanBoardData, CrmDealError> {
         use super::crm_contact::CrmContact;
         use super::crm_pipeline::{CrmPipeline, PipelineType};
@@ -834,7 +835,7 @@ impl CrmDeal {
                     .await
                     .map_err(|_| CrmDealError::NotFound)?;
             for p in &org_pipelines {
-                let deals = Self::find_by_pipeline(pool, p.id).await?;
+                let deals = Self::find_by_pipeline(pool, &p.id).await?;
                 all_deals.extend(deals);
             }
         }
@@ -845,9 +846,9 @@ impl CrmDeal {
             // OR by matching stage name (for deals from other project pipelines)
             let mut stage_deals: Vec<CrmDeal> = Vec::new();
             for deal in &all_deals {
-                if deal.crm_stage_id == Some(stage.id) {
+                if deal.crm_stage_id.as_ref() == Some(&stage.id) {
                     stage_deals.push(deal.clone());
-                } else if let Some(deal_stage_id) = deal.crm_stage_id {
+                } else if let Some(ref deal_stage_id) = deal.crm_stage_id {
                     // Check if this deal's stage has the same name as our reference stage
                     if let Ok(deal_stage) =
                         CrmPipelineStage::find_by_id(pool, deal_stage_id).await
@@ -864,25 +865,25 @@ impl CrmDeal {
             // Enrich with contact info
             let mut deals_with_contacts = Vec::new();
             for deal in stage_deals {
-                let contact_info = if let Some(contact_id) = deal.crm_contact_id {
+                let contact_info = if let Some(ref contact_id) = deal.crm_contact_id {
                     CrmContact::find_by_id(pool, contact_id).await.ok()
                 } else {
                     None
                 };
 
-                let person_id: Option<Uuid> = if let Some(contact_id) = deal.crm_contact_id {
-                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<Uuid> }
+                let person_id: Option<DbUuid> = if let Some(ref contact_id) = deal.crm_contact_id {
+                    #[derive(sqlx::FromRow)] struct Row { person_id: Option<DbUuid> }
                     sqlx::query_as::<_, Row>("SELECT person_id FROM crm_contacts WHERE id = ?")
                         .bind(contact_id)
                         .fetch_optional(pool).await.ok().flatten().and_then(|r| r.person_id)
                 } else { None };
 
-                let report_id = if let Some(pid) = person_id {
+                let report_id = if let Some(ref pid) = person_id {
                     Self::report_id_for_person(pool, pid).await
                 } else { None };
 
                 let (project_name, task_total, task_done, deliverable_count) =
-                    if let Some(pid) = deal.project_id {
+                    if let Some(ref pid) = deal.project_id {
                         Self::fetch_project_stats(pool, pid).await
                     } else {
                         (None, 0, 0, 0)
@@ -892,7 +893,7 @@ impl CrmDeal {
                     intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
                     report_status, report_review_status,
                     review_task_id, review_task_status, review_task_assignee,
-                ) = Self::fetch_intel_data(pool, deal.id, person_id).await;
+                ) = Self::fetch_intel_data(pool, &deal.id, person_id.as_ref()).await;
 
                 deals_with_contacts.push(CrmDealWithContact {
                     contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
@@ -931,7 +932,7 @@ impl CrmDeal {
         }
 
         Ok(KanbanBoardData {
-            pipeline_id,
+            pipeline_id: pipeline_id.clone(),
             pipeline_name: ref_pipeline.name,
             stages: kanban_stages,
         })

@@ -13,6 +13,7 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{error::ApiError, DeploymentImpl};
+use db::db_uuid::DbUuid;
 use db::models::crm_deal::{
     CrmDeal, CreateCrmDeal, KanbanBoardData, UpdateCrmDeal, CrmDealWithContact,
 };
@@ -71,13 +72,13 @@ async fn list_deals(
     let pool = &deployment.db().pool;
 
     let deals = if let Some(pipeline_id) = query.pipeline_id {
-        CrmDeal::find_by_pipeline(pool, pipeline_id).await?
+        CrmDeal::find_by_pipeline(pool, &DbUuid::from(pipeline_id)).await?
     } else if let Some(stage_id) = query.stage_id {
-        CrmDeal::find_by_stage(pool, stage_id).await?
+        CrmDeal::find_by_stage(pool, &DbUuid::from(stage_id)).await?
     } else if let Some(contact_id) = query.contact_id {
-        CrmDeal::find_by_contact(pool, contact_id).await?
+        CrmDeal::find_by_contact(pool, &DbUuid::from(contact_id)).await?
     } else if let Some(org_id) = query.organization_id {
-        CrmDeal::find_by_organization(pool, org_id).await?
+        CrmDeal::find_by_organization(pool, &DbUuid::from(org_id)).await?
     } else {
         return Err(ApiError::BadRequest(
             "Must provide organization_id, pipeline_id, stage_id, or contact_id".to_string(),
@@ -94,7 +95,8 @@ async fn get_kanban_data(
     Path(pipeline_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<KanbanBoardData>>, ApiError> {
     let pool = &deployment.db().pool;
-    let kanban_data = CrmDeal::get_kanban_data(pool, pipeline_id).await?;
+    let pipeline_id = DbUuid::from(pipeline_id);
+    let kanban_data = CrmDeal::get_kanban_data(pool, &pipeline_id).await?;
     Ok(Json(ApiResponse::success(kanban_data)))
 }
 
@@ -104,7 +106,8 @@ async fn get_deal(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
-    let deal = CrmDeal::find_by_id(pool, id).await?;
+    let id = DbUuid::from(id);
+    let deal = CrmDeal::find_by_id(pool, &id).await?;
     Ok(Json(ApiResponse::success(deal)))
 }
 
@@ -114,20 +117,21 @@ async fn get_deal_rich(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmDealRich>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
 
     // Build CrmDealWithContact inline (mirrors kanban enrichment)
-    let deal = CrmDeal::find_by_id(pool, id).await?;
+    let deal = CrmDeal::find_by_id(pool, &id).await?;
 
-    let contact_info = if let Some(contact_id) = deal.crm_contact_id {
+    let contact_info = if let Some(ref contact_id) = deal.crm_contact_id {
         db::models::crm_contact::CrmContact::find_by_id(pool, contact_id).await.ok()
     } else {
         None
     };
 
     // person_id via crm_contacts.person_id (may not exist — fall back to persons table lookup by email)
-    let person_id: Option<Uuid> = {
-        let by_contact: Option<Uuid> = if let Some(contact_id) = deal.crm_contact_id {
-            #[derive(sqlx::FromRow)] struct Row { person_id: Option<Uuid> }
+    let person_id: Option<DbUuid> = {
+        let by_contact: Option<DbUuid> = if let Some(ref contact_id) = deal.crm_contact_id {
+            #[derive(sqlx::FromRow)] struct Row { person_id: Option<DbUuid> }
             sqlx::query_as::<_, Row>("SELECT person_id FROM crm_contacts WHERE id = ?")
                 .bind(contact_id)
                 .fetch_optional(pool).await.ok().flatten().and_then(|r| r.person_id)
@@ -136,7 +140,7 @@ async fn get_deal_rich(
         if by_contact.is_some() {
             by_contact
         } else if let Some(email) = contact_info.as_ref().and_then(|c| c.email.as_deref()) {
-            #[derive(sqlx::FromRow)] struct Row { id: Uuid }
+            #[derive(sqlx::FromRow)] struct Row { id: DbUuid }
             sqlx::query_as::<_, Row>("SELECT id FROM persons WHERE email = ? LIMIT 1")
                 .bind(email)
                 .fetch_optional(pool).await.ok().flatten().map(|r| r.id)
@@ -145,12 +149,12 @@ async fn get_deal_rich(
         }
     };
 
-    let report_id = if let Some(pid) = person_id {
+    let report_id = if let Some(ref pid) = person_id {
         CrmDeal::report_id_for_person_pub(pool, pid).await
     } else { None };
 
     let (project_name, task_total, task_done, deliverable_count) =
-        if let Some(pid) = deal.project_id {
+        if let Some(ref pid) = deal.project_id {
             CrmDeal::fetch_project_stats_pub(pool, pid).await
         } else { (None, 0, 0, 0) };
 
@@ -158,7 +162,7 @@ async fn get_deal_rich(
         intelligence_status, intelligence_summary, intelligence_confidence, research_pass_count,
         report_status, report_review_status,
         review_task_id, review_task_status, review_task_assignee,
-    ) = CrmDeal::fetch_intel_data_pub(pool, deal.id, person_id).await;
+    ) = CrmDeal::fetch_intel_data_pub(pool, &deal.id, person_id.as_ref()).await;
 
     let deal_with_contact = CrmDealWithContact {
         contact_name: contact_info.as_ref().and_then(|c| c.full_name.clone()),
@@ -227,7 +231,7 @@ async fn get_deal_rich(
     let tasks: Vec<DealTask> = sqlx::query_as::<_, TaskRow>(
         "SELECT id, title, description, status, created_at FROM tasks WHERE crm_deal_id = ? AND deleted_at IS NULL ORDER BY created_at ASC"
     )
-    .bind(deal_with_contact.deal.id)
+    .bind(&deal_with_contact.deal.id)
     .fetch_all(pool)
     .await
     .unwrap_or_default()
@@ -310,11 +314,10 @@ async fn create_deal(
         VALUES (?1, ?2, ?3, ?4, 'deal_created', ?5, datetime('now', 'subsec'))
         "#,
     )
-    .bind(Uuid::new_v4())
-    .bind(deal.organization_id)
-
-    .bind(deal.crm_contact_id)
-    .bind(deal.id)
+    .bind(DbUuid::new())
+    .bind(&deal.organization_id)
+    .bind(&deal.crm_contact_id)
+    .bind(&deal.id)
     .bind(format!("Created deal: {}", deal.name))
     .execute(pool)
     .await?;
@@ -335,7 +338,8 @@ async fn update_deal(
         }
     }
     let pool = &deployment.db().pool;
-    let deal = CrmDeal::update(pool, id, data).await?;
+    let id = DbUuid::from(id);
+    let deal = CrmDeal::update(pool, &id, data).await?;
     Ok(Json(ApiResponse::success(deal)))
 }
 
@@ -347,27 +351,29 @@ async fn move_deal_stage(
     Json(data): Json<MoveDealRequest>,
 ) -> Result<Json<ApiResponse<CrmDeal>>, ApiError> {
     let pool = &deployment.db().pool;
+    let id = DbUuid::from(id);
+    let stage_id = DbUuid::from(data.stage_id);
 
     // Check if the target stage is a "won" stage
     let target_stage =
-        db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, data.stage_id).await.ok();
+        db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, &stage_id).await.ok();
     let is_won = target_stage
         .as_ref()
         .map(|s| s.is_won.unwrap_or(0) == 1)
         .unwrap_or(false);
 
     // Move the deal
-    let deal = CrmDeal::move_to_stage(pool, id, data.stage_id, data.position).await?;
+    let deal = CrmDeal::move_to_stage(pool, &id, &stage_id, data.position).await?;
 
     // If won, check if this is a sales pipeline deal and auto-create delivery deal
     if is_won {
-        if let Some(pipeline_id) = deal.crm_pipeline_id {
+        if let Some(ref pipeline_id) = deal.crm_pipeline_id {
             if let Ok(pipeline) =
                 db::models::crm_pipeline::CrmPipeline::find_by_id(pool, pipeline_id).await
             {
                 if pipeline.pipeline_type == "sales" {
                     // Find the delivery pipeline for this organization
-                    if let Some(deal_org_id) = deal.organization_id {
+                    if let Some(ref deal_org_id) = deal.organization_id {
                         if let Ok(Some(delivery_pipeline)) =
                             db::models::crm_pipeline::CrmPipeline::find_by_type_for_org(
                                 pool,
@@ -377,12 +383,12 @@ async fn move_deal_stage(
                             .await
                         {
                             // Check if a delivery deal already exists for this contact
-                            let has_delivery_deal = if let Some(contact_id) = deal.crm_contact_id {
+                            let has_delivery_deal = if let Some(ref contact_id) = deal.crm_contact_id {
                                 let contact_deals =
                                     CrmDeal::find_by_contact(pool, contact_id).await.unwrap_or_default();
                                 contact_deals
                                     .iter()
-                                    .any(|d| d.crm_pipeline_id == Some(delivery_pipeline.id))
+                                    .any(|d| d.crm_pipeline_id.as_ref() == Some(&delivery_pipeline.id))
                             } else {
                                 false
                             };
@@ -392,7 +398,7 @@ async fn move_deal_stage(
                                 let delivery_stages =
                                     db::models::crm_pipeline::CrmPipelineStage::find_by_pipeline(
                                         pool,
-                                        delivery_pipeline.id,
+                                        &delivery_pipeline.id,
                                     )
                                     .await
                                     .unwrap_or_default();
@@ -403,11 +409,11 @@ async fn move_deal_stage(
                                 let _ = CrmDeal::create(
                                     pool,
                                     CreateCrmDeal {
-                                        organization_id: deal.organization_id.unwrap_or(Uuid::nil()),
-                                        client_id: deal.client_id,
-                                        crm_contact_id: deal.crm_contact_id,
-                                        crm_pipeline_id: Some(delivery_pipeline.id),
-                                        crm_stage_id: onboarding_stage.map(|s| s.id),
+                                        organization_id: deal.organization_id.clone().unwrap_or_else(|| DbUuid::from(Uuid::nil())),
+                                        client_id: deal.client_id.clone(),
+                                        crm_contact_id: deal.crm_contact_id.clone(),
+                                        crm_pipeline_id: Some(delivery_pipeline.id.clone()),
+                                        crm_stage_id: onboarding_stage.map(|s| s.id.clone()),
                                         name: format!("{} - Delivery", deal.name),
                                         description: Some(format!(
                                             "Auto-created from won sales deal: {}",
@@ -440,7 +446,7 @@ async fn move_deal_stage(
         let existing_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM tasks WHERE crm_deal_id = ? AND status NOT IN ('cancelled', 'done') AND deleted_at IS NULL"
         )
-        .bind(deal.id)
+        .bind(&deal.id)
         .fetch_one(pool)
         .await
         .unwrap_or(0);
@@ -459,8 +465,8 @@ async fn move_deal_stage(
             .bind(task_id)
             .bind(&task_title)
             .bind(task_desc)
-            .bind(deal.id)
-            .bind(deal.project_id)
+            .bind(&deal.id)
+            .bind(&deal.project_id)
             .execute(pool)
             .await;
         }
@@ -476,7 +482,8 @@ async fn list_org_deals(
     Path(org_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<CrmDeal>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let deals = CrmDeal::find_by_organization(pool, org_id).await?;
+    let org_id = DbUuid::from(org_id);
+    let deals = CrmDeal::find_by_organization(pool, &org_id).await?;
     Ok(Json(ApiResponse::success(deals)))
 }
 
@@ -487,7 +494,8 @@ async fn delete_deal(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    CrmDeal::delete(pool, id).await?;
+    let id = DbUuid::from(id);
+    CrmDeal::delete(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -536,10 +544,9 @@ async fn get_metrics(
 
     // Get all deals for the project (optionally filtered by pipeline)
     let deals = if let Some(pipeline_id) = query.pipeline_id {
-        CrmDeal::find_by_pipeline(pool, pipeline_id).await?
+        CrmDeal::find_by_pipeline(pool, &DbUuid::from(pipeline_id)).await?
     } else {
-        CrmDeal::find_by_organization(pool, query.organization_id).await?
-
+        CrmDeal::find_by_organization(pool, &DbUuid::from(query.organization_id)).await?
     };
 
     let total_deals = deals.len() as i64;
@@ -562,7 +569,7 @@ async fn get_metrics(
 
     // Get stage info for each deal to determine won/lost
     for deal in &deals {
-        if let Some(stage_id) = deal.crm_stage_id {
+        if let Some(ref stage_id) = deal.crm_stage_id {
             if let Ok(stage) =
                 db::models::crm_pipeline::CrmPipelineStage::find_by_id(pool, stage_id).await
             {
@@ -589,6 +596,7 @@ async fn get_metrics(
     for deal in &deals {
         let stage_id = deal
             .crm_stage_id
+            .as_ref()
             .map(|id| id.to_string())
             .unwrap_or_else(|| "unknown".to_string());
         let entry = stage_map

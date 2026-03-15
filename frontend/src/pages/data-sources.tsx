@@ -9,7 +9,7 @@ import {
   Film, Layers, Folder, MessageSquare, File, Database,
   Upload, ChevronRight, ChevronDown, Palette,
   Download, Trash2, X, Info, RefreshCw, Play, Plus,
-  SortAsc, SortDesc, FolderOpen, LayoutGrid,
+  SortAsc, SortDesc, FolderOpen, LayoutGrid, Loader2,
 } from 'lucide-react';
 import { dataSourcesApi, workflowsApi, type DataSourceRecord } from '@/lib/api';
 import { toast } from 'sonner';
@@ -983,7 +983,9 @@ function RunWorkflowFromSourceDialog({ source, onClose }: {
               onClick={() => runMutation.mutate()}
               disabled={!selectedWorkflowId || runMutation.isPending}
             >
-              <Play className="h-3.5 w-3.5 mr-2" />
+              {runMutation.isPending
+                ? <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                : <Play className="h-3.5 w-3.5 mr-2" />}
               {runMutation.isPending ? 'Running...' : 'Run Workflow'}
             </Button>
           </div>

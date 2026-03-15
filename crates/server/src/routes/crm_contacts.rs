@@ -14,6 +14,7 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
+use db::db_uuid::DbUuid;
 use db::models::crm_contact::{
     CrmContact, CreateCrmContact, UpdateCrmContact, ContactSearchParams, LifecycleStage
 };
@@ -65,11 +66,12 @@ async fn list_contacts(
 ) -> Result<Json<ApiResponse<Vec<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
 
+    let org_id = DbUuid::from(query.organization_id);
     let contacts = if let Some(stage_str) = query.lifecycle_stage {
         let stage: LifecycleStage = stage_str.parse()
             .map_err(|_| ApiError::BadRequest(format!("Invalid lifecycle stage: {}", stage_str)))?;
         let params = ContactSearchParams {
-            organization_id: Some(query.organization_id),
+            organization_id: Some(org_id.clone()),
             client_id: None,
             query: None,
             lifecycle_stage: Some(stage),
@@ -81,7 +83,7 @@ async fn list_contacts(
         };
         CrmContact::search(pool, params).await?
     } else {
-        CrmContact::find_by_organization(pool, query.organization_id, query.limit).await?
+        CrmContact::find_by_organization(pool, &org_id, query.limit).await?
 
     };
 
@@ -97,7 +99,7 @@ async fn create_contact(
 
     // Check if contact with this email already exists
     if let Some(ref email) = data.email {
-        if let Some(existing) = CrmContact::find_by_email(pool, data.organization_id, email).await? {
+        if let Some(existing) = CrmContact::find_by_email(pool, &data.organization_id, email).await? {
 
             return Err(ApiError::Conflict(format!(
                 "Contact with email {} already exists: {}",
@@ -121,7 +123,7 @@ async fn search_contacts(
         .and_then(|s| s.parse::<LifecycleStage>().ok());
 
     let params = ContactSearchParams {
-        organization_id: Some(query.organization_id),
+        organization_id: Some(DbUuid::from(query.organization_id)),
         client_id: None,
 
         query: query.query,
@@ -143,6 +145,7 @@ async fn get_contact_stats(
     Path(organization_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<ContactStats>>, ApiError> {
     let pool = &deployment.db().pool;
+    let organization_id = DbUuid::from(organization_id);
 
     let stage_counts: Vec<(String, i64)> = sqlx::query_as(
         r#"
@@ -153,7 +156,7 @@ async fn get_contact_stats(
         ORDER BY count DESC
         "#
     )
-    .bind(organization_id)
+    .bind(organization_id.as_str())
 
     .fetch_all(pool)
     .await?;
@@ -168,7 +171,7 @@ async fn get_contact_stats(
     let avg_score: (f64,) = sqlx::query_as(
         r#"SELECT COALESCE(AVG(CAST(lead_score AS REAL)), 0.0) FROM crm_contacts WHERE organization_id = ?1"#
     )
-    .bind(organization_id)
+    .bind(organization_id.as_str())
     .fetch_one(pool)
     .await?;
 
@@ -183,7 +186,7 @@ async fn get_contact_stats(
         )
         "#
     )
-    .bind(organization_id)
+    .bind(organization_id.as_str())
 
     .fetch_one(pool)
     .await?;
@@ -202,7 +205,8 @@ async fn get_contact(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
-    let contact = CrmContact::find_by_id(pool, id).await?;
+    let id = DbUuid::from(id);
+    let contact = CrmContact::find_by_id(pool, &id).await?;
     Ok(Json(ApiResponse::success(contact)))
 }
 
@@ -212,7 +216,8 @@ async fn get_contact_by_email(
     Path((organization_id, email)): Path<(Uuid, String)>,
 ) -> Result<Json<ApiResponse<Option<CrmContact>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let contact = CrmContact::find_by_email(pool, organization_id, &email).await?;
+    let organization_id = DbUuid::from(organization_id);
+    let contact = CrmContact::find_by_email(pool, &organization_id, &email).await?;
 
     Ok(Json(ApiResponse::success(contact)))
 }
@@ -224,7 +229,8 @@ async fn update_contact(
     Json(update): Json<UpdateCrmContact>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
-    let contact = CrmContact::update(pool, id, update).await?;
+    let id = DbUuid::from(id);
+    let contact = CrmContact::update(pool, &id, update).await?;
     Ok(Json(ApiResponse::success(contact)))
 }
 
@@ -234,7 +240,8 @@ async fn record_activity(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    CrmContact::record_activity(pool, id).await?;
+    let id = DbUuid::from(id);
+    CrmContact::record_activity(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -244,7 +251,8 @@ async fn record_contacted(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    CrmContact::record_contact_made(pool, id).await?;
+    let id = DbUuid::from(id);
+    CrmContact::record_contact_made(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -254,7 +262,8 @@ async fn record_replied(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    CrmContact::record_reply_received(pool, id).await?;
+    let id = DbUuid::from(id);
+    CrmContact::record_reply_received(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -265,8 +274,9 @@ async fn update_lead_score(
     Json(request): Json<UpdateLeadScoreRequest>,
 ) -> Result<Json<ApiResponse<CrmContact>>, ApiError> {
     let pool = &deployment.db().pool;
-    CrmContact::update_lead_score(pool, id, request.score_delta).await?;
-    let contact = CrmContact::find_by_id(pool, id).await?;
+    let id = DbUuid::from(id);
+    CrmContact::update_lead_score(pool, &id, request.score_delta).await?;
+    let contact = CrmContact::find_by_id(pool, &id).await?;
     Ok(Json(ApiResponse::success(contact)))
 }
 
@@ -276,7 +286,8 @@ async fn delete_contact(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    CrmContact::delete(pool, id).await?;
+    let id = DbUuid::from(id);
+    CrmContact::delete(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 

@@ -281,18 +281,36 @@ pub async fn execute_workflow_nodes(
         if let Some(run_id) = opts.workflow_run_id {
             for node in ordered_nodes.iter().filter(|n| n.node_type.starts_with("output_")) {
                 let target_type = node.node_type.strip_prefix("output_").unwrap_or("");
+                tracing::debug!(
+                    "[WORKFLOW] Staging: output node '{}' type='output_{}' → target='{}'",
+                    node.id, target_type, target_type
+                );
                 let staging_target = match target_type {
                     "crm_contacts" => "crm_contact",
                     "crm_companies" => "company",
                     "crm_deals" => "crm_deal",
                     "tasks" => "task",
-                    _ => continue,
+                    _ => {
+                        tracing::warn!(
+                            "[WORKFLOW] Staging: skipping output node '{}' — unrecognized type 'output_{}'",
+                            node.id, target_type
+                        );
+                        continue;
+                    }
                 };
 
                 if let Some((_, output, _)) = step_outputs.iter().find(|(id, _, _)| id == &node.id)
                 {
+                    tracing::debug!(
+                        "[WORKFLOW] Staging: node '{}' raw output (first 500 chars): {}",
+                        node.id, &output[..output.len().min(500)]
+                    );
                     if let Ok(parsed) = serde_json::from_str::<Value>(output) {
                         let records = extract_records_from_output(&parsed, staging_target);
+                        tracing::debug!(
+                            "[WORKFLOW] Staging: node '{}' extracted {} records for target '{}'",
+                            node.id, records.len(), staging_target
+                        );
                         for record in records {
                             let dup = match staging_target {
                                 "crm_contact" => {
@@ -382,7 +400,18 @@ pub async fn execute_workflow_nodes(
                                 }
                             }
                         }
+                    } else {
+                        tracing::warn!(
+                            "[WORKFLOW] Staging: node '{}' output is not valid JSON — cannot extract records",
+                            node.id
+                        );
                     }
+                } else {
+                    tracing::warn!(
+                        "[WORKFLOW] Staging: node '{}' not found in step_outputs (available: {:?})",
+                        node.id,
+                        step_outputs.iter().map(|(id, _, _)| id.as_str()).collect::<Vec<_>>()
+                    );
                 }
             }
         }
@@ -562,13 +591,15 @@ pub async fn auto_approve_staged_records(
                 // Post-commit: link contacts to companies by matching company_name
                 let org_id = approved_records.first().and_then(|r| r.organization_id);
                 if let Some(org_id) = org_id {
+                    let org_db_id = db::db_uuid::DbUuid::from(org_id);
                     for (_, target_type, created_id) in &commit_results {
                         if target_type == "crm_contact" {
                             if let Some(contact_id) = created_id {
-                                if let Ok(contact) = db::models::crm_contact::CrmContact::find_by_id(pool, *contact_id).await {
+                                let contact_db_id = db::db_uuid::DbUuid::from(*contact_id);
+                                if let Ok(contact) = db::models::crm_contact::CrmContact::find_by_id(pool, &contact_db_id).await {
                                     if let Some(company_name) = &contact.company_name {
-                                        if let Ok(Some(company)) = db::models::company::Company::find_by_name_and_org(pool, company_name, org_id).await {
-                                            let _ = super::workflow_staging::store_company_id_in_custom_fields(pool, contact.id, company.id).await;
+                                        if let Ok(Some(company)) = db::models::company::Company::find_by_name_and_org(pool, company_name, &org_db_id).await {
+                                            let _ = super::workflow_staging::store_company_id_in_custom_fields(pool, &contact.id, &company.id).await;
                                         }
                                     }
                                 }

@@ -61,6 +61,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, routes::nora::get_nora_instance};
+use db::db_uuid::DbUuid;
 use deployment::Deployment;
 
 /// Global Twilio call handler
@@ -215,7 +216,7 @@ enum CallerRole {
 struct CallDbContext {
     call_log_id: Uuid,
     conversation_id: Uuid,
-    crm_contact_id: Uuid,
+    crm_contact_id: DbUuid,
     project_id: Uuid,
     caller_role: CallerRole,
     /// E.164 phone number of the caller (used as SMS-during-call lookup key)
@@ -647,7 +648,7 @@ pub async fn handle_incoming_call(
             is_admin: bool,
             project_id: Uuid,
             team_context_json: String,
-            crm_contact_id: Uuid,
+            crm_contact_id: DbUuid,
         },
         External {
             contact: CrmContact,
@@ -700,7 +701,7 @@ pub async fn handle_incoming_call(
                     let first = full_name.split_whitespace().next().unwrap_or(&full_name).to_string();
                     let last = full_name.split_whitespace().nth(1).map(|s| s.to_string());
                     match CrmContact::create(pool, CreateCrmContact {
-                        organization_id,
+                        organization_id: DbUuid::from(organization_id),
                         client_id: None,
 
                         first_name: Some(first),
@@ -723,7 +724,7 @@ pub async fn handle_incoming_call(
                         gmail_contact_id: None,
                     }).await {
                         Ok(c) => c.id,
-                        Err(_) => Uuid::new_v4(),
+                        Err(_) => DbUuid::new(),
                     }
                 }
             }
@@ -739,7 +740,7 @@ pub async fn handle_incoming_call(
 
         if let Some(contact) = existing_contact {
             // Returning external client
-            let prev_logs = CallLog::find_by_crm_contact(pool, contact.id, 3)
+            let prev_logs = CallLog::find_by_crm_contact(pool, Uuid::parse_str(&contact.id).unwrap_or(Uuid::nil()), 3)
                 .await
                 .unwrap_or_default();
             let project_id = match prev_logs.first().map(|l| l.project_id) {
@@ -779,7 +780,7 @@ pub async fn handle_incoming_call(
             };
 
             let contact = match CrmContact::create(pool, CreateCrmContact {
-                organization_id,
+                organization_id: DbUuid::from(organization_id),
                 client_id: None,
 
                 first_name: Some(twilio_caller_name.split_whitespace().next().unwrap_or(&twilio_caller_name).to_string()),
@@ -891,7 +892,7 @@ pub async fn handle_incoming_call(
                 pool,
                 log.id,
                 UpdateCallLog {
-                    crm_contact_id: Some(crm_contact_id),
+                    crm_contact_id: Some(Uuid::parse_str(&crm_contact_id).unwrap_or(Uuid::nil())),
                     ..Default::default()
                 },
             )
@@ -1412,7 +1413,7 @@ pub async fn handle_call_status(
             duration_seconds: Some(duration),
             transcription: Some(transcript),
             transcription_status: Some("completed".to_string()),
-            crm_contact_id: Some(db_ctx.crm_contact_id),
+            crm_contact_id: Some(Uuid::parse_str(&db_ctx.crm_contact_id).unwrap_or(Uuid::nil())),
             ..Default::default()
         },
     )
@@ -1433,7 +1434,7 @@ pub async fn handle_call_status(
     }
 
     // Update CRM last_contacted_at
-    if let Err(e) = CrmContact::record_contact_made(pool, db_ctx.crm_contact_id).await {
+    if let Err(e) = CrmContact::record_contact_made(pool, &db_ctx.crm_contact_id).await {
         warn!("Failed to update CRM contact {}: {}", db_ctx.crm_contact_id, e);
     }
 

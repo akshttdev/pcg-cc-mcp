@@ -11,6 +11,7 @@
 use serde_json::json;
 use sqlx::SqlitePool;
 use std::sync::Arc;
+use db::db_uuid::DbUuid;
 use uuid::Uuid;
 
 use crate::agent::access_control::{AccessScope, UserContext};
@@ -1190,7 +1191,7 @@ impl PlatformDataService {
 
         let contacts = if search_query.is_some() || lifecycle_stage.is_some() {
             let params = ContactSearchParams {
-                organization_id: Some(org_uuid),
+                organization_id: Some(DbUuid::from(org_uuid)),
                 client_id: None,
                 query: search_query.map(|s| s.to_string()),
                 lifecycle_stage,
@@ -1202,7 +1203,7 @@ impl PlatformDataService {
             };
             CrmContact::search(&self.pool, params).await.unwrap_or_default()
         } else {
-            CrmContact::find_by_organization(&self.pool, org_uuid, Some(limit))
+            CrmContact::find_by_organization(&self.pool, &DbUuid::from(org_uuid), Some(limit))
                 .await
                 .unwrap_or_default()
         };
@@ -1251,17 +1252,17 @@ impl PlatformDataService {
 
         let deals = if let Some(pid) = pipeline_id {
             match Uuid::parse_str(pid) {
-                Ok(uuid) => CrmDeal::find_by_pipeline(&self.pool, uuid).await.unwrap_or_default(),
+                Ok(uuid) => CrmDeal::find_by_pipeline(&self.pool, &DbUuid::from(uuid)).await.unwrap_or_default(),
                 Err(_) => return Ok(json!({"error": "Invalid pipeline_id UUID"})),
             }
         } else if let Some(sid) = stage_id {
             match Uuid::parse_str(sid) {
-                Ok(uuid) => CrmDeal::find_by_stage(&self.pool, uuid).await.unwrap_or_default(),
+                Ok(uuid) => CrmDeal::find_by_stage(&self.pool, &DbUuid::from(uuid)).await.unwrap_or_default(),
                 Err(_) => return Ok(json!({"error": "Invalid stage_id UUID"})),
             }
         } else if let Some(oid) = org_id {
             match Uuid::parse_str(oid) {
-                Ok(uuid) => CrmDeal::find_by_organization(&self.pool, uuid).await.unwrap_or_default(),
+                Ok(uuid) => CrmDeal::find_by_organization(&self.pool, &DbUuid::from(uuid)).await.unwrap_or_default(),
                 Err(_) => return Ok(json!({"error": "Invalid organization_id UUID"})),
             }
         } else {
@@ -1280,7 +1281,7 @@ impl PlatformDataService {
                     "pipeline": d.pipeline,
                     "probability": d.probability,
                     "expected_close_date": d.expected_close_date.map(|d| d.to_rfc3339()),
-                    "contact_id": d.crm_contact_id.map(|id| id.to_string()),
+                    "contact_id": d.crm_contact_id.as_ref().map(|id| id.to_string()),
                     "created_at": d.created_at.to_rfc3339()
                 })
             })
@@ -1318,13 +1319,13 @@ impl PlatformDataService {
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse::<PipelineType>().ok());
 
-        let pipelines = CrmPipeline::find_by_organization(&self.pool, org_uuid, pipeline_type_filter)
+        let pipelines = CrmPipeline::find_by_organization(&self.pool, &DbUuid::from(org_uuid), pipeline_type_filter)
             .await
             .unwrap_or_default();
 
         let mut pipeline_list: Vec<serde_json::Value> = Vec::new();
         for p in &pipelines {
-            let stages = CrmPipelineStage::find_by_pipeline(&self.pool, p.id)
+            let stages = CrmPipelineStage::find_by_pipeline(&self.pool, &p.id)
                 .await
                 .unwrap_or_default();
 
@@ -1377,7 +1378,7 @@ impl PlatformDataService {
             .and_then(|s| serde_json::from_value(json!(s)).ok());
 
         let contact = CrmContact::create(&self.pool, CreateCrmContact {
-            organization_id: org_uuid,
+            organization_id: DbUuid::from(org_uuid),
             client_id: None,
             first_name: args.get("first_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
             last_name: args.get("last_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
@@ -1434,11 +1435,11 @@ impl PlatformDataService {
         };
 
         let deal = CrmDeal::create(&self.pool, CreateCrmDeal {
-            organization_id: org_uuid,
+            organization_id: DbUuid::from(org_uuid),
             client_id: None,
-            crm_contact_id: args.get("contact_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()),
-            crm_pipeline_id: args.get("pipeline_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()),
-            crm_stage_id: args.get("stage_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()),
+            crm_contact_id: args.get("contact_id").and_then(|v| v.as_str()).map(|s| DbUuid::from_string(s)),
+            crm_pipeline_id: args.get("pipeline_id").and_then(|v| v.as_str()).map(|s| DbUuid::from_string(s)),
+            crm_stage_id: args.get("stage_id").and_then(|v| v.as_str()).map(|s| DbUuid::from_string(s)),
             name,
             description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
             amount: args.get("amount").and_then(|v| v.as_f64()),
@@ -1471,13 +1472,14 @@ impl PlatformDataService {
             Some(id) => id,
             None => return Ok(json!({"error": "deal_id is required"})),
         };
-        let deal_uuid = Uuid::parse_str(deal_id_str)
-            .map_err(|_| TopsiError::ToolError("Invalid deal_id".to_string()))?;
+        let deal_db_id = DbUuid::from_string(deal_id_str);
 
         if !user_context.is_admin {
-            if let Ok(existing) = CrmDeal::find_by_id(&self.pool, deal_uuid).await {
+            if let Ok(existing) = CrmDeal::find_by_id(&self.pool, &deal_db_id).await {
                 if let Some(ref org_id) = existing.organization_id {
-                    self.verify_org_membership(user_context, *org_id).await?;
+                    let org_uuid = Uuid::parse_str(org_id.as_str())
+                        .map_err(|_| TopsiError::ToolError("Invalid org_id".to_string()))?;
+                    self.verify_org_membership(user_context, org_uuid).await?;
                 }
             }
         }
@@ -1486,7 +1488,7 @@ impl PlatformDataService {
             name: args.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()),
             amount: args.get("amount").and_then(|v| v.as_f64()),
             currency: args.get("currency").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            crm_stage_id: args.get("stage_id").and_then(|v| v.as_str()).and_then(|s| Uuid::parse_str(s).ok()),
+            crm_stage_id: args.get("stage_id").and_then(|v| v.as_str()).map(|s| DbUuid::from_string(s)),
             description: args.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
             expected_close_date: args.get("expected_close_date").and_then(|v| v.as_str()).map(|s| s.to_string()),
             lost_reason: args.get("lost_reason").and_then(|v| v.as_str()).map(|s| s.to_string()),
@@ -1494,7 +1496,7 @@ impl PlatformDataService {
             ..Default::default()
         };
 
-        match CrmDeal::update(&self.pool, deal_uuid, update).await {
+        match CrmDeal::update(&self.pool, &deal_db_id, update).await {
             Ok(d) => Ok(json!({
                 "id": d.id.to_string(),
                 "name": d.name,
@@ -1667,7 +1669,7 @@ impl PlatformDataService {
         if entity_types.contains(&"contacts".to_string()) {
             if let Some(oid) = org_id {
                 let params = ContactSearchParams {
-                    organization_id: Some(oid),
+                    organization_id: Some(DbUuid::from(oid)),
                     client_id: None,
                     query: Some(query.to_string()),
                     lifecycle_stage: None,

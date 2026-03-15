@@ -618,6 +618,7 @@ export function Sidebar({ className }: SidebarProps) {
                     <Button
                       variant="ghost"
                       className="w-full justify-center p-2 h-auto text-muted-foreground hover:text-foreground"
+                      data-testid={item.action ? `${item.action}-button` : undefined}
                       onClick={() => { if (item.action) NiceModal.show(item.action); }}
                     >
                       <Icon className="h-4 w-4" />
@@ -654,6 +655,7 @@ export function Sidebar({ className }: SidebarProps) {
                 key={item.label}
                 variant="ghost"
                 className="w-full justify-start px-3 py-2 h-auto text-muted-foreground hover:text-foreground"
+                data-testid={item.action ? `${item.action}-button` : undefined}
                 onClick={() => {
                   if (item.action) {
                     NiceModal.show(item.action);

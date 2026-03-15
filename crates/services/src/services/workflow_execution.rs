@@ -11,6 +11,7 @@ use db::models::task::{Task, CreateTask, Priority};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use db::db_uuid::DbUuid;
 use uuid::Uuid;
 
 use crate::services::workflow_llm::WorkflowLLMService;
@@ -2019,10 +2020,11 @@ pub async fn execute_action_node(
                         .or(context_org_id);
 
                     if let Some(org_id) = org_id {
-                        match CrmContact::find_by_email(pool, org_id, match_value).await {
+                        let org_db_id = DbUuid::from(org_id);
+                        match CrmContact::find_by_email(pool, &org_db_id, match_value).await {
                             Ok(Some(contact)) => {
                                 let update = build_contact_update(&update_template, record);
-                                match CrmContact::update(pool, contact.id, update).await {
+                                match CrmContact::update(pool, &contact.id, update).await {
                                     Ok(_) => { updated_count += 1; }
                                     Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
                                 }
@@ -2080,10 +2082,11 @@ pub async fn execute_action_node(
                         .or(context_org_id);
 
                     if let Some(org_id) = org_id {
-                        match CrmDeal::find_by_name_and_org(pool, match_value, org_id).await {
+                        let org_db_id = DbUuid::from(org_id);
+                        match CrmDeal::find_by_name_and_org(pool, match_value, &org_db_id).await {
                             Ok(Some(deal)) => {
                                 let update = build_deal_update(&update_template, record);
-                                match CrmDeal::update(pool, deal.id, update).await {
+                                match CrmDeal::update(pool, &deal.id, update).await {
                                     Ok(_) => { updated_count += 1; }
                                     Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
                                 }
@@ -2138,7 +2141,7 @@ pub async fn execute_action_node(
                     match Company::find_by_name(pool, match_value).await {
                         Ok(Some(company)) => {
                             let update = build_company_update(&update_template, record);
-                            match Company::update(pool, company.id, update).await {
+                            match Company::update(pool, &company.id, update).await {
                                 Ok(_) => { updated_count += 1; }
                                 Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
                             }
@@ -2297,9 +2300,42 @@ pub async fn execute_node_with_llm(
     model: &str,
     target_schemas: &[String],
 ) -> (String, Option<Value>) {
-    let prompt_template = node.parameters.get("prompt_template")
+    let user_prompt = node.parameters.get("prompt_template")
         .and_then(|v| v.as_str())
-        .unwrap_or("Analyze the following content:\n{{content}}");
+        .unwrap_or("");
+
+    let prompt_template: String = if user_prompt.trim().is_empty() {
+        // Generate a context-aware default prompt based on target schemas
+        let smart_prompt = target_schemas.iter().find_map(|schema| {
+            match schema.as_str() {
+                "crm_contacts" => Some(
+                    "Extract all people and contacts mentioned in the content. \
+                     For each person, provide their first_name, last_name, email, phone, \
+                     company_name, and job_title.\n\n{{content}}"
+                ),
+                "crm_companies" | "companies" => Some(
+                    "Extract all companies and organizations mentioned in the content. \
+                     For each company, provide the name, website, industry, and description.\n\n{{content}}"
+                ),
+                "crm_deals" | "deals" => Some(
+                    "Extract all business opportunities and deals mentioned in the content. \
+                     For each deal, provide the name, amount, currency, contact_name, \
+                     contact_email, company_name, and stage.\n\n{{content}}"
+                ),
+                "tasks" => Some(
+                    "Extract all action items and tasks mentioned in the content. \
+                     For each task, provide the title, description, priority, and assignee.\n\n{{content}}"
+                ),
+                _ => None,
+            }
+        });
+        smart_prompt
+            .unwrap_or("Analyze the following content:\n{{content}}")
+            .to_string()
+    } else {
+        user_prompt.to_string()
+    };
+    let prompt_template = prompt_template.as_str();
 
     // Build the actual prompt by substituting template variables
     // {{previous_results}} — backwards-compatible merged text of all upstream outputs
@@ -2323,7 +2359,6 @@ pub async fn execute_node_with_llm(
     let wrapped_content = format!("--- BEGIN SOURCE CONTENT ---\n{}\n--- END SOURCE CONTENT ---", content);
 
     let mut prompt = prompt_template
-
         .replace("{{content}}", &wrapped_content)
         .replace("{{previous_results}}", &prev_text)
         .replace("{{target_schema}}", &schema_text);
@@ -2337,6 +2372,27 @@ pub async fn execute_node_with_llm(
         }
     }
 
+    // If the prompt template didn't reference {{content}} or {{previous_results}},
+    // automatically prepend the source data so the LLM has something to extract from.
+    // This handles the common case where users write simple prompts like
+    // "Extract all contacts" without using template variables.
+    let has_content_ref = prompt_template.contains("{{content}}");
+    let has_prev_ref = prompt_template.contains("{{previous_results}}")
+        || previous_results.iter().any(|(_, _, schema)| {
+            !schema.is_empty() && prompt_template.contains(&format!("{{{{{}}}}}", schema))
+        });
+
+    let prompt = if !has_content_ref && !has_prev_ref {
+        // Prefer previous_results (upstream node output) if available, otherwise use raw content
+        let source_data = if !prev_text.is_empty() {
+            prev_text.clone()
+        } else {
+            wrapped_content.clone()
+        };
+        format!("{}\n\n{}", source_data, prompt)
+    } else {
+        prompt
+    };
 
     // If target_schema is non-empty but the prompt didn't contain the placeholder, append it
     let prompt = if !schema_text.is_empty() && !prompt_template.contains("{{target_schema}}") {
@@ -2361,6 +2417,11 @@ pub async fn execute_node_with_llm(
     } else {
         "You are a helpful assistant that analyzes content and provides clear, well-structured responses."
     };
+    tracing::debug!(
+        "[WORKFLOW] Node '{}' type='{}' target_schemas={:?} content_len={} prompt_len={}",
+        node.id, node.node_type, target_schemas, content.len(), prompt.len()
+    );
+
     let messages = vec![
         WorkflowLLMService::system_message(system_msg),
         WorkflowLLMService::user_message(&prompt),

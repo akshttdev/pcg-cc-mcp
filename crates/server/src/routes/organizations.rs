@@ -974,7 +974,7 @@ async fn list_org_companies(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<Company>>, ApiError> {
     let pool = &deployment.db().pool;
-    let companies = Company::list(pool, Some(id), None, Some(200)).await
+    let companies = Company::list(pool, Some(db::db_uuid::DbUuid::from(id)), None, Some(200)).await
         .map_err(|e| ApiError::InternalError(e.to_string()))?;
     Ok(Json(companies))
 }

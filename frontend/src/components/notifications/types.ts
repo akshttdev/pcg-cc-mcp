@@ -8,6 +8,7 @@ export interface ActivityItem {
   new_state: string | null;
   metadata: string | null;
   timestamp: string;
+  actor_name: string | null;
 }
 
 export interface InboxNotification {

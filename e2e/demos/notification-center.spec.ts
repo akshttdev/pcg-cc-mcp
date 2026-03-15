@@ -50,10 +50,14 @@ test.describe("Notification Center Demo", () => {
     await createTaskAndReturnToKanban(page, TASK_TITLE_1);
   });
 
-  test("Step 2: Notification bell is visible in navbar", async ({ page }) => {
+  test("Step 2: Notification bell is visible with unread indicator", async ({ page }) => {
     await navigateToProjectTasks(page, PROJECT_ID);
     const bellButton = page.getByRole("button", { name: /notification/i });
     await expect(bellButton).toBeVisible({ timeout: t(5_000) });
+
+    // Verify unread badge (blue dot) appears after task creation
+    const unreadDot = bellButton.locator("span.rounded-full");
+    await expect(unreadDot).toBeVisible({ timeout: t(5_000) });
   });
 
   test("Step 3: Open notification dropdown", async ({ page }) => {
@@ -64,14 +68,20 @@ test.describe("Notification Center Demo", () => {
     });
   });
 
-  test("Step 4: Verify activity items in dropdown", async ({ page }) => {
+  test("Step 4: Verify activity items contain task title", async ({ page }) => {
     await openNotifications(page);
 
     const timestamps = page.getByText(/(just now|\d+m ago|\d+h ago|\d+d ago)/);
     await expect(timestamps.first()).toBeVisible({ timeout: t(5_000) });
+
+    // Notification text should contain the task title (formatAction includes it)
+    const shortTitle = TASK_TITLE_1.replace(`${TEST_DATA_PREFIX} `, "");
+    await expect(
+      page.locator(".max-h-80").getByText(new RegExp(shortTitle)).first()
+    ).toBeVisible({ timeout: t(5_000) });
   });
 
-  test("Step 5: Mark all read", async ({ page }) => {
+  test("Step 5: Mark all read and verify badge disappears", async ({ page }) => {
     await openNotifications(page);
 
     const markAllBtn = page.getByRole("button", { name: /mark all read/i });
@@ -79,6 +89,13 @@ test.describe("Notification Center Demo", () => {
     await markAllBtn.click();
 
     await page.waitForTimeout(1_000);
+
+    // Close dropdown, then verify unread badge is gone
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(500);
+    const bellButton = page.getByRole("button", { name: /notification/i });
+    const unreadDot = bellButton.locator("span.rounded-full");
+    await expect(unreadDot).not.toBeVisible({ timeout: t(5_000) });
   });
 
   test("Step 6: Create another task via UI to generate fresh notification", async ({ page }) => {

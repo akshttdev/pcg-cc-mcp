@@ -31,6 +31,7 @@ use crate::{
     error::ApiError,
     routes::nora::get_nora_instance,
 };
+use db::db_uuid::DbUuid;
 
 
 use nora::agent::{NoraRequest, NoraRequestType, RequestPriority};
@@ -561,8 +562,9 @@ pub async fn trigger_company_research(
 ) -> Result<Json<ApiResponse<CompanyResearchJobResponse>>, ApiError> {
     use db::models::company::Company;
     let pool = d.db().pool.clone();
+    let company_db_id = DbUuid::from(company_id);
 
-    let company = Company::find_by_id(&pool, company_id)
+    let company = Company::find_by_id(&pool, &company_db_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
 

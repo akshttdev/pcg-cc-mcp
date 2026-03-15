@@ -10,13 +10,14 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{error::ApiError, routes::nora::get_nora_instance, DeploymentImpl};
+use db::db_uuid::DbUuid;
 use db::models::company::{Company, CreateCompany, UpdateCompany};
 use db::models::proposal::Proposal;
 use db::models::person_association::{CompanyContactMethod, CreateCompanyContactMethod};
 
 #[derive(Debug, Deserialize)]
 pub struct ListCompaniesQuery {
-    pub created_by_org_id: Option<Uuid>,
+    pub created_by_org_id: Option<DbUuid>,
     pub has_platform_org: Option<bool>,
     pub limit: Option<i64>,
 }
@@ -47,7 +48,8 @@ async fn get_company(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Company>>, ApiError> {
     let pool = &deployment.db().pool;
-    let company = Company::find_by_id(pool, id)
+    let id = DbUuid::from(id);
+    let company = Company::find_by_id(pool, &id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
     Ok(Json(ApiResponse::success(company)))
@@ -60,7 +62,8 @@ async fn update_company(
     Json(body): Json<UpdateCompany>,
 ) -> Result<Json<ApiResponse<Company>>, ApiError> {
     let pool = &deployment.db().pool;
-    let company = Company::update(pool, id, body)
+    let id = DbUuid::from(id);
+    let company = Company::update(pool, &id, body)
         .await?
         .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
     Ok(Json(ApiResponse::success(company)))
@@ -72,7 +75,8 @@ async fn delete_company(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    let deleted = Company::delete(pool, id).await?;
+    let id = DbUuid::from(id);
+    let deleted = Company::delete(pool, &id).await?;
     if !deleted {
         return Err(ApiError::NotFound("Company not found".into()));
     }
@@ -166,7 +170,8 @@ async fn trigger_company_research(
     Path(company_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CompanyResearchResponse>>, ApiError> {
     let pool = &deployment.db().pool;
-    let company = Company::find_by_id(pool, company_id)
+    let db_company_id = DbUuid::from(company_id);
+    let company = Company::find_by_id(pool, &db_company_id)
         .await?
         .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;
 

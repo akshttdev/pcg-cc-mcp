@@ -36,6 +36,20 @@
 
 ---
 
+## P1.5 — Notification & Demo Enhancements
+
+### Notification Quick Action Buttons (Future Sprint)
+**Source:** 2026-03-15 dogfood session
+**What:** Add quick action buttons to notification items so users can take the next workflow step directly from the notification dropdown (e.g., "Approve" staged records, "Review PR", "Mark Done"). Reduces context switching.
+**Status:** NOT STARTED — deferred to future sprint
+
+### Demo Script Improvements
+**Source:** 2026-03-15 dogfood session
+**What:** Add better context/narration to demo scripts — annotations explaining what each step demonstrates, why it matters. Currently the demos work but don't convey the product story.
+**Status:** PARTIALLY DONE — workflow CRM demo extended with Parts 5-8 (approve, runs tab, CRM contacts, pipeline). Bug report + manual QA demos still need narration.
+
+---
+
 ## P2 — Medium / UX Polish
 
 ### 6. AgentWatcherPanel Error State
@@ -152,3 +166,7 @@
 | PR #27 W14: DbUuid encoding undocumented | Module docs expanded (commit `dd3f20388`) |
 | No success toast for feedback submission (Bug #4) | Toast via sonner (commit `7cd4b22c9`) |
 | PR #27 W1: manual InReview doesn't spawn QA review | spawn_watcher_reviews() standalone (commit `f03dab011`) |
+| Notification UUIDs instead of display names | Backend LEFT JOIN for actor_name (2026-03-15) |
+| Notification icons not visually distinct | Colored icon circles + actor type badges (2026-03-15) |
+| Run Workflow button has no loading indicator | Added Loader2 spinner to data-sources.tsx (2026-03-15) |
+| Workflow CRM demo incomplete (no commit/verify) | Extended with Parts 5-8: approve, runs, contacts, pipeline (2026-03-15) |

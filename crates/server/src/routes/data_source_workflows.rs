@@ -1157,7 +1157,7 @@ pub async fn fire_triggers_for_data_source(pool: sqlx::SqlitePool, data_source_i
         let trigger_auto_approve = trigger.auto_approve;
 
         tokio::spawn(async move {
-            let trigger_start = std::time::Instant::now();
+            let _trigger_start = std::time::Instant::now();
             let span = tracing::info_span!("trigger_execution",
                 trigger_id = %trigger_id,
                 workflow_id = %workflow_id,
