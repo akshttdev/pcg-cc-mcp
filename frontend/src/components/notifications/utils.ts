@@ -42,7 +42,7 @@ function extractTitle(item: ActivityItem): string | undefined {
 
 export function formatAction(item: ActivityItem): string {
   const actor = formatActor(item);
-  let meta: Record<string, any> = {};
+  let meta: Record<string, unknown> = {};
   try {
     if (item.metadata) meta = JSON.parse(item.metadata);
   } catch {}
@@ -57,8 +57,8 @@ export function formatAction(item: ActivityItem): string {
     case 'updated':
     case 'update':
     case 'task_updated':
-      if (meta.fields_changed) {
-        return `${actor} updated ${meta.fields_changed.join(', ')}${title ? ` on "${title}"` : ''}`;
+      if (meta.fields_changed && Array.isArray(meta.fields_changed)) {
+        return `${actor} updated ${(meta.fields_changed as string[]).join(', ')}${title ? ` on "${title}"` : ''}`;
       }
       return `${actor} updated${title ? ` "${title}"` : ' a task'}`;
     case 'status_change':

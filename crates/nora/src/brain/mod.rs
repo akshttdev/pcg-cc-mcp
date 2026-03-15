@@ -626,10 +626,12 @@ impl LLMClient {
             "[LLM_API] Sending request to OpenAI API with {} total messages...",
             messages.len()
         );
-        eprintln!("[DEBUG] Sending to OpenAI: model={}, tools={}, tool_choice={:?}",
-            self.config.model,
-            tools.len(),
-            payload.get("tool_choice"));
+        tracing::debug!(
+            model = %self.config.model,
+            tools = tools.len(),
+            tool_choice = ?payload.get("tool_choice"),
+            "Sending to OpenAI"
+        );
 
         // Retry loop with exponential backoff for rate limiting (429)
         let max_retries = 3;
@@ -756,8 +758,10 @@ impl LLMClient {
 
     /// Helper to process OpenAI tool response JSON
     async fn process_openai_tool_response(&self, json: serde_json::Value) -> Result<LLMResponse> {
-        tracing::debug!("[LLM_API] Response parsed successfully");
-        eprintln!("[DEBUG] tool_calls in response: {:?}", json["choices"][0]["message"]["tool_calls"]);
+        tracing::debug!(
+            tool_calls = ?json["choices"][0]["message"]["tool_calls"],
+            "LLM_API response parsed successfully"
+        );
 
         // Extract token usage from response
         let usage = json.get("usage").and_then(|u| {
@@ -1193,8 +1197,10 @@ impl LLMClient {
             NoraError::LLMError(format!("Failed to parse response: {}", e))
         })?;
 
-        tracing::debug!("[LLM_API] Response parsed successfully");
-        eprintln!("[DEBUG] tool_calls in response: {:?}", json["choices"][0]["message"]["tool_calls"]);
+        tracing::debug!(
+            tool_calls = ?json["choices"][0]["message"]["tool_calls"],
+            "LLM_API response parsed successfully"
+        );
 
         // Extract token usage
         let usage = json.get("usage").and_then(|u| {

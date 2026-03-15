@@ -1,0 +1,255 @@
+import { useMemo } from 'react';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Activity,
+  Target,
+  DollarSign,
+  Contact2,
+  FolderOpen,
+  Brain,
+  Users,
+  Plug,
+  ChevronRight,
+  Play,
+} from 'lucide-react';
+import {
+  tasksApi,
+  crmActivitiesApi,
+  workflowsApi,
+  type CrmActivityRecord,
+} from '@/lib/api';
+import { formatDate, formatCurrency } from '../helpers';
+
+export function OverviewTab({
+  orgId,
+  orgName: _orgName,
+  projectEntries,
+  projectCount,
+  clientCount: _clientCount,
+  memberCount: _memberCount,
+  totalDealValue,
+  totalDeals,
+  contactCount,
+}: {
+  orgId: string;
+  orgName: string;
+  projectEntries: { id: string; name: string }[];
+  projectCount: number;
+  clientCount: number;
+  memberCount: number;
+  totalDealValue: number;
+  totalDeals: number;
+  contactCount: number;
+}) {
+  // Aggregate tasks across all projects
+  const taskQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['tasks', entry.id],
+      queryFn: () => tasksApi.getAll(entry.id),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  const totalTasks = useMemo(
+    () => taskQueries.reduce((sum, q) => sum + (q.data?.length || 0), 0),
+    [taskQueries]
+  );
+
+  // Aggregate activities across all projects
+  const activityQueries = useQueries({
+    queries: projectEntries.map((entry) => ({
+      queryKey: ['crm-activities-org', entry.id],
+      queryFn: () => crmActivitiesApi.listActivities({ organization_id: entry.id, limit: 10 }),
+      staleTime: 60_000,
+      enabled: projectEntries.length > 0,
+    })),
+  });
+
+  // Fetch recent workflow runs for the organization
+  const { data: recentWorkflowRuns = [] } = useQuery({
+    queryKey: ['workflow-runs', orgId],
+    queryFn: () => workflowsApi.listRecentRuns({ organization_id: orgId, limit: 10 }),
+    staleTime: 60_000,
+  });
+
+  const recentActivities = useMemo(() => {
+    const all: (CrmActivityRecord & { _projectName: string })[] = [];
+    activityQueries.forEach((q, i) => {
+      if (!q.data) return;
+      const entry = projectEntries[i];
+      q.data.forEach(a => all.push({ ...a, _projectName: entry.name }));
+    });
+    all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return all.slice(0, 20);
+  }, [activityQueries, projectEntries]);
+
+  return (
+    <div className="space-y-6">
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 animate-stagger">
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Activity className="h-4 w-4" />
+              <span className="text-xs font-medium">Total Tasks</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{totalTasks}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Target className="h-4 w-4" />
+              <span className="text-xs font-medium">Total Deals</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{totalDeals}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <DollarSign className="h-4 w-4" />
+              <span className="text-xs font-medium">Pipeline Value</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{formatCurrency(totalDealValue)}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Contact2 className="h-4 w-4" />
+              <span className="text-xs font-medium">Contacts</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{contactCount}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <FolderOpen className="h-4 w-4" />
+              <span className="text-xs font-medium">Active Projects</span>
+            </div>
+            <p className="text-2xl font-bold mt-1">{projectCount}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick links */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        {[
+          { label: 'Pipelines', icon: Target, path: 'crm/pipeline', color: 'text-amber-500', summary: `${totalDeals} deals · ${formatCurrency(totalDealValue)}` },
+          { label: 'Contacts', icon: Contact2, path: 'crm/contacts', color: 'text-blue-500', summary: `${contactCount} contacts` },
+          { label: 'Projects', icon: FolderOpen, path: 'projects', color: 'text-emerald-500', summary: `${projectCount} active` },
+          { label: 'Intelligence', icon: Brain, path: 'intelligence', color: 'text-orange-500', summary: 'Data sources & workflows' },
+          { label: 'Members', icon: Users, path: 'members', color: 'text-purple-500', summary: 'Team & roles' },
+          { label: 'Integrations', icon: Plug, path: 'integrations', color: 'text-indigo-500', summary: 'Connected services' },
+        ].map(({ label, icon: Icon, path, color, summary }) => (
+          <Link
+            key={path}
+            to={`/organizations/${orgId}/${path}`}
+            className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-accent/50 hover:border-accent transition-all text-left group cursor-pointer"
+          >
+            <Icon className={`h-5 w-5 ${color} group-hover:scale-110 transition-transform`} />
+            <div className="min-w-0">
+              <span className="text-sm font-medium block">{label}</span>
+              <span className="text-xs text-muted-foreground">{summary}</span>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+          </Link>
+        ))}
+      </div>
+
+      {/* Recent activity - workflow runs + CRM activities */}
+      <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            Recent Activity
+          </CardTitle>
+          <CardDescription>Latest workflow runs and CRM activity</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recentWorkflowRuns.length === 0 && recentActivities.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p>No recent activity</p>
+              <p className="text-xs mt-1">Activity from tasks, deals, and contacts will appear here.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Workflow runs */}
+              {recentWorkflowRuns.map((run: any) => {
+                const statusColor = run.status === 'completed' ? 'text-green-600' : run.status === 'failed' ? 'text-red-600' : 'text-blue-600';
+                const statusBg = run.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30' : run.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-blue-100 dark:bg-blue-900/30';
+                return (
+                  <div key={run.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
+                    <div className={`h-8 w-8 rounded-full ${statusBg} flex items-center justify-center shrink-0`}>
+                      <Play className={`h-4 w-4 ${statusColor}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px]">workflow run</Badge>
+                        <Badge variant="secondary" className={`text-[10px] ${statusColor}`}>
+                          {run.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm mt-1 font-medium">{run.workflow_name}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        {run.total_records_staged > 0 && (
+                          <span>{run.total_records_staged} staged</span>
+                        )}
+                        {run.total_records_committed > 0 && (
+                          <span className="text-green-600">{run.total_records_committed} committed</span>
+                        )}
+                        {run.total_duplicates_found > 0 && (
+                          <span className="text-amber-600">{run.total_duplicates_found} duplicates</span>
+                        )}
+                        {run.model_used && (
+                          <span>{run.model_used}</span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        {formatDate(run.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* CRM activities */}
+              {recentActivities.map((activity) => (
+                <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg border border-border/30">
+                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                    <Activity className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-[10px]">
+                        {activity.activity_type.replace(/_/g, ' ')}
+                      </Badge>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {activity._projectName}
+                      </Badge>
+                    </div>
+                    {activity.subject && (
+                      <p className="text-sm mt-1">{activity.subject}</p>
+                    )}
+                    {activity.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{activity.description}</p>
+                    )}
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {formatDate(activity.created_at)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
