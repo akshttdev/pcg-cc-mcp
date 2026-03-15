@@ -69,6 +69,9 @@ import {
 } from './constants';
 import { StatPill } from './components/StatPill';
 
+// Re-export BrandIdentityCard for external consumers
+export { BrandIdentityCard } from './components/BrandIdentityCard';
+
 // ── Lazy-loaded tabs ─────────────────────────────────────────────────────────
 
 const OverviewTab = lazy(() => import('./tabs/OverviewTab').then(m => ({ default: m.OverviewTab })));
