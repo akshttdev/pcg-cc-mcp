@@ -947,7 +947,7 @@ impl EditronService {
                 }
                 Err(e) => {
                     // Log error but continue with other files
-                    eprintln!("Warning: Could not probe {}: {}", path.display(), e);
+                    tracing::warn!(path = %path.display(), error = %e, "Could not probe file");
                 }
             }
         }

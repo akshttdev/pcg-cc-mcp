@@ -38,6 +38,9 @@ mod command;
 pub mod container;
 mod dropbox_monitor;
 
+/// Default timeout for outbound HTTP requests (seconds)
+const HTTP_CLIENT_TIMEOUT_SECS: u64 = 30;
+
 #[derive(Clone)]
 pub struct LocalDeployment {
     config: Arc<RwLock<Config>>,
@@ -57,6 +60,7 @@ pub struct LocalDeployment {
     file_search_cache: Arc<FileSearchCache>,
     approvals: Approvals,
     media_pipeline: MediaPipelineService,
+    http_client: reqwest::Client,
 }
 
 #[async_trait]
@@ -148,6 +152,12 @@ impl Deployment for LocalDeployment {
         )?;
         DropboxMonitor::spawn(db.pool.clone(), media_pipeline.clone());
 
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(HTTP_CLIENT_TIMEOUT_SECS))
+            .pool_max_idle_per_host(10)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
         // Try to initialize PostgreSQL connection if DATABASE_URL is set
         #[cfg(feature = "postgres")]
         let pg_db = {
@@ -193,6 +203,7 @@ impl Deployment for LocalDeployment {
             file_search_cache,
             approvals,
             media_pipeline,
+            http_client,
         })
     }
 
@@ -262,5 +273,9 @@ impl Deployment for LocalDeployment {
 
     fn media_pipeline(&self) -> &MediaPipelineService {
         &self.media_pipeline
+    }
+
+    fn http_client(&self) -> &reqwest::Client {
+        &self.http_client
     }
 }

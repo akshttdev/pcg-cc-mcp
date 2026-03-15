@@ -577,7 +577,7 @@ pub async fn update_task(
         .assigned_agent
         .or(existing_task.assigned_agent.clone());
     let assigned_mcps = if let Some(mcps) = &payload.assigned_mcps {
-        Some(serde_json::to_string(mcps).unwrap())
+        serde_json::to_string(mcps).ok().or_else(|| existing_task.assigned_mcps.clone())
     } else {
         existing_task.assigned_mcps.clone()
     };
@@ -589,7 +589,7 @@ pub async fn update_task(
         .or(existing_task.approval_status.clone());
     let parent_task_id = payload.parent_task_id.map(|u| u.to_string()).or(existing_task.parent_task_id);
     let tags = if let Some(tags) = &payload.tags {
-        Some(serde_json::to_string(tags).unwrap())
+        serde_json::to_string(tags).ok().or_else(|| existing_task.tags.clone())
     } else {
         existing_task.tags.clone()
     };

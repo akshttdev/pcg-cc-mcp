@@ -10,7 +10,7 @@ import { ImageUploadSection } from '@/components/ui/ImageUploadSection';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 //
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { imagesApi } from '@/lib/api.ts';
+import { imagesApi } from '@/lib/api';
 import type { TaskWithAttemptStatus } from 'shared/types';
 import { useBranchStatus } from '@/hooks';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';

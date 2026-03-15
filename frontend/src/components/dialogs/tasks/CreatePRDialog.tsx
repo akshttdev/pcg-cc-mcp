@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import BranchSelector from '@/components/tasks/BranchSelector';
 import { useCallback, useEffect, useState } from 'react';
-import { attemptsApi } from '@/lib/api.ts';
+import { attemptsApi } from '@/lib/api';
 
 import {
   GitBranch,
@@ -21,7 +21,7 @@ import {
   TaskAttempt,
   TaskWithAttemptStatus,
 } from 'shared/types';
-import { projectsApi } from '@/lib/api.ts';
+import { projectsApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 const CreatePrDialog = NiceModal.create(() => {
