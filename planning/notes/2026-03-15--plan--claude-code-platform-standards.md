@@ -1,7 +1,7 @@
 # Claude Code Platform Standards & Tech Debt Prevention
 
 **Branch:** `feat/claude-code-standards`
-**PR:** TBD
+**PR:** [#32](https://github.com/KingBodhi/pcg-cc-mcp/pull/32)
 **Status:** Implementing
 
 ---
