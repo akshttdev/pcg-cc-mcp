@@ -21,6 +21,7 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
+use db::db_uuid::DbUuid;
 use db::models::company::Company;
 use db::models::meeting_session::MeetingSession;
 use db::models::person::Person;
@@ -477,7 +478,8 @@ async fn export_company_analysis(
 ) -> Result<Response, ApiError> {
     let pool = &d.db().pool;
 
-    let company = Company::find_by_id(pool, company_id)
+    let company_db_id = DbUuid::from(company_id);
+    let company = Company::find_by_id(pool, &company_db_id)
         .await
         .map_err(|e| ApiError::InternalError(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound("Company not found".into()))?;

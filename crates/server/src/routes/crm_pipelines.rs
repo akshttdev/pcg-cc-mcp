@@ -13,6 +13,7 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{error::ApiError, DeploymentImpl};
+use db::db_uuid::DbUuid;
 use db::models::crm_pipeline::{
     CrmPipeline, CrmPipelineStage, CrmPipelineWithStages,
     CreateCrmPipeline, CreateCrmPipelineStage, PipelineType,
@@ -40,22 +41,21 @@ async fn list_pipelines(
     let pool = &deployment.db().pool;
 
     // Resolve organization_id — either directly provided or looked up from project_id
-    let org_id = if let Some(oid) = query.organization_id {
-        oid
+    let org_id: DbUuid = if let Some(oid) = query.organization_id {
+        DbUuid::from(oid)
     } else if let Some(pid) = query.project_id {
         // Find the org that owns this project via existing crm_pipelines or clients table
-        let org_bytes: Option<Vec<u8>> = sqlx::query_scalar(
+        let org_str: Option<String> = sqlx::query_scalar(
             "SELECT organization_id FROM crm_pipelines WHERE project_id = ? AND organization_id IS NOT NULL LIMIT 1"
         )
-        .bind(pid)
+        .bind(DbUuid::from(pid))
         .fetch_optional(pool)
         .await
         .ok()
         .flatten();
 
-        if let Some(bytes) = org_bytes {
-            Uuid::from_slice(&bytes)
-                .map_err(|_| ApiError::BadRequest("Invalid organization UUID in pipeline".to_string()))?
+        if let Some(s) = org_str {
+            DbUuid::from_string(s)
         } else {
             return Err(ApiError::BadRequest(
                 "No pipelines found for the given project_id".to_string(),
@@ -68,18 +68,18 @@ async fn list_pipelines(
     };
 
     // Ensure default pipelines exist for this org
-    CrmPipeline::ensure_defaults_for_org(pool, org_id).await?;
+    CrmPipeline::ensure_defaults_for_org(pool, &org_id).await?;
 
     let pipelines = if let Some(type_str) = query.pipeline_type {
         let pipeline_type: PipelineType = type_str
             .parse()
             .map_err(|_| ApiError::BadRequest(format!("Invalid pipeline type: {}", type_str)))?;
-        CrmPipeline::find_by_type_for_org(pool, org_id, pipeline_type)
+        CrmPipeline::find_by_type_for_org(pool, &org_id, pipeline_type)
             .await?
             .into_iter()
             .collect()
     } else {
-        CrmPipeline::find_by_organization(pool, org_id, None).await?
+        CrmPipeline::find_by_organization(pool, &org_id, None).await?
     };
 
     Ok(Json(ApiResponse::success(pipelines)))
@@ -91,7 +91,8 @@ async fn get_pipeline(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<CrmPipelineWithStages>>, ApiError> {
     let pool = &deployment.db().pool;
-    let pipeline = CrmPipeline::find_with_stages(pool, id).await?;
+    let id = DbUuid::from(id);
+    let pipeline = CrmPipeline::find_with_stages(pool, &id).await?;
     Ok(Json(ApiResponse::success(pipeline)))
 }
 
@@ -112,7 +113,8 @@ async fn update_pipeline(
     Json(data): Json<UpdateCrmPipeline>,
 ) -> Result<Json<ApiResponse<CrmPipeline>>, ApiError> {
     let pool = &deployment.db().pool;
-    let pipeline = CrmPipeline::update(pool, id, data).await?;
+    let id = DbUuid::from(id);
+    let pipeline = CrmPipeline::update(pool, &id, data).await?;
     Ok(Json(ApiResponse::success(pipeline)))
 }
 
@@ -122,7 +124,8 @@ async fn delete_pipeline(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    CrmPipeline::delete(pool, id).await?;
+    let id = DbUuid::from(id);
+    CrmPipeline::delete(pool, &id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -132,7 +135,8 @@ async fn list_stages(
     Path(pipeline_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<CrmPipelineStage>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let stages = CrmPipelineStage::find_by_pipeline(pool, pipeline_id).await?;
+    let pipeline_id = DbUuid::from(pipeline_id);
+    let stages = CrmPipelineStage::find_by_pipeline(pool, &pipeline_id).await?;
     Ok(Json(ApiResponse::success(stages)))
 }
 
@@ -143,7 +147,7 @@ async fn create_stage(
     Json(mut data): Json<CreateCrmPipelineStage>,
 ) -> Result<Json<ApiResponse<CrmPipelineStage>>, ApiError> {
     let pool = &deployment.db().pool;
-    data.pipeline_id = pipeline_id;
+    data.pipeline_id = DbUuid::from(pipeline_id);
     let stage = CrmPipelineStage::create(pool, data).await?;
     Ok(Json(ApiResponse::success(stage)))
 }
@@ -155,7 +159,8 @@ async fn update_stage(
     Json(data): Json<UpdateCrmPipelineStage>,
 ) -> Result<Json<ApiResponse<CrmPipelineStage>>, ApiError> {
     let pool = &deployment.db().pool;
-    let stage = CrmPipelineStage::update(pool, stage_id, data).await?;
+    let stage_id = DbUuid::from(stage_id);
+    let stage = CrmPipelineStage::update(pool, &stage_id, data).await?;
     Ok(Json(ApiResponse::success(stage)))
 }
 
@@ -165,7 +170,8 @@ async fn delete_stage(
     Path((_pipeline_id, stage_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let pool = &deployment.db().pool;
-    CrmPipelineStage::delete(pool, stage_id).await?;
+    let stage_id = DbUuid::from(stage_id);
+    CrmPipelineStage::delete(pool, &stage_id).await?;
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -176,7 +182,8 @@ async fn reorder_stages(
     Json(data): Json<ReorderStagesRequest>,
 ) -> Result<Json<ApiResponse<Vec<CrmPipelineStage>>>, ApiError> {
     let pool = &deployment.db().pool;
-    let stages = CrmPipelineStage::reorder(pool, pipeline_id, data.stage_ids).await?;
+    let pipeline_id = DbUuid::from(pipeline_id);
+    let stages = CrmPipelineStage::reorder(pool, &pipeline_id, data.stage_ids.into_iter().map(DbUuid::from).collect()).await?;
     Ok(Json(ApiResponse::success(stages)))
 }
 
@@ -192,9 +199,10 @@ async fn list_org_pipelines(
     Query(query): Query<ListOrgPipelinesQuery>,
 ) -> Result<Json<ApiResponse<Vec<CrmPipeline>>>, ApiError> {
     let pool = &deployment.db().pool;
+    let org_id = DbUuid::from(org_id);
 
     // Ensure default pipelines exist for the organization
-    let _ = CrmPipeline::ensure_defaults_for_org(pool, org_id).await;
+    let _ = CrmPipeline::ensure_defaults_for_org(pool, &org_id).await;
 
 
     let pipeline_type_filter = if let Some(ref type_str) = query.pipeline_type {
@@ -208,7 +216,7 @@ async fn list_org_pipelines(
     };
 
     let pipelines =
-        CrmPipeline::find_by_organization(pool, org_id, pipeline_type_filter).await?;
+        CrmPipeline::find_by_organization(pool, &org_id, pipeline_type_filter).await?;
 
     Ok(Json(ApiResponse::success(pipelines)))
 }
@@ -219,7 +227,8 @@ async fn get_org_pipeline(
     Path((_org_id, pipeline_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiResponse<CrmPipelineWithStages>>, ApiError> {
     let pool = &deployment.db().pool;
-    let pipeline = CrmPipeline::find_with_stages(pool, pipeline_id).await?;
+    let pipeline_id = DbUuid::from(pipeline_id);
+    let pipeline = CrmPipeline::find_with_stages(pool, &pipeline_id).await?;
     Ok(Json(ApiResponse::success(pipeline)))
 }
 
@@ -229,8 +238,10 @@ async fn get_org_kanban(
     Path((org_id, pipeline_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiResponse<db::models::crm_deal::KanbanBoardData>>, ApiError> {
     let pool = &deployment.db().pool;
+    let org_id = DbUuid::from(org_id);
+    let pipeline_id = DbUuid::from(pipeline_id);
     let kanban_data =
-        db::models::crm_deal::CrmDeal::get_kanban_by_organization(pool, org_id, pipeline_id)
+        db::models::crm_deal::CrmDeal::get_kanban_by_organization(pool, &org_id, &pipeline_id)
             .await?;
     Ok(Json(ApiResponse::success(kanban_data)))
 }

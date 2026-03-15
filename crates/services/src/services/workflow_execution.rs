@@ -11,6 +11,7 @@ use db::models::task::{Task, CreateTask, Priority};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use db::db_uuid::DbUuid;
 use uuid::Uuid;
 
 use crate::services::workflow_llm::WorkflowLLMService;
@@ -2018,10 +2019,11 @@ pub async fn execute_action_node(
                         .or(context_org_id);
 
                     if let Some(org_id) = org_id {
-                        match CrmContact::find_by_email(pool, org_id, match_value).await {
+                        let org_db_id = DbUuid::from(org_id);
+                        match CrmContact::find_by_email(pool, &org_db_id, match_value).await {
                             Ok(Some(contact)) => {
                                 let update = build_contact_update(&update_template, record);
-                                match CrmContact::update(pool, contact.id, update).await {
+                                match CrmContact::update(pool, &contact.id, update).await {
                                     Ok(_) => { updated_count += 1; }
                                     Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
                                 }
@@ -2079,10 +2081,11 @@ pub async fn execute_action_node(
                         .or(context_org_id);
 
                     if let Some(org_id) = org_id {
-                        match CrmDeal::find_by_name_and_org(pool, match_value, org_id).await {
+                        let org_db_id = DbUuid::from(org_id);
+                        match CrmDeal::find_by_name_and_org(pool, match_value, &org_db_id).await {
                             Ok(Some(deal)) => {
                                 let update = build_deal_update(&update_template, record);
-                                match CrmDeal::update(pool, deal.id, update).await {
+                                match CrmDeal::update(pool, &deal.id, update).await {
                                     Ok(_) => { updated_count += 1; }
                                     Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
                                 }
@@ -2137,7 +2140,7 @@ pub async fn execute_action_node(
                     match Company::find_by_name(pool, match_value).await {
                         Ok(Some(company)) => {
                             let update = build_company_update(&update_template, record);
-                            match Company::update(pool, company.id, update).await {
+                            match Company::update(pool, &company.id, update).await {
                                 Ok(_) => { updated_count += 1; }
                                 Err(e) => { errors.push(format!("Update failed for {}: {}", match_value, e)); }
                             }

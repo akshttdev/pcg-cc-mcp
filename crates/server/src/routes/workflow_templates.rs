@@ -20,6 +20,7 @@ use deployment::Deployment;
 use serde::Deserialize;
 use utils::response::ApiResponse;
 use uuid::Uuid;
+use db::db_uuid::DbUuid;
 
 use crate::{error::ApiError, DeploymentImpl};
 
@@ -68,7 +69,8 @@ async fn convert_deal(
         })?;
 
     // 2. Look up the deal to get context
-    let deal = db::models::crm_deal::CrmDeal::find_by_id(pool, deal_id).await?;
+    let deal_db_id = DbUuid::from(deal_id);
+    let deal = db::models::crm_deal::CrmDeal::find_by_id(pool, &deal_db_id).await?;
 
     // 3. Create the project
     let project_name = payload.project_name.unwrap_or_else(|| {
@@ -323,7 +325,7 @@ async fn convert_deal(
         "UPDATE crm_deals SET custom_fields = ?, updated_at = datetime('now', 'subsec') WHERE id = ?",
     )
     .bind(&custom_fields_json)
-    .bind(deal_id)
+    .bind(&deal_db_id)
     .execute(pool)
     .await;
 
@@ -376,7 +378,7 @@ async fn seed_deal_knowledge(
     .await;
 
     // 2. Contact profile → entity source (reusable across projects)
-    if let Some(contact_id) = deal.crm_contact_id {
+    if let Some(ref contact_id) = deal.crm_contact_id {
         if let Ok(contact) = CrmContact::find_by_id(pool, contact_id).await {
             let mut contact_parts: Vec<String> = Vec::new();
             if let Some(ref name) = contact.full_name {

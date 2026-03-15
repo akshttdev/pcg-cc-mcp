@@ -591,13 +591,15 @@ pub async fn auto_approve_staged_records(
                 // Post-commit: link contacts to companies by matching company_name
                 let org_id = approved_records.first().and_then(|r| r.organization_id);
                 if let Some(org_id) = org_id {
+                    let org_db_id = db::db_uuid::DbUuid::from(org_id);
                     for (_, target_type, created_id) in &commit_results {
                         if target_type == "crm_contact" {
                             if let Some(contact_id) = created_id {
-                                if let Ok(contact) = db::models::crm_contact::CrmContact::find_by_id(pool, *contact_id).await {
+                                let contact_db_id = db::db_uuid::DbUuid::from(*contact_id);
+                                if let Ok(contact) = db::models::crm_contact::CrmContact::find_by_id(pool, &contact_db_id).await {
                                     if let Some(company_name) = &contact.company_name {
-                                        if let Ok(Some(company)) = db::models::company::Company::find_by_name_and_org(pool, company_name, org_id).await {
-                                            let _ = super::workflow_staging::store_company_id_in_custom_fields(pool, contact.id, company.id).await;
+                                        if let Ok(Some(company)) = db::models::company::Company::find_by_name_and_org(pool, company_name, &org_db_id).await {
+                                            let _ = super::workflow_staging::store_company_id_in_custom_fields(pool, &contact.id, &company.id).await;
                                         }
                                     }
                                 }
