@@ -10,8 +10,6 @@ use axum::{Json, Router, extract::State, routing::get};
 use serde::Serialize;
 use sqlx::SqlitePool;
 use ts_rs::TS;
-use uuid::Uuid;
-
 use crate::{DeploymentImpl, error::ApiError};
 use crate::middleware::access_control::get_current_user;
 use db::models::agent::{Agent, AgentStatus, AutonomyLevel, CreateAgent};
